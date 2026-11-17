@@ -11,6 +11,9 @@ take visitors from one world to the next.
 The protocol's plumbing is already done here. What's left is the part worth
 doing: deciding what your world is.
 
+To see it before you copy it: <https://nswp-world-template.vercel.app/> is this
+template, deployed without a single change.
+
 ## Try it
 
 You need [Node.js](https://nodejs.org) 22 or newer.
