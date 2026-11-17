@@ -1,0 +1,18 @@
+{
+  "d": "home",
+  "title": "My place",
+  "room": {"template": "hall", "color": "#101217", "accent": "#3fc584"},
+  "access": "follows",
+  "items": [
+    {"type": "note", "position": [0, 2.6, -6], "args": ["Welcome. This room is drawn from home.json."]},
+    {"type": "portal", "position": [-3.4, 0, -5], "rotation": 20, "args": ["37300:546f9f791aba0984777051d93605b66e87ce0dc88fb0053fbe8475eec19aa00c:nswp-reference-world-a"]},
+    {"type": "portal", "position": [3.4, 0, -5], "rotation": -20, "args": ["37300:546f9f791aba0984777051d93605b66e87ce0dc88fb0053fbe8475eec19aa00c:nswp-reference-world-b"]},
+    {"type": "plinth", "position": [0, 0, -5.5]},
+    {"type": "plant", "position": [-6.2, 0, -7.2]},
+    {"type": "plant", "position": [6.2, 0, -7.2]},
+    {"type": "lamp", "position": [-6.6, 0, -2.5]},
+    {"type": "lamp", "position": [6.6, 0, -2.5]},
+    {"type": "bench", "position": [0, 0, -1.5]},
+    {"type": "table", "position": [5.6, 0, 1.2], "rotation": 90}
+  ]
+}

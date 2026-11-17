@@ -1,0 +1,182 @@
+# NSWP world template
+
+A starting point for a place of your own on the spatial web: a WebXR world
+that runs in a headset or an ordinary browser, on a site you control.
+
+It follows the Nostr Spatial Web Protocol (NSWP), an open way for
+independently hosted worlds to link to each other. Nobody runs the network.
+You publish your world from your own address with your own key, and portals
+take visitors from one world to the next.
+
+The protocol's plumbing is already done here. What's left is the part worth
+doing: deciding what your world is.
+
+## Try it
+
+You need [Node.js](https://nodejs.org) 22 or newer.
+
+```bash
+npm install
+```
+
+```bash
+npm run dev
+```
+
+Open the address it prints. Drag to look around, walk with W, A, S, D, and
+click a portal to go through it. Add `?xr=emulate` to the address to try VR
+with a pretend headset.
+
+## Make it yours
+
+Three files hold everything that is yours. The world rebuilds as you save.
+
+| File | What it is | Change it to |
+|---|---|---|
+| `home.json` | The room you start with: its colours, furniture and portals | Rearrange your home without writing code |
+| `src/scene.ts` and `src/scenes/` | The scene itself, in Three.js | Build anything: a game, a gallery, a landscape |
+| `world.json` | The facts about your world: its name, its address, where visitors arrive | Say what your world is and where it lives |
+
+### The home (`home.json`)
+
+The starting scene draws whatever `home.json` describes. Each item has a
+`type`, a `position` in metres from the middle of the room (`[right, up,
+towards you]`), and optionally a `rotation` in degrees.
+
+| Type | What it needs in `args` |
+|---|---|
+| `portal` | An https address, or a world's Nostr coordinate (`37300:<key>:<name>`). An optional second value is the sign's text |
+| `note` | The text to show |
+| `frame` | A picture's https address and its SHA-256. The picture is checked against the hash before it is hung |
+| `plant`, `lamp`, `bench`, `table`, `plinth` | Nothing |
+
+`room.template` is `hall` (a floor and three walls) or `open` (a floor under
+the sky). `room.color` and `room.accent` are hex colours.
+
+### Your own scene (`src/scene.ts`)
+
+`src/scene.ts` is one line that picks a scene. Two come with the template:
+
+- `src/scenes/home.ts` draws `home.json`.
+- `src/scenes/game.ts` is a small game, as an example of something that isn't
+  a home.
+
+A scene is one function. It is handed the Three.js scene, camera and
+renderer, adds what it likes, and may return an `update(t, dt)` to run every
+frame:
+
+```ts
+export async function buildScene(ctx) {
+  ctx.scene.add(myThing);
+  ctx.addPortal({ url: "https://another-world.example/" }, { label: "Next door", position: [0, 0, -6] });
+  return { update(t, dt) { myThing.rotation.y = t; } };
+}
+```
+
+## Two rules
+
+Whatever you build, keep these. `npm run check` looks for both.
+
+1. **Anything that takes a visitor to another site is a portal.** A portal
+   sends them through their own Airlock, a plain page that shows the real
+   address and waits for them to agree. Never navigate away yourself.
+2. **Never ask a visitor for a password, a key or a sign-in.** A world doesn't
+   need them. A place that asks looks exactly like a phishing page.
+
+## Put it online
+
+Your world is a folder of plain files. Any static host will do.
+
+1. **Say where it will live.** Set `url` in `world.json` to your world's
+   address, and give it a name of its own in `d` and `title`.
+2. **Make a key.** This is what proves the world is yours. It is saved outside
+   this folder. Back it up: it can't be recovered.
+   ```bash
+   npm run keygen
+   ```
+3. **Sign and build.**
+   ```bash
+   npm run sign
+   ```
+   ```bash
+   npm run check
+   ```
+4. **Upload the `dist/` folder** to your host.
+5. **Check the live site.**
+   ```bash
+   npm run check:live -- https://your-world.example/
+   ```
+6. **Announce it,** so lobbies and other worlds can find it. The first command
+   shows what would be sent. The second sends it, publicly and for good.
+   ```bash
+   npm run announce
+   ```
+   ```bash
+   npm run announce -- --yes
+   ```
+
+After changing `world.json` or `home.json` later, sign, build, upload and
+announce again.
+
+### A picture of your world
+
+Doors that lead to your world can show a view of it. This takes a 360°
+picture from where visitors arrive (it needs Google Chrome installed):
+
+```bash
+npm run preview
+```
+
+Then sign, build, upload and announce again, because the picture's hash is
+part of the announcement.
+
+### Hosting notes
+
+Your site must serve `/.well-known/nswp.json` to other sites, which means
+sending the header `Access-Control-Allow-Origin: *` for that file and for
+`/previews/`. The build writes this in two forms:
+
+- `dist/vercel.json`, read by Vercel.
+- `dist/_headers`, read by Netlify and Cloudflare Pages.
+
+GitHub Pages sends that header for every file already. On any other host, set
+it yourself. `npm run check:live` tells you if it is missing.
+
+## Working with an AI assistant
+
+[`AGENTS.md`](AGENTS.md) tells a coding assistant how this folder is laid out,
+what it may change freely, and which rules must survive. Point your assistant
+at this folder and ask for what you want, for example:
+
+- "Turn the home into a small art gallery with six frames and a bench."
+- "Replace the scene with a beach at sunset, and keep a portal back to World A."
+- "Make a game where you catch falling stars."
+
+Then run `npm run check`. It fails if a rule was broken along the way.
+
+## What's in the folder
+
+| Path | What it is |
+|---|---|
+| `home.json`, `world.json` | Yours: your home and your world's facts |
+| `src/scene.ts`, `src/scenes/` | Yours: the scene |
+| `src/index.html` | Yours: the page around the scene. Keep the element ids |
+| `src/plumbing/` | The protocol's plumbing: arrival, portals, VR, rooms. Changeable, with care |
+| `scripts/` | The commands above |
+| `vendor/nswp/` | The NSWP library and SDK, copied in with a record of their hashes. Don't edit |
+| `signed/` | Your signed announcement and home layout. Public, and safe to commit |
+| `previews/` | Your world's preview picture |
+| `dist/` | The built site. Made by `npm run build`, not committed |
+
+## What to know before relying on it
+
+- The protocol is an early draft, not an adopted standard. Formats may change.
+- `world.json` points at a test Airlock (`nswp-airlock.vercel.app`) for
+  visitors who arrive without one of their own. Use any Airlock you trust.
+- The shared room connects visitors directly to each other, which shows them
+  each other's IP addresses. The page says so before anyone joins.
+- Nothing here has been tried on a real headset yet, only in an emulated one.
+
+## Licence
+
+MIT. See [`LICENSE`](LICENSE).

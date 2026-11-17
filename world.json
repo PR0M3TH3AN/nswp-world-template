@@ -1,0 +1,23 @@
+{
+  "world": {
+    "d": "my-world",
+    "title": "My world",
+    "url": "https://example.com/",
+    "summary": "A place of my own on the spatial web.",
+    "description": "Built from the NSWP world template.",
+    "modes": ["immersive-vr", "inline-3d"],
+    "capabilities": ["webxr", "spatial-portals", "rooms"],
+    "comfort": { "locomotion": "stationary", "intensity": "low", "seated": "supported" },
+    "inputs": ["controllers", "hands", "gaze", "keyboard-mouse", "touch"],
+    "perf": "mobile",
+    "topics": [],
+    "languages": ["en"],
+    "status": "beta"
+  },
+  "airlock": "https://nswp-airlock.vercel.app/",
+  "relays": ["wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://nostr.mom"],
+  "entryPoints": {
+    "main-entrance": { "position": [0, 0, 4], "yaw": 0 }
+  },
+  "sky": "#0a0b0d"
+}
