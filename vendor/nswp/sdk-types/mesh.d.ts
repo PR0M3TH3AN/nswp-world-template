@@ -56,6 +56,9 @@ export declare class MeshBuilder {
     private rotation;
     /** The colour faces take when they don't say. */
     tone: THREE.Color;
+    /** The colour of this piece's lights, for a material that reads plain vertex colours (see `geometry`). */
+    light: THREE.Color;
+    private colors;
     get triangles(): number;
     /** Place and turn everything added from now on: a position, and degrees about the vertical. */
     at(position?: V3, degrees?: number, scale?: number): this;
@@ -85,8 +88,9 @@ export declare class MeshBuilder {
      * Turn a profile on a lathe about the vertical through `at`. The profile is
      * [radius, height] pairs from the bottom up. `sides` is how many faces round:
      * 4 makes a square column, 6 a hexagon, 24 a round one. `twist` turns it as it rises.
+     * `paint(row, side)` colours each face: `row` counts up the profile, `side` round it.
      */
-    lathe(profile: P2[], at: V3, sides: number, paint?: (row: number) => Paint, o?: {
+    lathe(profile: P2[], at: V3, sides: number, paint?: (row: number, side: number) => Paint, o?: {
         twist?: number;
         turn?: number;
     }): void;

@@ -141,6 +141,7 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
     update(t, dt) { /* every frame; t and dt are in seconds */ },
     canStand(x, z) { return true; }, // false inside walls and past edges
     hideFromPreview: [], // objects about one visitor, left out of the world's preview picture
+    figureStyle: undefined, // how other people are drawn: { material, palette, omit }; left out, as they chose to look
   };
 }
 ```
@@ -204,6 +205,14 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   is a jump of at most 5 m, never a slide. Stepping is the only way to move
   for someone on a phone or in a headset, so a scene bigger than a room must
   keep it. The floor is the plane y = 0.
+- **Other people.** In a room, each visitor is a figure built from their
+  *look*: parts and colours they chose, or that their key generates. The
+  plumbing draws them. To make them match your world, return `figureStyle`
+  from your scene: `{ palette: ["#4b5320", "#c2b280"] }` fits their colours to
+  yours, `{ material: () => new THREE.MeshStandardMaterial({ vertexColors:
+  true }) }` draws them in a material of your own, and `{ omit:
+  ["accessory"] }` leaves parts off. Keep the mark on their chest and back:
+  it is how people recognise each other from world to world.
 - **Walls and edges.** Return `canStand(x, z)` from your scene. Both ways of
   moving ask it first, so one function keeps visitors out of walls. Keep them
   0.3 m back from every wall, or they end with their face inside it. A step is

@@ -25,6 +25,12 @@ export declare const arrival: {
         context: Arrival | null;
         warnings: Issue[];
     };
+    /**
+     * The look this visitor arrived wearing, in its inline form (spec §4.2), or
+     * undefined if they came plain. Hand it to a room so others see them as
+     * they chose to be seen. Kept for this tab's session only.
+     */
+    look(): string | undefined;
     /** The Airlock this visitor came from, for this tab's session only. */
     returnAirlock(): string | undefined;
 };

@@ -4622,6 +4622,133 @@ function assertManifest(input) {
   return r.value;
 }
 
+// packages/core/src/avatar.ts
+var LOOK_PARTS = {
+  build: ["medium", "slight", "broad"],
+  head: ["round", "square", "tall", "wedge", "flat", "faceted"],
+  face: ["band", "split", "dots", "tee", "slit", "wide"],
+  accessory: ["none", "antenna", "halo", "hat", "crest", "fins"],
+  body: ["cloak", "coat", "plate", "robe"],
+  shoulders: ["none", "pads", "mantle", "collar"],
+  pattern: ["plain", "halves", "stripe", "bands", "yoke"],
+  finish: ["matte", "gloss", "sheen"]
+};
+var LOOK_COLORS = ["color", "accent", "light"];
+var HEX_COLOR = /^#[0-9a-f]{6}$/;
+var MARK = /^[0-7][0-9a-f]{3}$/;
+function hsl(h, s, l) {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h * 12) % 12;
+    return Math.round((l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255).toString(16).padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+function generatedLook(seed) {
+  const b = sha256(utf8ToBytes(seed.toLowerCase()));
+  const pick = (list, i) => list[b[i] % list.length];
+  const hue = (b[0] * 256 + b[1]) / 65536;
+  const accentHue = (hue + [0.08, 0.5, 0.92, 0.33][b[2] % 4]) % 1;
+  const lightHue = (hue + [0, 0.12, 0.5, 0.88][b[3] % 4]) % 1;
+  return {
+    color: hsl(hue, 0.42 + b[4] % 4 * 0.08, 0.26 + b[5] % 4 * 0.04),
+    accent: hsl(accentHue, 0.3 + b[6] % 4 * 0.1, 0.42 + b[7] % 4 * 0.06),
+    light: hsl(lightHue, 0.9, 0.62),
+    build: pick(LOOK_PARTS.build, 8),
+    head: pick(LOOK_PARTS.head, 9),
+    face: pick(LOOK_PARTS.face, 10),
+    accessory: pick(LOOK_PARTS.accessory, 11),
+    body: pick(LOOK_PARTS.body, 12),
+    shoulders: pick(LOOK_PARTS.shoulders, 13),
+    pattern: pick(LOOK_PARTS.pattern, 14),
+    finish: pick(LOOK_PARTS.finish, 15),
+    mark: markFor(seed)
+  };
+}
+function markFor(seed) {
+  const b = sha256(utf8ToBytes(seed.toLowerCase()));
+  return bytesToHex(new Uint8Array([b[30] & 127, b[31]]));
+}
+function markGrid(mark) {
+  const bits = parseInt(MARK.test(mark) ? mark : "0000", 16);
+  return Array.from(
+    { length: 5 },
+    (_, row) => Array.from({ length: 5 }, (_2, col) => {
+      const c = col < 3 ? col : 4 - col;
+      return (bits >> row * 3 + c & 1) === 1;
+    })
+  );
+}
+function applyChoices(base, choices) {
+  const look = { ...base };
+  const warnings = [];
+  for (const [key, value] of Object.entries(choices)) {
+    if (key === "mark") continue;
+    if (LOOK_COLORS.includes(key)) {
+      if (typeof value === "string" && HEX_COLOR.test(value.toLowerCase())) look[key] = value.toLowerCase();
+      else warnings.push(key);
+    } else if (key in LOOK_PARTS) {
+      const list = LOOK_PARTS[key];
+      if (typeof value === "string" && list.includes(value)) look[key] = value;
+      else warnings.push(key);
+    }
+  }
+  return { look, warnings };
+}
+function lookToTags(look) {
+  return [...LOOK_COLORS, ...Object.keys(LOOK_PARTS)].map((key) => ["simple", key, look[key]]);
+}
+function lookFromTags(tags, seed) {
+  const choices = {};
+  for (const t of tags) if (t[0] === "simple" && typeof t[1] === "string") choices[t[1]] = t[2];
+  return applyChoices(generatedLook(seed), choices);
+}
+function encodeLook(look, seed) {
+  const base = generatedLook(seed);
+  const out = { s: seed };
+  for (const key of [...LOOK_COLORS, ...Object.keys(LOOK_PARTS)]) if (look[key] !== base[key]) out[key] = look[key];
+  return JSON.stringify(out);
+}
+var LOOK_LIMITS = { chars: 600, seedChars: 64 };
+function decodeLook(text) {
+  const c = new Collector();
+  if (text.length > LOOK_LIMITS.chars) {
+    c.error("look_too_large", "", "A look is at most 600 characters.");
+    return c.result({ look: generatedLook(""), seed: "" });
+  }
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    c.error("invalid_json", "", "A look must be a JSON object.");
+    return c.result({ look: generatedLook(""), seed: "" });
+  }
+  if (!isPlainObject(json) || typeof json.s !== "string" || !/^[0-9a-zA-Z_-]{8,64}$/.test(json.s)) {
+    c.error("missing_field", "s", "A look needs a seed: 8 to 64 letters or digits.");
+    return c.result({ look: generatedLook(""), seed: "" });
+  }
+  const { s: seed, ...choices } = json;
+  const { look, warnings } = applyChoices(generatedLook(seed), choices);
+  for (const w of warnings) c.warn("unknown_value", w, `Ignoring an unknown value for "${w}".`);
+  return c.result({ look, seed });
+}
+function buildAvatarEvent(a) {
+  const tags = [["d", a.d ?? "default"]];
+  if (a.title) tags.push(["title", a.title]);
+  tags.push(...lookToTags(a.look), ["alt", `Avatar preference${a.title ? ` for ${a.title}` : ""}`]);
+  return { kind: AVATAR_KIND, created_at: a.createdAt ?? nowSeconds(), tags, content: "" };
+}
+function parseAvatarEvent(event) {
+  const c = new Collector();
+  if (event.kind !== AVATAR_KIND) c.error("wrong_kind", "kind", `An avatar event has kind ${AVATAR_KIND}.`);
+  const d = getTagValue(event, "d");
+  if (!d) c.error("missing_tag", "tags.d", "An avatar event needs a d tag.");
+  const { look, warnings } = lookFromTags(getTags(event, "simple"), event.pubkey);
+  for (const w of warnings) c.warn("unknown_value", `tags.simple.${w}`, `Ignoring an unknown value for "${w}".`);
+  const title = getTagValue(event, "title");
+  return c.result({ d: d ?? "default", ...title ? { title } : {}, look });
+}
+
 // packages/core/src/arrival.ts
 var ENTRY_POINT2 = /^[A-Za-z0-9._-]{1,128}$/;
 var decoder2 = new TextDecoder();
@@ -4669,6 +4796,10 @@ function decodeArrival(value) {
     } catch {
       c.warn("invalid_avatar", "avatar", "Ignoring an avatar reference that is not an naddr.");
     }
+  }
+  if (json.look !== void 0) {
+    if (typeof json.look === "string" && decodeLook(json.look).ok) out.look = json.look;
+    else c.warn("invalid_look", "look", "Ignoring a look that can't be read.");
   }
   if (json.receipts !== void 0) {
     if (Array.isArray(json.receipts) && json.receipts.length <= LIMITS.maxReceipts && json.receipts.every(hasEventShape)) {
@@ -5510,7 +5641,7 @@ var LAYOUT_LIMITS = {
   pictureBytes: 1024 * 1024
 };
 var DEFAULT_ROOM = { template: "hall", color: "#101217", accent: "#3fc584" };
-var HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+var HEX_COLOR2 = /^#[0-9a-fA-F]{6}$/;
 var num2 = (n) => String(Math.round(n * 1e3) / 1e3);
 function buildLayoutEvent(l) {
   const room = { ...DEFAULT_ROOM, ...l.room };
@@ -5554,8 +5685,8 @@ function parseLayoutEvent(input) {
   if (roomTag) {
     if (ROOM_TEMPLATES.includes(roomTag[1] ?? "")) room.template = roomTag[1];
     else c.warn("unknown_value", "tags.room", `Unknown room template "${roomTag[1] ?? ""}"; using "${room.template}".`);
-    if (roomTag[2] && HEX_COLOR.test(roomTag[2])) room.color = roomTag[2];
-    if (roomTag[3] && HEX_COLOR.test(roomTag[3])) room.accent = roomTag[3];
+    if (roomTag[2] && HEX_COLOR2.test(roomTag[2])) room.color = roomTag[2];
+    if (roomTag[3] && HEX_COLOR2.test(roomTag[3])) room.accent = roomTag[3];
   }
   const items = [];
   const published = /* @__PURE__ */ new Set();
@@ -5645,6 +5776,9 @@ export {
   LAYOUT_ACCESS,
   LAYOUT_LIMITS,
   LIMITS,
+  LOOK_COLORS,
+  LOOK_LIMITS,
+  LOOK_PARTS,
   MODES,
   NswpError,
   PERF_TIERS,
@@ -5660,10 +5794,12 @@ export {
   VERSION,
   WELL_KNOWN_PATH,
   WORLD_KIND,
+  applyChoices,
   arrivalParam,
   assertManifest,
   buildAirlockUrl,
   buildArrivalUrl,
+  buildAvatarEvent,
   buildEntryAssertion,
   buildHello,
   buildLayoutEvent,
@@ -5674,11 +5810,14 @@ export {
   checkPreviewBytes,
   coordinate,
   decodeArrival,
+  decodeLook,
   decodeNaddr,
   encodeArrival,
+  encodeLook,
   encodeNaddr,
   fetchManifest,
   finalizeEvent,
+  generatedLook,
   getConversationKey,
   getEventHash,
   getPublicKey,
@@ -5692,6 +5831,10 @@ export {
   isPlainObject,
   isWssUrl,
   latestAddressable,
+  lookFromTags,
+  lookToTags,
+  markFor,
+  markGrid,
   nip44Decrypt,
   nip44Encrypt,
   normalizeUrl,
@@ -5699,6 +5842,7 @@ export {
   openSignal,
   packPose,
   parseAirlockFragment,
+  parseAvatarEvent,
   parseCoordinate,
   parseLayoutEvent,
   parseManifest,

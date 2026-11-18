@@ -2,6 +2,7 @@
 import type * as THREE from "three";
 import type { Arrival, Layout, PortalDestination } from "@nswp/core";
 import type { PortalGate } from "nswp-sdk/home";
+import type { FigureStyle } from "nswp-sdk/three";
 import type { Controls, Corner, Presence, UiKeys } from "nswp-sdk/ui";
 
 /** world.json */
@@ -68,6 +69,12 @@ export interface SceneHandle {
   canStand?(x: number, z: number): boolean;
   /** Set false to turn off stepping (point at the floor and select to stand there). On by default. */
   stepping?: boolean;
+  /**
+   * Draw the other people in a room in this world's own way: a `material`
+   * of your own, a `palette` their colours are fitted to, parts to `omit`.
+   * Left out, each is drawn as they chose to look.
+   */
+  figureStyle?: FigureStyle;
   /** Things to leave out of this world's preview picture, such as anything about one visitor. */
   hideFromPreview?: THREE.Object3D[];
 }

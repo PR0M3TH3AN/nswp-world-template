@@ -2074,7 +2074,9 @@ import {
   ROOM_SIGNAL_KIND,
   roomTopic,
   shouldInitiate,
-  unpackPose
+  unpackPose,
+  decodeLook,
+  generatedLook
 } from "@nswp/core";
 var DEFAULT_ICE = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
 var HELLO_EVERY_MS = 2e4;
@@ -2097,16 +2099,20 @@ var RoomSession = class {
     member: /* @__PURE__ */ new Set(),
     leave: /* @__PURE__ */ new Set(),
     pose: /* @__PURE__ */ new Set(),
+    look: /* @__PURE__ */ new Set(),
     audio: /* @__PURE__ */ new Set(),
     status: /* @__PURE__ */ new Set()
   };
+  look;
   mic = null;
   timers = [];
   closed = false;
   constructor(opts = {}) {
     this.key = schnorr.utils.randomSecretKey();
     const pubkey = getPublicKey(this.key);
-    this.self = { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey) };
+    const mine = opts.look ? decodeLook(opts.look) : null;
+    this.look = mine?.ok ? opts.look : null;
+    this.self = { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: mine?.ok ? mine.value.look : generatedLook(pubkey) };
     this.name = (opts.name ?? "lobby").slice(0, ROOM_LIMITS.maxNameChars);
     this.topic = roomTopic(opts.world ?? `${location.origin}${location.pathname}`, this.name);
     this.relays = opts.relays ?? DEFAULT_RELAYS;
@@ -2231,7 +2237,7 @@ var RoomSession = class {
   createPeer(pubkey) {
     const pc = new RTCPeerConnection({ iceServers: this.iceServers });
     const peer = {
-      member: { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey) },
+      member: { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: generatedLook(pubkey) },
       pc,
       open: false,
       lastSeen: Date.now(),
@@ -2255,8 +2261,17 @@ var RoomSession = class {
       peer.open = true;
       peer.lastSeen = Date.now();
       this.emit("member", peer.member);
+      this.sayLook(ch);
     };
     ch.onmessage = (e) => {
+      if (typeof e.data === "string") {
+        const said = e.data.startsWith("look:") ? decodeLook(e.data.slice(5)) : null;
+        if (said?.ok && JSON.stringify(said.value.look) !== JSON.stringify(peer.member.look)) {
+          peer.member.look = said.value.look;
+          this.emit("look", peer.member, said.value.look);
+        }
+        return;
+      }
       if (!(e.data instanceof ArrayBuffer)) return;
       const pose = unpackPose(e.data);
       if (!pose) return;
@@ -2266,6 +2281,24 @@ var RoomSession = class {
     ch.onclose = () => {
       if (this.peers.get(peer.member.pubkey) === peer) this.drop(peer.member.pubkey, peer.open);
     };
+  }
+  /**
+   * Tell one member how you look. The channel drops what it can't deliver at
+   * once, so it is said a few times over the first seconds.
+   */
+  sayLook(ch) {
+    if (!this.look) return;
+    const text = `look:${this.look}`;
+    let left = 4;
+    const say = () => {
+      if (this.closed || ch.readyState !== "open") return;
+      try {
+        ch.send(text);
+      } catch {
+      }
+      if (--left > 0) setTimeout(say, 1500);
+    };
+    say();
   }
   async gathered(pc) {
     if (pc.iceGatheringState !== "complete") {

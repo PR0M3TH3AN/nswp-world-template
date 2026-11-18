@@ -13,8 +13,8 @@
  * address to the other members, so join only after the visitor has agreed.
  */
 import * as THREE from "three";
-import { type Alloy } from "./alloy.js";
-import { type RoomSession } from "./room.js";
+import { type FigureStyle } from "./figure.js";
+import { type Member, type RoomSession } from "./room.js";
 export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
 import type { Controls } from "./ui/model.js";
@@ -28,6 +28,14 @@ export interface PresenceOptions {
     controllers: THREE.Object3D[];
     /** CSS colour for name labels. */
     labelColor?: string;
+    /**
+     * The visitor's own look, in its inline form (spec §4.2), for the others in a
+     * room to draw them by: usually `arrival.look()`. A function is asked each
+     * time a room is joined. Left out, they are drawn as their session key generates.
+     */
+    look?: string | (() => string | undefined);
+    /** Draw other people in this world's own way (spec §4.2, "What a world may change"). */
+    figureStyle?: FigureStyle;
     /** Called whenever membership, status or the microphone changes. */
     onChange?: () => void;
 }
@@ -39,6 +47,8 @@ export interface AvatarInfo {
     head: number[] | null;
     hands: [boolean, boolean];
     audioLevel: number;
+    /** How they are being drawn. */
+    look: Member["look"];
 }
 export interface Presence {
     readonly session: RoomSession | null;
@@ -55,22 +65,6 @@ export interface Presence {
     /** What this visitor currently sees of each member (for tests and debugging). */
     info(): AvatarInfo[];
 }
-export interface Figure {
-    group: THREE.Group;
-    /** Faces -Z, like a camera. Its origin is between the eyes. */
-    head: THREE.Group;
-    torso: THREE.Mesh;
-    hands: [THREE.Mesh, THREE.Mesh];
-    metal: Alloy;
-}
-/**
- * A visitor's figure: a helmet with a band of light for a visor, a cloak, and
- * a point of light for each hand, in the same metal as the place and lit in
- * one colour. It is what other people in a room are drawn as. The parts are
- * placed by whoever uses it; as made, the head is at the origin and the torso
- * hangs below it.
- */
-export declare function createFigure(color: THREE.ColorRepresentation): Figure;
 /** A text panel that always faces the viewer. `width` is in metres. */
 export declare function textSprite(text: string, color: string, width: number): THREE.Sprite;
 export declare function createPresence(d: PresenceOptions): Presence;
@@ -143,3 +137,4 @@ export declare function addViewControls(controls: Controls, d: {
     };
     onState?: (state: string) => void;
 }): Promise<boolean>;
+export { createFigure, type Figure, type FigureStyle } from "./figure.js";

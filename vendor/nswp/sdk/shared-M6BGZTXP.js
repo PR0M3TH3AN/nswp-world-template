@@ -1,14 +1,18 @@
 import {
   room
-} from "./shared-PMZZ7JZF.js";
+} from "./shared-QMGUPZPS.js";
 import {
   ICONS,
   rgb
 } from "./shared-WXBVZMXQ.js";
 
 // packages/sdk/src/three.ts
-import * as THREE5 from "three";
+import * as THREE6 from "three";
 import { spawnOffset } from "@nswp/core";
+
+// packages/sdk/src/figure.ts
+import * as THREE3 from "three";
+import { generatedLook, markGrid } from "@nswp/core";
 
 // packages/sdk/src/alloy.ts
 import * as THREE from "three";
@@ -121,6 +125,9 @@ var MeshBuilder = class {
   rotation = new THREE2.Matrix3();
   /** The colour faces take when they don't say. */
   tone = new THREE2.Color(791837);
+  /** The colour of this piece's lights, for a material that reads plain vertex colours (see `geometry`). */
+  light = new THREE2.Color(16777215);
+  colors = [];
   get triangles() {
     return this.positions.length / 9;
   }
@@ -161,6 +168,8 @@ var MeshBuilder = class {
       this.normals.push(nn.x, nn.y, nn.z);
       this.tones.push(col.r, col.g, col.b);
       this.glows.push(paint.glow ?? 0);
+      const g = paint.glow ?? 0;
+      this.colors.push(col.r + (this.light.r - col.r) * g, col.g + (this.light.g - col.g) * g, col.b + (this.light.b - col.b) * g);
       this.flows.push(fo[i]);
     }
   }
@@ -270,6 +279,7 @@ var MeshBuilder = class {
    * Turn a profile on a lathe about the vertical through `at`. The profile is
    * [radius, height] pairs from the bottom up. `sides` is how many faces round:
    * 4 makes a square column, 6 a hexagon, 24 a round one. `twist` turns it as it rises.
+   * `paint(row, side)` colours each face: `row` counts up the profile, `side` round it.
    */
   lathe(profile, at, sides, paint = () => ({}), o = {}) {
     const top = profile[profile.length - 1][1];
@@ -285,7 +295,7 @@ var MeshBuilder = class {
         const a = (s + 0.5) / sides * Math.PI * 2 + (o.turn ?? 0);
         const out = [Math.cos(a) * (y2 - y1), -(r2 - r1), Math.sin(a) * (y2 - y1)];
         if (Math.abs(out[0]) + Math.abs(out[1]) + Math.abs(out[2]) < 1e-9) continue;
-        const p = paint(row);
+        const p = paint(row, s);
         this.quad(ring(row, s), ring(row, s + 1), ring(row + 1, s + 1), ring(row + 1, s), { ...p, flow: p.flow ?? [y1, y1, y2, y2] }, out);
       }
     }
@@ -316,6 +326,7 @@ var MeshBuilder = class {
     g.setAttribute("tone", new THREE2.Float32BufferAttribute(this.tones, 3));
     g.setAttribute("glow", new THREE2.Float32BufferAttribute(this.glows, 1));
     g.setAttribute("flow", new THREE2.Float32BufferAttribute(this.flows, 1));
+    g.setAttribute("color", new THREE2.Float32BufferAttribute(this.colors, 3));
     g.computeBoundingSphere();
     return g;
   }
@@ -325,11 +336,224 @@ var MeshBuilder = class {
   }
 };
 
+// packages/sdk/src/figure.ts
+var DARK = new THREE3.Color(659221);
+var DEPTH = 0.4;
+function nearest(color, palette) {
+  let best = palette[0];
+  let far = Infinity;
+  for (const p of palette) {
+    const d = (p.r - color.r) ** 2 + (p.g - color.g) ** 2 + (p.b - color.b) ** 2;
+    if (d < far) [best, far] = [p, d];
+  }
+  return best.clone();
+}
+function buildHead(b, look, main, accent, omit) {
+  let fit2;
+  const shade = (row) => ({ color: main, shade: 0.85 + row * 0.1 });
+  switch (look.head) {
+    case "square":
+      b.box([0.24, 0.24, 0.24], [0, 0, 0], { color: main, bevel: 0.03, panel: { margin: 0.045, depth: 0.012, faces: "x+ x- z+ y+" } });
+      fit2 = { front: 0.12, top: 0.12, half: 0.085 };
+      break;
+    case "tall":
+      b.lathe([[5e-4, -0.14], [0.09, -0.13], [0.115, -0.02], [0.105, 0.14], [0.06, 0.2], [5e-4, 0.21]], [0, 0, 0], 6, shade);
+      fit2 = { front: 0.098, top: 0.21, half: 0.058 };
+      break;
+    case "wedge":
+      b.lathe([[5e-4, -0.12], [0.17, -0.1], [0.18, 0.09], [5e-4, 0.12]], [0, 0, 0], 3, shade, { turn: Math.PI / 2 });
+      fit2 = { front: 0.088, top: 0.12, half: 0.11 };
+      break;
+    case "flat":
+      b.lathe([[5e-4, -0.085], [0.15, -0.06], [0.165, 0.03], [0.09, 0.085], [5e-4, 0.09]], [0, 0, 0], 10, shade);
+      fit2 = { front: 0.152, top: 0.09, half: 0.09 };
+      break;
+    case "faceted":
+      b.lathe([[5e-4, -0.15], [0.1, -0.07], [0.14, 0.03], [0.08, 0.13], [5e-4, 0.165]], [0, 0, 0], 5, (row) => ({ color: main, shade: 0.8 + row * 0.16 }), { turn: Math.PI / 10 });
+      fit2 = { front: 0.108, top: 0.165, half: 0.064 };
+      break;
+    default:
+      b.lathe([[5e-4, -0.135], [0.07, -0.125], [0.118, -0.05], [0.13, 0.02], [0.112, 0.085], [0.06, 0.128], [5e-4, 0.14]], [0, 0, 0], 8, shade, { turn: Math.PI / 8 });
+      fit2 = { front: 0.122, top: 0.14, half: 0.075 };
+  }
+  b.lathe([[0.06, -0.135], [0.075, -0.125]], [0, 0, 0], 8, () => ({ glow: 0.8 }), { turn: Math.PI / 8 });
+  const { front, half } = fit2;
+  const tallFace = look.face === "tee" || look.face === "wide";
+  b.box([half * 2 + 0.03, tallFace ? 0.13 : 0.085, 0.03], [0, tallFace ? 0 : 0.02, -(front - 6e-3)], { color: DARK, bevel: 8e-3 });
+  const z = -(front + 95e-4);
+  const lit = (w, h, x, y) => b.quad([x - w / 2, y - h / 2, z], [x + w / 2, y - h / 2, z], [x + w / 2, y + h / 2, z], [x - w / 2, y + h / 2, z], { glow: 1 }, [0, 0, -1]);
+  switch (look.face) {
+    case "split":
+      lit(half * 0.72, 0.04, -half * 0.52, 0.02);
+      lit(half * 0.72, 0.04, half * 0.52, 0.02);
+      break;
+    case "dots":
+      lit(0.036, 0.036, -half * 0.5, 0.02);
+      lit(0.036, 0.036, half * 0.5, 0.02);
+      break;
+    case "tee":
+      lit(half * 1.9, 0.03, 0, 0.035);
+      lit(0.03, 0.075, 0, -0.018);
+      break;
+    case "slit":
+      lit(half * 2, 0.014, 0, 0.02);
+      break;
+    case "wide":
+      lit(half * 1.8, 0.085, 0, 0);
+      break;
+    default:
+      lit(half * 1.9, 0.04, 0, 0.02);
+  }
+  if (omit.has("accessory")) return;
+  const t = fit2.top;
+  switch (look.accessory) {
+    case "antenna":
+      b.lathe([[0.012, t - 0.03], [6e-3, t + 0.2]], [fit2.half * 0.8, 0, 0.02], 4, () => ({ color: accent }));
+      b.box([0.024, 0.024, 0.024], [fit2.half * 0.8, t + 0.21, 0.02], { glow: 1 });
+      break;
+    case "halo":
+      b.lathe([[0.13, t + 0.08], [0.165, t + 0.08], [0.165, t + 0.098], [0.13, t + 0.098], [0.13, t + 0.08]], [0, 0, 0], 12, () => ({ glow: 1 }));
+      break;
+    case "hat":
+      b.lathe([[0.09, t - 0.012], [0.21, t - 0.012], [0.21, t + 4e-3], [0.1, t + 0.01], [0.1, t + 0.035], [0.09, t + 0.035], [0.085, t + 0.12], [5e-4, t + 0.125]], [0, 0, 0], 10, (row) => row === 4 ? { glow: 0.8 } : { color: accent, shade: row === 2 ? 1.2 : 0.95 });
+      break;
+    case "crest":
+      b.box([0.022, 0.09, 0.22], [0, t + 0.02, 0.01], { color: accent, bevel: 6e-3 });
+      b.box([0.012, 0.01, 0.2], [0, t + 0.068, 0.01], { glow: 1 });
+      break;
+    case "fins":
+      for (const side of [-1, 1]) {
+        b.box([0.016, 0.13, 0.1], [side * (fit2.half + 0.068), 0.035, 0.02], { color: accent, bevel: 5e-3 });
+        b.box([8e-3, 0.11, 0.012], [side * (fit2.half + 0.078), 0.035, 0.066], { glow: 1 });
+      }
+      break;
+  }
+}
+function buildBody(b, look, main, accent, omit) {
+  const k = look.build === "slight" ? 0.86 : look.build === "broad" ? 1.2 : 1;
+  const cloth = (row, rows, side, sides, turn = 0) => {
+    const a = (side + 0.5) / sides * Math.PI * 2 + turn;
+    switch (look.pattern) {
+      case "halves":
+        return Math.cos(a) > 0 ? accent : main;
+      case "stripe":
+        return Math.abs(Math.cos(a)) < 0.35 ? accent : main;
+      case "bands":
+        return row % 2 === 1 ? accent : main;
+      case "yoke":
+        return row >= rows - 3 ? accent : main;
+      default:
+        return main;
+    }
+  };
+  const turned = (profile, sides, band, turn = 0) => b.lathe(profile, [0, 0, 0], sides, (row, side) => row === 0 ? { glow: 0.4 } : row === band ? { glow: 0.75 } : { color: cloth(row, profile.length - 1, side, sides, turn), shade: 0.9 + row % 2 * 0.18 }, { turn });
+  let chest;
+  switch (look.body) {
+    case "coat":
+      turned([[0.03, -0.24], [0.165 * k, -0.25], [0.18 * k, 0.1], [0.205 * k, 0.17], [0.205 * k, 0.195], [0.1, 0.25], [5e-4, 0.25]], 4, 3, Math.PI / 4);
+      chest = 0.125 * k;
+      break;
+    case "plate":
+      b.lathe([[0.03, -0.2], [0.11 * k, -0.25], [0.08 * k, -0.02]], [0, 0, 0], 8, (row) => row === 0 ? { glow: 0.4 } : { color: main, shade: 0.9 }, { turn: Math.PI / 8 });
+      b.box([0.31 * k, 0.26, 0.18], [0, 0.11, 0], { color: look.pattern === "plain" ? main : accent, bevel: 0.035, panel: { margin: 0.05, depth: 0.014, faces: "z+ x+ x-" } });
+      b.box([0.33 * k, 0.012, 0.2], [0, -0.022, 0], { glow: 0.75 });
+      chest = 0.09;
+      break;
+    case "robe":
+      turned([[0.03, -0.4], [0.2 * k, -0.45], [0.16 * k, -0.2], [0.115 * k, 0.1], [0.135 * k, 0.17], [0.135 * k, 0.195], [0.07, 0.25], [5e-4, 0.25]], 10, 4);
+      chest = 0.112 * k;
+      break;
+    default:
+      turned([[0.03, -0.2], [0.17 * k, -0.25], [0.12 * k, 0.12], [0.145 * k, 0.165], [0.145 * k, 0.19], [0.08, 0.25], [5e-4, 0.25]], 6, 3);
+      chest = 0.108 * k;
+  }
+  if (!omit.has("shoulders")) {
+    switch (look.shoulders) {
+      case "pads":
+        for (const side of [-1, 1]) {
+          b.box([0.12, 0.06, 0.15], [side * (0.17 * k + 0.03), 0.2, 0], { color: accent, bevel: 0.02 });
+          b.box([8e-3, 0.02, 0.13], [side * (0.17 * k + 0.092), 0.2, 0], { glow: 1 });
+        }
+        break;
+      case "mantle":
+        b.lathe([[0.09, 0.2], [0.24 * k, 0.165], [0.25 * k, 0.19], [0.1, 0.262]], [0, 0, 0], 8, (row) => row === 1 ? { glow: 0.7 } : { color: accent, shade: row === 2 ? 1.15 : 0.8 }, { turn: Math.PI / 8 });
+        break;
+      case "collar":
+        b.lathe([[0.1, 0.22], [0.15, 0.31], [0.135, 0.318], [0.09, 0.24]], [0, 0, 0], 8, (row) => row === 1 ? { glow: 0.9 } : { color: accent, shade: row === 0 ? 1.1 : 0.7 }, { turn: Math.PI / 8 });
+        break;
+    }
+  }
+  if (omit.has("mark")) return;
+  const plate = (x, y, z, cell, facing) => {
+    const pitch = cell * 1.14;
+    const wide = pitch * 5 + cell * 0.7;
+    b.box([wide, wide, 0.02], [x, y, z - facing * 8e-3], { color: DARK, bevel: 6e-3 });
+    markGrid(look.mark).forEach(
+      (row, r) => row.forEach((on, c) => {
+        if (!on) return;
+        const [cx, cy, cz] = [x + (c - 2) * pitch, y + (2 - r) * pitch, z + facing * 25e-4];
+        b.quad([cx - cell / 2, cy - cell / 2, cz], [cx + cell / 2, cy - cell / 2, cz], [cx + cell / 2, cy + cell / 2, cz], [cx - cell / 2, cy + cell / 2, cz], { glow: 1 }, [0, 0, facing]);
+      })
+    );
+  };
+  plate(0, 0.04, chest + 0.012, 0.026, 1);
+  plate(-chest * 0.42, 0.105, -(chest + 4e-3), 95e-4, -1);
+}
+function createFigure(look, style = {}) {
+  const wearing = typeof look === "string" ? generatedLook(look) : look;
+  const omit = new Set(style.omit ?? []);
+  let [main, accent, light] = [new THREE3.Color(wearing.color), new THREE3.Color(wearing.accent), new THREE3.Color(wearing.light)];
+  if (style.palette?.length) {
+    const palette = style.palette.map((c) => new THREE3.Color(c));
+    [main, accent, light] = [nearest(main, palette), nearest(accent, palette), nearest(light, palette)];
+  }
+  const depth = style.material ? 1 : DEPTH;
+  const [cloth, trim] = [main.clone().multiplyScalar(depth), accent.clone().multiplyScalar(depth)];
+  const builder = () => {
+    const b = new MeshBuilder().at();
+    b.tone = cloth.clone();
+    b.light = light.clone();
+    return b;
+  };
+  const headShape = builder();
+  buildHead(headShape, wearing, cloth, trim, omit);
+  const bodyShape = builder();
+  buildBody(bodyShape, wearing, cloth, trim, omit);
+  const handShape = builder();
+  handShape.lathe([[5e-4, -0.06], [0.04, 0], [5e-4, 0.06]], [0, 0, 0], 4, () => ({ glow: 0.75 }));
+  const metal = style.material ? style.material(light, wearing) : createAlloy(light, { gloss: wearing.finish === "matte" ? 0.25 : wearing.finish === "gloss" ? 0.85 : 0.7, sheen: wearing.finish === "sheen" ? 0.45 : 0 });
+  const geometries = [headShape.geometry(), bodyShape.geometry(), handShape.geometry()];
+  const head = new THREE3.Group();
+  head.add(new THREE3.Mesh(geometries[0], metal));
+  const torso = new THREE3.Mesh(geometries[1], metal);
+  torso.position.y = -0.45;
+  const hands = [new THREE3.Mesh(geometries[2], metal), new THREE3.Mesh(geometries[2], metal)];
+  hands[0].position.set(-0.28, -0.5, -0.12);
+  hands[1].position.set(0.28, -0.5, -0.12);
+  const group = new THREE3.Group();
+  group.add(head, torso, ...hands);
+  return {
+    group,
+    head,
+    torso,
+    hands,
+    metal,
+    look: wearing,
+    tick(t) {
+      metal.tick?.(t);
+    },
+    dispose() {
+      for (const g of geometries) g.dispose();
+      metal.dispose();
+    }
+  };
+}
+
 // packages/sdk/src/turn.ts
-import * as THREE3 from "three";
+import * as THREE4 from "three";
 function turnVisitor(rig, camera, degrees) {
-  const head = camera.getWorldPosition(new THREE3.Vector3());
-  const a = THREE3.MathUtils.degToRad(degrees);
+  const head = camera.getWorldPosition(new THREE4.Vector3());
+  const a = THREE4.MathUtils.degToRad(degrees);
   const dx = rig.position.x - head.x;
   const dz = rig.position.z - head.z;
   rig.position.x = head.x + dx * Math.cos(a) + dz * Math.sin(a);
@@ -338,7 +562,7 @@ function turnVisitor(rig, camera, degrees) {
 }
 
 // packages/sdk/src/console.ts
-import * as THREE4 from "three";
+import * as THREE5 from "three";
 var W = 1024;
 var H = 640;
 var FLOAT_W = 0.84;
@@ -382,11 +606,11 @@ function wrap(g, text, max, lines) {
 var SANS = 'system-ui, "Segoe UI", Roboto, sans-serif';
 var MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 function holoMaterial(map) {
-  return new THREE4.ShaderMaterial({
+  return new THREE5.ShaderMaterial({
     transparent: true,
     depthTest: false,
-    side: THREE4.DoubleSide,
-    uniforms: { map: { value: map }, uOpen: { value: 1 }, uTime: { value: 0 }, uAccent: { value: new THREE4.Color() }, uLines: { value: 1 } },
+    side: THREE5.DoubleSide,
+    uniforms: { map: { value: map }, uOpen: { value: 1 }, uTime: { value: 0 }, uAccent: { value: new THREE5.Color() }, uLines: { value: 1 } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
     fragmentShader: `uniform sampler2D map; uniform float uOpen; uniform float uTime; uniform vec3 uAccent; uniform float uLines; varying vec2 vUv;
       void main(){
@@ -400,27 +624,27 @@ function holoMaterial(map) {
   });
 }
 function createConsole(controls, opts) {
-  const group = new THREE4.Group();
+  const group = new THREE5.Group();
   group.name = "nswp-console";
   group.visible = false;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const g = canvas.getContext("2d");
-  const texture = new THREE4.CanvasTexture(canvas);
-  texture.colorSpace = THREE4.SRGBColorSpace;
+  const texture = new THREE5.CanvasTexture(canvas);
+  texture.colorSpace = THREE5.SRGBColorSpace;
   texture.anisotropy = 4;
   const material = holoMaterial(texture);
-  const panel = new THREE4.Mesh(new THREE4.PlaneGeometry(1, ASPECT), material);
+  const panel = new THREE5.Mesh(new THREE5.PlaneGeometry(1, ASPECT), material);
   panel.renderOrder = 30;
   panel.visible = false;
   group.add(panel);
   const openerCanvas = document.createElement("canvas");
   openerCanvas.width = 256;
   openerCanvas.height = 300;
-  const openerTexture = new THREE4.CanvasTexture(openerCanvas);
-  openerTexture.colorSpace = THREE4.SRGBColorSpace;
-  const opener = new THREE4.Mesh(new THREE4.PlaneGeometry(0.15, 0.15 * 300 / 256), new THREE4.MeshBasicMaterial({ map: openerTexture, transparent: true, depthTest: false }));
+  const openerTexture = new THREE5.CanvasTexture(openerCanvas);
+  openerTexture.colorSpace = THREE5.SRGBColorSpace;
+  const opener = new THREE5.Mesh(new THREE5.PlaneGeometry(0.15, 0.15 * 300 / 256), new THREE5.MeshBasicMaterial({ map: openerTexture, transparent: true, depthTest: false }));
   opener.renderOrder = 30;
   group.add(opener);
   let open = false;
@@ -613,11 +837,11 @@ function createConsole(controls, opts) {
     opts.rig.add(grip);
     return info;
   });
-  const head = new THREE4.Vector3();
-  const facing = new THREE4.Vector3();
-  const want = new THREE4.Vector3();
-  const hand = new THREE4.Vector3();
-  const toHand = new THREE4.Vector3();
+  const head = new THREE5.Vector3();
+  const facing = new THREE5.Vector3();
+  const want = new THREE5.Vector3();
+  const hand = new THREE5.Vector3();
+  const toHand = new THREE5.Vector3();
   const setOpen = (next, where = "floating") => {
     if (open === next && mount === where) return;
     open = next;
@@ -773,39 +997,6 @@ function createConsole(controls, opts) {
 }
 
 // packages/sdk/src/three.ts
-var avatarShapes = null;
-function avatarParts() {
-  if (avatarShapes) return avatarShapes;
-  const tone = new THREE5.Color(1713456);
-  const head = new MeshBuilder().at();
-  head.tone = tone;
-  head.lathe([[5e-4, -0.135], [0.07, -0.125], [0.118, -0.05], [0.13, 0.02], [0.112, 0.085], [0.06, 0.128], [5e-4, 0.14]], [0, 0, 0], 8, (row) => ({ shade: 0.85 + row * 0.12 }), { turn: Math.PI / 8 });
-  head.lathe([[0.074, -0.125], [0.084, -0.118]], [0, 0, 0], 8, () => ({ glow: 0.8 }), { turn: Math.PI / 8 });
-  head.box([0.15, 0.04, 0.05], [0, 0.02, -0.108], { glow: 1 });
-  head.box([0.18, 0.065, 0.04], [0, 0.02, -0.098], { bevel: 0.012, shade: 0.6 });
-  for (const x of [-0.128, 0.128]) head.box([0.02, 0.07, 0.07], [x, 0, 0], { bevel: 6e-3, shade: 1.3 });
-  const torso = new MeshBuilder().at();
-  torso.tone = tone;
-  torso.lathe([[0.03, -0.2], [0.17, -0.25], [0.12, 0.12], [0.145, 0.165], [0.145, 0.19], [0.08, 0.25], [5e-4, 0.25]], [0, 0, 0], 6, (row) => row === 0 ? { glow: 0.45 } : row === 3 ? { glow: 0.7 } : { shade: 0.9 + row % 2 * 0.2 }, { turn: Math.PI / 6 });
-  const hand = new MeshBuilder().at();
-  hand.lathe([[5e-4, -0.06], [0.04, 0], [5e-4, 0.06]], [0, 0, 0], 4, () => ({ glow: 0.75 }));
-  avatarShapes = { head: head.geometry(), torso: torso.geometry(), hand: hand.geometry() };
-  return avatarShapes;
-}
-function createFigure(color) {
-  const parts = avatarParts();
-  const metal = createAlloy(color, { gloss: 0.7 });
-  const head = new THREE5.Group();
-  head.add(new THREE5.Mesh(parts.head, metal));
-  const torso = new THREE5.Mesh(parts.torso, metal);
-  torso.position.y = -0.45;
-  const hands = [new THREE5.Mesh(parts.hand, metal), new THREE5.Mesh(parts.hand, metal)];
-  hands[0].position.set(-0.28, -0.5, -0.12);
-  hands[1].position.set(0.28, -0.5, -0.12);
-  const group = new THREE5.Group();
-  group.add(head, torso, ...hands);
-  return { group, head, torso, hands, metal };
-}
 var SEND_EVERY_MS = 66;
 var FADE_START = 0.9;
 var FADE_END = 0.45;
@@ -827,16 +1018,16 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE5.CanvasTexture(canvas);
-  tex.colorSpace = THREE5.SRGBColorSpace;
-  const sprite = new THREE5.Sprite(new THREE5.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE6.CanvasTexture(canvas);
+  tex.colorSpace = THREE6.SRGBColorSpace;
+  const sprite = new THREE6.Sprite(new THREE6.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
 function createPresence(d) {
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE5.AudioListener();
+  const listener = new THREE6.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -845,24 +1036,44 @@ function createPresence(d) {
   let sendTimer;
   let micTrack = null;
   let offsetApplied = false;
-  const makeAvatar = (member) => {
-    const color = new THREE5.Color(member.color);
-    const root = new THREE5.Group();
-    root.visible = false;
-    const figure = createFigure(color);
-    const { head, torso, hands, metal } = figure;
-    const label = textSprite(member.name, labelColor, 0.5);
-    label.position.set(0, 0.3, 0);
-    head.add(label);
-    hands.forEach((h) => h.visible = false);
-    root.add(figure.group);
-    d.scene.add(root);
-    const materials = [metal, label.material].map((material) => {
-      const opacity = material.opacity;
+  const dress = (a, look) => {
+    const was = a.figure;
+    const figure = createFigure(look, d.figureStyle);
+    figure.head.position.copy(was?.head.position ?? figure.head.position);
+    figure.head.quaternion.copy(was?.head.quaternion ?? figure.head.quaternion);
+    figure.head.add(a.label);
+    figure.hands.forEach((h, i) => {
+      h.visible = was?.hands[i].visible ?? false;
+      if (was) {
+        h.position.copy(was.hands[i].position);
+        h.quaternion.copy(was.hands[i].quaternion);
+      }
+    });
+    if (was) {
+      if (a.audio) figure.head.add(a.audio);
+      a.root.remove(was.group);
+      was.dispose();
+    }
+    a.root.add(figure.group);
+    a.figure = figure;
+    a.head = figure.head;
+    a.torso = figure.torso;
+    a.hands = figure.hands;
+    a.materials = [figure.metal, a.label.material].map((material) => {
+      const opacity = material === a.label.material ? 1 : material.opacity;
       material.transparent = true;
       return { material, opacity };
     });
-    return { member, root, head, torso, hands, target: null, placed: false, materials };
+  };
+  const makeAvatar = (member) => {
+    const root = new THREE6.Group();
+    root.visible = false;
+    const label = textSprite(member.name, labelColor, 0.5);
+    label.position.set(0, 0.3, 0);
+    d.scene.add(root);
+    const a = { member, root, label, target: null, placed: false };
+    dress(a, member.look);
+    return a;
   };
   const attachAudio = (avatar, stream) => {
     if (avatar.audio) return;
@@ -871,7 +1082,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE5.PositionalAudio(listener);
+    const pa = new THREE6.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -890,9 +1101,10 @@ function createPresence(d) {
     a.audio?.disconnect();
     if (a.element) a.element.srcObject = null;
     d.scene.remove(a.root);
+    a.figure.dispose();
   };
-  const v = new THREE5.Vector3();
-  const q = new THREE5.Quaternion();
+  const v = new THREE6.Vector3();
+  const q = new THREE6.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -931,7 +1143,8 @@ function createPresence(d) {
     leave();
     roomName = name;
     void listener.context.resume();
-    const s = await room.join(name ? { name } : {});
+    const look = typeof d.look === "function" ? d.look() : d.look;
+    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {} });
     session = s;
     if (!offsetApplied) {
       const off = spawnOffset(s.self.pubkey);
@@ -940,6 +1153,11 @@ function createPresence(d) {
       offsetApplied = true;
     }
     s.on("status", changed);
+    s.on("look", (m, look2) => {
+      const a = avatars.get(m.pubkey);
+      if (a) dress(a, look2);
+      changed();
+    });
     s.on("member", (m) => {
       const a = makeAvatar(m);
       avatars.set(m.pubkey, a);
@@ -967,9 +1185,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE5.Vector3();
-  const tq = new THREE5.Quaternion();
-  const euler = new THREE5.Euler();
+  const tp = new THREE6.Vector3();
+  const tq = new THREE6.Quaternion();
+  const euler = new THREE6.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -1007,9 +1225,9 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE5.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE6.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
-        a.materials[0].material.tick(performance.now() / 1e3);
+        a.materials[0].material.tick?.(performance.now() / 1e3);
         const snap = a.placed ? k : 1;
         apply(a.head, a.target.head, snap);
         a.placed = true;
@@ -1042,7 +1260,8 @@ function createPresence(d) {
           opacity: Math.round((a.materials[0]?.material.opacity ?? 1) * 100) / 100,
           head: a.target?.head.position.map((n) => Math.round(n * 100) / 100) ?? null,
           hands: [!!a.target?.left, !!a.target?.right],
-          audioLevel: Math.round(level * 1e3) / 1e3
+          audioLevel: Math.round(level * 1e3) / 1e3,
+          look: a.member.look
         };
       });
     }
@@ -1068,11 +1287,11 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE5.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE5.HalfFloatType });
-  const flatTarget = new THREE5.WebGLRenderTarget(width, height);
-  flatTarget.texture.colorSpace = THREE5.SRGBColorSpace;
-  const material = new THREE5.ShaderMaterial({
-    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE5.Vector3() }, up: { value: new THREE5.Vector3() }, right: { value: new THREE5.Vector3() } },
+  const faceTarget = new THREE6.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE6.HalfFloatType });
+  const flatTarget = new THREE6.WebGLRenderTarget(width, height);
+  flatTarget.texture.colorSpace = THREE6.SRGBColorSpace;
+  const material = new THREE6.ShaderMaterial({
+    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE6.Vector3() }, up: { value: new THREE6.Vector3() }, right: { value: new THREE6.Vector3() } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
       void main(){
@@ -1089,19 +1308,19 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     depthTest: false,
     depthWrite: false
   });
-  const quad = new THREE5.Mesh(new THREE5.PlaneGeometry(2, 2), material);
-  const quadScene = new THREE5.Scene();
+  const quad = new THREE6.Mesh(new THREE6.PlaneGeometry(2, 2), material);
+  const quadScene = new THREE6.Scene();
   quadScene.add(quad);
-  const quadCamera = new THREE5.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const faceCamera = new THREE5.PerspectiveCamera(90, 1, 0.05, 700);
+  const quadCamera = new THREE6.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const faceCamera = new THREE6.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   const views = [
-    [new THREE5.Vector3(0, 0, -1), new THREE5.Vector3(0, 1, 0)],
-    [new THREE5.Vector3(1, 0, 0), new THREE5.Vector3(0, 1, 0)],
-    [new THREE5.Vector3(0, 0, 1), new THREE5.Vector3(0, 1, 0)],
-    [new THREE5.Vector3(-1, 0, 0), new THREE5.Vector3(0, 1, 0)],
-    [new THREE5.Vector3(0, 1, 0), new THREE5.Vector3(0, 0, 1)],
-    [new THREE5.Vector3(0, -1, 0), new THREE5.Vector3(0, 0, -1)]
+    [new THREE6.Vector3(0, 0, -1), new THREE6.Vector3(0, 1, 0)],
+    [new THREE6.Vector3(1, 0, 0), new THREE6.Vector3(0, 1, 0)],
+    [new THREE6.Vector3(0, 0, 1), new THREE6.Vector3(0, 1, 0)],
+    [new THREE6.Vector3(-1, 0, 0), new THREE6.Vector3(0, 1, 0)],
+    [new THREE6.Vector3(0, 1, 0), new THREE6.Vector3(0, 0, 1)],
+    [new THREE6.Vector3(0, -1, 0), new THREE6.Vector3(0, 0, -1)]
   ];
   try {
     for (const o of hidden) o.visible = false;
@@ -1148,24 +1367,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE5.Texture(image);
-  texture.colorSpace = THREE5.SRGBColorSpace;
-  texture.wrapS = THREE5.RepeatWrapping;
+  const texture = new THREE6.Texture(image);
+  texture.colorSpace = THREE6.SRGBColorSpace;
+  texture.wrapS = THREE6.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE5.LinearFilter;
-  texture.magFilter = THREE5.LinearFilter;
+  texture.minFilter = THREE6.LinearFilter;
+  texture.magFilter = THREE6.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE5.ShaderMaterial({
+  const material = new THREE6.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE5.Matrix3() },
-      center: { value: new THREE5.Vector3() },
+      toLocal: { value: new THREE6.Matrix3() },
+      center: { value: new THREE6.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -1185,10 +1404,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE5.DoubleSide
+    side: THREE6.DoubleSide
   });
-  const mesh = new THREE5.Mesh(geometry, material);
-  const rotation = new THREE5.Matrix4();
+  const mesh = new THREE6.Mesh(geometry, material);
+  const rotation = new THREE6.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();
@@ -1343,9 +1562,9 @@ export {
   SKY_GLSL,
   createAlloy,
   MeshBuilder,
+  createFigure,
   turnVisitor,
   createConsole,
-  createFigure,
   textSprite,
   createPresence,
   capturePanorama,
