@@ -119,6 +119,7 @@ var portal = {
       const chk = checkDestination(dest.url);
       if (!chk.ok) throw new Error(`nswp-sdk: refusing portal destination (${chk.error.code})`);
     }
+    const immersive = opts.immersive ?? !!opts.xrSession;
     if (opts.xrSession) {
       try {
         await opts.xrSession.end();
@@ -131,7 +132,7 @@ var portal = {
     }
     const airlock = portal.airlockFor(opts);
     if (airlock) {
-      location.assign(buildAirlockUrl(airlock, dest));
+      location.assign(buildAirlockUrl(airlock, dest, { immersive }));
       return;
     }
     showFallback(dest);
@@ -144,13 +145,16 @@ var portal = {
   async home(opts = {}) {
     const airlock = portal.airlockFor(opts);
     if (!airlock) return false;
+    const immersive = opts.immersive ?? !!opts.xrSession;
     if (opts.xrSession) {
       try {
         await opts.xrSession.end();
       } catch {
       }
     }
-    location.assign(airlock);
+    const home = new URL(airlock);
+    home.hash = immersive ? "xr=1" : "";
+    location.assign(home.href);
     return true;
   }
 };

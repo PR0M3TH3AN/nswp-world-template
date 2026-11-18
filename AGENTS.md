@@ -163,6 +163,15 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
 }
 ```
 
+- **Leaving and arriving.** The plumbing does both. A visitor who came
+  through an Airlock starts inside a small round room, the chamber, whose
+  doors open when the scene is ready; as they leave, its walls rise round
+  them. If they left a headset session to get here, one large **Enter VR** is
+  the first and only thing they are asked. **Don't add anything to that
+  moment:** no splash screen, no "click to start", no intro to dismiss, no
+  confirmation before a portal. Each one is another action in a crossing that
+  already costs three. A scene that takes long to build should build after
+  `buildScene` returns, behind the chamber's doors.
 - **Hands in a headset.** The plumbing already reads any controller and
   tracked hands: a stick turns and steps, B or Y opens the menu, and a visitor
   can choose smooth walking under **Moving**. To let them pick something up,

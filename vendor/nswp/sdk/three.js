@@ -5,7 +5,9 @@ import {
   addViewControls,
   canRecord,
   capturePanorama,
+  createChamber,
   createConsole,
+  createCrossing,
   createFigure,
   createPortalWindow,
   createPresence,
@@ -18,7 +20,7 @@ import {
   takeSelfie,
   textSprite,
   turnVisitor
-} from "./shared-TX4P2CQ7.js";
+} from "./shared-YYLM5WUF.js";
 import "./shared-E3UFEQZL.js";
 import "./shared-64R25HDC.js";
 export {
@@ -28,7 +30,9 @@ export {
   addViewControls,
   canRecord,
   capturePanorama,
+  createChamber,
   createConsole,
+  createCrossing,
   createFigure,
   createPortalWindow,
   createPresence,

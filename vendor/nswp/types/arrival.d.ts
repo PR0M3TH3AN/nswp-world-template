@@ -19,6 +19,12 @@ export interface Arrival {
     pass?: NostrEvent;
     /** The secret half of the session key the pass names, as 64 hex characters. A throwaway, made for this trip. */
     sessionKey?: string;
+    /**
+     * The visitor left a headset session to make this trip. A world offers the
+     * way back into one before anything else (protocol/02-doors.md). It says
+     * what they were doing, not who they are.
+     */
+    immersive?: true;
 }
 export declare function encodeArrival(a: Omit<Arrival, "v"> & {
     v?: string;

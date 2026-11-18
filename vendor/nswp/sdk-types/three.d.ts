@@ -139,13 +139,6 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
 }): {
     refresh(): void;
 };
-/**
- * The controls every world's view needs: enter or leave VR, and turn around.
- * Returns whether this device can enter VR at all.
- *
- * It also hides the flat HUD while a headset session runs. The page can't be
- * seen from inside one, and the console takes over.
- */
 export declare function addViewControls(controls: Controls, d: {
     renderer: THREE.WebGLRenderer;
     rig: THREE.Object3D;
@@ -154,8 +147,18 @@ export declare function addViewControls(controls: Controls, d: {
         setHidden(hidden: boolean): void;
     };
     onState?: (state: string) => void;
+    /**
+     * The visitor left a headset session to come here (`arrival.read().context?.immersive`,
+     * or however a client knows). They are offered the way back in before anything else.
+     */
+    arrived?: {
+        title: string;
+    };
+    /** The offer above has gone up, or been answered. */
+    onOffer?: (showing: boolean) => void;
 }): Promise<boolean>;
 export { createFigure, type Figure, type FigureFacts, type FigureStyle } from "./figure.js";
 export { createXrInput, type GrabOptions, type XrInput, type XrInputInfo, type XrInputOptions } from "./input.js";
 export { DEFAULT_COMFORT, readPad, type Comfort, type PadState } from "./actions.js";
+export { createChamber, createCrossing, type ArriveOptions, type Chamber, type Crossing, type CrossingOptions, type CrossingState } from "./chamber.js";
 export { addCameraControls, canRecord, recordClip, saveFile, takePicture, takeSelfie, type Camera, type CameraOptions, type Capture, type Clip } from "./camera.js";
