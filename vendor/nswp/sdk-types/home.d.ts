@@ -29,8 +29,8 @@ export interface PortalGate {
     /** 1 while a visitor is aiming at the portal, 0 otherwise. The glow follows it. */
     aimed: number;
     setLabel(label: string): void;
-    /** Show a preview of the destination through the portal (spec §5.8). */
-    showThrough(pano: THREE.Texture): void;
+    /** Show a preview of the destination through the portal (spec §5.8). Returns the window, for a world that needs to hide it while it photographs itself. */
+    showThrough(pano: THREE.Texture): THREE.Mesh;
     update(t: number, dt: number): void;
 }
 /** The standard doorway's size, in metres. */
@@ -46,8 +46,10 @@ export interface HomeOptions {
     textColor?: string;
     /** Relay hints written into portal destinations, so an Airlock can find the worlds. */
     relays?: string[];
-    /** Add a soft overall light and a key light. Default true. */
+    /** Add a soft overall light and a key light, for things of your own that need them. The home's own blocks don't. Default true. */
     lights?: boolean;
+    /** Draw the ground: the grid to the horizon and the skyline. Default true. Pass false to stand the home on a ground of your own. */
+    environment?: boolean;
 }
 export interface Home {
     group: THREE.Group;
@@ -57,5 +59,11 @@ export interface Home {
     markers: number;
     update(t: number, dt: number): void;
 }
-/** Draw a home layout. Positions are metres from the home's origin, which is where the returned group sits. */
+/**
+ * Draw a home layout. Positions are metres from the home's origin, which is
+ * where the returned group sits. The home stands on the grid, and everything
+ * built in is made of blocks: dark, with edges lit in the room's accent.
+ */
 export declare function createHome(layout: Layout, opts?: HomeOptions): Home;
+export { createEnvironment, GROUND, type Environment, type EnvironmentOptions } from "./environment.js";
+export { createBlocks, BLOCK, type Blocks, type BlockOptions } from "./blocks.js";

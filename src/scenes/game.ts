@@ -7,6 +7,7 @@
  * To try it, change the one line in src/scene.ts.
  */
 import * as THREE from "three";
+import { createEnvironment } from "nswp-sdk/home";
 import { textSprite } from "nswp-sdk/three";
 import type { SceneContext, SceneHandle } from "../plumbing/types.js";
 
@@ -14,17 +15,12 @@ const COUNT = 12;
 
 export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   const { scene, camera } = ctx;
-  scene.background = new THREE.Color(0x06080f);
-  scene.fog = new THREE.Fog(0x06080f, 8, 34);
+  scene.background = new THREE.Color(0x04070b);
   scene.add(new THREE.HemisphereLight(0xbfd0ff, 0x1b2a24, 1.6));
 
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(40, 64), new THREE.MeshStandardMaterial({ color: 0x1d3329, roughness: 1 }));
-  ground.rotation.x = -Math.PI / 2;
-  scene.add(ground);
-  // Rings on the ground, so there is something to judge distance by.
-  const rings = new THREE.PolarGridHelper(18, 12, 9, 96, 0x35584a, 0x284438);
-  rings.position.set(0, 0.01, -4);
-  scene.add(rings);
+  // The ground: the same grid a home stands on, in this game's own colour.
+  const environment = createEnvironment(0xffc94d);
+  scene.add(environment.group);
 
   // The lights to collect. Each one remembers where it drifts around.
   const lights = Array.from({ length: COUNT }, (_, i) => {
@@ -56,6 +52,7 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
     // Where a visitor may stand: anywhere on the field, and no further.
     canStand: (x, z) => Math.hypot(x, z + 4) < 19,
     update(t) {
+      environment.update(t);
       camera.getWorldPosition(head);
       for (const light of lights) {
         if (light.found) continue;

@@ -19,5 +19,5 @@
   "entryPoints": {
     "main-entrance": { "position": [0, 0, 4], "yaw": 0 }
   },
-  "sky": "#0a0b0d"
+  "sky": "#04070b"
 }
