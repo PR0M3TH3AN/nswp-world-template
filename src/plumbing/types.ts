@@ -8,6 +8,11 @@ import type { Controls, Corner, Presence, UiKeys } from "nswp-sdk/ui";
 /** world.json */
 export interface WorldConfig {
   world: { d: string; title: string; url: string; summary?: string; modes?: string[]; capabilities?: string[] };
+  /**
+   * The owner's own public key: the identity they sign in with (npub1…), not the key this folder signs with.
+   * Naming it here lets the site admit it, which is how the owner shows this world is theirs (NSWP-07).
+   */
+  owner?: string;
   /** The Airlock a visitor is sent through when they arrived without one of their own. */
   airlock: string;
   relays: string[];

@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildLayoutEvent, buildWorldEvent, parseLayoutEvent, parseWorldEvent, verifyEvent } from "../vendor/nswp/nswp-core.js";
+import { buildLayoutEvent, buildWorldEvent, decodeNpub, parseLayoutEvent, parseWorldEvent, verifyEvent } from "../vendor/nswp/nswp-core.js";
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const dist = join(root, "dist");
@@ -91,6 +91,7 @@ export function validate({ config, home, pictures }) {
     warnings.push(...r.warnings.map((w) => `${name}: ${w.message}`));
   }
   if (!config.entryPoints?.["main-entrance"]) errors.push('world.json: entryPoints needs a "main-entrance".');
+  if (config.owner !== undefined && ownerKey(config) === null) errors.push('world.json: "owner" isn\'t a public key. It is your own, the way your sign-in shows it: npub1… and 63 characters long. Never a secret key.');
   return { errors, warnings, world: world.ok ? world.value : null, layout: layout.ok ? layout.value : null };
 }
 
@@ -99,13 +100,31 @@ export function readState() {
   return { ...readConfig(), signed: readSigned() };
 }
 
+/**
+ * The owner's own public key, when world.json names one: the identity they sign in with, as an npub or hex. It
+ * is a different key from the one this folder signs with, which lives in a file and never leaves this computer.
+ * Null when it is there and isn't a key; undefined when it isn't there.
+ */
+export function ownerKey(config) {
+  if (config.owner === undefined || config.owner === "") return undefined;
+  if (typeof config.owner !== "string" || /^nsec/i.test(config.owner.trim())) return null;
+  try {
+    return decodeNpub(config.owner);
+  } catch {
+    return null;
+  }
+}
+
 /** The manifest this site serves at /.well-known/nswp.json (spec §7). */
 export function manifestFor(config, publisher) {
   const w = config.world;
+  const owner = ownerKey(config);
   return {
     schema: "nswp/manifest/0.3",
     listing: "allow",
-    publishers: { [publisher]: { worlds: [w.d] } },
+    // Who may announce this world: the key this folder signs with, and the owner's own key if they named it. The
+    // second is what lets them show the world is theirs, for making it their home.
+    publishers: { [publisher]: { worlds: [w.d] }, ...(owner && owner !== publisher ? { [owner]: { worlds: [w.d] } } : {}) },
     worlds: {
       [w.d]: {
         entry: { url: w.url, modes: w.modes ?? [] },
