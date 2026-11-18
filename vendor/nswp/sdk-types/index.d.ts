@@ -46,6 +46,12 @@ export declare const arrival: {
         sessionKey: string;
     } | undefined;
     /** The Airlock this visitor came from, for this tab's session only. */
+    /**
+     * Whether this world is where the visitor starts: their own client brought
+     * them home (NSWP-07). Remembered for the tab, so a refresh at home is
+     * still at home. From here the way home leads nowhere new.
+     */
+    atHome(): boolean;
     returnAirlock(): string | undefined;
 };
 export interface GoOptions {
@@ -70,6 +76,13 @@ export declare const portal: {
      * does nothing, when there is no Airlock to go back to.
      */
     home(opts?: GoOptions): Promise<boolean>;
+    /**
+     * Take the visitor to their doors: their client's own place for them. For
+     * most visitors that is where home is too. It is a different place for one
+     * whose home is a world of their own, and a world that can be a home
+     * offers this wherever it offers the way home (protocol/07-homes.md).
+     */
+    doors(opts?: GoOptions): Promise<boolean>;
 };
 declare global {
     interface Window {

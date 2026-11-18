@@ -18,7 +18,8 @@ var CAPABILITIES = [
   "spatial-portals",
   "avatars",
   "entry-assertion",
-  "payments"
+  "payments",
+  "home"
 ];
 var COMFORT = {
   locomotion: ["stationary", "teleport", "smooth", "vehicle"],
@@ -4851,6 +4852,10 @@ function decodeArrival(value) {
     if (json.immersive === true) out.immersive = true;
     else c.warn("invalid_immersive", "immersive", "Ignoring an immersive hint that isn't true or false.");
   }
+  if (json.home !== void 0 && json.home !== false) {
+    if (json.home === true) out.home = true;
+    else c.warn("invalid_home", "home", "Ignoring a home hint that isn't true or false.");
+  }
   if (json.receipts !== void 0) {
     if (Array.isArray(json.receipts) && json.receipts.length <= LIMITS.maxReceipts && json.receipts.every(hasEventShape)) {
       out.receipts = json.receipts;
@@ -5008,6 +5013,17 @@ function buildAirlockUrl(airlock, dest, opts = {}) {
 function fragmentSaysImmersive(hash) {
   return hash.replace(/^#/, "").split("&").includes("xr=1");
 }
+function wayWithoutDestination(hash) {
+  const parts = hash.replace(/^#/, "").split("&").filter(Boolean);
+  if (parts.some((p) => p !== "xr=1" && p !== "doors=1")) return null;
+  return { immersive: parts.includes("xr=1"), doors: parts.includes("doors=1") };
+}
+function buildWayUrl(airlock, opts = {}) {
+  const u = new URL(airlock);
+  u.hash = [...opts.doors ? ["doors=1"] : [], ...opts.immersive ? ["xr=1"] : []].join("&");
+  return u.href;
+}
+var HOME_CAPABILITY = "home";
 function parseAirlockFragment(hash) {
   const params = /* @__PURE__ */ new Map();
   for (const part of hash.replace(/^#/, "").split("&")) {
@@ -6255,6 +6271,7 @@ export {
   Collector,
   DEFAULT_RELAYS,
   ENTRY_ASSERTION_KIND,
+  HOME_CAPABILITY,
   HOME_LAYOUT_KIND,
   INPUTS,
   ITEM_KIND,
@@ -6297,6 +6314,7 @@ export {
   buildListEvent,
   buildRoomPass,
   buildSignal,
+  buildWayUrl,
   buildWorldEvent,
   buildWorldGrant,
   checkDestination,
@@ -6377,5 +6395,6 @@ export {
   verifyOrigin,
   verifyRoomPass,
   verifyWorldGrant,
+  wayWithoutDestination,
   wellKnownUrl
 };

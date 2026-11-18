@@ -37,5 +37,22 @@ export interface AirlockRequest {
 }
 /** Whether a fragment says the visitor came from a headset session, with or without a destination: a way home carries it too. */
 export declare function fragmentSaysImmersive(hash: string): boolean;
+/**
+ * Whether an Airlock was opened as a way with no destination: home, or to
+ * the visitor's doors. It is one when the fragment holds nothing but the two
+ * flags such a way may carry. Null for anything else, which is a crossing or
+ * a mistake.
+ */
+export declare function wayWithoutDestination(hash: string): {
+    immersive: boolean;
+    doors: boolean;
+} | null;
+/** `<airlock>` opened as the way home, or with `doors` as the way to the visitor's doors (protocol/02-doors.md). */
+export declare function buildWayUrl(airlock: string, opts?: {
+    immersive?: boolean;
+    doors?: boolean;
+}): string;
+/** A capability a world's manifest may name: it can be the place its owner starts (protocol/07-homes.md). */
+export declare const HOME_CAPABILITY = "home";
 /** Parse an Airlock fragment. Returns null when there is no destination. */
 export declare function parseAirlockFragment(hash: string): AirlockRequest | null;

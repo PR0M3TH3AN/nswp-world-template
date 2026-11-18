@@ -9,6 +9,7 @@ import {
   arrivalParam,
   buildAirlockUrl,
   buildArrivalUrl,
+  buildWayUrl,
   checkDestination,
   decodeArrival,
   stripArrivalParam,
@@ -80,6 +81,7 @@ function dropBrought() {
 var RETURN_KEY = "nswp:return-airlock";
 var LOOK_KEY = "nswp:look";
 var PASS_KEY = "nswp:pass";
+var HOME_KEY = "nswp:at-home";
 var defaultAirlock;
 var cached;
 function configure(opts) {
@@ -112,6 +114,11 @@ var arrival = {
     history.replaceState(history.state, "", `${location.pathname}${location.search}${stripArrivalParam(location.hash)}`);
     const r = decodeArrival(raw);
     cached = r.ok ? { context: r.value, warnings: r.warnings } : { context: null, warnings: [...r.errors, ...r.warnings] };
+    try {
+      if (cached.context?.home) session()?.setItem(HOME_KEY, "1");
+      else if (cached.context) session()?.removeItem(HOME_KEY);
+    } catch {
+    }
     if (cached.context?.airlock) {
       try {
         session()?.setItem(RETURN_KEY, cached.context.airlock);
@@ -164,6 +171,18 @@ var arrival = {
     }
   },
   /** The Airlock this visitor came from, for this tab's session only. */
+  /**
+   * Whether this world is where the visitor starts: their own client brought
+   * them home (NSWP-07). Remembered for the tab, so a refresh at home is
+   * still at home. From here the way home leads nowhere new.
+   */
+  atHome() {
+    try {
+      return session()?.getItem(HOME_KEY) === "1";
+    } catch {
+      return false;
+    }
+  },
   returnAirlock() {
     try {
       return session()?.getItem(RETURN_KEY) ?? void 0;
@@ -216,9 +235,26 @@ var portal = {
       } catch {
       }
     }
-    const home = new URL(airlock);
-    home.hash = immersive ? "xr=1" : "";
-    location.assign(home.href);
+    location.assign(buildWayUrl(airlock, { immersive }));
+    return true;
+  },
+  /**
+   * Take the visitor to their doors: their client's own place for them. For
+   * most visitors that is where home is too. It is a different place for one
+   * whose home is a world of their own, and a world that can be a home
+   * offers this wherever it offers the way home (protocol/07-homes.md).
+   */
+  async doors(opts = {}) {
+    const airlock = portal.airlockFor(opts);
+    if (!airlock) return false;
+    const immersive = opts.immersive ?? !!opts.xrSession;
+    if (opts.xrSession) {
+      try {
+        await opts.xrSession.end();
+      } catch {
+      }
+    }
+    location.assign(buildWayUrl(airlock, { immersive, doors: true }));
     return true;
   }
 };
