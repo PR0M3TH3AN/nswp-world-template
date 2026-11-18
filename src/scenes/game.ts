@@ -72,7 +72,7 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
 
   // The way out. Anything that leaves this site is a portal, so the visitor's
   // Airlock can show them where they're going before they go.
-  ctx.addPortal({ url: "https://nswp-world-a.vercel.app/" }, { label: "The Gallery", position: [0, 0, 9], rotation: 180, color: accent });
+  ctx.addPortal({ url: "https://gallery.bitblocks.network/" }, { label: "The Gallery", position: [0, 0, 9], rotation: 180, color: accent });
 
   // A game has an interface of its own (here, the score), and the keyboard is
   // for playing. So the world's controls go quiet: one mark in the corner,
