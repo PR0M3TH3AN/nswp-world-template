@@ -4,7 +4,7 @@
   "license": "MIT",
   "source": {
     "repository": "https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-.git",
-    "commit": "17954e50162661fa333f804bd53d4038e4dffe15",
+    "commit": "a41277b54816f1e711db6773e725e37a540608a6",
     "dirty": false
   },
   "files": {
@@ -48,15 +48,15 @@
     "sdk-types/ui/icons.d.ts": "42e4017fbed90a46f2b7d4189a8c0e1c9cf01819730ecaa9e799e7c556327409",
     "sdk-types/ui/model.d.ts": "07374169d041b7b64ec6a4a48758087bf876c282bc4fd29a5274ec2af69cc23d",
     "sdk-types/ui/theme.d.ts": "7b205c25d8af0e912d72b979fc8d047c11ebec304c0a79def6c0f7daa4e2be11",
-    "sdk/home.js": "be2535c0536426f78520e22ee370c2ece88a329bd18ec4a70a9b42d5697b1e47",
+    "sdk/home.js": "0c12ac814787cce4c0cc41cd3ce6b96c8a31d726fb58267fcd2ede9dfa9fbb00",
     "sdk/index.js": "14cc6c9467cf869aee5975513a2285e62fadedf2ec0096030a322f0736557f5f",
-    "sdk/shared-6AP7XJRD.js": "c302de97afcad04195f692d2f5cd91ac87ec66fc1eb7ff63074b40e09d77cddf",
     "sdk/shared-7X4E2NOK.js": "96b011dfedef2ef1916ba6e9e18b3bf61e8f38066e33b875c583f9dd31cf4369",
+    "sdk/shared-MD4TKRUN.js": "d5aab8d648ef402e3767a029804410e147c0c191aa32c5498de2009e243d411b",
     "sdk/shared-QLSLERQ3.js": "eb4a8e71a94c3b9ea153fda5aceddf26646c6a12c0c036f6a031b9a46410d2dd",
     "sdk/shared-SJAWET5K.js": "d2b7ca51d16bf5beac3f9efbde820230e9c4cfed82419bfbae69fea9fb23c5ce",
     "sdk/shared-WWPRVQWW.js": "da3c3e9eeaee9feeab30e27d1c01caeef32fadfe34f3af018435e871299772ea",
     "sdk/terminal.js": "75ff63cc061251a2e8579086e7c5160abfc05a6fd2b6f1241bf3baab3a1512a2",
-    "sdk/three.js": "1ae114a6bf5d1a236f6cc4b182928954aec36fa980ed416da21480411372ac6c",
+    "sdk/three.js": "d27ff475ddb2ef9d89397333e85dfbdcfe4a91efdf67f109b5cd19d14acc48eb",
     "sdk/ui.js": "14d1361b0adc596e7676f04596b6084255c5730fa8d86957a206dd3e72dde0d6",
     "types/arrival.d.ts": "2950088155732cf258d511c26cbe9c3bdd818dccee1606af021176883d721f43",
     "types/avatar.d.ts": "a6d58509965d24b1d65adfc3692045a099b1bbb9faec78fcc055aba60efb92cc",
