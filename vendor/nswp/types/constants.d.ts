@@ -13,6 +13,13 @@ export declare const SCHEMAS: {
 export declare const WELL_KNOWN_PATH = "/.well-known/nswp.json";
 export declare const MODES: readonly ["2d", "inline-3d", "immersive-vr", "immersive-ar"];
 export declare const CAPABILITIES: readonly ["webxr", "rooms", "multiplayer", "voice", "spatial-portals", "avatars", "entry-assertion", "payments", "home"];
+/**
+ * Who a world is for, as its maker says. `kids`: made for children. `general`:
+ * not made for children, and nothing an adult would need warning about.
+ * `adult`: not for anyone under age; what some call NSFW.
+ */
+export declare const AUDIENCES: readonly ["kids", "general", "adult"];
+export type Audience = (typeof AUDIENCES)[number];
 export declare const COMFORT: {
     readonly locomotion: readonly ["stationary", "teleport", "smooth", "vehicle"];
     readonly intensity: readonly ["low", "medium", "high"];

@@ -361,6 +361,8 @@ understands:
 | `comfort.seated` | `supported`, `required`, `unsupported` | |
 | `inputs` | `controllers`, `hands`, `gaze`, `keyboard-mouse`, `touch`, `gamepad` | Only what really works |
 | `perf` | `mobile`, `standalone`, `desktop` | The weakest device that runs it well: a phone, a standalone headset, or a computer |
+| `audience` | `kids`, `general`, `adult` | Who the world is for. `kids`: made for children. `general`: not made for kids. `adult`: NSFW. It is the owner's word, and it must be true: ask them rather than guess, and if what you are building for them is plainly adult, say that it needs `adult`. Never set `kids` or `general` to get a world listed |
+| `topics` | Hashtags, lowercase, without `#` | How people find the world by subject. A few true ones; not a list of every popular word |
 | `owner` | The owner's own public key, `npub1…` | Beside `world`, not inside it. Lets the site admit the key the owner signs in with, so they can show the world is theirs and make it their home. Only ever a public key: if the owner pastes something starting `nsec`, stop and tell them it is their secret key and must not be put in any file |
 | `capabilities` | `webxr`, `spatial-portals`, `rooms`, `home` | Removing `rooms` removes the shared room and its buttons. Do that when each visitor sees something different, such as a random level. `home` says this world can be the place its owner starts, and adds **Your doors** beside the way home |
 | `topics` | Any short lower-case words | For example `game`, `art`, `music` |

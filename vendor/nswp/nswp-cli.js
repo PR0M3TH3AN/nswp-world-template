@@ -2986,6 +2986,7 @@ var CAPABILITIES = [
   "payments",
   "home"
 ];
+var AUDIENCES = ["kids", "general", "adult"];
 var COMFORT = {
   locomotion: ["stationary", "teleport", "smooth", "vehicle"],
   intensity: ["low", "medium", "high"],
@@ -3625,8 +3626,11 @@ function buildWorldEvent(w) {
     for (const l of w.languages)
       tags.push(["l", l, "ISO-639-1"]);
   }
-  if (w.contentWarning !== void 0)
-    tags.push(w.contentWarning === true ? ["content-warning"] : ["content-warning", w.contentWarning]);
+  const warning = w.contentWarning ?? (w.audience === "adult" ? "adult" : void 0);
+  if (warning !== void 0)
+    tags.push(warning === true ? ["content-warning"] : ["content-warning", warning]);
+  if (w.audience)
+    tags.push(["audience", w.audience]);
   if (w.status)
     tags.push(["status", w.status]);
   if (w.manifest)
@@ -3796,6 +3800,18 @@ function parseWorldEvent(input, opts = {}) {
   }
   const cw = getTags({ tags }, "content-warning")[0];
   const contentWarning = cw ? cw[1] ?? "" : void 0;
+  let audience;
+  const said = getTags({ tags }, "audience")[0]?.[1];
+  if (said !== void 0) {
+    if (AUDIENCES.includes(said))
+      audience = said;
+    else
+      c.warn("unknown_audience", "tags.audience", `Unknown audience "${said}"; treated as not stated.`);
+  }
+  if (audience === "adult" && contentWarning === void 0)
+    c.warn("adult_without_warning", "tags.audience", "An adult world should also carry a content-warning, which other clients read.");
+  if (audience === "kids" && contentWarning !== void 0)
+    c.warn("kids_with_warning", "tags.audience", "A world for kids carries a content warning. One of the two is wrong.");
   const manifest = single(c, tags, "manifest", false);
   if (manifest) {
     if (!isHttpsUrl(manifest))
@@ -3849,6 +3865,8 @@ function parseWorldEvent(input, opts = {}) {
     world.perf = perf;
   if (contentWarning !== void 0)
     world.contentWarning = contentWarning;
+  if (audience)
+    world.audience = audience;
   if (manifest)
     world.manifest = manifest;
   if (access)

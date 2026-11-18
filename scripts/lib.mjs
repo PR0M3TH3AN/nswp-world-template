@@ -91,6 +91,9 @@ export function validate({ config, home, pictures }) {
     warnings.push(...r.warnings.map((w) => `${name}: ${w.message}`));
   }
   if (!config.entryPoints?.["main-entrance"]) errors.push('world.json: entryPoints needs a "main-entrance".');
+  // Who the world is for is the builder's to say, and a site that keeps adult worlds out reads it.
+  if (config.world?.audience === undefined) warnings.push('world.json: say who this world is for with "audience": "kids", "general" (not made for kids) or "adult" (NSFW). Without it, sites that are careful may not list it.');
+  else if (!["kids", "general", "adult"].includes(config.world.audience)) errors.push('world.json: "audience" is "kids", "general" or "adult".');
   if (config.owner !== undefined && ownerKey(config) === null) errors.push('world.json: "owner" isn\'t a public key. It is your own, the way your sign-in shows it: npub1… and 63 characters long. Never a secret key.');
   return { errors, warnings, world: world.ok ? world.value : null, layout: layout.ok ? layout.value : null };
 }

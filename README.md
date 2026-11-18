@@ -207,6 +207,23 @@ could read and type into your shell. That is why it is for a world whose
 code is yours, why nobody visiting can make it happen, and why it is worth
 looking at what an assistant or a new dependency adds to `src/`.
 
+## Say who it is for, and what it is about
+
+Two lines in `world.json`, under `"world"`, decide where your world can be
+shown and how people find it.
+
+- `"audience"`: `"kids"` (made for children), `"general"` (not made for
+  kids) or `"adult"` (NSFW). It is your word, and it has to be true. A site
+  that keeps adult worlds out, as BitPortal does, reads it; a world rated
+  `adult` also gets the content warning every Nostr client understands.
+- `"topics"`: hashtags, lowercase, without the `#`, such as
+  `["gallery", "photography"]`. People find worlds by them, and a client can
+  rank by the ones its visitor likes.
+
+A rating gets a world treated properly; it doesn't get it listed. BitPortal
+shows worlds its operator has put on a list, whatever they say about
+themselves.
+
 ## Making it your home
 
 If you use BitPortal, this world can be where you start, in place of
