@@ -48,6 +48,10 @@ export declare const LIMITS: {
     readonly manifestBytes: number;
     readonly arrivalChars: number;
     readonly maxReceipts: 8;
+    /** Keys a visitor's client may say they have blocked, in one arrival. */
+    readonly maxBlocked: 64;
+    /** Keys a world may report as newly blocked, on one link. */
+    readonly maxBlockedOnLink: 16;
     readonly maxIdLength: 128;
     readonly maxTitleLength: 200;
     readonly maxUrlLength: 2048;

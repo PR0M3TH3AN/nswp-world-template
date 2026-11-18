@@ -44,6 +44,13 @@ export interface Arrival {
      * whether this world may use a microphone at all.
      */
     mic?: true;
+    /**
+     * People the visitor has blocked, by the identity key behind each name:
+     * their own client's list, which goes where they go. A world doesn't
+     * connect them to anyone on it for this visit, and doesn't keep it
+     * (protocol/03-arrival.md, "Blocks that travel").
+     */
+    blocked?: string[];
 }
 export declare function encodeArrival(a: Omit<Arrival, "v"> & {
     v?: string;

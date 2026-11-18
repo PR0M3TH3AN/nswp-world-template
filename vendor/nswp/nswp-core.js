@@ -39,6 +39,10 @@ var LIMITS = {
   manifestBytes: 64 * 1024,
   arrivalChars: 16 * 1024,
   maxReceipts: 8,
+  /** Keys a visitor's client may say they have blocked, in one arrival. */
+  maxBlocked: 64,
+  /** Keys a world may report as newly blocked, on one link. */
+  maxBlockedOnLink: 16,
   maxIdLength: 128,
   maxTitleLength: 200,
   maxUrlLength: 2048,
@@ -4881,6 +4885,13 @@ function decodeArrival(value) {
     if (json.mic === true && out.joined) out.mic = true;
     else c.warn("invalid_mic", "mic", "Ignoring a microphone hint that isn't true, or that comes without joined.");
   }
+  if (json.blocked !== void 0) {
+    const ok = Array.isArray(json.blocked) && json.blocked.length <= LIMITS.maxBlocked && json.blocked.every((k) => typeof k === "string" && isHex64(k));
+    if (ok) {
+      const keys = [...new Set(json.blocked)];
+      if (keys.length) out.blocked = keys;
+    } else c.warn("invalid_blocked", "blocked", `Ignoring a block list (must be at most ${LIMITS.maxBlocked} keys).`);
+  }
   if (json.receipts !== void 0) {
     if (Array.isArray(json.receipts) && json.receipts.length <= LIMITS.maxReceipts && json.receipts.every(hasEventShape)) {
       out.receipts = json.receipts;
@@ -5024,6 +5035,21 @@ function parsePortal(input) {
   }
   return c.result(portal);
 }
+function cleanKeys(input, limit) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  for (const k of input) {
+    if (typeof k !== "string" || !/^[0-9a-f]{64}$/.test(k) || out.includes(k)) continue;
+    out.push(k);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+var blockedFlag = (opts) => {
+  const keys = cleanKeys(opts.blocked, LIMITS.maxBlockedOnLink);
+  return keys.length ? [`blocked=${keys.join(",")}`] : [];
+};
+var blockedFrom = (value) => cleanKeys((value ?? "").split(","), LIMITS.maxBlockedOnLink);
 function stateFlags(opts) {
   return [...opts.immersive ? ["xr=1"] : [], ...opts.joined ? ["joined=1"] : [], ...opts.joined && opts.mic ? ["mic=1"] : []];
 }
@@ -5034,7 +5060,7 @@ function buildAirlockUrl(airlock, dest, opts = {}) {
   const parts = [`to=${encodeURIComponent(to)}`];
   if (dest.naddr && dest.url) parts.push(`url=${encodeURIComponent(dest.url)}`);
   if (dest.entryPoint) parts.push(`entry=${encodeURIComponent(dest.entryPoint)}`);
-  parts.push(...stateFlags(opts));
+  parts.push(...stateFlags(opts), ...blockedFlag(opts));
   u.hash = parts.join("&");
   return u.href;
 }
@@ -5043,13 +5069,21 @@ function fragmentSaysImmersive(hash) {
 }
 function wayWithoutDestination(hash) {
   const parts = hash.replace(/^#/, "").split("&").filter(Boolean);
-  if (parts.some((p) => p !== "xr=1" && p !== "doors=1" && p !== "joined=1" && p !== "mic=1")) return null;
+  const reported = parts.find((p) => /^blocked=[0-9a-f,]+$/.test(p));
+  if (parts.some((p) => p !== "xr=1" && p !== "doors=1" && p !== "joined=1" && p !== "mic=1" && p !== reported)) return null;
   const joined = parts.includes("joined=1");
-  return { immersive: parts.includes("xr=1"), doors: parts.includes("doors=1"), ...joined ? { joined: true } : {}, ...joined && parts.includes("mic=1") ? { mic: true } : {} };
+  const blocked = blockedFrom(reported?.slice(8));
+  return {
+    immersive: parts.includes("xr=1"),
+    doors: parts.includes("doors=1"),
+    ...joined ? { joined: true } : {},
+    ...joined && parts.includes("mic=1") ? { mic: true } : {},
+    ...blocked.length ? { blocked } : {}
+  };
 }
 function buildWayUrl(airlock, opts = {}) {
   const u = new URL(airlock);
-  u.hash = [...opts.doors ? ["doors=1"] : [], ...stateFlags(opts)].join("&");
+  u.hash = [...opts.doors ? ["doors=1"] : [], ...stateFlags(opts), ...blockedFlag(opts)].join("&");
   return u.href;
 }
 var HOME_CAPABILITY = "home";
@@ -5081,6 +5115,8 @@ function parseAirlockFragment(hash) {
     req.joined = true;
     if (params.get("mic") === "1") req.mic = true;
   }
+  const blocked = blockedFrom(params.get("blocked"));
+  if (blocked.length) req.blocked = blocked;
   return req;
 }
 
@@ -6356,6 +6392,7 @@ export {
   checkPictureBytes,
   checkPreviewBytes,
   claimsKey,
+  cleanKeys,
   cleanName,
   cleanSize,
   cleanSpeechText,

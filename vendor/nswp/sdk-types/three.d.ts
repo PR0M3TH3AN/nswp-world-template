@@ -141,6 +141,18 @@ export interface Presence {
         name: string;
         kept: boolean;
     }[];
+    /**
+     * People the visitor has blocked everywhere: their own client's list, as it arrived with them. Nobody on it
+     * is connected to during this visit. It isn't kept here, and isn't undone here: it is their client's.
+     */
+    blockAlso(keys: string[]): void;
+    /** How many people are blocked by the visitor's own client's list. */
+    readonly blockedElsewhere: number;
+    /**
+     * The named people blocked here during this visit, by identity key: what a world reports to the visitor's
+     * client as they leave, so the client can ask whether to block them everywhere.
+     */
+    newlyBlocked(): string[];
     /** Call once per frame with the seconds since the last one. */
     update(dt: number): void;
     /** What this visitor currently sees of each member (for tests and debugging). */
@@ -201,6 +213,8 @@ export interface Travelling {
     joined: boolean;
     /** Their microphone is on. */
     mic: boolean;
+    /** Named people they blocked here during this visit, for their own client to ask about. */
+    blocked: string[];
 }
 export declare function addRoomControls(controls: Controls, presence: Presence, opts?: {
     search?: string;
@@ -212,6 +226,7 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
     arrived?: {
         joined?: boolean;
         mic?: boolean;
+        blocked?: string[];
     } | null;
     /**
      * The visitor's panels. With them, a screen someone shares in the room can be watched: it opens on a panel

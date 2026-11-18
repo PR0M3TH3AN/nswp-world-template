@@ -3004,6 +3004,10 @@ var LIMITS = {
   manifestBytes: 64 * 1024,
   arrivalChars: 16 * 1024,
   maxReceipts: 8,
+  /** Keys a visitor's client may say they have blocked, in one arrival. */
+  maxBlocked: 64,
+  /** Keys a world may report as newly blocked, on one link. */
+  maxBlockedOnLink: 16,
   maxIdLength: 128,
   maxTitleLength: 200,
   maxUrlLength: 2048,
