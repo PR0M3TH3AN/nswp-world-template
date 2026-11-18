@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addCameraControls, addRoomControls, addViewControls, capturePanorama, createConsole, createPresence, type Camera, type Presence, type XrConsole } from "nswp-sdk/three";
+import { addCameraControls, addRoomControls, addViewControls, capturePanorama, createConsole, createPresence, createXrInput, type Camera, type GrabOptions, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -28,6 +28,8 @@ interface TestHooks {
   state: Record<string, unknown>;
   /** The visitor's camera: what it has taken. */
   camera?: Camera;
+  /** What the visitor's hands are doing in a headset, as the input layer reads them. */
+  input?: () => unknown;
   portals(): { label: string; destination: PortalDestination; position: number[] }[];
   goThrough(index: number): Promise<void>;
   capturePreview(width?: number): Promise<{ base64: string; width: number; height: number; bytes: number }>;
@@ -133,7 +135,14 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   const gates: PortalGate[] = [];
   const ownGates: PortalGate[] = []; // made by addPortal, so animated here
   let built = false;
+  // Hands in a headset are set up further down, once there is something to point with.
+  let input: XrInput | null = null;
+  const toHold: [THREE.Object3D, GrabOptions | undefined][] = [];
   const ctx: SceneContext = {
+    grabbable(object, options) {
+      if (input) input.grabbable(object, options);
+      else toHold.push([object, options]);
+    },
     scene,
     camera,
     rig,
@@ -332,9 +341,11 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       ),
     );
     c.addEventListener("select", () => {
+      if (input?.claimed(i)) return; // that pinch picked something up; it wasn't a press
       state.lastSelect = i;
       const gate = aimFrom(c); // leaves the ray pointing where this hand points
       const button = xrConsole.pick(raycaster);
+      if (button || gate) input?.pulse(i, 0.5, 30);
       if (button) xrConsole.press(button);
       else if (gate) void go(gate);
       else {
@@ -345,6 +356,24 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     rig.add(c);
     controllers.push(c);
   }
+  // Sticks, grips and buttons, for visitors who have them. They add to pointing and selecting and never
+  // replace it. A stick's step is the same step as a select on the floor.
+  input = createXrInput({
+    renderer,
+    scene,
+    rig,
+    camera,
+    canStand,
+    controls,
+    stepFrom: (i) => {
+      aimFrom(controllers[i]!);
+      const spot = floorUnder();
+      if (spot) stepTo(spot);
+    },
+    onMenu: () => xrConsole.setOpen(!xrConsole.open),
+  });
+  for (const [object, options] of toHold) input.grabbable(object, options);
+  hooks.input = () => input!.info();
 
   // Walking into a portal also goes through it.
   const head = new THREE.Vector3();
@@ -449,6 +478,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     last = t;
     let aimed: PortalGate | null = null;
     reticle.visible = false;
+    input!.update(dt);
     if (renderer.xr.isPresenting) {
       let button: string | null = null;
       for (const c of controllers) {

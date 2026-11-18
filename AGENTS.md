@@ -163,6 +163,16 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
 }
 ```
 
+- **Hands in a headset.** The plumbing already reads any controller and
+  tracked hands: a stick turns and steps, B or Y opens the menu, and a visitor
+  can choose smooth walking under **Moving**. To let them pick something up,
+  call `ctx.grabbable(mesh, { release: "return" })` (`"stay"` leaves it where
+  it is put). Give the mesh a `name`. What they hold moves on their screen
+  only. **Never make a stick, a grip or a button the only way to do
+  something a visitor needs.** Most visitors have a mouse, a touch screen or
+  a single pinch, so everything must also work by pointing and selecting.
+  Don't load a controller's or a hand's 3D model from another site: it tells
+  that site which headset each visitor owns.
 - **Units and axes.** Metres. Y is up. A visitor arrives at `main-entrance` in
   `world.json` (by default `[0, 0, 4]`) facing −Z, with their eyes about 1.6 m
   up. Put the things they should see first in front of them, at negative Z.

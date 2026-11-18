@@ -7,7 +7,7 @@ import {
 } from "./shared-64R25HDC.js";
 
 // packages/sdk/src/three.ts
-import * as THREE7 from "three";
+import * as THREE8 from "three";
 import { decodeLook, encodeNpub, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
@@ -1004,17 +1004,490 @@ function createConsole(controls, opts) {
   return con;
 }
 
-// packages/sdk/src/camera.ts
+// packages/sdk/src/input.ts
 import * as THREE6 from "three";
+
+// packages/sdk/src/actions.ts
+var NO_PAD = { stick: [0, 0], from: "none", trigger: 0, squeeze: 0, primary: false, secondary: false };
+function deadzone(x, y, inner = 0.2) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return [0, 0];
+  const far = Math.hypot(x, y);
+  if (far <= inner) return [0, 0];
+  const scale = Math.min(1, (far - inner) / (1 - inner)) / far;
+  return [x * scale, y * scale];
+}
+function readPad(pad) {
+  if (!pad) return NO_PAD;
+  const button = (i) => pad.buttons[i];
+  const value = (i) => {
+    const b = button(i);
+    if (!b) return 0;
+    return b.value > 0 ? Math.min(1, b.value) : b.pressed ? 1 : 0;
+  };
+  const axis = (i) => Number.isFinite(pad.axes[i]) ? pad.axes[i] : 0;
+  const hasStick = pad.axes.length >= 4;
+  const hasTouchpad = !!button(2);
+  let stick = [0, 0];
+  let from = "none";
+  if (hasStick) {
+    stick = deadzone(axis(2), -axis(3));
+    from = "thumbstick";
+  } else if (pad.axes.length >= 2 && !hasTouchpad) {
+    stick = deadzone(axis(0), -axis(1));
+    from = "thumbstick";
+  }
+  if (stick[0] === 0 && stick[1] === 0 && hasTouchpad) {
+    const touch = deadzone(axis(0), -axis(1), 0.3);
+    if (button(2).pressed && (touch[0] !== 0 || touch[1] !== 0)) {
+      stick = touch;
+      from = "touchpad";
+    } else if (!hasStick) from = "touchpad";
+  }
+  return { stick, from, trigger: value(0), squeeze: value(1), primary: !!button(4)?.pressed, secondary: !!button(5)?.pressed };
+}
+var DEFAULT_COMFORT = { move: "steps", turn: "steps", turnStep: 30, narrow: true, moveHand: "left" };
+function cleanComfort(input) {
+  const out = {};
+  if (!input || typeof input !== "object") return out;
+  const c = input;
+  if (c.move === "steps" || c.move === "smooth") out.move = c.move;
+  if (c.turn === "steps" || c.turn === "smooth") out.turn = c.turn;
+  if (c.turnStep === 30 || c.turnStep === 45 || c.turnStep === 90) out.turnStep = c.turnStep;
+  if (typeof c.narrow === "boolean") out.narrow = c.narrow;
+  if (c.moveHand === "left" || c.moveHand === "right") out.moveHand = c.moveHand;
+  return out;
+}
+var KEY = "nswp:comfort";
+function loadComfort() {
+  try {
+    return { ...DEFAULT_COMFORT, ...cleanComfort(JSON.parse(globalThis.localStorage?.getItem(KEY) ?? "{}")) };
+  } catch {
+    return { ...DEFAULT_COMFORT };
+  }
+}
+function saveComfort(comfort) {
+  try {
+    globalThis.localStorage?.setItem(KEY, JSON.stringify(cleanComfort(comfort)));
+  } catch {
+  }
+}
+var WALK_SPEED = 1.8;
+var TURN_SPEED = 110;
+var BACK_STEP = 1;
+var PUSH = 0.6;
+var LET_GO = 0.3;
+function stickRoles(pads, moveHand) {
+  const sticks = pads.filter((p) => p.pad.from !== "none");
+  const roles = /* @__PURE__ */ new Map();
+  if (sticks.length === 1) roles.set(sticks[0].index, "both");
+  else if (sticks.length >= 2) {
+    const mover = sticks.find((p) => p.hand === moveHand) ?? sticks[0];
+    for (const p of sticks) roles.set(p.index, p === mover ? "move" : "turn");
+  }
+  return roles;
+}
+var Locomotion = class {
+  turned = /* @__PURE__ */ new Set();
+  forward = /* @__PURE__ */ new Set();
+  backward = /* @__PURE__ */ new Set();
+  menuDown = false;
+  frame(dt, pads, comfort) {
+    const intent = { turn: 0, walk: [0, 0], stepFrom: [], aiming: [], menu: false, narrow: 0 };
+    const roles = stickRoles(pads, comfort.moveHand);
+    const seen = /* @__PURE__ */ new Set();
+    let sliding = false;
+    for (const p of pads) {
+      seen.add(p.index);
+      const role = roles.get(p.index);
+      if (!role) continue;
+      const [x, y] = p.pad.stick;
+      if (role !== "move") {
+        if (comfort.turn === "smooth") {
+          if (x !== 0) {
+            intent.turn -= x * TURN_SPEED * dt;
+            sliding = true;
+          }
+        } else if (Math.abs(x) >= PUSH && Math.abs(x) > Math.abs(y)) {
+          if (!this.turned.has(p.index)) {
+            this.turned.add(p.index);
+            intent.turn += x > 0 ? -comfort.turnStep : comfort.turnStep;
+          }
+        } else if (Math.abs(x) < LET_GO) this.turned.delete(p.index);
+      }
+      if (comfort.move === "smooth" && role !== "turn") {
+        const strafe = role === "both" ? 0 : x;
+        if (strafe !== 0 || y !== 0) {
+          const pace = WALK_SPEED * dt / Math.max(1, Math.hypot(strafe, y));
+          intent.walk[0] += strafe * pace;
+          intent.walk[1] += y * pace;
+          sliding = true;
+        }
+      } else if (comfort.move === "steps") {
+        if (y >= PUSH && Math.abs(y) >= Math.abs(x)) this.forward.add(p.index);
+        else if (y < LET_GO && this.forward.delete(p.index)) intent.stepFrom.push(p.index);
+        if (this.forward.has(p.index)) intent.aiming.push(p.index);
+        if (y <= -PUSH && Math.abs(y) > Math.abs(x)) {
+          if (!this.backward.has(p.index)) {
+            this.backward.add(p.index);
+            intent.walk[1] -= BACK_STEP;
+          }
+        } else if (y > -LET_GO) this.backward.delete(p.index);
+      }
+    }
+    for (const set of [this.turned, this.forward, this.backward]) for (const i of set) if (!seen.has(i) || !roles.has(i)) set.delete(i);
+    const menu = pads.some((p) => p.pad.secondary);
+    intent.menu = menu && !this.menuDown;
+    this.menuDown = menu;
+    intent.narrow = sliding && comfort.narrow ? 1 : 0;
+    return intent;
+  }
+};
+
+// packages/sdk/src/input.ts
+var unpointable = (root) => root.traverse((o) => void (o.raycast = () => {
+}));
+function controllerModel(accent) {
+  const b = new MeshBuilder().at();
+  b.tone = new THREE6.Color(1712684);
+  b.light = accent.clone();
+  const lean = new THREE6.Matrix4().makeRotationX(THREE6.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
+  b.place(lean);
+  b.lathe([[5e-4, -0.07], [0.014, -0.068], [0.018, -0.02], [0.017, 0.03], [0.012, 0.046], [5e-4, 0.048]], [0, 0, 0], 6, (row) => row === 1 ? { glow: 0.5 } : { shade: 0.9 + row % 2 * 0.2 });
+  b.place(new THREE6.Matrix4());
+  b.box([0.03, 0.022, 0.07], [0, 4e-3, -0.045], { bevel: 6e-3, shade: 1.05 });
+  b.box([0.018, 0.012, 4e-3], [0, 4e-3, -0.082], { glow: 1 });
+  b.place(new THREE6.Matrix4().makeRotationX(THREE6.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
+  b.lathe([[0.046, -4e-3], [0.052, 0], [0.046, 4e-3], [0.041, 0]], [0, 0, 0], 12, (row) => row === 1 ? { glow: 0.7 } : { shade: 0.85 });
+  const metal = createAlloy(accent, { gloss: 0.6 });
+  const group = new THREE6.Group();
+  group.add(b.build(metal));
+  const light = () => new THREE6.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
+  const trigger = new THREE6.Mesh(new THREE6.BoxGeometry(0.012, 0.02, 0.014), light());
+  trigger.position.set(0, -0.016, -0.036);
+  const squeeze = new THREE6.Mesh(new THREE6.BoxGeometry(8e-3, 0.03, 0.012), light());
+  squeeze.position.set(0, -0.034, 0.018);
+  squeeze.rotation.x = THREE6.MathUtils.degToRad(-52);
+  group.add(trigger, squeeze);
+  unpointable(group);
+  return { group, metal, trigger, squeeze };
+}
+var VIGNETTE_VERT = `varying float vFar; void main(){ vFar = length(position.xy); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+var VIGNETTE_FRAG = `uniform float uAmount; varying float vFar; void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.24, 0.42, vFar) * uAmount); }`;
+function createXrInput(opts) {
+  const { renderer, rig, camera } = opts;
+  const accent = new THREE6.Color(opts.accent ?? 16758364);
+  let comfort = loadComfort();
+  const loco = new Locomotion();
+  const listeners = [];
+  const listen = (target, type, fn) => {
+    target.addEventListener(type, fn);
+    listeners.push([target, type, fn]);
+  };
+  const slots = [0, 1].map((i) => {
+    const ray = renderer.xr.getController(i);
+    const grip = renderer.xr.getControllerGrip(i);
+    const hand = renderer.xr.getHand(i);
+    const slot = { ray, grip, hand, source: null, model: null };
+    listen(ray, "connected", ((e) => {
+      slot.source = e.data ?? null;
+    }));
+    listen(ray, "disconnected", (() => {
+      slot.source = null;
+      release(i);
+    }));
+    for (const o of [ray, grip, hand]) if (!o.parent) rig.add(o);
+    if (opts.models !== false) {
+      slot.model = controllerModel(accent);
+      slot.model.group.visible = false;
+      grip.add(slot.model.group);
+    }
+    return slot;
+  });
+  const kindOf = (s) => !s.source ? "none" : s.source.hand ? "hand" : "controller";
+  const handOf = (s) => s.source?.handedness === "left" || s.source?.handedness === "right" ? s.source.handedness : "none";
+  const jointShape = new THREE6.OctahedronGeometry(1, 1);
+  const jointDark = new THREE6.MeshBasicMaterial({ color: 2568767 });
+  const jointLit = new THREE6.MeshBasicMaterial({ color: accent });
+  const dressHand = (hand) => {
+    for (const joint of hand.children) {
+      if (joint.userData.nswpJoint) continue;
+      joint.userData.nswpJoint = true;
+      const name = String(joint.jointName ?? "");
+      const tip = name.endsWith("-tip");
+      const mesh = new THREE6.Mesh(jointShape, tip ? jointLit : jointDark);
+      const radius = joint.jointRadius;
+      mesh.scale.setScalar(Math.min(0.02, Math.max(5e-3, (radius ?? 8e-3) * (tip ? 0.9 : 0.75))));
+      unpointable(mesh);
+      joint.add(mesh);
+    }
+  };
+  const vignette = new THREE6.Mesh(
+    new THREE6.RingGeometry(0.12, 3, 48, 4),
+    new THREE6.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
+  );
+  vignette.position.z = -0.4;
+  vignette.renderOrder = 999;
+  vignette.frustumCulled = false;
+  vignette.visible = false;
+  unpointable(vignette);
+  camera.add(vignette);
+  let narrow = 0;
+  let pulses = 0;
+  const pulse = (slot, strength = 0.4, ms = 25) => {
+    const pad = slots[slot]?.source?.gamepad;
+    if (!pad) return;
+    try {
+      const actuator = pad.hapticActuators?.[0];
+      if (actuator?.pulse) void actuator.pulse(Math.min(1, Math.max(0, strength)), ms);
+      else if (pad.vibrationActuator?.playEffect) void pad.vibrationActuator.playEffect("dual-rumble", { duration: ms, strongMagnitude: strength, weakMagnitude: strength });
+      else return;
+      pulses++;
+    } catch {
+    }
+  };
+  const headAt = new THREE6.Vector3();
+  const ahead = new THREE6.Vector3();
+  const canStand = opts.canStand ?? (() => true);
+  const walk = (right, forward) => {
+    camera.getWorldPosition(headAt);
+    camera.getWorldDirection(ahead);
+    ahead.y = 0;
+    if (ahead.lengthSq() < 1e-6) return;
+    ahead.normalize();
+    const dx = ahead.x * forward - ahead.z * right;
+    const dz = ahead.z * forward + ahead.x * right;
+    if (canStand(headAt.x + dx, headAt.z + dz)) rig.position.set(rig.position.x + dx, rig.position.y, rig.position.z + dz);
+    else if (canStand(headAt.x + dx, headAt.z)) rig.position.x += dx;
+    else if (canStand(headAt.x, headAt.z + dz)) rig.position.z += dz;
+  };
+  const things = /* @__PURE__ */ new Map();
+  const held = /* @__PURE__ */ new Map();
+  const returning = [];
+  const box = new THREE6.Box3();
+  const ball = new THREE6.Sphere();
+  const handAt = new THREE6.Vector3();
+  const raycaster = new THREE6.Raycaster();
+  const turnOnly = new THREE6.Matrix4();
+  const HOLD_AT = new THREE6.Vector3(0, 0, -0.06);
+  const FAR_REACH = 6;
+  const isHeld = (object) => [...held.values()].some((h) => h.thing.object === object);
+  const grab = (slot, by) => {
+    const s = slots[slot];
+    if (held.has(slot) || !s.source) return false;
+    (s.grip.visible ? s.grip : s.ray).getWorldPosition(handAt);
+    let best = null;
+    let bestFar = Infinity;
+    for (const thing of things.values()) {
+      if (isHeld(thing.object) || !thing.object.visible) continue;
+      box.setFromObject(thing.object).getBoundingSphere(ball);
+      const far = ball.center.distanceTo(handAt) - ball.radius;
+      if (far <= thing.reach && far < bestFar) [best, bestFar] = [thing, far];
+    }
+    let pulled = false;
+    if (!best && by === "squeeze") {
+      turnOnly.identity().extractRotation(s.ray.matrixWorld);
+      raycaster.ray.origin.setFromMatrixPosition(s.ray.matrixWorld);
+      raycaster.ray.direction.set(0, 0, -1).applyMatrix4(turnOnly);
+      let closest = Infinity;
+      for (const thing of things.values()) {
+        if (!thing.far || !thing.object.visible || isHeld(thing.object)) continue;
+        box.setFromObject(thing.object).getBoundingSphere(ball);
+        const along = ball.center.clone().sub(raycaster.ray.origin).dot(raycaster.ray.direction);
+        if (along <= 0 || along > FAR_REACH) continue;
+        const off = raycaster.ray.distanceToPoint(ball.center);
+        if (off > ball.radius + 0.04 + along * 0.02) continue;
+        if (off / along < closest) [best, closest] = [thing, off / along];
+      }
+      pulled = !!best;
+    }
+    if (!best) return false;
+    const object = best.object;
+    const coming = returning.findIndex((r) => r.object === object);
+    if (coming >= 0) returning.splice(coming, 1);
+    const home = { parent: object.parent, position: object.position.clone(), quaternion: object.quaternion.clone() };
+    const hand = s.grip.visible ? s.grip : s.ray;
+    hand.attach(object);
+    held.set(slot, { thing: best, by, home, ...pulled ? { pull: { from: object.position.clone(), t: 0 } } : {} });
+    pulse(slot, 0.6, 35);
+    best.onGrab?.(slot);
+    return true;
+  };
+  function release(slot) {
+    const h = held.get(slot);
+    if (!h) return;
+    held.delete(slot);
+    const object = h.thing.object;
+    const parent = h.home.parent ?? opts.scene;
+    parent.attach(object);
+    if (h.thing.release === "return") returning.push({ object, from: object.position.clone(), fromQ: object.quaternion.clone(), to: h.home.position, toQ: h.home.quaternion, t: 0 });
+    pulse(slot, 0.25, 20);
+    h.thing.onRelease?.(slot);
+  }
+  slots.forEach((s, i) => {
+    listen(s.ray, "squeezestart", (() => void grab(i, "squeeze")));
+    listen(s.ray, "squeezeend", (() => {
+      if (held.get(i)?.by === "squeeze") release(i);
+    }));
+    listen(s.ray, "selectstart", (() => {
+      if (kindOf(s) === "hand") grab(i, "pinch");
+    }));
+    listen(s.ray, "selectend", (() => {
+      if (held.get(i)?.by === "pinch") release(i);
+    }));
+  });
+  const setComfort = (patch, keep = false) => {
+    comfort = { ...comfort, ...cleanComfort(patch) };
+    if (keep) saveComfort(comfort);
+  };
+  if (opts.controls) {
+    const controls = opts.controls;
+    let headset = false;
+    void navigator.xr?.isSessionSupported("immersive-vr").then((ok) => {
+      headset = ok;
+      controls.addSection({ id: "moving", label: "Moving", icon: "step", note });
+    }).catch(() => {
+    });
+    const hidden = () => !headset;
+    const note = () => comfort.move === "steps" ? "With a controller: push a stick forward, point at the floor and let go to step there. Flick the other stick to turn. Squeeze the grip to pick things up. Pointing and selecting does everything too." : "With a controller: one stick walks, the other turns. If it makes you feel unwell, go back to stepping: it is the comfortable way.";
+    controls.addSection({ id: "moving", label: "Moving", icon: "step", note });
+    const change = (patch) => {
+      setComfort(patch, true);
+      controls.addSection({ id: "moving", label: "Moving", icon: "step", note });
+    };
+    controls.add(
+      { id: "move-mode", section: "moving", icon: "step", hidden, on: () => comfort.move === "smooth", label: () => comfort.move === "steps" ? "Moving in steps. Walk smoothly instead" : "Walking smoothly. Move in steps instead", short: "Walk", act: () => change({ move: comfort.move === "steps" ? "smooth" : "steps" }) },
+      {
+        id: "turn-mode",
+        section: "moving",
+        icon: "turn",
+        hidden,
+        on: () => comfort.turn === "smooth",
+        label: () => comfort.turn === "smooth" ? "Turning smoothly. Turn in steps instead" : `Turning ${comfort.turnStep}\xB0 at a time. Change`,
+        short: "Turn",
+        // In steps of 30, then 45, then 90, then smoothly, and round again.
+        act: () => change(comfort.turn === "smooth" ? { turn: "steps", turnStep: 30 } : comfort.turnStep === 30 ? { turnStep: 45 } : comfort.turnStep === 45 ? { turnStep: 90 } : { turn: "smooth" })
+      },
+      { id: "move-hand", section: "moving", icon: "motion", hidden, label: () => `The ${comfort.moveHand} stick moves you. Swap hands`, short: "Hands", act: () => change({ moveHand: comfort.moveHand === "left" ? "right" : "left" }) },
+      {
+        id: "move-narrow",
+        section: "moving",
+        icon: "look",
+        hidden: () => hidden() || comfort.move === "steps" && comfort.turn === "steps",
+        on: () => comfort.narrow,
+        label: () => comfort.narrow ? "The view narrows while you move. Turn that off" : "Narrow the view while you move",
+        short: "Narrow",
+        act: () => change({ narrow: !comfort.narrow })
+      }
+    );
+  }
+  let aiming = [];
+  const read = () => slots.flatMap((s, index) => kindOf(s) === "controller" && s.source?.gamepad ? [{ index, hand: handOf(s), pad: readPad(s.source.gamepad) }] : []);
+  const update = (dt) => {
+    const presenting = renderer.xr.isPresenting;
+    if (!presenting) {
+      aiming = [];
+      narrow = 0;
+      vignette.visible = false;
+      for (const slot of [...held.keys()]) release(slot);
+    } else {
+      const pads = read();
+      const intent = loco.frame(dt, pads, comfort);
+      if (intent.turn !== 0) {
+        turnVisitor(rig, camera, intent.turn);
+        if (comfort.turn === "steps") {
+          for (const p of pads) if (Math.abs(p.pad.stick[0]) > 0.5) pulse(p.index, 0.2, 12);
+        }
+      }
+      if (intent.walk[0] !== 0 || intent.walk[1] !== 0) walk(intent.walk[0], intent.walk[1]);
+      for (const slot of intent.stepFrom) {
+        opts.stepFrom?.(slot);
+        pulse(slot, 0.35, 20);
+      }
+      if (intent.menu) opts.onMenu?.();
+      aiming = intent.aiming;
+      narrow += (intent.narrow - narrow) * Math.min(1, dt * (intent.narrow > narrow ? 12 : 3));
+      vignette.material.uniforms.uAmount.value = narrow * 0.85;
+      vignette.visible = narrow > 0.01;
+      slots.forEach((s, i) => {
+        const kind = kindOf(s);
+        if (s.model) {
+          s.model.group.visible = kind === "controller";
+          const pad = pads.find((p) => p.index === i)?.pad ?? NO_PAD;
+          s.model.trigger.material.color.copy(accent).multiplyScalar(0.2 + 0.8 * pad.trigger);
+          s.model.squeeze.material.color.copy(accent).multiplyScalar(0.2 + 0.8 * pad.squeeze);
+        }
+        if (opts.models !== false && kind === "hand") dressHand(s.hand);
+        s.hand.visible = opts.models !== false && kind === "hand";
+      });
+    }
+    for (const h of held.values()) {
+      if (!h.pull) continue;
+      h.pull.t = Math.min(1, h.pull.t + dt / 0.18);
+      h.thing.object.position.lerpVectors(h.pull.from, HOLD_AT, 1 - (1 - h.pull.t) ** 3);
+      if (h.pull.t === 1) delete h.pull;
+    }
+    for (let i = returning.length - 1; i >= 0; i--) {
+      const r = returning[i];
+      r.t = Math.min(1, r.t + dt / 0.35);
+      const k = 1 - (1 - r.t) ** 3;
+      r.object.position.lerpVectors(r.from, r.to, k);
+      r.object.quaternion.slerpQuaternions(r.fromQ, r.toQ, k);
+      if (r.t === 1) returning.splice(i, 1);
+    }
+  };
+  return {
+    get comfort() {
+      return comfort;
+    },
+    setComfort,
+    update,
+    grabbable(object, o = {}) {
+      things.set(object, { object, reach: o.reach ?? 0.1, far: o.far ?? true, release: o.release ?? "stay", ...o.onGrab ? { onGrab: o.onGrab } : {}, ...o.onRelease ? { onRelease: o.onRelease } : {} });
+      return () => {
+        for (const [slot, h] of held) if (h.thing.object === object) release(slot);
+        things.delete(object);
+      };
+    },
+    claimed: (slot) => held.get(slot)?.by === "pinch",
+    pulse,
+    info() {
+      const pads = renderer.xr.isPresenting ? read() : [];
+      return {
+        comfort,
+        slots: slots.map((s, i) => ({ hand: handOf(s), kind: kindOf(s), pad: pads.find((p) => p.index === i)?.pad ?? NO_PAD })),
+        aiming,
+        holding: [0, 1].map((i) => held.get(i)?.thing.object.name || (held.has(i) ? "(unnamed)" : null)),
+        narrow: Math.round(narrow * 100) / 100,
+        pulses
+      };
+    },
+    dispose() {
+      for (const slot of [...held.keys()]) release(slot);
+      for (const [target, type, fn] of listeners) target.removeEventListener(type, fn);
+      camera.remove(vignette);
+      vignette.geometry.dispose();
+      vignette.material.dispose();
+      for (const s of slots) {
+        if (!s.model) continue;
+        s.grip.remove(s.model.group);
+        s.model.metal.dispose();
+      }
+      jointShape.dispose();
+    }
+  };
+}
+
+// packages/sdk/src/camera.ts
+import * as THREE7 from "three";
 async function takePicture(renderer, scene, camera, opts = {}) {
   const width = Math.round(opts.width ?? 1920);
   const height = Math.round(opts.height ?? 1080);
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
   const xrWasEnabled = renderer.xr.enabled;
   const previousTarget = renderer.getRenderTarget();
-  const target = new THREE6.WebGLRenderTarget(width, height, { samples: 4 });
-  target.texture.colorSpace = THREE6.SRGBColorSpace;
-  const eye = new THREE6.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
+  const target = new THREE7.WebGLRenderTarget(width, height, { samples: 4 });
+  target.texture.colorSpace = THREE7.SRGBColorSpace;
+  const eye = new THREE7.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
   camera.updateWorldMatrix(true, false);
   camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
   eye.updateMatrixWorld(true);
@@ -1045,17 +1518,17 @@ async function takePicture(renderer, scene, camera, opts = {}) {
 }
 async function takeSelfie(renderer, scene, head, look, opts = {}) {
   head.updateWorldMatrix(true, false);
-  const at = new THREE6.Vector3();
-  const facing = new THREE6.Quaternion();
-  head.matrixWorld.decompose(at, facing, new THREE6.Vector3());
-  const ahead = new THREE6.Vector3(0, 0, -1).applyQuaternion(facing).setY(0);
+  const at = new THREE7.Vector3();
+  const facing = new THREE7.Quaternion();
+  head.matrixWorld.decompose(at, facing, new THREE7.Vector3());
+  const ahead = new THREE7.Vector3(0, 0, -1).applyQuaternion(facing).setY(0);
   if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
   ahead.normalize();
   const figure = createFigure(look);
   figure.group.position.copy(at);
   figure.group.rotation.y = Math.atan2(-ahead.x, -ahead.z);
   scene.add(figure.group);
-  const eye = new THREE6.PerspectiveCamera(58, 1, 0.05, head.far);
+  const eye = new THREE7.PerspectiveCamera(58, 1, 0.05, head.far);
   eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
   eye.position.y = at.y + 0.08;
   eye.lookAt(at.x, at.y - 0.22, at.z);
@@ -1218,16 +1691,16 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE7.CanvasTexture(canvas);
-  tex.colorSpace = THREE7.SRGBColorSpace;
-  const sprite = new THREE7.Sprite(new THREE7.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE8.CanvasTexture(canvas);
+  tex.colorSpace = THREE8.SRGBColorSpace;
+  const sprite = new THREE8.Sprite(new THREE8.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
 function createPresence(d) {
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE7.AudioListener();
+  const listener = new THREE8.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -1249,9 +1722,9 @@ function createPresence(d) {
       fade.addColorStop(1, "rgba(255,255,255,0)");
       g.fillStyle = fade;
       g.fillRect(0, 0, 64, 64);
-      dot = new THREE7.CanvasTexture(canvas);
+      dot = new THREE8.CanvasTexture(canvas);
     }
-    return new THREE7.Sprite(new THREE7.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
+    return new THREE8.Sprite(new THREE8.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
   };
   const showRecording = (a, on) => {
     if (on && !a.light) {
@@ -1296,7 +1769,7 @@ function createPresence(d) {
     });
   };
   const makeAvatar = (member) => {
-    const root = new THREE7.Group();
+    const root = new THREE8.Group();
     root.visible = false;
     const label = textSprite(member.name, labelColor, 0.5);
     label.position.set(0, 0.42, 0);
@@ -1312,7 +1785,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE7.PositionalAudio(listener);
+    const pa = new THREE8.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -1333,8 +1806,8 @@ function createPresence(d) {
     d.scene.remove(a.root);
     a.figure.dispose();
   };
-  const v = new THREE7.Vector3();
-  const q = new THREE7.Quaternion();
+  const v = new THREE8.Vector3();
+  const q = new THREE8.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -1434,9 +1907,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE7.Vector3();
-  const tq = new THREE7.Quaternion();
-  const euler = new THREE7.Euler();
+  const tp = new THREE8.Vector3();
+  const tq = new THREE8.Quaternion();
+  const euler = new THREE8.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -1498,7 +1971,7 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE7.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE8.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
         a.materials[0].material.tick?.(performance.now() / 1e3);
         if (a.beam?.visible && performance.now() > (a.beamUntil ?? 0)) a.beam.visible = false;
@@ -1563,11 +2036,11 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE7.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE7.HalfFloatType });
-  const flatTarget = new THREE7.WebGLRenderTarget(width, height);
-  flatTarget.texture.colorSpace = THREE7.SRGBColorSpace;
-  const material = new THREE7.ShaderMaterial({
-    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE7.Vector3() }, up: { value: new THREE7.Vector3() }, right: { value: new THREE7.Vector3() } },
+  const faceTarget = new THREE8.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE8.HalfFloatType });
+  const flatTarget = new THREE8.WebGLRenderTarget(width, height);
+  flatTarget.texture.colorSpace = THREE8.SRGBColorSpace;
+  const material = new THREE8.ShaderMaterial({
+    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE8.Vector3() }, up: { value: new THREE8.Vector3() }, right: { value: new THREE8.Vector3() } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
       void main(){
@@ -1584,19 +2057,19 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     depthTest: false,
     depthWrite: false
   });
-  const quad = new THREE7.Mesh(new THREE7.PlaneGeometry(2, 2), material);
-  const quadScene = new THREE7.Scene();
+  const quad = new THREE8.Mesh(new THREE8.PlaneGeometry(2, 2), material);
+  const quadScene = new THREE8.Scene();
   quadScene.add(quad);
-  const quadCamera = new THREE7.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const faceCamera = new THREE7.PerspectiveCamera(90, 1, 0.05, 700);
+  const quadCamera = new THREE8.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const faceCamera = new THREE8.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   const views = [
-    [new THREE7.Vector3(0, 0, -1), new THREE7.Vector3(0, 1, 0)],
-    [new THREE7.Vector3(1, 0, 0), new THREE7.Vector3(0, 1, 0)],
-    [new THREE7.Vector3(0, 0, 1), new THREE7.Vector3(0, 1, 0)],
-    [new THREE7.Vector3(-1, 0, 0), new THREE7.Vector3(0, 1, 0)],
-    [new THREE7.Vector3(0, 1, 0), new THREE7.Vector3(0, 0, 1)],
-    [new THREE7.Vector3(0, -1, 0), new THREE7.Vector3(0, 0, -1)]
+    [new THREE8.Vector3(0, 0, -1), new THREE8.Vector3(0, 1, 0)],
+    [new THREE8.Vector3(1, 0, 0), new THREE8.Vector3(0, 1, 0)],
+    [new THREE8.Vector3(0, 0, 1), new THREE8.Vector3(0, 1, 0)],
+    [new THREE8.Vector3(-1, 0, 0), new THREE8.Vector3(0, 1, 0)],
+    [new THREE8.Vector3(0, 1, 0), new THREE8.Vector3(0, 0, 1)],
+    [new THREE8.Vector3(0, -1, 0), new THREE8.Vector3(0, 0, -1)]
   ];
   try {
     for (const o of hidden) o.visible = false;
@@ -1643,24 +2116,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE7.Texture(image);
-  texture.colorSpace = THREE7.SRGBColorSpace;
-  texture.wrapS = THREE7.RepeatWrapping;
+  const texture = new THREE8.Texture(image);
+  texture.colorSpace = THREE8.SRGBColorSpace;
+  texture.wrapS = THREE8.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE7.LinearFilter;
-  texture.magFilter = THREE7.LinearFilter;
+  texture.minFilter = THREE8.LinearFilter;
+  texture.magFilter = THREE8.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE7.ShaderMaterial({
+  const material = new THREE8.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE7.Matrix3() },
-      center: { value: new THREE7.Vector3() },
+      toLocal: { value: new THREE8.Matrix3() },
+      center: { value: new THREE8.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -1680,10 +2153,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE7.DoubleSide
+    side: THREE8.DoubleSide
   });
-  const mesh = new THREE7.Mesh(geometry, material);
-  const rotation = new THREE7.Matrix4();
+  const mesh = new THREE8.Mesh(geometry, material);
+  const rotation = new THREE8.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();
@@ -1874,6 +2347,9 @@ export {
   createFigure,
   turnVisitor,
   createConsole,
+  readPad,
+  DEFAULT_COMFORT,
+  createXrInput,
   takePicture,
   takeSelfie,
   canRecord,

@@ -2,7 +2,7 @@
 import type * as THREE from "three";
 import type { Arrival, Layout, PortalDestination } from "@nswp/core";
 import type { PortalGate } from "nswp-sdk/home";
-import type { FigureStyle } from "nswp-sdk/three";
+import type { FigureStyle, GrabOptions } from "nswp-sdk/three";
 import type { Controls, Corner, Presence, UiKeys } from "nswp-sdk/ui";
 
 /** world.json */
@@ -56,6 +56,14 @@ export interface SceneContext {
   addPortal(destination: PortalDestination | { coordinate: string }, opts?: PortalOptions): PortalGate;
   /** Hand over portals made elsewhere (the home's own, say) so visitors can go through them. */
   usePortals(gates: PortalGate[]): void;
+  /**
+   * Make something a visitor in a headset can pick up, with a controller's
+   * grip or a pinch of tracked fingers: `ctx.grabbable(mesh, { release:
+   * "return" })`. It moves on their screen only; others in a room don't see
+   * it move. Never make picking something up the only way to do anything a
+   * visitor needs: most visitors have no grip.
+   */
+  grabbable(object: THREE.Object3D, options?: GrabOptions): void;
 }
 
 export interface SceneHandle {
