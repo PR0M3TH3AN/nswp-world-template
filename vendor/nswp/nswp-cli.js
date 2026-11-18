@@ -2983,7 +2983,8 @@ var CAPABILITIES = [
   "spatial-portals",
   "avatars",
   "entry-assertion",
-  "payments"
+  "payments",
+  "home"
 ];
 var COMFORT = {
   locomotion: ["stationary", "teleport", "smooth", "vehicle"],

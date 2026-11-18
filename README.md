@@ -207,6 +207,21 @@ could read and type into your shell. That is why it is for a world whose
 code is yours, why nobody visiting can make it happen, and why it is worth
 looking at what an assistant or a new dependency adds to `src/`.
 
+## Making it your home
+
+If you use BitPortal, this world can be where you start, in place of
+BitPortal's own room. Once it is online, signed and announced (the next
+section), open BitPortal's Settings, find **Where you start**, type this
+world's address and press **Check this world**. BitPortal checks that it is
+yours both ways (you announced it with your key, and this site admits your
+key), that it is on an `https` address, and that it says it can be a home,
+which this template does. Then **Start here**.
+
+From then on, going home from any world brings you here, and **Your doors**
+in this world's menu takes you to BitPortal's room, where your saved doors,
+your sign-in and your computers stay. If this site ever doesn't answer,
+BitPortal starts you in its own room and says so.
+
 ## Working with an AI assistant
 
 [`AGENTS.md`](AGENTS.md) tells a coding assistant how this folder is laid out,

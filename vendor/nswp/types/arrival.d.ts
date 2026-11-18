@@ -25,6 +25,13 @@ export interface Arrival {
      * what they were doing, not who they are.
      */
     immersive?: true;
+    /**
+     * This world is where the visitor starts: the home they chose
+     * (protocol/07-homes.md). Said only by their own client, bringing them
+     * home. From here "home" leads nowhere new, so the world offers the way to
+     * their doors instead.
+     */
+    home?: true;
 }
 export declare function encodeArrival(a: Omit<Arrival, "v"> & {
     v?: string;

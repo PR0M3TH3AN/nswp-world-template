@@ -71,6 +71,12 @@ disagree, the documents are right and this file has a bug.
 7. **A refresh is not an arrival.** The plumbing puts whoever was here back
    where they stood. Don't send them to the entrance in the scene's own code
    when the page loads.
+8. **A home keeps the way to its owner's doors.** `world.json` says this
+   world can be someone's home (`"home"` among its `capabilities`). That is a
+   promise: wherever the way home is offered, **Your doors** is offered too,
+   because at home the way home leads nowhere new. The plumbing keeps the
+   promise. Don't hide or remove **Your doors**; if the owner doesn't want
+   this world to be a home, take `"home"` out of `capabilities` instead.
 
 ## When the owner asks for something the rules forbid
 
@@ -355,7 +361,7 @@ understands:
 | `comfort.seated` | `supported`, `required`, `unsupported` | |
 | `inputs` | `controllers`, `hands`, `gaze`, `keyboard-mouse`, `touch`, `gamepad` | Only what really works |
 | `perf` | `mobile`, `standalone`, `desktop` | The weakest device that runs it well: a phone, a standalone headset, or a computer |
-| `capabilities` | `webxr`, `spatial-portals`, `rooms` | Removing `rooms` removes the shared room and its buttons. Do that when each visitor sees something different, such as a random level |
+| `capabilities` | `webxr`, `spatial-portals`, `rooms`, `home` | Removing `rooms` removes the shared room and its buttons. Do that when each visitor sees something different, such as a random level. `home` says this world can be the place its owner starts, and adds **Your doors** beside the way home |
 | `topics` | Any short lower-case words | For example `game`, `art`, `music` |
 | `status` | `live`, `beta`, `maintenance`, `retired` | |
  After any change to `world.json` or `home.json`, the owner needs to run

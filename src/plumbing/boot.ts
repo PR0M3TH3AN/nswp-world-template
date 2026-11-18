@@ -239,26 +239,51 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     const back = arrival.returnAirlock();
     if (!back || state.leaving) return;
     state.leaving = true;
-    await crossing.leave({ title: "your lobby", address: hostOf(back) });
+    await crossing.leave({ title: "home", address: hostOf(back) });
     document.body.classList.add("leaving");
     await portal.home({ xrSession: renderer.xr.getSession() });
+  };
+  const goToDoors = async () => {
+    const back = arrival.returnAirlock();
+    if (!back || state.leaving) return;
+    state.leaving = true;
+    await crossing.leave({ title: "your doors", address: hostOf(back) });
+    document.body.classList.add("leaving");
+    await portal.doors({ xrSession: renderer.xr.getSession() });
   };
   hooks.goThrough = async (i) => {
     const gate = gates[i];
     if (gate) await go(gate);
   };
 
-  // The way back to the visitor's own lobby, offered when they came from one.
+  // The way home, offered when the visitor came from a client that said where home is. Home is wherever their
+  // own client starts them: its own room, or a world of theirs they chose. When that world is this one, the way
+  // home leads nowhere new, and isn't offered.
   controls.add({
     id: "home",
     section: "travel",
     icon: "home",
     hotbar: true,
-    label: "Back to your lobby",
+    label: "Go home",
     short: "Home",
-    hidden: () => !arrival.returnAirlock(),
+    hidden: () => !arrival.returnAirlock() || arrival.atHome(),
     act: () => void goHome(),
   });
+  // A world that says it can be someone's home owes them the way to their doors (NSWP-07): the place their own
+  // client keeps the worlds they saved. It is offered to every visitor; for most, it is where home is too.
+  if (config.world.capabilities?.includes("home")) {
+    controls.add({
+      id: "doors",
+      section: "travel",
+      icon: "door",
+      hotbar: true,
+      label: "Your doors",
+      short: "Doors",
+      hidden: () => !arrival.returnAirlock(),
+      act: () => void goToDoors(),
+    });
+  }
+  state.atHome = arrival.atHome();
   controls.addSection({
     id: "help",
     label: "Help",

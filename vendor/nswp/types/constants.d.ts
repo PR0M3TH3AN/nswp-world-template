@@ -12,7 +12,7 @@ export declare const SCHEMAS: {
 };
 export declare const WELL_KNOWN_PATH = "/.well-known/nswp.json";
 export declare const MODES: readonly ["2d", "inline-3d", "immersive-vr", "immersive-ar"];
-export declare const CAPABILITIES: readonly ["webxr", "rooms", "multiplayer", "voice", "spatial-portals", "avatars", "entry-assertion", "payments"];
+export declare const CAPABILITIES: readonly ["webxr", "rooms", "multiplayer", "voice", "spatial-portals", "avatars", "entry-assertion", "payments", "home"];
 export declare const COMFORT: {
     readonly locomotion: readonly ["stationary", "teleport", "smooth", "vehicle"];
     readonly intensity: readonly ["low", "medium", "high"];

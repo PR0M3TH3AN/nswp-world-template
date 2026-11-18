@@ -7,7 +7,7 @@
  * always offer the same things, because neither holds any of the logic.
  *
  *   const controls = createControls({ title: "My world", address: "example.org" });
- *   controls.add({ id: "home", section: "travel", label: "Back to your lobby", icon: "home", hotbar: true, act: () => portal.home() });
+ *   controls.add({ id: "home", section: "travel", label: "Go home", icon: "home", hotbar: true, act: () => portal.home() });
  *
  * Adding a button, a section, or a whole new kind of control later means
  * adding to this list. Nothing about either renderer has to change.
