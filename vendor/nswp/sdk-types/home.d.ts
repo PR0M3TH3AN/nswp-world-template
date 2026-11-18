@@ -70,4 +70,4 @@ export { PORTAL_WIDTH, PORTAL_HEIGHT } from "./models.js";
 export { createEnvironment, GROUND, type Environment, type EnvironmentOptions } from "./environment.js";
 export { MeshBuilder, type Paint, type BoxOptions, type Frame, type V3, type P2 } from "./mesh.js";
 export { createAlloy, type Alloy, type AlloyOptions } from "./alloy.js";
-export { addArchFrame, addBench, addCrystal, addGyro, addKnot, addLamp, addPictureFrame, addPlant, addPlinth, addSpiral, addTable, addTree, addWall, bandProfile, loopFrames, metalTone, mouldingPaint, mouldingProfile } from "./models.js";
+export { addArchFrame, addBench, addCrystal, addGyro, addHelix, addKnot, addLamp, addPictureFrame, addPlant, addPlinth, addSpiral, addTable, addTree, addWall, bandProfile, loopFrames, metalTone, mouldingPaint, mouldingProfile } from "./models.js";

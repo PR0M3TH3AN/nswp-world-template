@@ -6,7 +6,7 @@
 //   npm run vendor:check    verify vendor/ still matches vendor/integrity.json
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,6 +67,9 @@ run(esbuild, [
 run(tsc, ["-p", "packages/sdk", "--noEmit", "false", "--emitDeclarationOnly", "--declaration", "--rootDir", "packages/sdk/src", "--outDir", join(out, "sdk-types")]);
 // The command-line tool, for `check` and `publish`.
 run(esbuild, ["packages/cli/src/index.ts", ...common, "--platform=node", `--outfile=${join(out, "nswp-cli.js")}`]);
+
+// Its licence, and the notices for the libraries built into these files, travel with them.
+for (const name of ["LICENSE", "THIRD-PARTY-NOTICES.md"]) cpSync(join(repo, name), join(out, name));
 
 const version = JSON.parse(readFileSync(join(repo, "packages/core/package.json"), "utf8")).version;
 const source = { repository: git("remote", "get-url", "origin"), commit: git("rev-parse", "HEAD"), dirty };

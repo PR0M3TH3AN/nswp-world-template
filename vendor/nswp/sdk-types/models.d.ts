@@ -46,8 +46,14 @@ export declare function loopFrames(at: (u: number) => V3, steps: number): Frame[
 export declare function bandProfile(wide: number, thick: number): P2[];
 /** The metal a place's things are made of: a few shades up from its ground, so they stand out from it. */
 export declare function metalTone(ground: THREE.ColorRepresentation): THREE.Color;
-/** A ribbon tied in a trefoil knot, `size` across, centred on the builder's place. A seam of light runs round its outside. */
-export declare function addKnot(b: MeshBuilder, size?: number): void;
+/**
+ * A ribbon tied in a knot, `size` across, centred on the builder's place, with
+ * a seam of light round its outside. `p` and `q` choose the knot: 2 and 3 is a
+ * trefoil, 2 and 5 a cinquefoil, 3 and 4 something busier.
+ */
+export declare function addKnot(b: MeshBuilder, size?: number, p?: number, q?: number): void;
+/** Two ribbons winding round each other as they rise, `size` high, centred on the builder's place. */
+export declare function addHelix(b: MeshBuilder, size?: number): void;
 /** Three hoops, one inside another and each tipped a different way, round a point of light. */
 export declare function addGyro(b: MeshBuilder, size?: number): void;
 /** A cluster of crystals growing from one root, the tallest in the middle. About `size` high, standing on the builder's place. */
