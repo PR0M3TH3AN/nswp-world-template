@@ -10,6 +10,14 @@ import {
 } from "./shared-WXBVZMXQ.js";
 
 // packages/sdk/src/ui/model.ts
+var PRESENCES = ["full", "quiet", "hidden"];
+var CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"];
+function cleanKeys(now, k) {
+  const out = { ...now };
+  if (k && (k.menu === null || typeof k.menu === "string" && k.menu.length === 1)) out.menu = k.menu === null ? null : k.menu.toLowerCase();
+  if (k && typeof k.hotbar === "boolean") out.hotbar = k.hotbar;
+  return out;
+}
 var read = (t) => typeof t === "function" ? t() : t ?? "";
 var STANDARD = [
   { id: "travel", label: "Travel", icon: "door" },
@@ -27,6 +35,10 @@ function createControls(opts) {
   let visitor = loadVisitorTheme();
   let theme = resolveTheme(opts.theme, visitor);
   let target = "";
+  let presence = PRESENCES.includes(opts.presence) ? opts.presence : "full";
+  let corner = CORNERS.includes(opts.corner) ? opts.corner : "top-left";
+  let keys = cleanKeys({ menu: "m", hotbar: true }, opts.keys);
+  let claimed = false;
   const changed = () => {
     for (const fn of listeners) fn();
   };
@@ -54,6 +66,28 @@ function createControls(opts) {
     },
     addSection(s) {
       addSection(s);
+      changed();
+    },
+    get presence() {
+      return presence;
+    },
+    setPresence(next) {
+      if (!PRESENCES.includes(next) || next === presence) return;
+      presence = next;
+      changed();
+    },
+    setCorner(next) {
+      if (!CORNERS.includes(next) || next === corner) return;
+      corner = next;
+      changed();
+    },
+    setKeys(next) {
+      keys = cleanKeys(keys, next);
+      changed();
+    },
+    claimInput(next) {
+      if (claimed === next) return;
+      claimed = next;
       changed();
     },
     setTarget(text) {
@@ -94,7 +128,10 @@ function createControls(opts) {
         target,
         sections: [...sections, ...extra].map((s) => ({ id: s.id, label: s.label, icon: s.icon ?? null, note: read(s.note), items: showing.filter((a) => (a.section ?? "travel") === s.id).map(item) })).filter((s) => s.items.length > 0 || s.note),
         hotbar: bar.map(item),
-        theme
+        theme,
+        presence,
+        corner,
+        keys: claimed ? { menu: null, hotbar: false } : keys
       };
     },
     subscribe(fn) {
@@ -230,6 +267,23 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .close { min-height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid rgba(var(--ink), .22); }
 .close:hover { border-color: rgb(var(--ink)); }
 
+/* ---- quiet: one mark in a corner, and everything else behind it */
+.quiet { position: absolute; pointer-events: auto; display: none; width: 44px; height: 48px; place-items: center; border-radius: 22px 22px 8px 8px; }
+.quiet .mark { margin-bottom: 2px; }
+.quiet:hover, .quiet[aria-expanded="true"] { border-color: rgb(var(--accent)); }
+:host([data-presence="quiet"]) .quiet { display: grid; }
+:host([data-presence="quiet"]) :is(.id, .menu, .hotbar, .target, .corner),
+:host([data-presence="hidden"]) :is(.id, .menu, .hotbar, .target, .corner, .says) { display: none; }
+:host([data-corner="top-left"]) .quiet { top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); }
+:host([data-corner="top-right"]) .quiet { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
+:host([data-corner="bottom-left"]) .quiet { bottom: max(12px, env(safe-area-inset-bottom)); left: max(12px, env(safe-area-inset-left)); }
+:host([data-corner="bottom-right"]) .quiet { bottom: max(12px, env(safe-area-inset-bottom)); right: max(12px, env(safe-area-inset-right)); }
+/* With no hotbar under it, the sheet opens in the middle of the bottom edge, clear of the corners. */
+:host(:not([data-presence="full"])) .sheet { bottom: max(72px, env(safe-area-inset-bottom)); }
+:host(:not([data-presence="full"])) .says { bottom: max(72px, env(safe-area-inset-bottom)); }
+/* Keys the world has switched off aren't advertised. */
+:host(.no-menu-key) .menu kbd, :host(.no-hotbar-keys) :is(.key .num, .row kbd) { display: none; }
+
 /* ---- one moment of motion: things arrive. Nothing loops. */
 @keyframes say-in { from { opacity: 0; transform: translateX(-8px); } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
@@ -286,6 +340,7 @@ function mountHud(controls, opts = {}) {
   const address = el("span", { class: "mono" });
   const id = el("div", { class: "id glass" }, el("span", { class: "mark", "aria-hidden": "true" }), el("div", {}, title, address));
   const menu = el("button", { class: "menu glass", type: "button", "aria-haspopup": "dialog", "aria-expanded": "false" }, icon("menu"), el("span", {}, "Menu"), el("kbd", {}, "M"));
+  const quiet = el("button", { class: "quiet glass", type: "button", "aria-label": "Menu", "aria-haspopup": "dialog", "aria-expanded": "false" }, el("span", { class: "mark", "aria-hidden": "true" }));
   const target = el("div", { class: "target glass", "aria-live": "polite" });
   const hotbar = el("nav", { class: "hotbar glass", "aria-label": "Controls" });
   const says = el("div", { class: "says", role: "status" });
@@ -294,7 +349,7 @@ function mountHud(controls, opts = {}) {
   const note = el("p", { class: "note" });
   const close = el("button", { class: "close", type: "button" }, "Close");
   const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabs, rows, note, el("div", { class: "foot" }, close));
-  root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, says, sheet, el("div", { class: "low" }, target, hotbar));
+  root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, says, sheet, el("div", { class: "low" }, target, hotbar));
   (opts.parent ?? document.body).append(host);
   let open = false;
   let section = "";
@@ -309,11 +364,17 @@ function mountHud(controls, opts = {}) {
     host.style.setProperty("--warn", rgb(t.warn));
     host.style.setProperty("--s", String(t.scale));
     host.classList.toggle("moving", t.motion);
+    host.dataset.presence = view.presence;
+    host.dataset.corner = view.corner;
+    host.classList.toggle("no-menu-key", view.keys.menu === null);
+    host.classList.toggle("no-hotbar-keys", !view.keys.hotbar);
+    const key = menu.querySelector("kbd");
+    if (key && view.keys.menu) key.textContent = view.keys.menu.toUpperCase();
     title.textContent = view.title;
     address.textContent = view.address;
     if (target.textContent !== view.target) target.textContent = view.target;
     if (!view.sections.some((s) => s.id === section)) section = view.sections[0]?.id ?? "";
-    const now = JSON.stringify([view.hotbar, view.sections, section, open]);
+    const now = JSON.stringify([view.hotbar, view.sections, section, open, view.presence]);
     if (now === drawn) return;
     drawn = now;
     hotbar.replaceChildren(
@@ -370,23 +431,27 @@ function mountHud(controls, opts = {}) {
     note.textContent = current?.note ?? "";
     sheet.hidden = !open;
     menu.setAttribute("aria-expanded", String(open));
+    quiet.setAttribute("aria-expanded", String(open));
   };
   const setOpen = (next) => {
     if (open === next) return;
     open = next;
     draw();
     if (open) tabs.querySelector('[aria-selected="true"]')?.focus();
-    else menu.focus();
+    else (controls.presence === "quiet" ? quiet : menu).focus();
   };
   menu.addEventListener("click", () => setOpen(!open));
+  quiet.addEventListener("click", () => setOpen(!open));
   close.addEventListener("click", () => setOpen(false));
   const onKey = (e) => {
     if (host.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     const at = e.composedPath()[0];
     if (at && (at.tagName === "INPUT" || at.tagName === "TEXTAREA" || at.isContentEditable)) return;
     if (e.key === "Escape" && open) return setOpen(false);
-    if (e.key === "m" || e.key === "M") return setOpen(!open);
-    const item = controls.view().hotbar.find((i) => i.key === e.key);
+    const view = controls.view();
+    if (view.keys.menu && e.key.toLowerCase() === view.keys.menu && view.presence !== "hidden") return setOpen(!open);
+    if (!view.keys.hotbar || view.presence !== "full") return;
+    const item = view.hotbar.find((i) => i.key === e.key);
     if (item) press(item);
   };
   addEventListener("keydown", onKey);
@@ -408,8 +473,12 @@ function mountHud(controls, opts = {}) {
       return open;
     },
     setOpen,
+    bounds() {
+      if (host.hidden) return [];
+      return [id, menu, quiet, hotbar, target, sheet].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0).map((r) => ({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }));
+    },
     cover() {
-      if (host.hidden) return { top: 0, bottom: 0 };
+      if (host.hidden || controls.presence !== "full") return { top: 0, bottom: 0 };
       const low = hotbar.getBoundingClientRect();
       const high = id.getBoundingClientRect();
       return { top: Math.round(high.bottom), bottom: Math.round(innerHeight - Math.min(low.top, target.getBoundingClientRect().top)) };

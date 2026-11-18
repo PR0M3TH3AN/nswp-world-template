@@ -2,7 +2,7 @@
 import type * as THREE from "three";
 import type { Arrival, Layout, PortalDestination } from "@nswp/core";
 import type { PortalGate } from "nswp-sdk/home";
-import type { Controls } from "nswp-sdk/ui";
+import type { Controls, Corner, Presence, UiKeys } from "nswp-sdk/ui";
 
 /** world.json */
 export interface WorldConfig {
@@ -13,6 +13,12 @@ export interface WorldConfig {
   /** Where visitors can arrive. `main-entrance` is the default. Positions are metres; yaw is degrees, 0 facing −Z. */
   entryPoints: Record<string, { position: [number, number, number]; yaw: number }>;
   sky?: string;
+  /**
+   * How much room the controls take. `presence` is "full" (the whole HUD),
+   * "quiet" (one mark in `corner`) or "hidden". `keys` changes or switches off
+   * the keys the HUD answers to: `{ "menu": "p", "hotbar": false }`.
+   */
+  controls?: { presence?: Presence; corner?: Corner; keys?: Partial<UiKeys> };
 }
 
 export interface PortalOptions {

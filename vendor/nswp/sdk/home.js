@@ -1,7 +1,7 @@
 import {
   createPortalWindow,
   textSprite
-} from "./shared-JZA42PYF.js";
+} from "./shared-NS5R4FLB.js";
 import "./shared-PMZZ7JZF.js";
 import "./shared-WXBVZMXQ.js";
 

@@ -46,6 +46,13 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   // Airlock can show them where they're going before they go.
   ctx.addPortal({ url: "https://nswp-world-a.vercel.app/" }, { label: "The Gallery", position: [0, 0, 9], rotation: 180, color: 0xffc94d });
 
+  // A game has an interface of its own (here, the score), and the keyboard is
+  // for playing. So the world's controls go quiet: one mark in the corner,
+  // which still opens everything, and no number keys.
+  ctx.controls.setPresence("quiet");
+  ctx.controls.setCorner("top-right");
+  ctx.controls.setKeys({ hotbar: false });
+
   const head = new THREE.Vector3();
   let found = 0;
   return {

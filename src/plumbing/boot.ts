@@ -122,7 +122,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // One list of what a visitor can do here. The HUD draws it on a flat screen
   // and the console draws it in a headset; neither has any logic of its own.
   // The console takes this world's accent unless the visitor has chosen a look.
-  const controls = createControls({ title: config.world.title, address: new URL(config.world.url).host, theme: { accent: layout.room.accent } });
+  // world.json's `controls` says how much room they take; a scene can change that as it goes.
+  const controls = createControls({ title: config.world.title, address: new URL(config.world.url).host, theme: { accent: layout.room.accent }, ...config.controls });
   const hud = mountHud(controls);
   hooks.controls = controls;
 
