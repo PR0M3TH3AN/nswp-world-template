@@ -33,9 +33,8 @@ export interface PortalGate {
     showThrough(pano: THREE.Texture): THREE.Mesh;
     update(t: number, dt: number): void;
 }
-/** The standard doorway's size, in metres. */
-export declare const PORTAL_WIDTH = 1.5;
-export declare const PORTAL_HEIGHT = 2.1;
+/** The doorway's modelled frame, built once and shared by every doorway. Draw it in alloy (alloy.ts). */
+export declare function archFrameGeometry(): THREE.BufferGeometry;
 /**
  * The standard portal: an arched doorway standing on the floor, with a sign
  * above it saying where it leads. It is the same shape wherever a visitor
@@ -46,9 +45,9 @@ export interface HomeOptions {
     textColor?: string;
     /** Relay hints written into portal destinations, so an Airlock can find the worlds. */
     relays?: string[];
-    /** Add a soft overall light and a key light, for things of your own that need them. The home's own blocks don't. Default true. */
+    /** Add a soft overall light and a key light, for things of your own that need them. The home's own models don't. Default true. */
     lights?: boolean;
-    /** Draw the ground: the grid to the horizon and the skyline. Default true. Pass false to stand the home on a ground of your own. */
+    /** Draw the sky, the ground and the skyline. Default true. Pass false to stand the home in a place of your own. */
     environment?: boolean;
 }
 export interface Home {
@@ -59,11 +58,16 @@ export interface Home {
     markers: number;
     update(t: number, dt: number): void;
 }
+/** A soft round glow, to put round something that gives off light. */
+export declare function createHalo(color: THREE.ColorRepresentation, size: number): THREE.Sprite;
 /**
  * Draw a home layout. Positions are metres from the home's origin, which is
- * where the returned group sits. The home stands on the grid, and everything
- * built in is made of blocks: dark, with edges lit in the room's accent.
+ * where the returned group sits. The home stands under its own sky, and
+ * everything built in is modelled metal with seams of light in the room's accent.
  */
 export declare function createHome(layout: Layout, opts?: HomeOptions): Home;
+export { PORTAL_WIDTH, PORTAL_HEIGHT } from "./models.js";
 export { createEnvironment, GROUND, type Environment, type EnvironmentOptions } from "./environment.js";
-export { createBlocks, BLOCK, type Blocks, type BlockOptions } from "./blocks.js";
+export { MeshBuilder, type Paint, type BoxOptions, type Frame, type V3, type P2 } from "./mesh.js";
+export { createAlloy, type Alloy, type AlloyOptions } from "./alloy.js";
+export { addArchFrame, addBench, addCrystal, addGyro, addKnot, addLamp, addPictureFrame, addPlant, addPlinth, addSpiral, addTable, addTree, addWall, bandProfile, loopFrames, metalTone, mouldingPaint, mouldingProfile } from "./models.js";

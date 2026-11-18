@@ -7,14 +7,329 @@ import {
 } from "./shared-WXBVZMXQ.js";
 
 // packages/sdk/src/three.ts
-import * as THREE3 from "three";
+import * as THREE5 from "three";
 import { spawnOffset } from "@nswp/core";
 
-// packages/sdk/src/turn.ts
+// packages/sdk/src/alloy.ts
 import * as THREE from "three";
+var SKY_GLSL = `
+vec3 skyGlow(vec3 d, vec3 accent, vec3 ground){
+  float h = clamp(d.y, -1.0, 1.0);
+  float band = pow(1.0 - abs(h), 9.0);
+  float line = pow(1.0 - abs(h), 60.0);
+  vec3 up = mix(ground * 0.55, ground * 0.2, smoothstep(0.0, 0.7, h));
+  vec3 base = h > 0.0 ? up : ground;
+  return base + accent * (band * 0.4 + line * 0.9);
+}`;
+function createAlloy(accent, opts = {}) {
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uAccent: { value: new THREE.Color(accent) },
+      uGround: { value: new THREE.Color(opts.ground ?? 263947) },
+      uTime: { value: 0 },
+      uAim: { value: 0 },
+      uGloss: { value: opts.gloss ?? 0.5 },
+      uSpeed: { value: opts.speed ?? 1 },
+      uSheen: { value: opts.sheen ?? 0 },
+      uReach: { value: opts.reach ?? 3 },
+      uOpacity: { value: 1 }
+    },
+    vertexShader: `
+      attribute vec3 tone; attribute float glow; attribute float flow;
+      varying vec3 vWorld; varying vec3 vNormal; varying vec3 vTone; varying float vGlow; varying float vFlow;
+      void main(){
+        mat4 m = modelMatrix;
+        #ifdef USE_INSTANCING
+          m = modelMatrix * instanceMatrix;
+        #endif
+        vec4 w = m * vec4(position, 1.0);
+        vWorld = w.xyz;
+        vNormal = normalize(mat3(m) * normal);
+        vTone = tone; vGlow = glow; vFlow = flow;
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
+    fragmentShader: `
+      uniform vec3 uAccent; uniform vec3 uGround; uniform float uTime; uniform float uAim; uniform float uGloss; uniform float uSpeed; uniform float uSheen; uniform float uReach; uniform float uOpacity;
+      varying vec3 vWorld; varying vec3 vNormal; varying vec3 vTone; varying float vGlow; varying float vFlow;
+      ${SKY_GLSL}
+      void main(){
+        vec3 N = normalize(vNormal);
+        vec3 V = normalize(cameraPosition - vWorld);
+        float facing = max(dot(N, V), 0.0);
+        // Form: a light from above and in front, and more from the sky than from the floor.
+        float key = max(dot(N, normalize(vec3(0.35, 0.8, 0.5))), 0.0);
+        float dome = 0.5 + 0.5 * N.y;
+        vec3 c = vTone * (0.3 + 0.6 * dome + 0.75 * key);
+        // The place reflected in it, strongest at a glancing angle, as on real metal.
+        float fresnel = pow(1.0 - facing, 4.0);
+        vec3 mirror = skyGlow(reflect(-V, N), uAccent, uGround);
+        c += mirror * (0.1 + 0.75 * fresnel) * uGloss;
+        // A rim of the place's light where the surface turns away.
+        c += uAccent * pow(1.0 - facing, 3.0) * 0.16;
+        // Colours that shift with the angle, for things meant to be looked at.
+        if (uSheen > 0.0) {
+          vec3 shift = 0.5 + 0.5 * cos(6.2831 * (facing * 1.2 + vec3(0.0, 0.33, 0.67)) + vWorld.y * 1.5);
+          c = mix(c, c + shift * uAccent * 0.8 + shift * 0.1, uSheen * (0.3 + 0.7 * fresnel));
+        }
+        // Lights: the place's colour, with a brighter pulse travelling along them.
+        if (vGlow > 0.001) {
+          float run = fract(vFlow / uReach - uTime * 0.22 * uSpeed);
+          float pulse = smoothstep(0.8, 1.0, run) + smoothstep(0.1, 0.0, run) * 0.6;
+          vec3 light = mix(uAccent, vec3(1.0), 0.06 + 0.5 * pulse + 0.3 * uAim);
+          c = mix(c, light * (0.8 + 0.6 * pulse + 0.5 * uAim), vGlow);
+        }
+        // Distance takes it into the ground's colour.
+        float far = length(cameraPosition - vWorld);
+        c = mix(c, uGround, smoothstep(55.0, 290.0, far) * (1.0 - vGlow * 0.5));
+        gl_FragColor = vec4(c, uOpacity);
+        #include <colorspace_fragment>
+      }`
+  });
+  Object.defineProperty(material, "opacity", {
+    get: () => material.uniforms.uOpacity.value,
+    set: (value) => {
+      if (material.uniforms?.uOpacity) material.uniforms.uOpacity.value = value;
+    }
+  });
+  material.tick = (t) => {
+    material.uniforms.uTime.value = t;
+  };
+  material.aim = (amount) => {
+    material.uniforms.uAim.value = amount;
+  };
+  return material;
+}
+
+// packages/sdk/src/mesh.ts
+import * as THREE2 from "three";
+var va = new THREE2.Vector3();
+var vb = new THREE2.Vector3();
+var vc = new THREE2.Vector3();
+var vd = new THREE2.Vector3();
+var e1 = new THREE2.Vector3();
+var e2 = new THREE2.Vector3();
+var nn = new THREE2.Vector3();
+var hint = new THREE2.Vector3();
+var col = new THREE2.Color();
+var MeshBuilder = class {
+  positions = [];
+  normals = [];
+  tones = [];
+  glows = [];
+  flows = [];
+  matrix = new THREE2.Matrix4();
+  rotation = new THREE2.Matrix3();
+  /** The colour faces take when they don't say. */
+  tone = new THREE2.Color(791837);
+  get triangles() {
+    return this.positions.length / 9;
+  }
+  /** Place and turn everything added from now on: a position, and degrees about the vertical. */
+  at(position = [0, 0, 0], degrees = 0, scale = 1) {
+    this.matrix.makeRotationY(THREE2.MathUtils.degToRad(degrees)).scale(vc.set(scale, scale, scale)).setPosition(position[0], position[1], position[2]);
+    this.rotation.setFromMatrix4(this.matrix);
+    return this;
+  }
+  /** Place everything added from now on by any matrix: for a piece that leans or lies on its side. */
+  place(matrix) {
+    this.matrix.copy(matrix);
+    this.rotation.setFromMatrix4(this.matrix);
+    return this;
+  }
+  /** A flat four-sided face. Pass `out`, roughly which way it faces, and the corners may be given in either order. */
+  quad(a, b, c, d, paint = {}, out) {
+    const f = paint.flow;
+    const fl = Array.isArray(f) ? f : [f ?? 0, f ?? 0, f ?? 0, f ?? 0];
+    va.set(...a);
+    vb.set(...b);
+    vc.set(...c);
+    vd.set(...d);
+    nn.crossVectors(e1.subVectors(vb, va), e2.subVectors(vd, va));
+    if (nn.lengthSq() < 1e-12) nn.crossVectors(e1.subVectors(vc, vb), e2.subVectors(vd, vb));
+    let order = [va, vb, vc, va, vc, vd];
+    let fo = [fl[0], fl[1], fl[2], fl[0], fl[2], fl[3]];
+    if (out && nn.dot(hint.set(...out)) < 0) {
+      nn.negate();
+      order = [va, vd, vc, va, vc, vb];
+      fo = [fl[0], fl[3], fl[2], fl[0], fl[2], fl[1]];
+    }
+    nn.applyMatrix3(this.rotation).normalize();
+    col.set(paint.color ?? this.tone).multiplyScalar(paint.shade ?? 1);
+    for (let i = 0; i < 6; i++) {
+      const v = e1.copy(order[i]).applyMatrix4(this.matrix);
+      this.positions.push(v.x, v.y, v.z);
+      this.normals.push(nn.x, nn.y, nn.z);
+      this.tones.push(col.r, col.g, col.b);
+      this.glows.push(paint.glow ?? 0);
+      this.flows.push(fo[i]);
+    }
+  }
+  tri(a, b, c, paint = {}, out) {
+    this.quad(a, b, c, c, paint, out);
+  }
+  /** A face with a panel pressed into it. Corners in order round the face; `out` is which way it faces. */
+  panel(corners, out, o, paint = {}) {
+    const [a, b, c, d] = corners.map((p) => new THREE2.Vector3(...p));
+    const n = new THREE2.Vector3(...out).normalize();
+    const mid = new THREE2.Vector3().add(a).add(b).add(c).add(d).multiplyScalar(0.25);
+    const inner = [a, b, c, d].map((p, i, all2) => {
+      const next = all2[(i + 1) % 4];
+      const prev = all2[(i + 3) % 4];
+      return p.clone().add(next.clone().sub(p).setLength(o.margin)).add(prev.clone().sub(p).setLength(o.margin));
+    });
+    const deep = inner.map((p) => p.clone().addScaledVector(n, -o.depth));
+    const arr = (v) => [v.x, v.y, v.z];
+    const all = [a, b, c, d];
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      this.quad(arr(all[i]), arr(all[j]), arr(inner[j]), arr(inner[i]), paint, out);
+      const wallMid = inner[i].clone().add(inner[j]).multiplyScalar(0.5);
+      const inward = mid.clone().sub(wallMid);
+      this.quad(arr(inner[i]), arr(inner[j]), arr(deep[j]), arr(deep[i]), { ...paint, glow: o.glow ?? 0, shade: (paint.shade ?? 1) * (o.glow ? 1 : 0.6) }, arr(inward));
+    }
+    this.quad(arr(deep[0]), arr(deep[1]), arr(deep[2]), arr(deep[3]), { ...paint, shade: (paint.shade ?? 1) * 0.55 }, out);
+  }
+  /** A box with its edges bevelled, and panels pressed into the faces named: "x+ x- y+ y- z+ z-", or "sides". */
+  box(size, at, o = {}) {
+    const [hx, hy, hz] = [size[0] / 2, size[1] / 2, size[2] / 2];
+    const b = Math.min(o.bevel ?? 0, hx * 0.9, hy * 0.9, hz * 0.9);
+    const h = [hx, hy, hz];
+    const want = (o.panel?.faces ?? "sides").replace("sides", "x+ x- z+ z-").split(/\s+/);
+    const point = (axis, s) => {
+      const p = [0, 0, 0];
+      for (let k = 0; k < 3; k++) p[k] = at[k] + s[k] * (k === axis ? h[k] : h[k] - b);
+      return p;
+    };
+    const signs = [-1, 1];
+    for (let axis = 0; axis < 3; axis++) {
+      const [u, v] = [(axis + 1) % 3, (axis + 2) % 3];
+      for (const s of signs) {
+        const corner = (su, sv) => {
+          const q = [0, 0, 0];
+          q[axis] = s;
+          q[u] = su;
+          q[v] = sv;
+          return point(axis, q);
+        };
+        const out = [0, 0, 0];
+        out[axis] = s;
+        const face = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+        const name = `${"xyz"[axis]}${s > 0 ? "+" : "-"}`;
+        if (o.panel && want.includes(name) && Math.min(h[u], h[v]) - b > o.panel.margin * 1.2) this.panel(face, out, o.panel, o);
+        else this.quad(...face, o, out);
+      }
+    }
+    if (b <= 0) return;
+    for (let axis = 0; axis < 3; axis++) {
+      const [u, v] = [(axis + 1) % 3, (axis + 2) % 3];
+      for (const su of signs)
+        for (const sv of signs) {
+          const s = (along) => {
+            const q = [0, 0, 0];
+            q[axis] = along;
+            q[u] = su;
+            q[v] = sv;
+            return q;
+          };
+          const out = [0, 0, 0];
+          out[u] = su;
+          out[v] = sv;
+          this.quad(point(u, s(-1)), point(u, s(1)), point(v, s(1)), point(v, s(-1)), { ...o, shade: (o.shade ?? 1) * 1.25 }, out);
+        }
+    }
+    for (const sx of signs) for (const sy of signs) for (const sz of signs) this.tri(point(0, [sx, sy, sz]), point(1, [sx, sy, sz]), point(2, [sx, sy, sz]), { ...o, shade: (o.shade ?? 1) * 1.25 }, [sx, sy, sz]);
+  }
+  /**
+   * Sweep a profile along a path. The profile is a closed outline drawn
+   * anticlockwise in each frame's own x and y; `paint(i)` colours the side that
+   * runs from point i to the next. Open ends are capped.
+   */
+  sweep(profile, frames, paint = () => ({}), o = {}) {
+    const at = (k, i) => {
+      const f = frames[k];
+      const [u, v] = profile[i % profile.length];
+      return [f.p[0] + f.x[0] * u + f.y[0] * v, f.p[1] + f.x[1] * u + f.y[1] * v, f.p[2] + f.x[2] * u + f.y[2] * v];
+    };
+    const last = o.loop ? frames.length : frames.length - 1;
+    for (let k = 0; k < last; k++) {
+      const k2 = (k + 1) % frames.length;
+      const [t1, t2] = [frames[k].t ?? k, frames[k2].t ?? k + 1];
+      for (let i = 0; i < profile.length; i++) {
+        const p = paint(i);
+        this.quad(at(k, i), at(k, i + 1), at(k2, i + 1), at(k2, i), { ...p, flow: p.flow ?? [t1, t1, t2, t2] });
+      }
+    }
+    if (o.loop || o.caps === false) return;
+    for (const [k, dir] of [[0, -1], [frames.length - 1, 1]]) {
+      const f = frames[k];
+      const tangent = new THREE2.Vector3(...f.x).cross(new THREE2.Vector3(...f.y)).multiplyScalar(dir);
+      for (let i = 1; i < profile.length - 1; i++) this.tri(at(k, 0), at(k, i), at(k, i + 1), paint(-1), [tangent.x, tangent.y, tangent.z]);
+    }
+  }
+  /**
+   * Turn a profile on a lathe about the vertical through `at`. The profile is
+   * [radius, height] pairs from the bottom up. `sides` is how many faces round:
+   * 4 makes a square column, 6 a hexagon, 24 a round one. `twist` turns it as it rises.
+   */
+  lathe(profile, at, sides, paint = () => ({}), o = {}) {
+    const top = profile[profile.length - 1][1];
+    const ring = (row, s) => {
+      const [r, y] = profile[row];
+      const a = s / sides * Math.PI * 2 + (o.turn ?? 0) + (o.twist ?? 0) * (top ? y / top : 0);
+      return [at[0] + Math.cos(a) * r, at[1] + y, at[2] + Math.sin(a) * r];
+    };
+    for (let row = 0; row < profile.length - 1; row++) {
+      const [r1, y1] = profile[row];
+      const [r2, y2] = profile[row + 1];
+      for (let s = 0; s < sides; s++) {
+        const a = (s + 0.5) / sides * Math.PI * 2 + (o.turn ?? 0);
+        const out = [Math.cos(a) * (y2 - y1), -(r2 - r1), Math.sin(a) * (y2 - y1)];
+        if (Math.abs(out[0]) + Math.abs(out[1]) + Math.abs(out[2]) < 1e-9) continue;
+        const p = paint(row);
+        this.quad(ring(row, s), ring(row, s + 1), ring(row + 1, s + 1), ring(row + 1, s), { ...p, flow: p.flow ?? [y1, y1, y2, y2] }, out);
+      }
+    }
+  }
+  /** A thin lit line lying just proud of a surface: from a to b, `width` wide, on a face that points `out`. */
+  line(a, b, width, out, paint = {}) {
+    const n = new THREE2.Vector3(...out).normalize();
+    const along = new THREE2.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    const side = along.clone().cross(n).setLength(width / 2);
+    const lift = n.clone().multiplyScalar(4e-3);
+    const A = new THREE2.Vector3(...a).add(lift);
+    const B = new THREE2.Vector3(...b).add(lift);
+    const len = along.length();
+    this.quad(
+      [A.x - side.x, A.y - side.y, A.z - side.z],
+      [B.x - side.x, B.y - side.y, B.z - side.z],
+      [B.x + side.x, B.y + side.y, B.z + side.z],
+      [A.x + side.x, A.y + side.y, A.z + side.z],
+      { glow: 1, ...paint, flow: paint.flow ?? [0, len, len, 0] },
+      out
+    );
+  }
+  /** Everything added, as one geometry. */
+  geometry() {
+    const g = new THREE2.BufferGeometry();
+    g.setAttribute("position", new THREE2.Float32BufferAttribute(this.positions, 3));
+    g.setAttribute("normal", new THREE2.Float32BufferAttribute(this.normals, 3));
+    g.setAttribute("tone", new THREE2.Float32BufferAttribute(this.tones, 3));
+    g.setAttribute("glow", new THREE2.Float32BufferAttribute(this.glows, 1));
+    g.setAttribute("flow", new THREE2.Float32BufferAttribute(this.flows, 1));
+    g.computeBoundingSphere();
+    return g;
+  }
+  /** Everything added, as one mesh in this material (see alloy.ts). */
+  build(material) {
+    return new THREE2.Mesh(this.geometry(), material);
+  }
+};
+
+// packages/sdk/src/turn.ts
+import * as THREE3 from "three";
 function turnVisitor(rig, camera, degrees) {
-  const head = camera.getWorldPosition(new THREE.Vector3());
-  const a = THREE.MathUtils.degToRad(degrees);
+  const head = camera.getWorldPosition(new THREE3.Vector3());
+  const a = THREE3.MathUtils.degToRad(degrees);
   const dx = rig.position.x - head.x;
   const dz = rig.position.z - head.z;
   rig.position.x = head.x + dx * Math.cos(a) + dz * Math.sin(a);
@@ -23,7 +338,7 @@ function turnVisitor(rig, camera, degrees) {
 }
 
 // packages/sdk/src/console.ts
-import * as THREE2 from "three";
+import * as THREE4 from "three";
 var W = 1024;
 var H = 640;
 var FLOAT_W = 0.84;
@@ -67,11 +382,11 @@ function wrap(g, text, max, lines) {
 var SANS = 'system-ui, "Segoe UI", Roboto, sans-serif';
 var MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 function holoMaterial(map) {
-  return new THREE2.ShaderMaterial({
+  return new THREE4.ShaderMaterial({
     transparent: true,
     depthTest: false,
-    side: THREE2.DoubleSide,
-    uniforms: { map: { value: map }, uOpen: { value: 1 }, uTime: { value: 0 }, uAccent: { value: new THREE2.Color() }, uLines: { value: 1 } },
+    side: THREE4.DoubleSide,
+    uniforms: { map: { value: map }, uOpen: { value: 1 }, uTime: { value: 0 }, uAccent: { value: new THREE4.Color() }, uLines: { value: 1 } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
     fragmentShader: `uniform sampler2D map; uniform float uOpen; uniform float uTime; uniform vec3 uAccent; uniform float uLines; varying vec2 vUv;
       void main(){
@@ -85,27 +400,27 @@ function holoMaterial(map) {
   });
 }
 function createConsole(controls, opts) {
-  const group = new THREE2.Group();
+  const group = new THREE4.Group();
   group.name = "nswp-console";
   group.visible = false;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const g = canvas.getContext("2d");
-  const texture = new THREE2.CanvasTexture(canvas);
-  texture.colorSpace = THREE2.SRGBColorSpace;
+  const texture = new THREE4.CanvasTexture(canvas);
+  texture.colorSpace = THREE4.SRGBColorSpace;
   texture.anisotropy = 4;
   const material = holoMaterial(texture);
-  const panel = new THREE2.Mesh(new THREE2.PlaneGeometry(1, ASPECT), material);
+  const panel = new THREE4.Mesh(new THREE4.PlaneGeometry(1, ASPECT), material);
   panel.renderOrder = 30;
   panel.visible = false;
   group.add(panel);
   const openerCanvas = document.createElement("canvas");
   openerCanvas.width = 256;
   openerCanvas.height = 300;
-  const openerTexture = new THREE2.CanvasTexture(openerCanvas);
-  openerTexture.colorSpace = THREE2.SRGBColorSpace;
-  const opener = new THREE2.Mesh(new THREE2.PlaneGeometry(0.15, 0.15 * 300 / 256), new THREE2.MeshBasicMaterial({ map: openerTexture, transparent: true, depthTest: false }));
+  const openerTexture = new THREE4.CanvasTexture(openerCanvas);
+  openerTexture.colorSpace = THREE4.SRGBColorSpace;
+  const opener = new THREE4.Mesh(new THREE4.PlaneGeometry(0.15, 0.15 * 300 / 256), new THREE4.MeshBasicMaterial({ map: openerTexture, transparent: true, depthTest: false }));
   opener.renderOrder = 30;
   group.add(opener);
   let open = false;
@@ -298,11 +613,11 @@ function createConsole(controls, opts) {
     opts.rig.add(grip);
     return info;
   });
-  const head = new THREE2.Vector3();
-  const facing = new THREE2.Vector3();
-  const want = new THREE2.Vector3();
-  const hand = new THREE2.Vector3();
-  const toHand = new THREE2.Vector3();
+  const head = new THREE4.Vector3();
+  const facing = new THREE4.Vector3();
+  const want = new THREE4.Vector3();
+  const hand = new THREE4.Vector3();
+  const toHand = new THREE4.Vector3();
   const setOpen = (next, where = "floating") => {
     if (open === next && mount === where) return;
     open = next;
@@ -458,6 +773,39 @@ function createConsole(controls, opts) {
 }
 
 // packages/sdk/src/three.ts
+var avatarShapes = null;
+function avatarParts() {
+  if (avatarShapes) return avatarShapes;
+  const tone = new THREE5.Color(1713456);
+  const head = new MeshBuilder().at();
+  head.tone = tone;
+  head.lathe([[5e-4, -0.135], [0.07, -0.125], [0.118, -0.05], [0.13, 0.02], [0.112, 0.085], [0.06, 0.128], [5e-4, 0.14]], [0, 0, 0], 8, (row) => ({ shade: 0.85 + row * 0.12 }), { turn: Math.PI / 8 });
+  head.lathe([[0.074, -0.125], [0.084, -0.118]], [0, 0, 0], 8, () => ({ glow: 0.8 }), { turn: Math.PI / 8 });
+  head.box([0.15, 0.04, 0.05], [0, 0.02, -0.108], { glow: 1 });
+  head.box([0.18, 0.065, 0.04], [0, 0.02, -0.098], { bevel: 0.012, shade: 0.6 });
+  for (const x of [-0.128, 0.128]) head.box([0.02, 0.07, 0.07], [x, 0, 0], { bevel: 6e-3, shade: 1.3 });
+  const torso = new MeshBuilder().at();
+  torso.tone = tone;
+  torso.lathe([[0.03, -0.2], [0.17, -0.25], [0.12, 0.12], [0.145, 0.165], [0.145, 0.19], [0.08, 0.25], [5e-4, 0.25]], [0, 0, 0], 6, (row) => row === 0 ? { glow: 0.45 } : row === 3 ? { glow: 0.7 } : { shade: 0.9 + row % 2 * 0.2 }, { turn: Math.PI / 6 });
+  const hand = new MeshBuilder().at();
+  hand.lathe([[5e-4, -0.06], [0.04, 0], [5e-4, 0.06]], [0, 0, 0], 4, () => ({ glow: 0.75 }));
+  avatarShapes = { head: head.geometry(), torso: torso.geometry(), hand: hand.geometry() };
+  return avatarShapes;
+}
+function createFigure(color) {
+  const parts = avatarParts();
+  const metal = createAlloy(color, { gloss: 0.7 });
+  const head = new THREE5.Group();
+  head.add(new THREE5.Mesh(parts.head, metal));
+  const torso = new THREE5.Mesh(parts.torso, metal);
+  torso.position.y = -0.45;
+  const hands = [new THREE5.Mesh(parts.hand, metal), new THREE5.Mesh(parts.hand, metal)];
+  hands[0].position.set(-0.28, -0.5, -0.12);
+  hands[1].position.set(0.28, -0.5, -0.12);
+  const group = new THREE5.Group();
+  group.add(head, torso, ...hands);
+  return { group, head, torso, hands, metal };
+}
 var SEND_EVERY_MS = 66;
 var FADE_START = 0.9;
 var FADE_END = 0.45;
@@ -479,16 +827,16 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE3.CanvasTexture(canvas);
-  tex.colorSpace = THREE3.SRGBColorSpace;
-  const sprite = new THREE3.Sprite(new THREE3.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE5.CanvasTexture(canvas);
+  tex.colorSpace = THREE5.SRGBColorSpace;
+  const sprite = new THREE5.Sprite(new THREE5.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
 function createPresence(d) {
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE3.AudioListener();
+  const listener = new THREE5.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -498,24 +846,18 @@ function createPresence(d) {
   let micTrack = null;
   let offsetApplied = false;
   const makeAvatar = (member) => {
-    const color = new THREE3.Color(member.color);
-    const root = new THREE3.Group();
+    const color = new THREE5.Color(member.color);
+    const root = new THREE5.Group();
     root.visible = false;
-    const head = new THREE3.Group();
-    const skull = new THREE3.Mesh(new THREE3.SphereGeometry(0.13, 24, 16), new THREE3.MeshStandardMaterial({ color, roughness: 0.5 }));
-    const visor = new THREE3.Mesh(new THREE3.BoxGeometry(0.2, 0.07, 0.06), new THREE3.MeshStandardMaterial({ color: 1119256, roughness: 0.2, metalness: 0.6 }));
-    visor.position.set(0, 0.02, -0.1);
+    const figure = createFigure(color);
+    const { head, torso, hands, metal } = figure;
     const label = textSprite(member.name, labelColor, 0.5);
     label.position.set(0, 0.3, 0);
-    head.add(skull, visor, label);
-    const torso = new THREE3.Mesh(new THREE3.CylinderGeometry(0.1, 0.17, 0.5, 16), new THREE3.MeshStandardMaterial({ color, roughness: 0.8, transparent: true, opacity: 0.85 }));
-    const handGeo = new THREE3.SphereGeometry(0.045, 12, 8);
-    const handMat = new THREE3.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.3 });
-    const hands = [new THREE3.Mesh(handGeo, handMat), new THREE3.Mesh(handGeo, handMat)];
+    head.add(label);
     hands.forEach((h) => h.visible = false);
-    root.add(head, torso, ...hands);
+    root.add(figure.group);
     d.scene.add(root);
-    const materials = [skull.material, visor.material, torso.material, handMat, label.material].map((material) => {
+    const materials = [metal, label.material].map((material) => {
       const opacity = material.opacity;
       material.transparent = true;
       return { material, opacity };
@@ -529,7 +871,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE3.PositionalAudio(listener);
+    const pa = new THREE5.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -549,8 +891,8 @@ function createPresence(d) {
     if (a.element) a.element.srcObject = null;
     d.scene.remove(a.root);
   };
-  const v = new THREE3.Vector3();
-  const q = new THREE3.Quaternion();
+  const v = new THREE5.Vector3();
+  const q = new THREE5.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -625,9 +967,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE3.Vector3();
-  const tq = new THREE3.Quaternion();
-  const euler = new THREE3.Euler();
+  const tp = new THREE5.Vector3();
+  const tq = new THREE5.Quaternion();
+  const euler = new THREE5.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -665,8 +1007,9 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE3.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE5.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
+        a.materials[0].material.tick(performance.now() / 1e3);
         const snap = a.placed ? k : 1;
         apply(a.head, a.target.head, snap);
         a.placed = true;
@@ -725,11 +1068,11 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE3.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE3.HalfFloatType });
-  const flatTarget = new THREE3.WebGLRenderTarget(width, height);
-  flatTarget.texture.colorSpace = THREE3.SRGBColorSpace;
-  const material = new THREE3.ShaderMaterial({
-    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE3.Vector3() }, up: { value: new THREE3.Vector3() }, right: { value: new THREE3.Vector3() } },
+  const faceTarget = new THREE5.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE5.HalfFloatType });
+  const flatTarget = new THREE5.WebGLRenderTarget(width, height);
+  flatTarget.texture.colorSpace = THREE5.SRGBColorSpace;
+  const material = new THREE5.ShaderMaterial({
+    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE5.Vector3() }, up: { value: new THREE5.Vector3() }, right: { value: new THREE5.Vector3() } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
       void main(){
@@ -746,19 +1089,19 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     depthTest: false,
     depthWrite: false
   });
-  const quad = new THREE3.Mesh(new THREE3.PlaneGeometry(2, 2), material);
-  const quadScene = new THREE3.Scene();
+  const quad = new THREE5.Mesh(new THREE5.PlaneGeometry(2, 2), material);
+  const quadScene = new THREE5.Scene();
   quadScene.add(quad);
-  const quadCamera = new THREE3.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const faceCamera = new THREE3.PerspectiveCamera(90, 1, 0.05, 700);
+  const quadCamera = new THREE5.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const faceCamera = new THREE5.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   const views = [
-    [new THREE3.Vector3(0, 0, -1), new THREE3.Vector3(0, 1, 0)],
-    [new THREE3.Vector3(1, 0, 0), new THREE3.Vector3(0, 1, 0)],
-    [new THREE3.Vector3(0, 0, 1), new THREE3.Vector3(0, 1, 0)],
-    [new THREE3.Vector3(-1, 0, 0), new THREE3.Vector3(0, 1, 0)],
-    [new THREE3.Vector3(0, 1, 0), new THREE3.Vector3(0, 0, 1)],
-    [new THREE3.Vector3(0, -1, 0), new THREE3.Vector3(0, 0, -1)]
+    [new THREE5.Vector3(0, 0, -1), new THREE5.Vector3(0, 1, 0)],
+    [new THREE5.Vector3(1, 0, 0), new THREE5.Vector3(0, 1, 0)],
+    [new THREE5.Vector3(0, 0, 1), new THREE5.Vector3(0, 1, 0)],
+    [new THREE5.Vector3(-1, 0, 0), new THREE5.Vector3(0, 1, 0)],
+    [new THREE5.Vector3(0, 1, 0), new THREE5.Vector3(0, 0, 1)],
+    [new THREE5.Vector3(0, -1, 0), new THREE5.Vector3(0, 0, -1)]
   ];
   try {
     for (const o of hidden) o.visible = false;
@@ -805,24 +1148,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE3.Texture(image);
-  texture.colorSpace = THREE3.SRGBColorSpace;
-  texture.wrapS = THREE3.RepeatWrapping;
+  const texture = new THREE5.Texture(image);
+  texture.colorSpace = THREE5.SRGBColorSpace;
+  texture.wrapS = THREE5.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE3.LinearFilter;
-  texture.magFilter = THREE3.LinearFilter;
+  texture.minFilter = THREE5.LinearFilter;
+  texture.magFilter = THREE5.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE3.ShaderMaterial({
+  const material = new THREE5.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE3.Matrix3() },
-      center: { value: new THREE3.Vector3() },
+      toLocal: { value: new THREE5.Matrix3() },
+      center: { value: new THREE5.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -842,10 +1185,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE3.DoubleSide
+    side: THREE5.DoubleSide
   });
-  const mesh = new THREE3.Mesh(geometry, material);
-  const rotation = new THREE3.Matrix4();
+  const mesh = new THREE5.Mesh(geometry, material);
+  const rotation = new THREE5.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();
@@ -997,8 +1340,12 @@ async function addViewControls(controls, d) {
 }
 
 export {
+  SKY_GLSL,
+  createAlloy,
+  MeshBuilder,
   turnVisitor,
   createConsole,
+  createFigure,
   textSprite,
   createPresence,
   capturePanorama,
