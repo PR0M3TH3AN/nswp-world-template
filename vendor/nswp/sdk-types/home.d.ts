@@ -21,7 +21,7 @@ export interface PortalGateOptions {
     textColor?: string;
 }
 export interface PortalGate {
-    /** Place and turn this. The portal faces its local +Z. */
+    /** Place and turn this. The doorway stands on the floor at the group's origin and faces its local +Z. */
     group: THREE.Group;
     /** The surface to aim at: test rays against this. */
     target: THREE.Mesh;
@@ -33,7 +33,14 @@ export interface PortalGate {
     showThrough(pano: THREE.Texture): void;
     update(t: number, dt: number): void;
 }
-/** The standard portal: a ring, a moving surface, and a sign saying where it leads. */
+/** The standard doorway's size, in metres. */
+export declare const PORTAL_WIDTH = 1.5;
+export declare const PORTAL_HEIGHT = 2.1;
+/**
+ * The standard portal: an arched doorway standing on the floor, with a sign
+ * above it saying where it leads. It is the same shape wherever a visitor
+ * meets one, so a way out is always recognisable.
+ */
 export declare function createPortalGate(destination: PortalDestination, opts?: PortalGateOptions): PortalGate;
 export interface HomeOptions {
     textColor?: string;

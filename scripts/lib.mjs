@@ -2,7 +2,8 @@
 import { build as esbuild, context } from "esbuild";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildLayoutEvent, buildWorldEvent, parseLayoutEvent, parseWorldEvent, verifyEvent } from "../vendor/nswp/nswp-core.js";
 
@@ -10,9 +11,44 @@ export const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const dist = join(root, "dist");
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
-/** world.json and home.json, as written by the world's owner. */
+const PICTURES = join(root, "pictures");
+const MAX_PICTURE_BYTES = 1024 * 1024; // the protocol's ceiling for a picture in a frame
+
+/**
+ * A frame in home.json may name a file in pictures/ instead of an address and
+ * a hash. This fills both in, so the owner never works out a hash by hand.
+ */
+function resolvePictures(config, home) {
+  const files = [];
+  const problems = [];
+  const items = (Array.isArray(home.items) ? home.items : []).map((item) => {
+    const name = item?.type === "frame" ? item.args?.[0] : undefined;
+    if (typeof name !== "string" || /^https?:/i.test(name)) return item;
+    const file = join(PICTURES, name);
+    if (basename(name) !== name || !existsSync(file)) {
+      problems.push(`home.json: a frame names "${name}", but there is no such file in pictures/.`);
+      return item;
+    }
+    const bytes = readFileSync(file);
+    if (bytes.length > MAX_PICTURE_BYTES) {
+      problems.push(`pictures/${name} is ${(bytes.length / 1024 / 1024).toFixed(1)} MB. A picture in a frame can be 1 MB at most; save a smaller copy.`);
+      return item;
+    }
+    files.push(name);
+    return { ...item, args: [new URL(`pictures/${encodeURIComponent(name)}`, config.world.url).href, createHash("sha256").update(bytes).digest("hex")] };
+  });
+  return { home: { ...home, items }, files, problems };
+}
+
+/**
+ * world.json and home.json, as written by the world's owner. `written` is
+ * home.json untouched; `home` has its pictures' addresses and hashes filled in.
+ */
 export function readConfig() {
-  return { config: readJson(join(root, "world.json")), home: readJson(join(root, "home.json")) };
+  const config = readJson(join(root, "world.json"));
+  const written = readJson(join(root, "home.json"));
+  const { home, files, problems } = resolvePictures(config, written);
+  return { config, home, written, pictures: { files, problems } };
 }
 
 /** Where this world's publisher key is kept. Never inside the repository. */
@@ -44,8 +80,8 @@ export function upToDate(signed, template) {
 }
 
 /** Problems in world.json and home.json, as { errors, warnings } of plain sentences. */
-export function validate({ config, home }) {
-  const errors = [];
+export function validate({ config, home, pictures }) {
+  const errors = [...(pictures?.problems ?? [])];
   const warnings = [];
   const t = templates({ config, home });
   const world = parseWorldEvent(t.world);
@@ -102,9 +138,11 @@ const nswpPlugin = {
     b.onLoad({ filter: /.*/, namespace: "nswp-site" }, () => {
       const state = readState();
       return {
+        warnings: state.pictures.problems.map((text) => ({ text })),
         contents: JSON.stringify({ layout: templates(state).layout, publisher: state.signed.world?.pubkey ?? null }),
         loader: "json",
-        watchFiles: [join(root, "home.json"), join(root, "world.json"), join(root, "src", "index.html"), join(root, "signed", "world.event.json")],
+        watchFiles: [join(root, "home.json"), join(root, "world.json"), join(root, "src", "index.html"), join(root, "signed", "world.event.json"), ...state.pictures.files.map((f) => join(PICTURES, f))],
+        watchDirs: existsSync(PICTURES) ? [PICTURES] : [],
       };
     });
   },
@@ -113,13 +151,17 @@ const nswpPlugin = {
 const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 /** Everything in dist/ that isn't the script bundle. */
-function writeStatic({ config, signed }) {
+function writeStatic({ config, signed, pictures }) {
   const w = config.world;
   const html = readFileSync(join(root, "src", "index.html"), "utf8").replaceAll("%TITLE%", escapeHtml(w.title)).replaceAll("%SUMMARY%", escapeHtml(w.summary ?? ""));
   writeFileSync(join(dist, "index.html"), html);
   if (existsSync(join(root, "previews"))) {
     mkdirSync(join(dist, "previews"), { recursive: true });
     for (const f of readdirSync(join(root, "previews"))) if (/^[0-9a-f]{64}\.webp$/.test(f)) cpSync(join(root, "previews", f), join(dist, "previews", f));
+  }
+  if (pictures.files.length) {
+    mkdirSync(join(dist, "pictures"), { recursive: true });
+    for (const f of pictures.files) cpSync(join(PICTURES, f), join(dist, "pictures", f));
   }
   if (signed.world) {
     mkdirSync(join(dist, ".well-known"), { recursive: true });
@@ -138,6 +180,8 @@ function writeStatic({ config, signed }) {
     ["/*", "/(.*)", all],
     ["/.well-known/nswp.json", "/.well-known/nswp.json", [...open, ["Content-Type", "application/json; charset=utf-8"], ["Cache-Control", "public, max-age=300"]]],
     ["/previews/*", "/previews/(.*)", [...open, ["Cache-Control", "public, max-age=31536000, immutable"]]],
+    // Open, so another renderer drawing this home can fetch a picture and check its hash.
+    ["/pictures/*", "/pictures/(.*)", open],
   ];
   writeFileSync(join(dist, "vercel.json"), `${JSON.stringify({ headers: rules.map(([, source, h]) => ({ source, headers: h.map(([key, value]) => ({ key, value })) })) }, null, 2)}\n`);
   writeFileSync(join(dist, "_headers"), `${rules.map(([path, , h]) => `${path}\n${h.map(([k, v]) => `  ${k}: ${v}`).join("\n")}`).join("\n\n")}\n`);

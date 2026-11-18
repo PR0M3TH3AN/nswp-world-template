@@ -7,7 +7,7 @@
     "description": "Built from the NSWP world template.",
     "modes": ["immersive-vr", "inline-3d"],
     "capabilities": ["webxr", "spatial-portals", "rooms"],
-    "comfort": { "locomotion": "stationary", "intensity": "low", "seated": "supported" },
+    "comfort": { "locomotion": "teleport", "intensity": "low", "seated": "supported" },
     "inputs": ["controllers", "hands", "gaze", "keyboard-mouse", "touch"],
     "perf": "mobile",
     "topics": [],

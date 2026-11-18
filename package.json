@@ -15,6 +15,7 @@
     "sign": "node scripts/sign.mjs",
     "announce": "node scripts/announce.mjs",
     "preview": "node scripts/preview.mjs",
+    "look": "node scripts/look.mjs",
     "vendor": "node scripts/vendor.mjs",
     "vendor:check": "node scripts/vendor.mjs --check"
   },

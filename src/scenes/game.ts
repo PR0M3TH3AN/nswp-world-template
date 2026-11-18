@@ -53,6 +53,8 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   const head = new THREE.Vector3();
   let found = 0;
   return {
+    // Where a visitor may stand: anywhere on the field, and no further.
+    canStand: (x, z) => Math.hypot(x, z + 4) < 19,
     update(t) {
       camera.getWorldPosition(head);
       for (const light of lights) {

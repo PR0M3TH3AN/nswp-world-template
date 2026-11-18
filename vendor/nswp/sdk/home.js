@@ -12,25 +12,64 @@ function addressLine(dest) {
   const chk = checkDestination(dest.url);
   return chk.ok ? chk.value.registrableDomain ?? chk.value.hostname : "invalid address";
 }
+var PORTAL_WIDTH = 1.5;
+var PORTAL_HEIGHT = 2.1;
+var SPRING = PORTAL_HEIGHT - PORTAL_WIDTH / 2;
+var archMask = null;
+function archMaskTexture() {
+  if (archMask) return archMask;
+  const canvas = document.createElement("canvas");
+  canvas.width = 500;
+  canvas.height = 700;
+  const g = canvas.getContext("2d");
+  const k = canvas.height / PORTAL_HEIGHT;
+  const inset = 0.045 * k;
+  g.beginPath();
+  g.moveTo(inset, canvas.height);
+  g.lineTo(inset, canvas.height - SPRING * k);
+  g.arc(canvas.width / 2, canvas.height - SPRING * k, canvas.width / 2 - inset, Math.PI, 0);
+  g.lineTo(canvas.width - inset, canvas.height);
+  g.closePath();
+  g.fillStyle = "#ffffff";
+  g.fill();
+  archMask = new THREE.CanvasTexture(canvas);
+  return archMask;
+}
 function createPortalGate(destination, opts = {}) {
   const color = new THREE.Color(opts.color ?? 5032432);
   const textColor = opts.textColor ?? "#f2f3f6";
   const group = new THREE.Group();
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.08, 16, 96), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.2 }));
   const surface = new THREE.ShaderMaterial({
-    transparent: true,
     side: THREE.DoubleSide,
-    uniforms: { uTime: { value: 0 }, uColor: { value: color }, uAim: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uColor: { value: color }, uAim: { value: 0 }, uSize: { value: new THREE.Vector2(PORTAL_WIDTH, PORTAL_HEIGHT) }, uSpring: { value: SPRING } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-    fragmentShader: `uniform float uTime; uniform vec3 uColor; uniform float uAim; varying vec2 vUv;
-      void main(){ vec2 p = vUv - 0.5; float r = length(p) * 2.0; float a = atan(p.y, p.x);
-        float swirl = 0.5 + 0.5 * sin(a * 3.0 + r * 9.0 - uTime * 2.0);
-        vec3 c = mix(vec3(0.02,0.02,0.05), uColor, swirl * (1.0 - r) + uAim * 0.35);
-        gl_FragColor = vec4(c, smoothstep(1.0, 0.92, r)); }`
+    fragmentShader: `uniform float uTime; uniform vec3 uColor; uniform float uAim; uniform vec2 uSize; uniform float uSpring; varying vec2 vUv;
+      void main(){
+        vec2 p = vec2((vUv.x - 0.5) * uSize.x, vUv.y * uSize.y);
+        float half_ = uSize.x * 0.5;
+        float d = p.y < uSpring ? half_ - abs(p.x) : half_ - length(p - vec2(0.0, uSpring));
+        if (d < 0.0) discard;
+        float horizon = uSize.y * 0.34;
+        vec3 dusk = uColor * 0.10 + vec3(0.015, 0.015, 0.04);
+        vec3 sky = mix(uColor * 0.62 + vec3(0.06), dusk, smoothstep(horizon, uSize.y, p.y));
+        vec2 sun = vec2(0.12 * sin(uTime * 0.25), horizon + 0.42);
+        float glow = exp(-5.0 * length(p - sun));
+        sky += (uColor * 0.7 + vec3(0.35)) * glow;
+        vec3 ground = uColor * 0.07 + vec3(0.02);
+        float path = 1.0 - smoothstep(0.0, 0.03, abs(p.x) - (0.06 + (horizon - p.y) * 0.5));
+        ground += uColor * 0.22 * path;
+        vec3 view = (p.y > horizon ? sky : ground) * (1.0 + uAim * 0.35);
+        float frame = 1.0 - smoothstep(0.04, 0.05, d);
+        gl_FragColor = vec4(mix(view, mix(vec3(0.95, 0.955, 0.965), uColor, uAim), frame), 1.0);
+      }`
   });
-  const target = new THREE.Mesh(new THREE.CircleGeometry(0.95, 64), surface);
+  const plane = new THREE.PlaneGeometry(PORTAL_WIDTH, PORTAL_HEIGHT);
+  const target = new THREE.Mesh(plane, surface);
   target.name = "portal";
-  group.add(ring, target);
+  target.position.y = PORTAL_HEIGHT / 2;
+  const sill = new THREE.Mesh(new THREE.BoxGeometry(PORTAL_WIDTH + 0.1, 0.06, 0.24), new THREE.MeshBasicMaterial({ color: 15922166 }));
+  sill.position.y = 0.03;
+  group.add(target, sill);
   let sign = null;
   const setLabel = (label) => {
     if (sign) {
@@ -40,7 +79,7 @@ function createPortalGate(destination, opts = {}) {
     }
     sign = textSprite(`${label}
 ${addressLine(destination)}`, textColor, 2.2);
-    sign.position.set(0, 1.5, 0);
+    sign.position.set(0, PORTAL_HEIGHT + 0.45, 0);
     group.add(sign);
   };
   setLabel(opts.label ?? "Portal");
@@ -51,13 +90,12 @@ ${addressLine(destination)}`, textColor, 2.2);
     aimed: 0,
     setLabel,
     showThrough(pano) {
-      const through = createPortalWindow(new THREE.CircleGeometry(0.95, 64), pano);
-      through.position.z = 0.01;
-      group.add(through);
+      const through = createPortalWindow(plane, pano, { mask: archMaskTexture() });
+      through.position.z = 4e-3;
+      target.add(through);
     },
     update(t, dt) {
       surface.uniforms.uTime.value = t;
-      ring.rotation.z = t * 0.2;
       const glow = surface.uniforms.uAim;
       glow.value += (gate.aimed - glow.value) * Math.min(1, dt * 12);
     }
@@ -150,7 +188,6 @@ function buildItem(p, accent, opts, portals, lamps) {
       if (!target) return null;
       const destination = "url" in target ? { url: target.url } : { naddr: encodeNaddr({ kind: WORLD_KIND, pubkey: target.pubkey, identifier: target.d, relays: (opts.relays ?? []).slice(0, 2) }) };
       const gate = createPortalGate(destination, { label: p.args[1] || ("url" in target ? "Portal" : target.d), color: accent, textColor });
-      gate.group.position.y = 1.2;
       g.add(gate.group);
       portals.push(gate);
       return g;
@@ -188,7 +225,9 @@ function buildItem(p, accent, opts, portals, lamps) {
     case "bench": {
       const seat = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.45), mat(13217930));
       seat.position.y = 0.45;
-      g.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.34, 0.06), mat(13217930));
+      back.position.set(0, 0.74, -0.2);
+      g.add(seat, back);
       for (const x of [-0.6, 0.6]) {
         const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.42, 0.4), mat(3817290));
         leg.position.set(x, 0.21, 0);
@@ -249,6 +288,8 @@ function createHome(layout, opts = {}) {
   };
 }
 export {
+  PORTAL_HEIGHT,
+  PORTAL_WIDTH,
   createHome,
   createPortalGate
 };
