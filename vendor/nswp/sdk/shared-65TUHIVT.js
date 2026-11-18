@@ -4280,7 +4280,9 @@ function createPresence(d) {
   };
   let keptBlocks = loadBlocked();
   const blockedNow = /* @__PURE__ */ new Map();
-  const blockedKeys = () => [...keptBlocks.map((b) => b.key), ...blockedNow.keys()];
+  const fromClient = /* @__PURE__ */ new Set();
+  const reported = /* @__PURE__ */ new Set();
+  const blockedKeys = () => [.../* @__PURE__ */ new Set([...keptBlocks.map((b) => b.key), ...blockedNow.keys(), ...fromClient])];
   const mutedKeys = /* @__PURE__ */ new Set();
   const attachAudio = (avatar, stream) => {
     if (avatar.audio) return;
@@ -4568,12 +4570,14 @@ function createPresence(d) {
       if (gone.identity) {
         keptBlocks = withBlocked(keptBlocks, { key: gone.identity, name: gone.name });
         storeBlocked(keptBlocks);
+        reported.add(gone.identity);
       } else blockedNow.set(gone.session, gone.name);
       changed();
       return gone.name;
     },
     unblock(key) {
-      session?.unblock(key);
+      reported.delete(key);
+      if (!fromClient.has(key)) session?.unblock(key);
       if (blockedNow.delete(key)) return changed();
       keptBlocks = withoutBlocked(keptBlocks, key);
       storeBlocked(keptBlocks);
@@ -4581,6 +4585,15 @@ function createPresence(d) {
     },
     blocked() {
       return [...keptBlocks.map((b) => ({ key: b.key, name: b.name, kept: true })), ...[...blockedNow].map(([key, name]) => ({ key, name, kept: false }))];
+    },
+    blockAlso(keys) {
+      for (const k of keys) if (/^[0-9a-f]{64}$/.test(k)) fromClient.add(k);
+    },
+    get blockedElsewhere() {
+      return [...fromClient].filter((k) => !keptBlocks.some((b) => b.key === k)).length;
+    },
+    newlyBlocked() {
+      return [...reported];
     },
     testTone() {
       const ctx = listener.context;
@@ -4905,8 +4918,10 @@ function addRoomControls(controls, presence, opts = {}) {
   let toldOfMusic = false;
   const blockedNote = () => {
     const n = presence.blocked().length;
-    return n === 0 ? "" : `You have blocked ${n === 1 ? "1 person" : `${n} people`} here: you don't see or hear each other. Unblock anyone below. `;
+    const e = presence.blockedElsewhere;
+    return `${n === 0 ? "" : `You have blocked ${n === 1 ? "1 person" : `${n} people`} here: you don't see or hear each other. Unblock anyone below. `}${e === 0 ? "" : `${e === 1 ? "1 person is" : `${e} people are`} blocked wherever you go: that list is kept by the place you set out from, and is changed there. `}`;
   };
+  if (opts.arrived?.blocked?.length) presence.blockAlso(opts.arrived.blocked);
   const recorders = /* @__PURE__ */ new Set();
   const people = () => {
     const here = presence.session ? presence.people() : [];
@@ -5201,7 +5216,10 @@ function addRoomControls(controls, presence, opts = {}) {
       }
     })();
   }
-  return { refresh, travelling: () => ({ joined: !!presence.session && !presence.roomName, mic: !!presence.session && !presence.roomName && presence.micOn }) };
+  return {
+    refresh,
+    travelling: () => ({ joined: !!presence.session && !presence.roomName, mic: !!presence.session && !presence.roomName && presence.micOn, blocked: presence.newlyBlocked() })
+  };
 }
 function offerHeadset(title, enter, stay) {
   const scrim = document.createElement("div");

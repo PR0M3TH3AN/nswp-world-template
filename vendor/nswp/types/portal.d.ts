@@ -30,7 +30,17 @@ export interface AirlockUrlOptions {
     joined?: boolean;
     /** Their microphone is on as they leave (`mic=1`). Said only with `joined`. */
     mic?: boolean;
+    /**
+     * People the visitor blocked in this world during this visit, by the
+     * identity key behind each name (`blocked=<key>,<key>`). It is this
+     * world's word and a link anyone can write, so the visitor's own client
+     * shows it and asks before a block goes anywhere else
+     * (protocol/02-doors.md, "Blocks that travel").
+     */
+    blocked?: string[];
 }
+/** Keys from a list that are keys, once each, up to a limit. */
+export declare function cleanKeys(input: unknown, limit: number): string[];
 /** `<airlock>#to=<naddr or url>&entry=<id>` (spec §6.2: destinations travel in the fragment). */
 export declare function buildAirlockUrl(airlock: string, dest: PortalDestination, opts?: AirlockUrlOptions): string;
 export interface AirlockRequest {
@@ -47,6 +57,8 @@ export interface AirlockRequest {
     joined?: boolean;
     /** The link says their microphone was on (`mic=1`). Kept only with `joined`. */
     mic?: boolean;
+    /** The link says they blocked these people where they came from. A claim: shown and asked about, never applied unseen. */
+    blocked?: string[];
 }
 /** Whether a fragment says the visitor came from a headset session, with or without a destination: a way home carries it too. */
 export declare function fragmentSaysImmersive(hash: string): boolean;
@@ -61,6 +73,7 @@ export declare function wayWithoutDestination(hash: string): {
     doors: boolean;
     joined?: true;
     mic?: true;
+    blocked?: string[];
 } | null;
 /** `<airlock>` opened as the way home, or with `doors` as the way to the visitor's doors (protocol/02-doors.md). */
 export declare function buildWayUrl(airlock: string, opts?: AirlockUrlOptions & {

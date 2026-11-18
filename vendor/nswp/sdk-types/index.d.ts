@@ -72,6 +72,11 @@ export interface GoOptions {
     joined?: boolean;
     /** Their microphone is on. Passed only with `joined`, and only kept by a client they have told it may be. */
     mic?: boolean;
+    /**
+     * Named people the visitor blocked here during this visit, by identity key (`travelling().blocked`). Their own
+     * client asks whether to block them everywhere (protocol/02-doors.md, "Blocks that travel").
+     */
+    blocked?: string[];
 }
 export declare const portal: {
     /** Which Airlock `go()` would use right now, or null for the built-in screen. */

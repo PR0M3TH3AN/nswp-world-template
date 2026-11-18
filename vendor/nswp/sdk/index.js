@@ -191,7 +191,11 @@ var arrival = {
     }
   }
 };
-var carried = (opts, immersive) => ({ immersive, ...opts.joined ? { joined: true, ...opts.mic ? { mic: true } : {} } : {} });
+var carried = (opts, immersive) => ({
+  immersive,
+  ...opts.joined ? { joined: true, ...opts.mic ? { mic: true } : {} } : {},
+  ...opts.blocked?.length ? { blocked: opts.blocked } : {}
+});
 var portal = {
   /** Which Airlock `go()` would use right now, or null for the built-in screen. */
   airlockFor(opts = {}) {
