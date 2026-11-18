@@ -7,7 +7,7 @@ import type { Controls, Corner, Presence, UiKeys } from "nswp-sdk/ui";
 
 /** world.json */
 export interface WorldConfig {
-  world: { d: string; title: string; url: string; summary?: string; modes?: string[]; capabilities?: string[] };
+  world: { d: string; title: string; url: string; summary?: string; modes?: string[]; capabilities?: string[]; audience?: "kids" | "general" | "adult"; topics?: string[] };
   /**
    * The owner's own public key: the identity they sign in with (npub1…), not the key this folder signs with.
    * Naming it here lets the site admit it, which is how the owner shows this world is theirs (NSWP-07).

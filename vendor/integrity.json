@@ -4,14 +4,14 @@
   "license": "MIT",
   "source": {
     "repository": "https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-.git",
-    "commit": "36e396db1d9a10663985be312b9412d876bb441d",
+    "commit": "40aee565fe3a2f8c1d2c9951d1ef0ac6e5c83a77",
     "dirty": false
   },
   "files": {
     "LICENSE": "bc40ab40278d23777e57ea2872fbaf64663e1c7d6faf4f5ca31e8f4686351b15",
     "THIRD-PARTY-NOTICES.md": "624065ee6be636d194ad58096b748b1626d115044bb38b5d69540dfdbd505052",
-    "nswp-cli.js": "88f9dbe1ab734fc75d7dbac823be936488758062e1b1028a7b5143ac1e28f897",
-    "nswp-core.js": "34e894500e4e8598f42c5ba6307c732068c9e50efed4104b0c40cc5bdbdc09e6",
+    "nswp-cli.js": "483e041f7dcec313c30009b993963fdcce08bc06b18d23f41175dc7788ad0151",
+    "nswp-core.js": "b2704833a1b495b4c285a539aa06f3ee912834fa4d092899372d0cef66a04917",
     "sdk-types/actions.d.ts": "02df5d85a055dd8c4a01b20d850f4e8c66782de7e6f561a2b8142945d013759d",
     "sdk-types/alloy.d.ts": "122964d77c3f7bd795f4c9471afc8089af77ff5b856da40e054b1af9b829147f",
     "sdk-types/bridge-link.d.ts": "065ece113993ac9a997de04c16a25b0347424b05ed8b814c0fbc4550578f54e1",
@@ -57,7 +57,7 @@
     "types/arrival.d.ts": "450c97652c55629875ab2aca59c705032f9a1f5820b7d77a61738a4b6ceaddcc",
     "types/avatar.d.ts": "a6d58509965d24b1d65adfc3692045a099b1bbb9faec78fcc055aba60efb92cc",
     "types/bridge.d.ts": "4d5c9ee66e7544a2050917411aeae9879d444a517b97b10de523a6601447c7f3",
-    "types/constants.d.ts": "e6b035a083b34b6ad36615667950bdcbb8b3364add77dbe771b3f1533ee15755",
+    "types/constants.d.ts": "1d338b55a6afe44003407bf9e18070fc53e1b6ea12620355de0cad6b0f6bf109",
     "types/destination.d.ts": "fa497e8f8c612e069efa278e80bf6c24c7343f1c0acab8734a4da811d00184e5",
     "types/event.d.ts": "2abfc869243f06fdc029a6ad017cb98f8e9f2e544803b193d91643c74044bc54",
     "types/index.d.ts": "e09926b4d1218d21f0c7227fa08a7246a402a2e0aa0fe3c29050340be3e23966",
@@ -71,6 +71,6 @@
     "types/relay.d.ts": "972113352c0610464751b42c6d9acadec839cadc6fccf676c362c328e570bc05",
     "types/result.d.ts": "92059cf5681409bc7d379762678160b23a7bbea720ab04191b5ff897969b2eea",
     "types/room.d.ts": "e9435a3a9d7e99dac5017fbb57d20a2872bb0df4c9b5e87a2f48786c235b2467",
-    "types/world.d.ts": "7326c19306f4a126cac943f12aaeea0e6e3e3e92fa151179dff0308e7b8e17a9"
+    "types/world.d.ts": "db8b9fa608b095306d8bfaab4fd78124ec700d7c2992ab0399c2ee927223ef51"
   }
 }

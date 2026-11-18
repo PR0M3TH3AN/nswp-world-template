@@ -1,3 +1,5 @@
+/** Spatial World Announcements (spec §5). */
+import { type Audience } from "./constants.js";
 import type { PreviewType } from "./constants.js";
 import { type EventTemplate } from "./event.js";
 import { type Result } from "./result.js";
@@ -36,6 +38,8 @@ export interface WorldInput {
     languages?: string[];
     /** `true` for a warning with no reason. */
     contentWarning?: string | true;
+    /** Who it is for: `kids`, `general` or `adult`. An adult world is given a content warning if it has none. */
+    audience?: Audience;
     status?: string;
     /** Only when the manifest is not at the well-known path (it then can't verify). */
     manifest?: string;
@@ -67,12 +71,25 @@ export interface World {
     topics: string[];
     languages: string[];
     contentWarning?: string;
+    /** Who its maker says it is for. Left out when they didn't say, or said something else. */
+    audience?: Audience;
     status: string;
     manifest?: string;
     coCreators: string[];
     access?: string;
     createdAt: number;
 }
+/**
+ * How a reader that wants to be careful takes a world's word about itself.
+ * `adult` when it says so, and also when it carries a content warning and
+ * doesn't say who it is for: a warning with no audience is not a promise that
+ * it is fit for everyone. `unrated` when it says nothing at all.
+ *
+ * This is the maker's own word. It keeps honest makers' worlds where they
+ * belong; it does nothing about a maker who lies. That is what lists are for
+ * (protocol/08-lists.md).
+ */
+export declare function audienceOf(w: Pick<World, "audience" | "contentWarning">): Audience | "unrated";
 /** Build an unsigned world announcement, tag-first (spec §5.2). */
 export declare function buildWorldEvent(w: WorldInput): EventTemplate;
 export interface ParseWorldOptions {

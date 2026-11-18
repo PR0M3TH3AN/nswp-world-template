@@ -10,6 +10,7 @@
     "comfort": { "locomotion": "teleport", "intensity": "low", "seated": "supported" },
     "inputs": ["controllers", "hands", "gaze", "keyboard-mouse", "touch"],
     "perf": "mobile",
+    "audience": "general",
     "topics": [],
     "languages": ["en"],
     "status": "beta"
