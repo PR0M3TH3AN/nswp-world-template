@@ -50,12 +50,13 @@ const common = ["--bundle", "--format=esm", "--target=es2022", "--legal-comments
 // The library: events, manifests, portals, arrival, layouts.
 run(esbuild, ["packages/core/src/index.ts", ...common, `--outfile=${join(out, "nswp-core.js")}`]);
 run(tsc, ["-p", "packages/core", "--emitDeclarationOnly", "--declaration", "--outDir", join(out, "types")]);
-// The world-side SDK, as three entry points that share their code. The
+// The world-side SDK, as entry points that share their code. The
 // library and three.js stay outside, so a world's own build supplies one copy.
 run(esbuild, [
   "index=packages/sdk/src/index.ts",
   "three=packages/sdk/src/three.ts",
   "home=packages/sdk/src/home.ts",
+  "ui=packages/sdk/src/ui.ts",
   ...common,
   "--splitting",
   "--chunk-names=shared-[hash]",

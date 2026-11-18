@@ -13,7 +13,7 @@ the scene, and to leave the protocol's plumbing working.
 | `home.json` | The owner's home layout | Change freely. Often the whole task |
 | `pictures/` | The owner's pictures for frames | Add files the owner gives you. A frame names one by its file name |
 | `world.json` | Facts about the world | Change what the owner asks, and keep it true. `url` and `d` are the world's identity: see below |
-| `src/index.html` | The page around the scene | Restyle freely. Keep `#stage` and the button ids |
+| `src/index.html` | The page the scene is drawn in | Keep `#stage`. The controls aren't here: they come from the controls kit |
 | `src/plumbing/` | The protocol's plumbing | Avoid. Change only if the task can't be done otherwise, and say that you did |
 | `scripts/` | Build and publishing commands | Avoid |
 | `vendor/` | The vendored NSWP library | Never edit. `npm run check` fails if it changes |
@@ -83,8 +83,10 @@ owner's key they are how other places refer to this world.
   turns true when the scene is up, `portals()` lists the portals,
   `teleport(x, z)` moves the visitor, `face(degrees)` turns them, `step(x, z)`
   steps towards a spot as pointing at the floor would, `where()` says where
-  they are, and `goThrough(i)` uses a portal. `menu.describe()` says what the
-  headset menu shows, and `menu.pressLabelled("Turn around")` presses a button.
+  they are, and `goThrough(i)` uses a portal. `controls.view()` lists everything a
+  visitor can press and `controls.run("turn")` presses one by its id.
+  `console.describe()` says what the headset console shows, and
+  `console.pressLabelled("View")` presses something on it by its words.
 
 ## Never do these without the owner asking in so many words
 
@@ -193,13 +195,25 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   read belongs in the scene. Put it on a sign where they will look. For
   something that must follow them, such as a score, add a small sprite to
   `ctx.camera`, low in view (around `[0, -0.3, -1.5]`), never across the middle.
-- **The menu in a headset.** In VR the page's buttons can't be reached, so the
-  plumbing shows a small Menu button low in front of the visitor. It opens the
-  way back to their lobby, Turn around, the room and microphone controls, and
-  Leave VR. Add a few buttons of your own by returning
-  `menu: [{ label, act }]` from your scene. Anything a visitor must be able to
-  do in VR needs a button there or an object in the scene to select. Don't
-  call it a system menu or a safe menu: it is this world's own.
+- **The controls.** Everything a visitor can press comes from one list,
+  `ctx.controls`. The plumbing draws it as a HUD on a flat screen and as a
+  console in a headset (on the wrist, or from a small Menu button), so a thing
+  added once appears in both. It already holds the way back to the visitor's
+  lobby, the room and microphone, Enter VR, Turn around, and a Look section
+  where the visitor changes the colours.
+  - A button: `ctx.controls.add({ id: "reset", section: "game", label: "Start again", icon: "turn", act: () => restart() })`.
+    Add `hotbar: true` to keep it on the row at the bottom (six at most),
+    `short: "Reset"` for the word under its key, and `on: () => boolean` if it
+    is something that is on or off.
+  - A section of your own: `ctx.controls.addSection({ id: "game", label: "Game", note: "What to know first." })`.
+  - A few words for a moment: `ctx.controls.say("Three lanterns left")`.
+  - Icons are named: `home`, `door`, `turn`, `room`, `mic`, `list`, `vr`,
+    `look`, `help`, `save`, `step`, `link`, `check` and a few more, in
+    `vendor/nswp/sdk-types/ui/icons.d.ts`.
+  - Don't add HTML buttons to `src/index.html`: they can't be reached in a
+    headset, and they won't match. Don't restyle the kit from outside; set
+    the world's accent in `home.json` (`room.accent`) and it follows.
+  - Don't call it a system menu or a safe menu: it is this world's own.
 - **A scene that differs each visit** (a random level) still has one preview
   picture, of whichever version was drawn when it was taken. Say so to the
   owner, and remove the `rooms` capability: visitors in a shared room would

@@ -7,37 +7,14 @@
 <title>%TITLE%</title>
 <meta name="description" content="%SUMMARY%">
 <style>
-  :root { color-scheme: dark; }
-  html, body { margin: 0; height: 100%; background: #000; color: #f2f3f6; font: 15px/1.4 system-ui, sans-serif; overflow: hidden; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
   #stage canvas { display: block; touch-action: none; }
-  /* Text over the scene sits on its own dark backing, so it reads on any sky. */
-  .title { position: fixed; top: 12px; left: 12px; max-width: calc(100% - 24px); box-sizing: border-box; padding: 8px 12px; border-radius: 10px; background: rgba(20,22,28,.72); font-weight: 600; pointer-events: none; }
-  .title small { display: block; font-weight: 400; opacity: .8; }
-  .hud { position: fixed; left: 16px; right: 16px; bottom: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; pointer-events: none; }
-  .hud > * { pointer-events: auto; }
-  button { font: inherit; padding: 12px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(20,22,28,.85); color: #fff; cursor: pointer; }
-  button:disabled { opacity: .6; cursor: default; }
-  button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-  button.primary { background: #1f9d5f; border-color: #1f9d5f; }
   .leaving #stage { opacity: .4; transition: opacity .3s; }
-  .break { flex-basis: 100%; height: 0; }
-  .status { padding: 6px 10px; border-radius: 8px; background: rgba(20,22,28,.72); font-size: .9em; }
-  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<div class="title">%TITLE%<small>Drag to look around. Walk with W, A, S, D. Click or tap a portal to go through it.</small></div>
+<!-- The world is drawn here. Its controls are added by the plumbing, from the NSWP controls kit. -->
 <div id="stage"></div>
-<!-- The plumbing finds these controls by their ids. Restyle or move them freely; keep the ids. -->
-<div class="hud">
-  <button id="vr-button" class="primary" disabled>Checking for VR…</button>
-  <button id="home-button" hidden>Back to your lobby</button>
-  <button id="room-button">Join the room</button>
-  <button id="mic-button" hidden>Turn microphone on</button>
-  <button id="invite-button" hidden>Make a private room</button>
-  <span class="break" aria-hidden="true"></span>
-  <span id="room-status" class="status" role="status">Joining lets you see and hear others here. It shows your IP address to them.</span>
-</div>
 <script type="module" src="./app.js"></script>
 </body>
 </html>

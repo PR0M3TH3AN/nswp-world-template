@@ -125,12 +125,13 @@ const ALIASES = {
   "nswp-sdk": vendor("sdk/index.js"),
   "nswp-sdk/three": vendor("sdk/three.js"),
   "nswp-sdk/home": vendor("sdk/home.js"),
+  "nswp-sdk/ui": vendor("sdk/ui.js"),
 };
 const nswpPlugin = {
   name: "nswp",
   setup(b) {
     // The protocol library and SDK come from vendor/.
-    b.onResolve({ filter: /^(@nswp\/core|nswp-sdk(\/(three|home))?)$/ }, (args) => ({ path: ALIASES[args.path] }));
+    b.onResolve({ filter: /^(@nswp\/core|nswp-sdk(\/(three|home|ui))?)$/ }, (args) => ({ path: ALIASES[args.path] }));
     // "virtual:site" is what the page reads at start: the layout to draw, and
     // who publishes this world. It is made from home.json and signed/ at build
     // time, so editing either one rebuilds the page.

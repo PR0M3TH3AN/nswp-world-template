@@ -84,10 +84,22 @@ Visitors move with W, A, S, D, or by pointing at the floor and clicking,
 tapping, or pulling the trigger to step there. A scene says where they may not
 stand by returning `canStand(x, z)`.
 
-In a headset the page's buttons are out of reach, so a small **Menu** button
-floats low in front of the visitor. It opens the way back to their lobby, Turn
-around, the room and microphone controls, and Leave VR. A scene can add
-buttons of its own.
+### The controls
+
+Your world's buttons come from the NSWP controls kit, so they look and work
+the same as in every other world built this way.
+
+- **On a flat screen** it is a HUD: your world's name in one corner, a row of
+  arch-shaped keys along the bottom for the things always at hand (keys 1 to 6
+  press them), and a Menu with everything else.
+- **In a headset** it is a console. Raise your left wrist in front of you and
+  it appears above it; or select the small Menu button low in front of you.
+- **A Look section** lets each visitor change its colours. It starts from your
+  home's accent colour.
+
+A scene adds its own buttons with `ctx.controls.add({ id, label, icon, act })`
+and they appear in both. To take a newer version of the kit, run
+`npm run vendor` next to an up-to-date copy of the NSWP repository, then build.
 
 ### Seeing it without a browser
 
@@ -193,7 +205,7 @@ their game through, so look yourself before you publish.
 | `home.json`, `world.json` | Yours: your home and your world's facts |
 | `pictures/` | Yours: pictures for the frames in your home |
 | `src/scene.ts`, `src/scenes/` | Yours: the scene |
-| `src/index.html` | Yours: the page around the scene. Keep the element ids |
+| `src/index.html` | The page the scene is drawn in. Keep `#stage` |
 | `src/plumbing/` | The protocol's plumbing: arrival, portals, VR, rooms. Changeable, with care |
 | `scripts/` | The commands above |
 | `vendor/nswp/` | The NSWP library and SDK, copied in with a record of their hashes. Don't edit |

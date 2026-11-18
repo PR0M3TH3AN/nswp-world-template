@@ -14,7 +14,9 @@
  */
 import * as THREE from "three";
 import { type RoomSession } from "./room.js";
-export { createWorldMenu, menuItemFor, turnVisitor, type MenuItem, type WorldMenu, type WorldMenuOptions } from "./menu.js";
+export { turnVisitor } from "./turn.js";
+export { createConsole, type XrConsole } from "./console.js";
+import type { Controls } from "./ui/model.js";
 export interface PresenceOptions {
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
@@ -55,28 +57,6 @@ export interface Presence {
 /** A text panel that always faces the viewer. `width` is in metres. */
 export declare function textSprite(text: string, color: string, width: number): THREE.Sprite;
 export declare function createPresence(d: PresenceOptions): Presence;
-export interface RoomControls {
-    roomButton: HTMLButtonElement;
-    micButton: HTMLButtonElement;
-    inviteButton: HTMLButtonElement;
-    /** Where room status is written. Give it `role="status"`. */
-    status: HTMLElement;
-    /** `?mic=tone` uses a test tone instead of asking for the microphone. */
-    search?: string;
-    /** Called with a small summary whenever the room changes (for tests). */
-    onState?: (state: Record<string, unknown> | null) => void;
-}
-/**
- * Wires a page's Join / microphone / invite buttons to a presence. Nothing
- * connects until Join is pressed, because joining shows the visitor's IP
- * address to the other members. Voice has to be switched on from the page,
- * before entering VR.
- *
- * Wrap the returned `refresh` into the presence's `onChange`.
- */
-export declare function attachRoomControls(presence: Presence, c: RoomControls): {
-    refresh(): void;
-};
 export interface CaptureOptions {
     /** Width of the panorama in pixels; the height is half of it. Default 2048, at most 4096. */
     width?: number;
@@ -116,3 +96,33 @@ export interface PortalWindowOptions {
  * destination and lines up with the centre of the panorama.
  */
 export declare function createPortalWindow(geometry: THREE.BufferGeometry, pano: THREE.Texture, opts?: PortalWindowOptions): THREE.Mesh;
+/**
+ * A room's controls, added to a world's controls (ui/model.ts): join or leave,
+ * the microphone, and a private room to invite someone to. The HUD and the
+ * headset console both draw them from there, so neither has room logic of its own.
+ *
+ * Joining shows a visitor's IP address to the others in the room. The Room
+ * section says so before they join, on a flat screen and in a headset.
+ */
+export declare function addRoomControls(controls: Controls, presence: Presence, opts?: {
+    search?: string;
+    onState?: (state: Record<string, unknown> | null) => void;
+}): {
+    refresh(): void;
+};
+/**
+ * The controls every world's view needs: enter or leave VR, and turn around.
+ * Returns whether this device can enter VR at all.
+ *
+ * It also hides the flat HUD while a headset session runs. The page can't be
+ * seen from inside one, and the console takes over.
+ */
+export declare function addViewControls(controls: Controls, d: {
+    renderer: THREE.WebGLRenderer;
+    rig: THREE.Object3D;
+    camera: THREE.Camera;
+    hud?: {
+        setHidden(hidden: boolean): void;
+    };
+    onState?: (state: string) => void;
+}): Promise<boolean>;

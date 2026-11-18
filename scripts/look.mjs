@@ -31,7 +31,7 @@ const around = process.argv.includes("--around");
 await buildSite();
 const shots = await withWorld(async (page) => {
   // Only the scene: the page's buttons would cover part of it.
-  await page.addStyleTag({ content: ".title, .hud { display: none !important; }" });
+  await page.addStyleTag({ content: "nswp-hud { display: none !important; }" });
   if (at) await page.evaluate(([x, z]) => window.__nswpTest.teleport(x, z), at);
   const out = [];
   for (const turn of around ? [0, 90, 180, 270] : [null]) {
