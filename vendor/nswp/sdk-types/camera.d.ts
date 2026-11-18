@@ -82,6 +82,8 @@ export interface CameraOptions {
     name?: string;
     /** Longest clip, in seconds. Default 30. */
     maxSeconds?: number;
+    /** Called with everything taken: a picture, a selfie or a clip. A place to keep it, such as the visitor's library. */
+    onCapture?: (capture: Capture) => void;
 }
 export interface Camera {
     /** What has been taken and not yet saved (for tests, and for a gallery of a world's own). */

@@ -1,6 +1,10 @@
 import {
   DEFAULT_COMFORT,
+  LIBRARY_LIMITS,
+  PANEL_LIMITS,
+  PANEL_LOOKS,
   addCameraControls,
+  addPanelControls,
   addRoomControls,
   addViewControls,
   canRecord,
@@ -9,6 +13,9 @@ import {
   createConsole,
   createCrossing,
   createFigure,
+  createKeyboard,
+  createLibrary,
+  createPanels,
   createPortalWindow,
   createPresence,
   createXrInput,
@@ -20,29 +27,53 @@ import {
   takeSelfie,
   textSprite,
   turnVisitor
-} from "./shared-YYLM5WUF.js";
+} from "./shared-QLWU42IU.js";
 import "./shared-E3UFEQZL.js";
-import "./shared-64R25HDC.js";
+import "./shared-BP5WDRDO.js";
+import {
+  browserVoice,
+  computerVoice,
+  createStay,
+  createVoice,
+  recordVoice,
+  toPcm16,
+  wasRefreshed
+} from "./shared-WWPRVQWW.js";
+import "./shared-QLSLERQ3.js";
 export {
   DEFAULT_COMFORT,
+  LIBRARY_LIMITS,
+  PANEL_LIMITS,
+  PANEL_LOOKS,
   addCameraControls,
+  addPanelControls,
   addRoomControls,
   addViewControls,
+  browserVoice,
   canRecord,
   capturePanorama,
+  computerVoice,
   createChamber,
   createConsole,
   createCrossing,
   createFigure,
+  createKeyboard,
+  createLibrary,
+  createPanels,
   createPortalWindow,
   createPresence,
+  createStay,
+  createVoice,
   createXrInput,
   panoramaTexture,
   readPad,
   recordClip,
+  recordVoice,
   saveFile,
   takePicture,
   takeSelfie,
   textSprite,
-  turnVisitor
+  toPcm16,
+  turnVisitor,
+  wasRefreshed
 };

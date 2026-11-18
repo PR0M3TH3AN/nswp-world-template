@@ -57,6 +57,21 @@ disagree, the documents are right and this file has a bug.
 5. **A portal's sign always shows the address.** Don't hide or replace the
    second line of a portal's sign.
 
+6. **The owner's terminal is the owner's, and is not the scene's.** When the
+   owner of this world arrives from their home having chosen to bring their
+   terminals, the plumbing can open a terminal on their own computer in a
+   panel (`nswp-sdk/terminal`, the NSWP repository's `browser/bridge.md`).
+   What makes that possible is in the page for that tab. Never read it,
+   store it, send it anywhere, or use it from the scene: nothing in
+   `src/scene.ts` or `src/scenes/` needs it, and code that touched it could
+   run commands on the owner's computer. Never type into a terminal from the
+   scene. If you are an assistant running in that very terminal, the same
+   applies to you. It is never offered to a visitor, and no visitor can make
+   it appear.
+7. **A refresh is not an arrival.** The plumbing puts whoever was here back
+   where they stood. Don't send them to the entrance in the scene's own code
+   when the page loads.
+
 ## When the owner asks for something the rules forbid
 
 Say no to that part, say why in a sentence, and offer what does work. Then do

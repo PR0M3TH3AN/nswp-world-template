@@ -12,6 +12,12 @@ export interface NostrEvent extends UnsignedEvent {
     sig: string;
 }
 export declare function isHex64(v: unknown): v is string;
+/**
+ * Whether 64 hex characters are a public key at all. About half of all such
+ * strings are not: no point on the curve has that x. A key written down by a
+ * person, or handed over in a link, is checked with this before it is kept.
+ */
+export declare function isPublicKey(v: unknown): v is string;
 export declare function nowSeconds(): number;
 export declare function serializeEvent(e: UnsignedEvent): string;
 export declare function getEventHash(e: UnsignedEvent): string;

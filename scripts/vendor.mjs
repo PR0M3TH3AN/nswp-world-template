@@ -57,6 +57,8 @@ run(esbuild, [
   "three=packages/sdk/src/three.ts",
   "home=packages/sdk/src/home.ts",
   "ui=packages/sdk/src/ui.ts",
+  // A terminal on the owner's own computer, for a world they are building. Fetched only when they bring one.
+  "terminal=packages/sdk/src/terminal.ts",
   ...common,
   "--splitting",
   "--chunk-names=shared-[hash]",

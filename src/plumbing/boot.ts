@@ -16,9 +16,9 @@
  */
 import * as THREE from "three";
 import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
-import { arrival, configure, portal } from "nswp-sdk";
+import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addCameraControls, addRoomControls, addViewControls, capturePanorama, createConsole, createCrossing, createPresence, createXrInput, type Camera, type GrabOptions, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addCameraControls, addPanelControls, addRoomControls, addViewControls, capturePanorama, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -48,6 +48,17 @@ interface TestHooks {
   console?: XrConsole;
   roomInfo(): unknown;
   device?: unknown;
+  /** The visitor's own panels: notes, pictures and video they hang here, and the keyboard drawn in a headset. */
+  panels?: Panels;
+  /** Terminals the owner brought from their home, when this is a world they are building. */
+  brought?: { terminals(): unknown[]; restore(): Promise<void> };
+  /** Where something named is: in the world, and as seen from the visitor's rig. */
+  thing?: (name: string) => { world: number[]; local: number[] } | null;
+  /** A spot on something flat, by how far across and down it is (0 to 1): where a button drawn on a panel is. */
+  spot?: (name: string, u: number, v: number) => { local: number[]; screen: number[] } | null;
+  screenOf?: (name: string) => number[] | null;
+  /** Which way the visitor faces, in degrees left of -Z. */
+  heading?: () => number;
 }
 declare global {
   interface Window {
@@ -63,6 +74,12 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // Before anything else: read the arrival context and scrub it from the
   // address, so it can't linger in history or be read by later code (spec §4.4).
   const { context, warnings } = arrival.read();
+  // The owner of this world, working on it, may have brought leave to open terminals on their own computer
+  // (the NSWP repository's browser/bridge.md). It is taken out of the address at once, like the arrival context.
+  // Nobody else can bring it: it is made in the owner's home, for this address, and their computer has to have
+  // been told about this world too.
+  const brought = somethingBrought() ? takeBrought() : null;
+  watchBrought();
   const config = configJson as unknown as WorldConfig;
   configure({ defaultAirlock: config.airlock });
 
@@ -111,6 +128,19 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   rig.position.set(...entry.position);
   rig.rotation.y = THREE.MathUtils.degToRad(entry.yaw ?? 0);
   state.entryPoint = entryName;
+  // A refresh is not an arrival: whoever was here is put back where they stood, facing the way they faced.
+  // Someone changing this world refreshes it all day.
+  const stay = createStay();
+  const stood = context || brought?.fresh ? null : stay.before;
+  if (stood) {
+    rig.position.x = stood.x;
+    rig.position.z = stood.z;
+    rig.rotation.y = THREE.MathUtils.degToRad(stood.yaw);
+  }
+  state.stood = !!stood;
+  const keepPlace = () => stay.keep({ x: rig.position.x, z: rig.position.z, yaw: THREE.MathUtils.radToDeg(rig.rotation.y), headset: renderer.xr.isPresenting });
+  addEventListener("pagehide", keepPlace);
+  setInterval(keepPlace, 1000);
 
   const parsed = parseLayoutEvent(site.layout);
   const layout = parsed.ok ? parsed.value : EMPTY_LAYOUT;
@@ -322,16 +352,32 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   let lastX = 0;
   let moved = 0;
   const setPointer = (e: PointerEvent) => pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  // The visitor's own panels, set up further down. One taken by its bar is dragged, and the view stays still.
+  let panels: Panels | null = null;
+  let panelDrag = false;
   renderer.domElement.addEventListener("pointerdown", (e) => {
-    dragging = true;
+    setPointer(e);
+    raycaster.setFromCamera(pointer, camera);
+    panelDrag = !renderer.xr.isPresenting && !!panels?.pointer("down", raycaster);
+    dragging = !panelDrag;
     lastX = e.clientX;
     moved = 0;
   });
   addEventListener("pointerup", (e) => {
     dragging = false;
+    if (panelDrag) {
+      panelDrag = false;
+      setPointer(e);
+      raycaster.setFromCamera(pointer, camera);
+      panels?.pointer("up", raycaster);
+      return;
+    }
     if (moved > 6 || renderer.xr.isPresenting || e.target !== renderer.domElement) return;
     setPointer(e);
     raycaster.setFromCamera(pointer, camera);
+    // A panel is in front of whatever is behind it.
+    const onPanel = panels?.pick(raycaster);
+    if (onPanel) return void panels!.press(onPanel);
     const gate = gateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
     if (gate) void go(gate);
     else {
@@ -346,6 +392,10 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       lastX = e.clientX;
     }
     setPointer(e);
+    if (panelDrag) {
+      raycaster.setFromCamera(pointer, camera);
+      panels?.pointer("move", raycaster);
+    }
   });
 
   // In VR: a `select` from any input source, aimed at a portal.
@@ -369,9 +419,13 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       if (input?.claimed(i)) return; // that pinch picked something up; it wasn't a press
       state.lastSelect = i;
       const gate = aimFrom(c); // leaves the ray pointing where this hand points
-      const button = xrConsole.pick(raycaster);
-      if (button || gate) input?.pulse(i, 0.5, 30);
+      // While the keyboard is up it is in front of everything, the console's own button included.
+      const key = panels?.keyboard.pick(raycaster) ?? null;
+      const button = key ? null : xrConsole.pick(raycaster);
+      const onPanel = key ?? (button ? null : (panels?.pick(raycaster) ?? null));
+      if (button || gate || onPanel) input?.pulse(i, 0.5, 30);
       if (button) xrConsole.press(button);
+      else if (onPanel) panels!.press(onPanel);
       else if (gate) void go(gate);
       else {
         const spot = floorUnder();
@@ -399,6 +453,38 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   });
   for (const [object, options] of toHold) input.grabbable(object, options);
   hooks.input = () => input!.info();
+
+  // ------------------------------------------------------------- panels
+  // Notes, pictures and video a visitor hangs for themselves, with a keyboard drawn in the headset and a way to
+  // speak instead of typing. They are the visitor's own: kept in their browser, and never shown to anyone else here.
+  panels = createPanels({ scene, camera, accent: controls.theme.accent, input, keep: `nswp-world:${location.pathname}:panels`, session: () => renderer.xr.getSession() });
+  addPanelControls(controls, panels, { presenting: () => renderer.xr.isPresenting, kept: true });
+  hooks.panels = panels;
+  if (brought) {
+    // The terminal's own code is fetched only now, and only for the owner who brought one.
+    const { addBroughtTerminals } = await import("nswp-sdk/terminal");
+    hooks.brought = addBroughtTerminals({ brought, controls, panels, presenting: () => renderer.xr.isPresenting, accent: controls.theme.accent });
+  }
+  state.brought = !!brought;
+  hooks.thing = (name) => {
+    const object = scene.getObjectByName(name);
+    const world = object ? object.getWorldPosition(new THREE.Vector3()) : (panels?.pointOf(name) ?? null);
+    return world ? { world: world.toArray(), local: rig.worldToLocal(world.clone()).toArray() } : null;
+  };
+  hooks.spot = (name, u, v) => {
+    const object = scene.getObjectByName(name);
+    if (!object) return null;
+    const world = object.localToWorld(new THREE.Vector3(u - 0.5, 0.5 - v, 0));
+    const at = world.clone().project(camera);
+    return { local: rig.worldToLocal(world.clone()).toArray(), screen: [Math.round(((at.x + 1) / 2) * innerWidth), Math.round(((1 - at.y) / 2) * innerHeight)] };
+  };
+  hooks.screenOf = (name) => {
+    const object = scene.getObjectByName(name);
+    if (!object) return null;
+    const at = object.getWorldPosition(new THREE.Vector3()).project(camera);
+    return at.z > 1 ? null : [Math.round(((at.x + 1) / 2) * innerWidth), Math.round(((1 - at.y) / 2) * innerHeight)];
+  };
+  hooks.heading = () => Math.round(THREE.MathUtils.radToDeg(rig.rotation.y) * 10) / 10;
 
   // Walking into a portal also goes through it.
   const head = new THREE.Vector3();
@@ -488,7 +574,10 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // ------------------------------------------------------------- VR
   // Someone who came through an Airlock starts in the chamber, and its doors open when the world is ready. If they
   // left a headset session to get here, the one thing asked of them is whether to go back into one.
-  let offered = !!context?.immersive;
+  // The same is offered to someone whose headset session a refresh ended, and to an owner who came from their home
+  // in a headset to work here.
+  const backToHeadset = !!context?.immersive || !!stood?.headset || !!brought?.immersive;
+  let offered = backToHeadset;
   if (context) {
     camera.updateMatrixWorld(true);
     crossing.arrive({ title: config.world.title, address: location.host, ready: opened, hold: () => offered });
@@ -499,7 +588,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     camera,
     hud,
     onState: (s) => (state.xr = s),
-    ...(context?.immersive ? { arrived: { title: config.world.title } } : {}),
+    ...(backToHeadset ? { arrived: { title: config.world.title } } : {}),
     onOffer: (showing) => (offered = showing),
   });
   if (!state.vrSupported) offered = false;
@@ -513,6 +602,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // ------------------------------------------------------------- each frame
   const startedAt = performance.now();
   let last = 0;
+  let wasBusy = false;
   renderer.setAnimationLoop(() => {
     const t = (performance.now() - startedAt) / 1000;
     const dt = Math.min(t - last, 0.1);
@@ -520,15 +610,31 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     let aimed: PortalGate | null = null;
     reticle.visible = false;
     input!.update(dt);
+    panels!.update(t, dt);
+    // The keyboard and the library's board come up where the console is: it steps aside for them.
+    const busy = panels!.keyboard.open || panels!.library.showing;
+    if (busy && !wasBusy) xrConsole.setOpen(false);
+    wasBusy = busy;
     crossing.update(t, dt);
+    let panelAimed: string | null = null;
     if (renderer.xr.isPresenting) {
       let button: string | null = null;
       for (const c of controllers) {
         if (!c.visible) continue;
         const gate = aimFrom(c);
+        const key = panels!.keyboard.pick(raycaster);
+        if (key) {
+          panelAimed = key;
+          continue;
+        }
         const onMenu = xrConsole.pick(raycaster);
         if (onMenu) {
           button = onMenu;
+          continue;
+        }
+        const onPanel = panels!.pick(raycaster);
+        if (onPanel) {
+          panelAimed = onPanel;
           continue;
         }
         aimed = gate ?? aimed;
@@ -544,12 +650,15 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     } else {
       walk(dt);
       raycaster.setFromCamera(pointer, camera);
-      aimed = gateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
-      renderer.domElement.style.cursor = aimed ? "pointer" : "grab";
+      panelAimed = panels!.pick(raycaster);
+      aimed = panelAimed ? null : gateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
+      renderer.domElement.style.cursor = aimed || panelAimed ? "pointer" : "grab";
     }
+    panels!.aim(panelAimed);
     for (const g of gates) g.aimed = g === aimed ? 1 : 0;
     for (const g of ownGates) g.update(t, dt);
     xrConsole.update(dt, camera, renderer.xr.isPresenting);
+    if (panels!.keyboard.open) xrConsole.group.visible = false;
     // Say what is being pointed at, in the words on its sign.
     const sign = aimed ? String(aimed.group.userData.label ?? "A doorway") : "";
     controls.setTarget(aimed ? `${sign}${aimed.destination.url ? `, at ${new URL(aimed.destination.url).host}` : ""}` : "");

@@ -185,6 +185,28 @@ sending the header `Access-Control-Allow-Origin: *` for that file and for
 GitHub Pages sends that header for every file already. On any other host, set
 it yourself. `npm run check:live` tells you if it is missing.
 
+## Working on it from inside it
+
+You can stand in your world while you change it.
+
+- **A refresh puts you back where you stood,** facing the way you faced. If
+  you were in a headset, the way back in is offered first.
+- **Panels of your own.** Notes, pictures and video you hang for yourself,
+  see-through if you like, and pinned so they come along. Only you see them.
+  In a headset there is a keyboard, and where your browser or your computer
+  can listen, you can speak instead of typing.
+- **A terminal on your own computer,** if your home is a BitPortal room. Run
+  the NSWP Bridge on your computer naming this world
+  (`npm run bridge -- --world http://127.0.0.1:5173`), name the same address
+  under Your computers in your room, and go to it from there. A terminal on
+  your computer opens in a panel here, and your computer asks you first.
+
+Read [what the Bridge trusts](https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/blob/main/browser/bridge.md)
+before the last one. This world's own page draws that terminal, so its code
+could read and type into your shell. That is why it is for a world whose
+code is yours, why nobody visiting can make it happen, and why it is worth
+looking at what an assistant or a new dependency adds to `src/`.
+
 ## Working with an AI assistant
 
 [`AGENTS.md`](AGENTS.md) tells a coding assistant how this folder is laid out,

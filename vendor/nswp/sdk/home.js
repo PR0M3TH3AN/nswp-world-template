@@ -4,9 +4,11 @@ import {
   createAlloy,
   createPortalWindow,
   textSprite
-} from "./shared-YYLM5WUF.js";
+} from "./shared-QLWU42IU.js";
 import "./shared-E3UFEQZL.js";
-import "./shared-64R25HDC.js";
+import "./shared-BP5WDRDO.js";
+import "./shared-WWPRVQWW.js";
+import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/home.ts
 import * as THREE3 from "three";

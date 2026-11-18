@@ -14,7 +14,8 @@
       "nswp-sdk": ["./vendor/nswp/sdk-types/index.d.ts"],
       "nswp-sdk/three": ["./vendor/nswp/sdk-types/three.d.ts"],
       "nswp-sdk/home": ["./vendor/nswp/sdk-types/home.d.ts"],
-      "nswp-sdk/ui": ["./vendor/nswp/sdk-types/ui.d.ts"]
+      "nswp-sdk/ui": ["./vendor/nswp/sdk-types/ui.d.ts"],
+      "nswp-sdk/terminal": ["./vendor/nswp/sdk-types/terminal.d.ts"]
     }
   },
   "include": ["src"]
