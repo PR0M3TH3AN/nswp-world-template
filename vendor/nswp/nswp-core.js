@@ -3283,6 +3283,13 @@ function decodeNaddr(s) {
   }
   return relays.length ? { kind, pubkey, identifier, relays } : { kind, pubkey, identifier };
 }
+function encodeNpub(pubkey) {
+  return bech32.encode("npub", bech32.toWords(hexToBytes(pubkey)), BECH32_LIMIT);
+}
+function shortNpub(pubkey) {
+  const npub = encodeNpub(pubkey);
+  return `${npub.slice(0, 10)}\u2026${npub.slice(-4)}`;
+}
 function coordinate(p) {
   return `${p.kind}:${p.pubkey}:${p.identifier}`;
 }
@@ -4801,6 +4808,19 @@ function decodeArrival(value) {
     if (typeof json.look === "string" && decodeLook(json.look).ok) out.look = json.look;
     else c.warn("invalid_look", "look", "Ignoring a look that can't be read.");
   }
+  if (json.pass !== void 0 || json.sessionKey !== void 0) {
+    let fits = false;
+    if (hasEventShape(json.pass) && isHex64(json.sessionKey)) {
+      try {
+        fits = getTagValue(json.pass, "nswp:session") === getPublicKey(hexToBytes(json.sessionKey));
+      } catch {
+      }
+    }
+    if (fits) {
+      out.pass = json.pass;
+      out.sessionKey = json.sessionKey;
+    } else c.warn("invalid_pass", "pass", "Ignoring a pass that doesn't come with the session key it names.");
+  }
   if (json.receipts !== void 0) {
     if (Array.isArray(json.receipts) && json.receipts.length <= LIMITS.maxReceipts && json.receipts.every(hasEventShape)) {
       out.receipts = json.receipts;
@@ -5759,6 +5779,145 @@ function checkPictureBytes(expectedSha256, bytes) {
   return bytes.length <= LAYOUT_LIMITS.pictureBytes && bytesToHex(sha256(bytes)) === expectedSha256;
 }
 
+// packages/core/src/list.ts
+var LIST_LIMITS = { worlds: 200, titleChars: 200, descriptionChars: 1e3 };
+function buildListEvent(l) {
+  const tags = [["d", l.d], ["title", l.title]];
+  if (l.description) tags.push(["description", l.description]);
+  for (const w of l.worlds) tags.push(["a", w]);
+  tags.push(["alt", `A list of spatial worlds: ${l.title}`]);
+  return { kind: CURATION_SET_KIND, created_at: l.createdAt ?? nowSeconds(), tags, content: "" };
+}
+function parseListEvent(input, opts = {}) {
+  const c = new Collector();
+  if (typeof input !== "object" || input === null) {
+    c.error("not_an_event", "", "Expected a Nostr event object.");
+    return c.result(null);
+  }
+  const e = input;
+  if (e.kind !== CURATION_SET_KIND) c.error("wrong_kind", "kind", `Expected kind ${CURATION_SET_KIND}, got ${String(e.kind)}.`);
+  if (!Array.isArray(e.tags) || !e.tags.every((t) => Array.isArray(t) && t.every((x) => typeof x === "string"))) {
+    c.error("invalid_tags", "tags", "tags must be an array of string arrays.");
+    return c.result(null);
+  }
+  if (!Number.isInteger(e.created_at)) c.error("invalid_created_at", "created_at", "created_at must be an integer.");
+  if (opts.requireSigned && !hasEventShape(input)) c.error("not_signed", "", "Expected a signed event with id, pubkey and sig.");
+  const pubkey = isHex64(e.pubkey) ? e.pubkey : void 0;
+  if (e.pubkey !== void 0 && !pubkey) c.error("invalid_pubkey", "pubkey", "pubkey must be 64 lowercase hex characters.");
+  const tags = e.tags;
+  const d = getTagValue({ tags }, "d");
+  if (d === void 0) c.error("missing_tag", "tags.d", "A list needs a d tag.");
+  else if (d.length > LIMITS.maxIdLength) c.error("value_too_long", "tags.d", `d must be at most ${LIMITS.maxIdLength} characters.`);
+  let title = getTagValue({ tags }, "title") ?? "";
+  if (title.length > LIST_LIMITS.titleChars) {
+    c.warn("value_too_long", "tags.title", "The title is cut short.");
+    title = title.slice(0, LIST_LIMITS.titleChars);
+  }
+  let description = getTagValue({ tags }, "description") ?? "";
+  if (description.length > LIST_LIMITS.descriptionChars) {
+    c.warn("value_too_long", "tags.description", "The description is cut short.");
+    description = description.slice(0, LIST_LIMITS.descriptionChars);
+  }
+  const worlds = [];
+  let over = false;
+  for (const t of getTags({ tags }, "a")) {
+    const parsed = t[1] ? parseCoordinate(t[1]) : null;
+    if (!parsed || parsed.kind !== WORLD_KIND || parsed.identifier === "") continue;
+    const id = coordinate(parsed);
+    if (worlds.includes(id)) continue;
+    if (worlds.length === LIST_LIMITS.worlds) {
+      over = true;
+      break;
+    }
+    worlds.push(id);
+  }
+  if (over) c.warn("too_many_worlds", "tags.a", `Only the first ${LIST_LIMITS.worlds} worlds on a list are read.`);
+  const list = { d: d ?? "", title: title || (d ?? ""), description, worlds, createdAt: Number.isInteger(e.created_at) ? e.created_at : 0 };
+  if (pubkey) {
+    list.pubkey = pubkey;
+    if (d !== void 0) list.coordinate = coordinate({ kind: CURATION_SET_KIND, pubkey, identifier: d });
+  }
+  return c.result(list);
+}
+
+// packages/core/src/pass.ts
+var PASS_LIMITS = {
+  defaultTtlSec: 4 * 3600,
+  maxTtlSec: 12 * 3600,
+  /** How far a reader's clock and a signer's may disagree. */
+  skewSec: 120,
+  nameChars: 48,
+  /** A pass as JSON, as it travels between the members of a room. */
+  chars: 4e3
+};
+function cleanName(name) {
+  const cleaned = name.normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/\s+/g, " ").trim();
+  return [...cleaned].slice(0, PASS_LIMITS.nameChars).join("").trim();
+}
+function claimsKey(seed) {
+  return /^[0-9a-f]{64}$/i.test(seed);
+}
+function buildRoomPass(input) {
+  const created = input.createdAt ?? nowSeconds();
+  const ttl = Math.max(60, Math.min(input.ttlSec ?? PASS_LIMITS.defaultTtlSec, PASS_LIMITS.maxTtlSec));
+  const tags = [
+    ["nswp:session", input.session],
+    ["nswp:origin", new URL(input.origin).origin],
+    ["expiration", String(created + ttl)]
+  ];
+  const name = input.name ? cleanName(input.name) : "";
+  if (name) tags.push(["name", name]);
+  return { kind: ROOM_PASS_KIND, created_at: created, tags, content: "" };
+}
+function verifyRoomPass(event, opts) {
+  const c = new Collector();
+  if (!verifyEvent(event)) {
+    c.error("bad_signature", "", "The pass is not a validly signed Nostr event.");
+    return c.result(null);
+  }
+  const now = opts.now ?? nowSeconds();
+  if (event.kind !== ROOM_PASS_KIND) c.error("wrong_kind", "kind", `Expected kind ${ROOM_PASS_KIND}.`);
+  const one = (name2) => {
+    const t = getTags(event, name2);
+    if (t.length !== 1 || !t[0][1]) {
+      c.error(t.length > 1 ? "duplicate_tag" : "missing_tag", `tags.${name2}`, `Exactly one "${name2}" tag is required.`);
+      return void 0;
+    }
+    return t[0][1];
+  };
+  const session = one("nswp:session");
+  const origin = one("nswp:origin");
+  const exp = one("expiration");
+  let expectedOrigin;
+  try {
+    expectedOrigin = new URL(opts.origin).origin;
+  } catch {
+    c.error("invalid_option", "origin", "opts.origin is not a URL.");
+    return c.result(null);
+  }
+  if (session !== void 0) {
+    if (!isHex64(session)) c.error("invalid_session", "tags.nswp:session", "The session key must be 64 lowercase hex characters.");
+    else if (session === event.pubkey) c.error("invalid_session", "tags.nswp:session", "A pass can't name the identity key as its own session key.");
+    else if (opts.session !== void 0 && session !== opts.session) c.error("session_mismatch", "tags.nswp:session", "The pass speaks for a different session key.");
+  }
+  if (origin !== void 0 && origin !== expectedOrigin) c.error("origin_mismatch", "tags.nswp:origin", "The pass was made for a different site.");
+  const expiresAt = exp !== void 0 ? Number(exp) : NaN;
+  if (exp !== void 0) {
+    if (!/^\d+$/.test(exp) || !Number.isSafeInteger(expiresAt)) c.error("invalid_expiration", "tags.expiration", "expiration must be an integer timestamp.");
+    else {
+      if (expiresAt <= now) c.error("pass_expired", "tags.expiration", "The pass has expired.");
+      if (expiresAt - event.created_at > PASS_LIMITS.maxTtlSec) c.error("ttl_too_long", "tags.expiration", `A pass may live at most ${PASS_LIMITS.maxTtlSec / 3600} hours.`);
+    }
+  }
+  if (event.created_at > now + PASS_LIMITS.skewSec) c.error("created_in_future", "created_at", "The pass is dated in the future.");
+  const names = getTags(event, "name");
+  if (names.length > 1) c.warn("duplicate_tag", "tags.name", "Only the first name is used.");
+  const raw = names[0]?.[1] ?? "";
+  const name = cleanName(raw);
+  if (raw !== name) c.warn("name_cleaned", "tags.name", "The name was tidied before being shown.");
+  return c.result({ pubkey: event.pubkey, session: session ?? "", name, expiresAt, id: event.id });
+}
+
 // packages/core/src/index.ts
 var VERSION = "0.1.0";
 export {
@@ -5776,11 +5935,13 @@ export {
   LAYOUT_ACCESS,
   LAYOUT_LIMITS,
   LIMITS,
+  LIST_LIMITS,
   LOOK_COLORS,
   LOOK_LIMITS,
   LOOK_PARTS,
   MODES,
   NswpError,
+  PASS_LIMITS,
   PERF_TIERS,
   POSE_BYTES,
   PREVIEW_LIMITS,
@@ -5803,11 +5964,15 @@ export {
   buildEntryAssertion,
   buildHello,
   buildLayoutEvent,
+  buildListEvent,
+  buildRoomPass,
   buildSignal,
   buildWorldEvent,
   checkDestination,
   checkPictureBytes,
   checkPreviewBytes,
+  claimsKey,
+  cleanName,
   coordinate,
   decodeArrival,
   decodeLook,
@@ -5815,6 +5980,7 @@ export {
   encodeArrival,
   encodeLook,
   encodeNaddr,
+  encodeNpub,
   fetchManifest,
   finalizeEvent,
   generatedLook,
@@ -5845,6 +6011,7 @@ export {
   parseAvatarEvent,
   parseCoordinate,
   parseLayoutEvent,
+  parseListEvent,
   parseManifest,
   parsePortal,
   parseWorldEvent,
@@ -5855,6 +6022,7 @@ export {
   randomNonce,
   roomTopic,
   serializeEvent,
+  shortNpub,
   shouldInitiate,
   spawnOffset,
   stripArrivalParam,
@@ -5863,5 +6031,6 @@ export {
   verifyEntryAssertion,
   verifyEvent,
   verifyOrigin,
+  verifyRoomPass,
   wellKnownUrl
 };

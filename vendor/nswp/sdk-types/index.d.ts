@@ -8,7 +8,7 @@
  * Which Airlock (spec §6.3): the return address from the arrival context,
  * else the world's configured default, else a built-in confirmation screen.
  */
-import { type Arrival, type Issue, type PortalDestination } from "@nswp/core";
+import { type Arrival, type Issue, type NostrEvent, type PortalDestination } from "@nswp/core";
 export type { Arrival, PortalDestination } from "@nswp/core";
 export { room, RoomSession, type JoinOptions, type Member, type RoomStatus } from "./room.js";
 export type { Pose, Transform } from "@nswp/core";
@@ -31,6 +31,19 @@ export declare const arrival: {
      * they chose to be seen. Kept for this tab's session only.
      */
     look(): string | undefined;
+    /**
+     * Who this visitor chose to be here, if they came by name
+     * (protocol/10-identity.md): their public key, the name on their pass, and
+     * the pass and session key to hand to a room. Checked against this site and
+     * the clock each time; undefined for a guest, and once the pass has run out.
+     * The world never sees their own key, only this throwaway one.
+     */
+    identity(): {
+        pubkey: string;
+        name: string;
+        pass: NostrEvent;
+        sessionKey: string;
+    } | undefined;
     /** The Airlock this visitor came from, for this tab's session only. */
     returnAirlock(): string | undefined;
 };

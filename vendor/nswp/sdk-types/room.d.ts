@@ -1,8 +1,12 @@
-import { type Pose, type Look } from "@nswp/core";
+import { type NostrEvent, type Pose, type Look } from "@nswp/core";
 export interface Member {
-    /** Session public key. In the spike everyone is a guest. */
+    /** Session public key: a throwaway, new each visit. */
     pubkey: string;
-    guest: true;
+    /** True until their pass has checked out (protocol/10-identity.md). */
+    guest: boolean;
+    /** The identity key behind them, once their pass has checked out. Never taken on their say-so. */
+    identity?: string;
+    /** A proven member's own name, or the short form of their key. A guest is "Guest" and four digits. */
     name: string;
     color: number;
     /** How they look (spec §4.2). What their session key generates, until they say otherwise. */
@@ -24,6 +28,15 @@ export interface JoinOptions {
      * Left out, you are drawn as your session key generates: new every visit.
      */
     look?: string;
+    /**
+     * Who you are, if you chose to go by name: the pass your own client signed
+     * and the session key it names, usually from `arrival.identity()`. It is
+     * checked here, and shown to each member directly, never to a relay.
+     */
+    identity?: {
+        pass: NostrEvent;
+        sessionKey: string;
+    };
 }
 export type RoomStatus = "connecting" | "open" | "no-relays" | "closed";
 interface Events {
@@ -32,6 +45,8 @@ interface Events {
     pose: (member: Member, pose: Pose) => void;
     /** A member said how they look. Arrives shortly after `member`. */
     look: (member: Member, look: Look) => void;
+    /** A member's pass checked out, or ran out: `member.guest`, `identity` and `name` have changed. */
+    identity: (member: Member) => void;
     /** A member started or stopped recording what they see. */
     recording: (member: Member, on: boolean) => void;
     audio: (member: Member, stream: MediaStream) => void;
@@ -51,6 +66,11 @@ export declare class RoomSession {
     private readonly seen;
     private readonly listeners;
     private readonly look;
+    /** The world's origin: the only place a pass shown here may have been made for. */
+    private readonly origin;
+    /** This visitor's own pass, as it is said to the others, and when it stops. */
+    private pass;
+    private passUntil;
     private recordingTimer;
     private mic;
     private timers;
@@ -70,11 +90,22 @@ export declare class RoomSession {
     private onEvent;
     private createPeer;
     private wirePoseChannel;
+    /** Draw a member again if what is known about them changes how they look. */
+    private redraw;
     /**
-     * Tell one member how you look. The channel drops what it can't deliver at
-     * once, so it is said a few times over the first seconds.
+     * A member has shown a pass. It counts only if it checks out for this site
+     * and names the session key they are speaking with, which they have already
+     * proved they hold: the handshake was signed with it.
      */
-    private sayLook;
+    private checkPass;
+    /** A pass that has run out leaves a guest behind. */
+    private expire;
+    /**
+     * Tell one member how you look and, if you came by name, who you are. The
+     * channel drops what it can't deliver at once, so each is said a few times
+     * over the first seconds.
+     */
+    private introduce;
     private gathered;
     private audioTransceiver;
     private offerTo;

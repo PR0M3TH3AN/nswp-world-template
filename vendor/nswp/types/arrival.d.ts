@@ -11,6 +11,14 @@ export interface Arrival {
     /** The visitor's look, inline (spec §4.2): for someone who hasn't published an avatar. */
     look?: string;
     receipts?: NostrEvent[];
+    /**
+     * A pass (protocol/10-identity.md): the visitor's identity key saying that
+     * `sessionKey` speaks for them at the destination. Present only with
+     * `sessionKey`, and only when the visitor chose to go by name.
+     */
+    pass?: NostrEvent;
+    /** The secret half of the session key the pass names, as 64 hex characters. A throwaway, made for this trip. */
+    sessionKey?: string;
 }
 export declare function encodeArrival(a: Omit<Arrival, "v"> & {
     v?: string;

@@ -14,7 +14,7 @@
  */
 import * as THREE from "three";
 import { type FigureStyle } from "./figure.js";
-import { type Member, type RoomSession } from "./room.js";
+import { type JoinOptions, type Member, type RoomSession } from "./room.js";
 export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
 import type { Controls } from "./ui/model.js";
@@ -34,6 +34,12 @@ export interface PresenceOptions {
      * time a room is joined. Left out, they are drawn as their session key generates.
      */
     look?: string | (() => string | undefined);
+    /**
+     * Who the visitor is, if they came by name (protocol/10-identity.md):
+     * usually `() => arrival.identity()`. Asked each time a room is joined.
+     * Left out, they are a guest.
+     */
+    identity?: JoinOptions["identity"] | (() => JoinOptions["identity"] | undefined);
     /** Draw other people in this world's own way (spec §4.2, "What a world may change"). */
     figureStyle?: FigureStyle;
     /** Called whenever membership, status or the microphone changes. */
@@ -49,6 +55,10 @@ export interface AvatarInfo {
     audioLevel: number;
     /** How they are being drawn. */
     look: Member["look"];
+    /** True until their pass has checked out. */
+    guest: boolean;
+    /** The identity key behind them, if proven. */
+    identity: string | null;
 }
 export interface Presence {
     readonly session: RoomSession | null;
@@ -145,5 +155,5 @@ export declare function addViewControls(controls: Controls, d: {
     };
     onState?: (state: string) => void;
 }): Promise<boolean>;
-export { createFigure, type Figure, type FigureStyle } from "./figure.js";
+export { createFigure, type Figure, type FigureFacts, type FigureStyle } from "./figure.js";
 export { addCameraControls, canRecord, recordClip, saveFile, takePicture, takeSelfie, type Camera, type CameraOptions, type Capture, type Clip } from "./camera.js";

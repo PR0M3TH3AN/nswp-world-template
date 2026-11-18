@@ -25,6 +25,15 @@ export interface FigureStyle {
     /** Parts to leave off: a world with hats of its own, say. */
     omit?: ("accessory" | "shoulders" | "mark")[];
 }
+/** What is known about the person, as opposed to how they chose to look. */
+export interface FigureFacts {
+    /**
+     * Their pass checked out (protocol/10-identity.md), so the mark is their
+     * identity key's. It is drawn with a lit ring round it. Never set this on
+     * anyone's say-so.
+     */
+    proven?: boolean;
+}
 export interface Figure {
     group: THREE.Group;
     /** Faces -Z, like a camera. Its origin is between the eyes. */
@@ -43,4 +52,4 @@ export interface Figure {
  * from. As made, the head is at the origin facing -Z, the body hangs below
  * it and the hands rest at its sides: whoever uses it moves the parts.
  */
-export declare function createFigure(look: Look | string, style?: FigureStyle): Figure;
+export declare function createFigure(look: Look | string, style?: FigureStyle, facts?: FigureFacts): Figure;

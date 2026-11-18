@@ -1,6 +1,6 @@
 import {
   room
-} from "./shared-AALJL3XN.js";
+} from "./shared-E3UFEQZL.js";
 import {
   ICONS,
   rgb
@@ -8,7 +8,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE7 from "three";
-import { decodeLook, spawnOffset } from "@nswp/core";
+import { decodeLook, encodeNpub, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -429,7 +429,7 @@ function buildHead(b, look, main, accent, omit) {
       break;
   }
 }
-function buildBody(b, look, main, accent, omit) {
+function buildBody(b, look, main, accent, omit, proven = false) {
   const k = look.build === "slight" ? 0.86 : look.build === "broad" ? 1.2 : 1;
   const cloth = (row, rows, side, sides, turn = 0) => {
     const a = (side + 0.5) / sides * Math.PI * 2 + turn;
@@ -488,6 +488,14 @@ function buildBody(b, look, main, accent, omit) {
     const pitch = cell * 1.14;
     const wide = pitch * 5 + cell * 0.7;
     b.box([wide, wide, 0.02], [x, y, z - facing * 8e-3], { color: DARK, bevel: 6e-3 });
+    if (proven) {
+      const [half, band, zz] = [wide / 2 + cell * 0.55, cell * 0.38, z + facing * 25e-4];
+      const bar = (x0, y0, x1, y1) => b.quad([x + x0, y + y0, zz], [x + x1, y + y0, zz], [x + x1, y + y1, zz], [x + x0, y + y1, zz], { glow: 1 }, [0, 0, facing]);
+      bar(-half, half - band, half, half);
+      bar(-half, -half, half, -half + band);
+      bar(-half, -half + band, -half + band, half - band);
+      bar(half - band, -half + band, half, half - band);
+    }
     markGrid(look.mark).forEach(
       (row, r) => row.forEach((on, c) => {
         if (!on) return;
@@ -499,7 +507,7 @@ function buildBody(b, look, main, accent, omit) {
   plate(0, 0.04, chest + 0.012, 0.026, 1);
   plate(-chest * 0.42, 0.105, -(chest + 4e-3), 95e-4, -1);
 }
-function createFigure(look, style = {}) {
+function createFigure(look, style = {}, facts = {}) {
   const wearing = typeof look === "string" ? generatedLook(look) : look;
   const omit = new Set(style.omit ?? []);
   let [main, accent, light] = [new THREE3.Color(wearing.color), new THREE3.Color(wearing.accent), new THREE3.Color(wearing.light)];
@@ -518,7 +526,7 @@ function createFigure(look, style = {}) {
   const headShape = builder();
   buildHead(headShape, wearing, cloth, trim, omit);
   const bodyShape = builder();
-  buildBody(bodyShape, wearing, cloth, trim, omit);
+  buildBody(bodyShape, wearing, cloth, trim, omit, facts.proven === true);
   const handShape = builder();
   handShape.lathe([[5e-4, -0.06], [0.04, 0], [5e-4, 0.06]], [0, 0, 0], 4, () => ({ glow: 0.75 }));
   const metal = style.material ? style.material(light, wearing) : createAlloy(light, { gloss: wearing.finish === "matte" ? 0.25 : wearing.finish === "gloss" ? 0.85 : 0.7, sheen: wearing.finish === "sheen" ? 0.45 : 0 });
@@ -1258,7 +1266,7 @@ function createPresence(d) {
   };
   const dress = (a, look) => {
     const was = a.figure;
-    const figure = createFigure(look, d.figureStyle);
+    const figure = createFigure(look, d.figureStyle, { proven: !a.member.guest });
     figure.head.position.copy(was?.head.position ?? figure.head.position);
     figure.head.quaternion.copy(was?.head.quaternion ?? figure.head.quaternion);
     figure.head.add(a.label);
@@ -1291,7 +1299,7 @@ function createPresence(d) {
     const root = new THREE7.Group();
     root.visible = false;
     const label = textSprite(member.name, labelColor, 0.5);
-    label.position.set(0, 0.3, 0);
+    label.position.set(0, 0.42, 0);
     d.scene.add(root);
     const a = { member, root, label, target: null, placed: false };
     dress(a, member.look);
@@ -1366,7 +1374,8 @@ function createPresence(d) {
     roomName = name;
     void listener.context.resume();
     const look = typeof d.look === "function" ? d.look() : d.look;
-    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {} });
+    const identity = typeof d.identity === "function" ? d.identity() : d.identity;
+    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {} });
     session = s;
     if (!offsetApplied) {
       const off = spawnOffset(s.self.pubkey);
@@ -1383,6 +1392,19 @@ function createPresence(d) {
     s.on("look", (m, look2) => {
       const a = avatars.get(m.pubkey);
       if (a) dress(a, look2);
+      changed();
+    });
+    s.on("identity", (m) => {
+      const a = avatars.get(m.pubkey);
+      if (a) {
+        const label = textSprite(m.name, labelColor, 0.5);
+        label.position.copy(a.label.position);
+        a.label.removeFromParent();
+        a.label.material.map?.dispose();
+        a.label.material.dispose();
+        a.label = label;
+        dress(a, m.look);
+      }
       changed();
     });
     s.on("member", (m) => {
@@ -1513,7 +1535,9 @@ function createPresence(d) {
           head: a.target?.head.position.map((n) => Math.round(n * 100) / 100) ?? null,
           hands: [!!a.target?.left, !!a.target?.right],
           audioLevel: Math.round(level * 1e3) / 1e3,
-          look: a.member.look
+          look: a.member.look,
+          guest: a.member.guest,
+          identity: a.member.identity ?? null
         };
       });
     }
@@ -1681,7 +1705,8 @@ function addRoomControls(controls, presence, opts = {}) {
     if (!s) return last;
     const others = s.members.length;
     const who = s.status === "no-relays" ? "can't reach any relay" : others === 0 ? "nobody else here yet" : others === 1 ? "1 other person here" : `${others} other people here`;
-    return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${presence.micOn ? " Your microphone is on." : ""}`;
+    const as = s.self.guest ? "" : ` You are here as ${s.self.name}.`;
+    return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${as}${presence.micOn ? " Your microphone is on." : ""}`;
   };
   const refresh = () => {
     const s = presence.session;
@@ -1712,7 +1737,7 @@ function addRoomControls(controls, presence, opts = {}) {
         label: () => m.recording ? `${m.name}, recording` : m.name,
         act: () => {
           presence.pointOut(m.pubkey);
-          controls.say(`${m.name} is under the column of light.`);
+          controls.say(m.identity ? `${m.name} is under the column of light. Their key: ${encodeNpub(m.identity)}` : `${m.name} is under the column of light. A guest: nobody has vouched for who they are.`);
         }
       })
     );

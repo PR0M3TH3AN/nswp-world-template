@@ -41,6 +41,13 @@ disagree, the documents are right and this file has a bug.
 2. **Never ask for credentials.** No password fields, no key or `nsec` entry, no
    `window.nostr`, no sign-in of any kind. A world doesn't need them, and a
    credential prompt inside a 3D scene can't be told apart from phishing.
+   A visitor who chose to go by name arrives with a **pass** their own client
+   signed (NSWP-10), and the plumbing already hands it to the room, where
+   others see their name. If the scene wants the name, `arrival.identity()`
+   from `nswp-sdk` gives `{ pubkey, name }` once checked, or `undefined` for a
+   guest. Show it; gate nothing on it; never store the pass or send it
+   anywhere. It is proof that this person came here, and it isn't the world's
+   to keep.
 3. **No code from other sites.** No `<script src="https://…">`, no importing
    from a URL. Add a dependency with `npm install` so it is bundled. The
    arrival context must never be readable by foreign code.
