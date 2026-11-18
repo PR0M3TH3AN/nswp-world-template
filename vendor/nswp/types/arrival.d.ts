@@ -8,6 +8,8 @@ export interface Arrival {
     airlock?: string;
     assertion?: NostrEvent;
     avatar?: string;
+    /** The visitor's look, inline (spec §4.2): for someone who hasn't published an avatar. */
+    look?: string;
     receipts?: NostrEvent[];
 }
 export declare function encodeArrival(a: Omit<Arrival, "v"> & {

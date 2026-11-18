@@ -391,7 +391,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   let presenceUpdate = (_dt: number) => {};
   if (config.world.capabilities?.includes("rooms")) {
     let refresh = () => {};
-    const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", onChange: () => refresh() });
+    // A visitor is drawn to the others as they chose to arrive: wearing their
+    // look, or plain. A scene can dress everyone its own way with `figureStyle`.
+    const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", look: () => arrival.look(), figureStyle: handle.figureStyle, onChange: () => refresh() });
     ({ refresh } = addRoomControls(controls, presence, { onState: (s) => (state.room = s) }));
     presenceUpdate = (dt) => presence.update(dt);
     hooks.roomInfo = () => presence.info();

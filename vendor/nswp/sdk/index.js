@@ -1,7 +1,7 @@
 import {
   RoomSession,
   room
-} from "./shared-PMZZ7JZF.js";
+} from "./shared-QMGUPZPS.js";
 
 // packages/sdk/src/index.ts
 import {
@@ -13,6 +13,7 @@ import {
   stripArrivalParam
 } from "@nswp/core";
 var RETURN_KEY = "nswp:return-airlock";
+var LOOK_KEY = "nswp:look";
 var defaultAirlock;
 var cached;
 function configure(opts) {
@@ -51,7 +52,26 @@ var arrival = {
       } catch {
       }
     }
+    if (cached.context) {
+      try {
+        if (cached.context.look) session()?.setItem(LOOK_KEY, cached.context.look);
+        else session()?.removeItem(LOOK_KEY);
+      } catch {
+      }
+    }
     return cached;
+  },
+  /**
+   * The look this visitor arrived wearing, in its inline form (spec §4.2), or
+   * undefined if they came plain. Hand it to a room so others see them as
+   * they chose to be seen. Kept for this tab's session only.
+   */
+  look() {
+    try {
+      return session()?.getItem(LOOK_KEY) ?? void 0;
+    } catch {
+      return void 0;
+    }
   },
   /** The Airlock this visitor came from, for this tab's session only. */
   returnAirlock() {
