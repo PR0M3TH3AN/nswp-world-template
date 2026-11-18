@@ -191,6 +191,7 @@ var arrival = {
     }
   }
 };
+var carried = (opts, immersive) => ({ immersive, ...opts.joined ? { joined: true, ...opts.mic ? { mic: true } : {} } : {} });
 var portal = {
   /** Which Airlock `go()` would use right now, or null for the built-in screen. */
   airlockFor(opts = {}) {
@@ -215,7 +216,7 @@ var portal = {
     }
     const airlock = portal.airlockFor(opts);
     if (airlock) {
-      location.assign(buildAirlockUrl(airlock, dest, { immersive }));
+      location.assign(buildAirlockUrl(airlock, dest, carried(opts, immersive)));
       return;
     }
     showFallback(dest);
@@ -235,7 +236,7 @@ var portal = {
       } catch {
       }
     }
-    location.assign(buildWayUrl(airlock, { immersive }));
+    location.assign(buildWayUrl(airlock, carried(opts, immersive)));
     return true;
   },
   /**
@@ -254,7 +255,7 @@ var portal = {
       } catch {
       }
     }
-    location.assign(buildWayUrl(airlock, { immersive, doors: true }));
+    location.assign(buildWayUrl(airlock, { ...carried(opts, immersive), doors: true }));
     return true;
   }
 };

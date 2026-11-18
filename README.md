@@ -190,7 +190,8 @@ it yourself. `npm run check:live` tells you if it is missing.
 You can stand in your world while you change it.
 
 - **A refresh puts you back where you stood,** facing the way you faced. If
-  you were in a headset, the way back in is offered first.
+  you were in a headset, the way back in is offered first. If you were in the
+  room with others, you still are.
 - **Panels of your own.** Notes, pictures and video you hang for yourself,
   see-through if you like, and pinned so they come along. Only you see them.
   In a headset there is a keyboard, and where your browser or your computer

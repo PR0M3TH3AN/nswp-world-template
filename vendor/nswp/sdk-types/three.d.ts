@@ -133,11 +133,26 @@ export declare function createPortalWindow(geometry: THREE.BufferGeometry, pano:
  * Joining shows a visitor's IP address to the others in the room. The Room
  * section says so before they join, on a flat screen and in a headset.
  */
+export interface Travelling {
+    /** They are in this place's open room. A private room doesn't travel: the next place's open room is other people. */
+    joined: boolean;
+    /** Their microphone is on. */
+    mic: boolean;
+}
 export declare function addRoomControls(controls: Controls, presence: Presence, opts?: {
     search?: string;
     onState?: (state: Record<string, unknown> | null) => void;
+    /**
+     * The visitor arrived joined: their own client says they were among people where they came from
+     * (`arrival.read().context`, its `joined` and `mic`). The open room is joined without asking again.
+     */
+    arrived?: {
+        joined?: boolean;
+        mic?: boolean;
+    } | null;
 }): {
     refresh(): void;
+    travelling(): Travelling;
 };
 export declare function addViewControls(controls: Controls, d: {
     renderer: THREE.WebGLRenderer;
@@ -163,6 +178,7 @@ export { DEFAULT_COMFORT, readPad, type Comfort, type PadState } from "./actions
 export { addPanelControls, createPanels, type Panel, type PanelContent, type PanelInfo, type Panels, type PanelsOptions } from "./panels.js";
 export { LIBRARY_LIMITS, PANEL_LIMITS, PANEL_LOOKS, type LibraryItem, type PanelLook, type PanelPlace, type PanelRecord, type PanelSource } from "./panel-store.js";
 export { createStay, wasRefreshed, type Stay, type Stood } from "./stay.js";
+export { createStroll, reachOf, TAP_REACH, WALK_SPEED, type Stroll } from "./stroll.js";
 export { browserVoice, computerVoice, createVoice, recordVoice, toPcm16, type Hearing, type Voice, type VoiceSource, type VoiceState } from "./speech.js";
 export { createKeyboard, type AskOptions, type Keyboard, type KeyboardOptions } from "./keyboard.js";
 export { createLibrary, type Library, type LibraryOptions } from "./library.js";

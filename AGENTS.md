@@ -258,15 +258,23 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   then.
 - **Moving around.** The plumbing gives every visitor two ways to move:
   W, A, S, D on a keyboard, and stepping, which is pointing at the floor and
-  selecting (a click, a tap, a trigger pull or a pinch) to stand there. A step
-  is a jump of at most 5 m, never a slide. Stepping is the only way to move
-  for someone on a phone or in a headset, so a scene bigger than a room must
-  keep it. The floor is the plane y = 0.
+  selecting (a click, a tap, a trigger pull or a pinch) to stand there. In a
+  headset a step is a jump of at most 5 m, never a slide. On a flat screen it
+  is a walk at the keys' pace to a spot 3 m off at most, so a tap doesn't
+  lurch the room. Stepping is the only way to move for someone on a phone or
+  in a headset, so a scene bigger than a room must keep it. The floor is the
+  plane y = 0.
 - **The camera and the People list** come with the plumbing: a picture, a
   selfie and a short clip saved to the visitor's device, and a list of who
   else is in the room. Recording a clip shows the others a light. If your
   scene has things that shouldn't be in a picture, list them in
   `hideFromPreview`: the camera leaves those out too.
+- **Staying joined.** A visitor who was in a room where they came from
+  arrives joined here, and one who is joined here stays joined where they go
+  next, with their microphone if they have told their own client it may
+  travel (NSWP-02, "Staying joined"). The plumbing does both, and keeps them
+  joined through a refresh. Don't join anyone to a room from anything but the
+  arrival context: a link is something anyone can write.
 - **Other people.** In a room, each visitor is a figure built from their
   *look*: parts and colours they chose, or that their key generates. The
   plumbing draws them. To make them match your world, return `figureStyle`

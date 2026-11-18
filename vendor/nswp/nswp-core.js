@@ -4873,6 +4873,14 @@ function decodeArrival(value) {
     if (json.home === true) out.home = true;
     else c.warn("invalid_home", "home", "Ignoring a home hint that isn't true or false.");
   }
+  if (json.joined !== void 0 && json.joined !== false) {
+    if (json.joined === true) out.joined = true;
+    else c.warn("invalid_joined", "joined", "Ignoring a joined hint that isn't true or false.");
+  }
+  if (json.mic !== void 0 && json.mic !== false) {
+    if (json.mic === true && out.joined) out.mic = true;
+    else c.warn("invalid_mic", "mic", "Ignoring a microphone hint that isn't true, or that comes without joined.");
+  }
   if (json.receipts !== void 0) {
     if (Array.isArray(json.receipts) && json.receipts.length <= LIMITS.maxReceipts && json.receipts.every(hasEventShape)) {
       out.receipts = json.receipts;
@@ -5016,6 +5024,9 @@ function parsePortal(input) {
   }
   return c.result(portal);
 }
+function stateFlags(opts) {
+  return [...opts.immersive ? ["xr=1"] : [], ...opts.joined ? ["joined=1"] : [], ...opts.joined && opts.mic ? ["mic=1"] : []];
+}
 function buildAirlockUrl(airlock, dest, opts = {}) {
   const u = new URL(airlock);
   const to = dest.naddr ?? dest.url;
@@ -5023,7 +5034,7 @@ function buildAirlockUrl(airlock, dest, opts = {}) {
   const parts = [`to=${encodeURIComponent(to)}`];
   if (dest.naddr && dest.url) parts.push(`url=${encodeURIComponent(dest.url)}`);
   if (dest.entryPoint) parts.push(`entry=${encodeURIComponent(dest.entryPoint)}`);
-  if (opts.immersive) parts.push("xr=1");
+  parts.push(...stateFlags(opts));
   u.hash = parts.join("&");
   return u.href;
 }
@@ -5032,12 +5043,13 @@ function fragmentSaysImmersive(hash) {
 }
 function wayWithoutDestination(hash) {
   const parts = hash.replace(/^#/, "").split("&").filter(Boolean);
-  if (parts.some((p) => p !== "xr=1" && p !== "doors=1")) return null;
-  return { immersive: parts.includes("xr=1"), doors: parts.includes("doors=1") };
+  if (parts.some((p) => p !== "xr=1" && p !== "doors=1" && p !== "joined=1" && p !== "mic=1")) return null;
+  const joined = parts.includes("joined=1");
+  return { immersive: parts.includes("xr=1"), doors: parts.includes("doors=1"), ...joined ? { joined: true } : {}, ...joined && parts.includes("mic=1") ? { mic: true } : {} };
 }
 function buildWayUrl(airlock, opts = {}) {
   const u = new URL(airlock);
-  u.hash = [...opts.doors ? ["doors=1"] : [], ...opts.immersive ? ["xr=1"] : []].join("&");
+  u.hash = [...opts.doors ? ["doors=1"] : [], ...stateFlags(opts)].join("&");
   return u.href;
 }
 var HOME_CAPABILITY = "home";
@@ -5065,6 +5077,10 @@ function parseAirlockFragment(hash) {
   const entry = params.get("entry");
   if (entry && ENTRY_POINT3.test(entry)) req.entryPoint = entry;
   if (params.get("xr") === "1") req.immersive = true;
+  if (params.get("joined") === "1") {
+    req.joined = true;
+    if (params.get("mic") === "1") req.mic = true;
+  }
   return req;
 }
 

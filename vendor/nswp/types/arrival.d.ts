@@ -32,6 +32,18 @@ export interface Arrival {
      * their doors instead.
      */
     home?: true;
+    /**
+     * The visitor was among people where they came from, and stays among them
+     * here: the world joins its open room without asking again. Said only by
+     * their own client (protocol/03-arrival.md, "Staying joined").
+     */
+    joined?: true;
+    /**
+     * Their microphone was on, and they have told their client it may stay on
+     * as they travel. Read only with `joined`. The browser still decides
+     * whether this world may use a microphone at all.
+     */
+    mic?: true;
 }
 export declare function encodeArrival(a: Omit<Arrival, "v"> & {
     v?: string;
