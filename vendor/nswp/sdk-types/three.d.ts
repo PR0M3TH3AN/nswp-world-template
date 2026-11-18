@@ -14,6 +14,7 @@
  */
 import * as THREE from "three";
 import { type RoomSession } from "./room.js";
+export { createWorldMenu, menuItemFor, turnVisitor, type MenuItem, type WorldMenu, type WorldMenuOptions } from "./menu.js";
 export interface PresenceOptions {
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;

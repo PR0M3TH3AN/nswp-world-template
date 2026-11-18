@@ -83,7 +83,8 @@ owner's key they are how other places refer to this world.
   turns true when the scene is up, `portals()` lists the portals,
   `teleport(x, z)` moves the visitor, `face(degrees)` turns them, `step(x, z)`
   steps towards a spot as pointing at the floor would, `where()` says where
-  they are, and `goThrough(i)` uses a portal.
+  they are, and `goThrough(i)` uses a portal. `menu.describe()` says what the
+  headset menu shows, and `menu.pressLabelled("Turn around")` presses a button.
 
 ## Never do these without the owner asking in so many words
 
@@ -192,6 +193,13 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   read belongs in the scene. Put it on a sign where they will look. For
   something that must follow them, such as a score, add a small sprite to
   `ctx.camera`, low in view (around `[0, -0.3, -1.5]`), never across the middle.
+- **The menu in a headset.** In VR the page's buttons can't be reached, so the
+  plumbing shows a small Menu button low in front of the visitor. It opens the
+  way back to their lobby, Turn around, the room and microphone controls, and
+  Leave VR. Add a few buttons of your own by returning
+  `menu: [{ label, act }]` from your scene. Anything a visitor must be able to
+  do in VR needs a button there or an object in the scene to select. Don't
+  call it a system menu or a safe menu: it is this world's own.
 - **A scene that differs each visit** (a random level) still has one preview
   picture, of whichever version was drawn when it was taken. Say so to the
   owner, and remove the `rooms` capability: visitors in a shared room would

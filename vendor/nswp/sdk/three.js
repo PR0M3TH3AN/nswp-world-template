@@ -3,15 +3,21 @@ import {
   capturePanorama,
   createPortalWindow,
   createPresence,
+  createWorldMenu,
+  menuItemFor,
   panoramaTexture,
-  textSprite
-} from "./shared-4IRBIL65.js";
+  textSprite,
+  turnVisitor
+} from "./shared-SSELMUPP.js";
 import "./shared-PMZZ7JZF.js";
 export {
   attachRoomControls,
   capturePanorama,
   createPortalWindow,
   createPresence,
+  createWorldMenu,
+  menuItemFor,
   panoramaTexture,
-  textSprite
+  textSprite,
+  turnVisitor
 };
