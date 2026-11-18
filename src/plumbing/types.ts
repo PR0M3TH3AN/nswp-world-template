@@ -26,6 +26,11 @@ export interface WorldConfig {
    */
   sounds?: SoundTheme;
   /**
+   * `false` where this world wants no music shared between its visitors: a concert, a library. Each visitor
+   * still hears their own. It can only be switched off here, never on: sharing and hearing are each visitor's choice.
+   */
+  sharedMusic?: boolean;
+  /**
    * How much room the controls take. `presence` is "full" (the whole HUD),
    * "quiet" (one mark in `corner`) or "hidden". `keys` changes or switches off
    * the keys the HUD answers to: `{ "menu": "p", "hotbar": false }`.

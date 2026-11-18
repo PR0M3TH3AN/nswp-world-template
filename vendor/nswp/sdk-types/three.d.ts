@@ -19,6 +19,7 @@ export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
 import type { Controls } from "./ui/model.js";
 import type { Panels } from "./panels.js";
+import type { Sounds } from "./sound.js";
 export interface PresenceOptions {
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
@@ -62,6 +63,14 @@ export interface AvatarInfo {
     identity: string | null;
     /** This visitor has stopped hearing them. */
     muted: boolean;
+    /** They are offering their music to people nearby. */
+    music: boolean;
+    /** Their music is being asked for and played here. */
+    hearing: boolean;
+    /** How loud their music is being played here, after distance and ducking, from 0 to 1. */
+    musicVolume: number;
+    /** How loud their music is arriving, before any of that. */
+    musicLevel: number;
 }
 export interface Presence {
     readonly session: RoomSession | null;
@@ -83,6 +92,20 @@ export interface Presence {
     people(): Member[];
     /** How loud other people's voices are for this visitor, from 0 to 1. Theirs to set, and nobody else's. */
     setVolume(volume: number): void;
+    /** Whether this visitor is offering their music to people nearby. */
+    readonly musicOn: boolean;
+    /** How many members their music is going to now. */
+    readonly musicListeners: number;
+    /**
+     * Offer music to people nearby, or stop (null). It is sent only to members who are near and have turned on
+     * hearing shared music. It ends when the visitor leaves the room.
+     */
+    shareMusic(track: MediaStreamTrack | null): Promise<void>;
+    /** Whether to hear music people nearby share, and how loud. Off until the visitor turns it on. */
+    setHearShared(on: boolean, volume: number): void;
+    /** Stop hearing one member's music, or hear it again. Their voice is not affected. */
+    muteMusic(pubkey: string, on: boolean): void;
+    isMusicMuted(pubkey: string): boolean;
     /** Whether this visitor is offering their screen to the room. */
     readonly screenOn: boolean;
     /** How many members their screen is going to now. */
@@ -194,6 +217,13 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
      * of the watcher's own, which they move, size and put away like any other. Without them nobody here can watch.
      */
     panels?: Panels | null;
+    /**
+     * The place's sounds. With them, a visitor can share the music they are playing with people near them, and
+     * choose to hear what others share: both off until they turn them on.
+     */
+    sounds?: Sounds | null;
+    /** False where this world wants no shared music: a concert, a library. Its visitors' own music still plays for them. */
+    sharedMusic?: boolean;
 }): {
     refresh(): void;
     travelling(): Travelling;

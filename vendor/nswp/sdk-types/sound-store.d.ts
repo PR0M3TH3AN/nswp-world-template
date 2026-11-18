@@ -72,6 +72,13 @@ export interface SoundLevels {
     music: number;
     /** Other people's voices. */
     voices: number;
+    /**
+     * Whether to hear music that people nearby are sharing. Off until the
+     * visitor turns it on: nobody's music reaches anyone who didn't ask.
+     */
+    hearShared: boolean;
+    /** How loud other people's music is. */
+    shared: number;
 }
 export declare const DEFAULT_LEVELS: SoundLevels;
 /** The steps a volume goes through when its control is pressed. */
@@ -82,6 +89,24 @@ export declare function cleanLevels(input: unknown): SoundLevels;
 export declare function levelStep(v: number): number;
 /** The next volume up, going round to off after the highest. */
 export declare function nextLevel(v: number): number;
+/** How far someone's shared music carries, in metres. Past it, it isn't asked for and isn't sent. */
+export declare const MUSIC_RANGE = 12;
+/** How many people's music one visitor hears at once: the nearest. More than this is noise. */
+export declare const MUSIC_SOURCES = 2;
+/** How much shared music steps back while someone is speaking. */
+export declare const MUSIC_DUCK = 0.35;
+/**
+ * Whose music to listen to: of the people sharing, the nearest few within
+ * range, leaving out anyone the visitor has stopped hearing. Returns their
+ * keys, nearest first.
+ */
+export declare function musicToHear(sharing: {
+    pubkey: string;
+    metres: number;
+    refused?: boolean;
+}[], hear: boolean): string[];
+/** How much of someone's music is left at this distance, from 1 beside them to 0 at the edge of its range. */
+export declare function musicFade(metres: number): number;
 /** A small generator of numbers from a seed: the same seed, the same numbers, on every device. */
 export declare function seeded(seed: string): () => number;
 export interface AmbiencePlan {
