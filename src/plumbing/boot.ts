@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addRoomControls, addViewControls, capturePanorama, createConsole, createPresence, type XrConsole } from "nswp-sdk/three";
+import { addCameraControls, addRoomControls, addViewControls, capturePanorama, createConsole, createPresence, type Camera, type Presence, type XrConsole } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -26,6 +26,8 @@ import type { BuildScene, PortalOptions, SceneContext, WorldConfig } from "./typ
 
 interface TestHooks {
   state: Record<string, unknown>;
+  /** The visitor's camera: what it has taken. */
+  camera?: Camera;
   portals(): { label: string; destination: PortalDestination; position: number[] }[];
   goThrough(index: number): Promise<void>;
   capturePreview(width?: number): Promise<{ base64: string; width: number; height: number; bytes: number }>;
@@ -389,6 +391,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // ------------------------------------------------------------- the room
   // Other visitors appear only after someone presses Join (spec §9.4).
   let presenceUpdate = (_dt: number) => {};
+  let selfLook: (() => ReturnType<Presence["selfLook"]>) | undefined;
+  let sayRecording: ((on: boolean) => void) | undefined;
   if (config.world.capabilities?.includes("rooms")) {
     let refresh = () => {};
     // A visitor is drawn to the others as they chose to arrive: wearing their
@@ -397,7 +401,22 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     ({ refresh } = addRoomControls(controls, presence, { onState: (s) => (state.room = s) }));
     presenceUpdate = (dt) => presence.update(dt);
     hooks.roomInfo = () => presence.info();
+    selfLook = () => presence.selfLook();
+    sayRecording = (on) => presence.setRecording(on);
   }
+
+  // ------------------------------------------------------------- the camera
+  // Pictures, selfies and short clips, saved to the visitor's own device.
+  // While a clip is recorded, the others in the room are shown that it is.
+  hooks.camera = addCameraControls(controls, {
+    renderer,
+    scene,
+    camera,
+    ...(selfLook ? { look: selfLook } : {}),
+    ...(sayRecording ? { recording: sayRecording } : {}),
+    hide: () => [xrConsole.group, reticle, ...(handle.hideFromPreview ?? [])],
+    name: config.world.title,
+  });
 
   // ------------------------------------------------------------- preview
   // A 360° picture from the main entrance, for doors that lead here (spec §5.8).

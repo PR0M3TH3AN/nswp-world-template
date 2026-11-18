@@ -1,14 +1,14 @@
 import {
   room
-} from "./shared-QMGUPZPS.js";
+} from "./shared-AALJL3XN.js";
 import {
   ICONS,
   rgb
-} from "./shared-WXBVZMXQ.js";
+} from "./shared-64R25HDC.js";
 
 // packages/sdk/src/three.ts
-import * as THREE6 from "three";
-import { spawnOffset } from "@nswp/core";
+import * as THREE7 from "three";
+import { decodeLook, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -996,6 +996,198 @@ function createConsole(controls, opts) {
   return con;
 }
 
+// packages/sdk/src/camera.ts
+import * as THREE6 from "three";
+async function takePicture(renderer, scene, camera, opts = {}) {
+  const width = Math.round(opts.width ?? 1920);
+  const height = Math.round(opts.height ?? 1080);
+  const hidden = (opts.hide ?? []).filter((o) => o.visible);
+  const xrWasEnabled = renderer.xr.enabled;
+  const previousTarget = renderer.getRenderTarget();
+  const target = new THREE6.WebGLRenderTarget(width, height, { samples: 4 });
+  target.texture.colorSpace = THREE6.SRGBColorSpace;
+  const eye = new THREE6.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
+  camera.updateWorldMatrix(true, false);
+  camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
+  eye.updateMatrixWorld(true);
+  try {
+    for (const o of hidden) o.visible = false;
+    renderer.xr.enabled = false;
+    renderer.setRenderTarget(target);
+    renderer.clear();
+    renderer.render(scene, eye);
+    const pixels = new Uint8Array(width * height * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const g = canvas.getContext("2d");
+    const image = g.createImageData(width, height);
+    for (let y = 0; y < height; y++) image.data.set(pixels.subarray((height - 1 - y) * width * 4, (height - y) * width * 4), y * width * 4);
+    g.putImageData(image, 0, 0);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", opts.quality ?? 0.92));
+    if (!blob) throw new Error("nswp-sdk: this browser couldn't encode the picture");
+    return blob;
+  } finally {
+    for (const o of hidden) o.visible = true;
+    renderer.xr.enabled = xrWasEnabled;
+    renderer.setRenderTarget(previousTarget);
+    target.dispose();
+  }
+}
+async function takeSelfie(renderer, scene, head, look, opts = {}) {
+  head.updateWorldMatrix(true, false);
+  const at = new THREE6.Vector3();
+  const facing = new THREE6.Quaternion();
+  head.matrixWorld.decompose(at, facing, new THREE6.Vector3());
+  const ahead = new THREE6.Vector3(0, 0, -1).applyQuaternion(facing).setY(0);
+  if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
+  ahead.normalize();
+  const figure = createFigure(look);
+  figure.group.position.copy(at);
+  figure.group.rotation.y = Math.atan2(-ahead.x, -ahead.z);
+  scene.add(figure.group);
+  const eye = new THREE6.PerspectiveCamera(58, 1, 0.05, head.far);
+  eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
+  eye.position.y = at.y + 0.08;
+  eye.lookAt(at.x, at.y - 0.22, at.z);
+  try {
+    return await takePicture(renderer, scene, eye, { width: 1600, height: 1200, ...opts });
+  } finally {
+    scene.remove(figure.group);
+    figure.dispose();
+  }
+}
+function canRecord() {
+  return typeof MediaRecorder !== "undefined" && typeof HTMLCanvasElement !== "undefined" && "captureStream" in HTMLCanvasElement.prototype;
+}
+function recordClip(canvas, opts = {}) {
+  if (!canRecord()) throw new Error("nswp-sdk: this browser can't record its canvas");
+  const type = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"].find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+  const stream = canvas.captureStream(opts.fps ?? 30);
+  const recorder = new MediaRecorder(stream, { ...type ? { mimeType: type } : {}, videoBitsPerSecond: 6e6 });
+  const parts = [];
+  const started = performance.now();
+  recorder.ondataavailable = (e) => {
+    if (e.data.size) parts.push(e.data);
+  };
+  const done = new Promise((resolve) => {
+    recorder.onstop = () => {
+      for (const track of stream.getTracks()) track.stop();
+      resolve(new Blob(parts, { type: recorder.mimeType || type || "video/webm" }));
+    };
+  });
+  recorder.start(500);
+  const limit = setTimeout(() => recorder.state !== "inactive" && recorder.stop(), (opts.maxSeconds ?? 30) * 1e3);
+  return {
+    done,
+    seconds: () => (performance.now() - started) / 1e3,
+    stop() {
+      clearTimeout(limit);
+      if (recorder.state !== "inactive") recorder.stop();
+      return done;
+    }
+  };
+}
+function saveFile(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.rel = "noopener";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3e4);
+}
+var stamp = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace(/[T:]/g, "-");
+var slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "world";
+function addCameraControls(controls, d) {
+  const name = slug(d.name ?? "world");
+  const presenting = () => d.renderer.xr.isPresenting;
+  const kept = [];
+  let clip = null;
+  const plain = `plain-${Math.random().toString(36).slice(2, 12)}`;
+  let last = "Pictures and clips are saved to this device. Nothing is sent anywhere.";
+  const tell = (text) => {
+    last = text;
+    controls.say(text);
+  };
+  let latest = null;
+  const keep = (capture) => {
+    latest = capture;
+    if (presenting()) {
+      kept.push(capture);
+      tell(`Kept. Save ${kept.length === 1 ? "it" : `all ${kept.length}`} from the Camera menu when you leave VR.`);
+    } else {
+      saveFile(capture.blob, capture.name);
+      tell(capture.kind === "clip" ? "Clip saved to this device." : "Picture saved to this device.");
+    }
+  };
+  const shoot = async (kind) => {
+    try {
+      const hide = d.hide?.() ?? [];
+      const blob = kind === "selfie" ? await takeSelfie(d.renderer, d.scene, d.camera, d.look?.() ?? plain, { hide }) : await takePicture(d.renderer, d.scene, d.camera, { hide });
+      keep({ kind, blob, name: `${name}-${kind === "selfie" ? "selfie-" : ""}${stamp()}.jpg` });
+    } catch {
+      tell("That picture couldn't be taken on this device.");
+    }
+  };
+  const finish = (blob) => {
+    clip = null;
+    d.recording?.(false);
+    keep({ kind: "clip", blob, name: `${name}-clip-${stamp()}.${blob.type.includes("mp4") ? "mp4" : "webm"}` });
+  };
+  controls.addSection({ id: "camera", label: "Camera", icon: "camera", note: () => clip ? `Recording: ${Math.floor(clip.seconds())} s. Others in the room can see that you are.` : last });
+  controls.add(
+    { id: "camera-picture", section: "camera", icon: "camera", label: "Take a picture", short: "Picture", act: () => shoot("picture") },
+    { id: "camera-selfie", section: "camera", icon: "selfie", label: "Take a selfie", short: "Selfie", act: () => shoot("selfie") },
+    {
+      id: "camera-clip",
+      section: "camera",
+      icon: "record",
+      label: () => clip ? "Stop recording" : "Record a clip",
+      short: () => clip ? "Stop" : "Clip",
+      on: () => !!clip,
+      tone: "warn",
+      // The page's canvas isn't what a headset is shown, so there is nothing to record there.
+      hidden: () => !canRecord() || presenting() && !clip,
+      act: async () => {
+        if (clip) return void clip.stop();
+        try {
+          clip = recordClip(d.renderer.domElement, { maxSeconds: d.maxSeconds ?? 30 });
+          d.recording?.(true);
+          tell(`Recording, picture only, for up to ${d.maxSeconds ?? 30} seconds. Others in the room can see that you are.`);
+          void clip.done.then(finish);
+        } catch {
+          clip = null;
+          tell("This device can't record a clip.");
+        }
+      }
+    },
+    {
+      id: "camera-save",
+      section: "camera",
+      icon: "save",
+      label: () => kept.length === 1 ? "Save 1 picture" : `Save ${kept.length} pictures`,
+      short: "Save",
+      tone: "primary",
+      hidden: () => kept.length === 0 || presenting(),
+      act: () => {
+        for (const c of kept.splice(0)) saveFile(c.blob, c.name);
+        tell("Saved to this device.");
+      }
+    }
+  );
+  return {
+    waiting: () => [...kept],
+    last: () => latest,
+    get recording() {
+      return !!clip;
+    }
+  };
+}
+
 // packages/sdk/src/three.ts
 var SEND_EVERY_MS = 66;
 var FADE_START = 0.9;
@@ -1018,16 +1210,16 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE6.CanvasTexture(canvas);
-  tex.colorSpace = THREE6.SRGBColorSpace;
-  const sprite = new THREE6.Sprite(new THREE6.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE7.CanvasTexture(canvas);
+  tex.colorSpace = THREE7.SRGBColorSpace;
+  const sprite = new THREE7.Sprite(new THREE7.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
 function createPresence(d) {
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE6.AudioListener();
+  const listener = new THREE7.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -1036,6 +1228,34 @@ function createPresence(d) {
   let sendTimer;
   let micTrack = null;
   let offsetApplied = false;
+  let plainSeed;
+  let dot = null;
+  const glow = (color) => {
+    if (!dot) {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 64;
+      const g = canvas.getContext("2d");
+      const fade = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      fade.addColorStop(0, "rgba(255,255,255,1)");
+      fade.addColorStop(0.35, "rgba(255,255,255,0.85)");
+      fade.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = fade;
+      g.fillRect(0, 0, 64, 64);
+      dot = new THREE7.CanvasTexture(canvas);
+    }
+    return new THREE7.Sprite(new THREE7.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
+  };
+  const showRecording = (a, on) => {
+    if (on && !a.light) {
+      a.light = glow(16726832);
+      a.light.scale.setScalar(0.16);
+      a.light.position.set(0, 0.46, 0);
+    }
+    if (a.light) {
+      a.light.visible = on;
+      a.head.add(a.light);
+    }
+  };
   const dress = (a, look) => {
     const was = a.figure;
     const figure = createFigure(look, d.figureStyle);
@@ -1054,6 +1274,8 @@ function createPresence(d) {
       a.root.remove(was.group);
       was.dispose();
     }
+    if (a.light) figure.head.add(a.light);
+    if (a.beam) figure.head.add(a.beam);
     a.root.add(figure.group);
     a.figure = figure;
     a.head = figure.head;
@@ -1066,7 +1288,7 @@ function createPresence(d) {
     });
   };
   const makeAvatar = (member) => {
-    const root = new THREE6.Group();
+    const root = new THREE7.Group();
     root.visible = false;
     const label = textSprite(member.name, labelColor, 0.5);
     label.position.set(0, 0.3, 0);
@@ -1082,7 +1304,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE6.PositionalAudio(listener);
+    const pa = new THREE7.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -1103,8 +1325,8 @@ function createPresence(d) {
     d.scene.remove(a.root);
     a.figure.dispose();
   };
-  const v = new THREE6.Vector3();
-  const q = new THREE6.Quaternion();
+  const v = new THREE7.Vector3();
+  const q = new THREE7.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -1153,6 +1375,11 @@ function createPresence(d) {
       offsetApplied = true;
     }
     s.on("status", changed);
+    s.on("recording", (m, on) => {
+      const a = avatars.get(m.pubkey);
+      if (a) showRecording(a, on);
+      changed();
+    });
     s.on("look", (m, look2) => {
       const a = avatars.get(m.pubkey);
       if (a) dress(a, look2);
@@ -1185,9 +1412,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE6.Vector3();
-  const tq = new THREE6.Quaternion();
-  const euler = new THREE6.Euler();
+  const tp = new THREE7.Vector3();
+  const tq = new THREE7.Quaternion();
+  const euler = new THREE7.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -1210,6 +1437,30 @@ function createPresence(d) {
       await session?.setMicrophone(track);
       changed();
     },
+    setRecording(on) {
+      session?.setRecording(on);
+    },
+    selfLook() {
+      if (session) return session.self.look;
+      const mine = typeof d.look === "function" ? d.look() : d.look;
+      const read = mine ? decodeLook(mine) : null;
+      return read?.ok ? read.value.look : plainSeed ??= `plain-${Math.random().toString(36).slice(2, 12)}`;
+    },
+    pointOut(pubkey) {
+      const a = avatars.get(pubkey);
+      if (!a) return;
+      if (!a.beam) {
+        a.beam = glow(a.member.look.light);
+        a.beam.scale.set(0.5, 3.2, 1);
+        a.beam.position.set(0, 2.1, 0);
+      }
+      a.head.add(a.beam);
+      a.beam.visible = true;
+      a.beamUntil = performance.now() + 4e3;
+    },
+    people() {
+      return [...avatars.values()].map((a) => a.member);
+    },
     testTone() {
       const ctx = listener.context;
       const osc = ctx.createOscillator();
@@ -1225,9 +1476,10 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE6.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE7.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
         a.materials[0].material.tick?.(performance.now() / 1e3);
+        if (a.beam?.visible && performance.now() > (a.beamUntil ?? 0)) a.beam.visible = false;
         const snap = a.placed ? k : 1;
         apply(a.head, a.target.head, snap);
         a.placed = true;
@@ -1287,11 +1539,11 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE6.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE6.HalfFloatType });
-  const flatTarget = new THREE6.WebGLRenderTarget(width, height);
-  flatTarget.texture.colorSpace = THREE6.SRGBColorSpace;
-  const material = new THREE6.ShaderMaterial({
-    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE6.Vector3() }, up: { value: new THREE6.Vector3() }, right: { value: new THREE6.Vector3() } },
+  const faceTarget = new THREE7.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE7.HalfFloatType });
+  const flatTarget = new THREE7.WebGLRenderTarget(width, height);
+  flatTarget.texture.colorSpace = THREE7.SRGBColorSpace;
+  const material = new THREE7.ShaderMaterial({
+    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE7.Vector3() }, up: { value: new THREE7.Vector3() }, right: { value: new THREE7.Vector3() } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
       void main(){
@@ -1308,19 +1560,19 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     depthTest: false,
     depthWrite: false
   });
-  const quad = new THREE6.Mesh(new THREE6.PlaneGeometry(2, 2), material);
-  const quadScene = new THREE6.Scene();
+  const quad = new THREE7.Mesh(new THREE7.PlaneGeometry(2, 2), material);
+  const quadScene = new THREE7.Scene();
   quadScene.add(quad);
-  const quadCamera = new THREE6.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const faceCamera = new THREE6.PerspectiveCamera(90, 1, 0.05, 700);
+  const quadCamera = new THREE7.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const faceCamera = new THREE7.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   const views = [
-    [new THREE6.Vector3(0, 0, -1), new THREE6.Vector3(0, 1, 0)],
-    [new THREE6.Vector3(1, 0, 0), new THREE6.Vector3(0, 1, 0)],
-    [new THREE6.Vector3(0, 0, 1), new THREE6.Vector3(0, 1, 0)],
-    [new THREE6.Vector3(-1, 0, 0), new THREE6.Vector3(0, 1, 0)],
-    [new THREE6.Vector3(0, 1, 0), new THREE6.Vector3(0, 0, 1)],
-    [new THREE6.Vector3(0, -1, 0), new THREE6.Vector3(0, 0, -1)]
+    [new THREE7.Vector3(0, 0, -1), new THREE7.Vector3(0, 1, 0)],
+    [new THREE7.Vector3(1, 0, 0), new THREE7.Vector3(0, 1, 0)],
+    [new THREE7.Vector3(0, 0, 1), new THREE7.Vector3(0, 1, 0)],
+    [new THREE7.Vector3(-1, 0, 0), new THREE7.Vector3(0, 1, 0)],
+    [new THREE7.Vector3(0, 1, 0), new THREE7.Vector3(0, 0, 1)],
+    [new THREE7.Vector3(0, -1, 0), new THREE7.Vector3(0, 0, -1)]
   ];
   try {
     for (const o of hidden) o.visible = false;
@@ -1367,24 +1619,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE6.Texture(image);
-  texture.colorSpace = THREE6.SRGBColorSpace;
-  texture.wrapS = THREE6.RepeatWrapping;
+  const texture = new THREE7.Texture(image);
+  texture.colorSpace = THREE7.SRGBColorSpace;
+  texture.wrapS = THREE7.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE6.LinearFilter;
-  texture.magFilter = THREE6.LinearFilter;
+  texture.minFilter = THREE7.LinearFilter;
+  texture.magFilter = THREE7.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE6.ShaderMaterial({
+  const material = new THREE7.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE6.Matrix3() },
-      center: { value: new THREE6.Vector3() },
+      toLocal: { value: new THREE7.Matrix3() },
+      center: { value: new THREE7.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -1404,10 +1656,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE6.DoubleSide
+    side: THREE7.DoubleSide
   });
-  const mesh = new THREE6.Mesh(geometry, material);
-  const rotation = new THREE6.Matrix4();
+  const mesh = new THREE7.Mesh(geometry, material);
+  const rotation = new THREE7.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();
@@ -1437,6 +1689,38 @@ function addRoomControls(controls, presence, opts = {}) {
       s ? { name: s.name, private: !!presence.roomName, status: s.status, self: s.self.pubkey, members: s.members.map((m) => m.pubkey), relays: s.relayCount, mic: presence.micOn } : null
     );
     controls.addSection({ id: "room", label: "Room", icon: "room", note: status });
+    people();
+  };
+  let listed = [];
+  const recorders = /* @__PURE__ */ new Set();
+  const people = () => {
+    const here = presence.session ? presence.people() : [];
+    for (const id of listed) controls.remove(id);
+    listed = here.map((m) => `person-${m.pubkey.slice(0, 12)}`);
+    controls.addSection({
+      id: "people",
+      label: "People",
+      icon: "people",
+      note: () => !presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one to see where they are.`
+    });
+    here.forEach(
+      (m, i) => controls.add({
+        id: listed[i],
+        section: "people",
+        kind: "swatch",
+        color: m.look.light,
+        label: () => m.recording ? `${m.name}, recording` : m.name,
+        act: () => {
+          presence.pointOut(m.pubkey);
+          controls.say(`${m.name} is under the column of light.`);
+        }
+      })
+    );
+    for (const m of here) {
+      if (m.recording && !recorders.has(m.pubkey)) controls.say(`${m.name} is recording what they see.`);
+      if (m.recording) recorders.add(m.pubkey);
+      else recorders.delete(m.pubkey);
+    }
   };
   controls.add(
     {
@@ -1565,6 +1849,12 @@ export {
   createFigure,
   turnVisitor,
   createConsole,
+  takePicture,
+  takeSelfie,
+  canRecord,
+  recordClip,
+  saveFile,
+  addCameraControls,
   textSprite,
   createPresence,
   capturePanorama,

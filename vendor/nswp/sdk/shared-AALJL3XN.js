@@ -2080,6 +2080,7 @@ import {
 } from "@nswp/core";
 var DEFAULT_ICE = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
 var HELLO_EVERY_MS = 2e4;
+var RECORDING_HOLD_MS = 6e3;
 var CONNECT_TIMEOUT_MS = 25e3;
 var SILENT_TIMEOUT_MS = 8e3;
 var GATHER_TIMEOUT_MS = 2500;
@@ -2100,10 +2101,12 @@ var RoomSession = class {
     leave: /* @__PURE__ */ new Set(),
     pose: /* @__PURE__ */ new Set(),
     look: /* @__PURE__ */ new Set(),
+    recording: /* @__PURE__ */ new Set(),
     audio: /* @__PURE__ */ new Set(),
     status: /* @__PURE__ */ new Set()
   };
   look;
+  recordingTimer;
   mic = null;
   timers = [];
   closed = false;
@@ -2112,7 +2115,7 @@ var RoomSession = class {
     const pubkey = getPublicKey(this.key);
     const mine = opts.look ? decodeLook(opts.look) : null;
     this.look = mine?.ok ? opts.look : null;
-    this.self = { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: mine?.ok ? mine.value.look : generatedLook(pubkey) };
+    this.self = { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: mine?.ok ? mine.value.look : generatedLook(pubkey), recording: false };
     this.name = (opts.name ?? "lobby").slice(0, ROOM_LIMITS.maxNameChars);
     this.topic = roomTopic(opts.world ?? `${location.origin}${location.pathname}`, this.name);
     this.relays = opts.relays ?? DEFAULT_RELAYS;
@@ -2237,7 +2240,7 @@ var RoomSession = class {
   createPeer(pubkey) {
     const pc = new RTCPeerConnection({ iceServers: this.iceServers });
     const peer = {
-      member: { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: generatedLook(pubkey) },
+      member: { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: generatedLook(pubkey), recording: false },
       pc,
       open: false,
       lastSeen: Date.now(),
@@ -2264,6 +2267,11 @@ var RoomSession = class {
       this.sayLook(ch);
     };
     ch.onmessage = (e) => {
+      if (e.data === "rec:1" || e.data === "rec:0") {
+        peer.recordingUntil = e.data === "rec:1" ? Date.now() + RECORDING_HOLD_MS : 0;
+        this.markRecording(peer);
+        return;
+      }
       if (typeof e.data === "string") {
         const said = e.data.startsWith("look:") ? decodeLook(e.data.slice(5)) : null;
         if (said?.ok && JSON.stringify(said.value.look) !== JSON.stringify(peer.member.look)) {
@@ -2341,6 +2349,34 @@ var RoomSession = class {
     const answer = await this.gathered(peer.pc);
     if (this.peers.get(pubkey) === peer) this.publish(buildSignal(this.topic, this.key, pubkey, { t: "answer", sdp: answer }));
   }
+  markRecording(peer) {
+    const on = (peer.recordingUntil ?? 0) > Date.now();
+    if (on === peer.member.recording) return;
+    peer.member.recording = on;
+    this.emit("recording", peer.member, on);
+  }
+  /**
+   * Say that you are recording what you see, or have stopped. The others are
+   * shown a light on your figure while it is true. An honest client says so
+   * whenever it records other people; nothing can make a dishonest one.
+   */
+  setRecording(on) {
+    if (on === this.self.recording) return;
+    this.self.recording = on;
+    clearInterval(this.recordingTimer);
+    const say = () => {
+      for (const peer of this.peers.values()) {
+        if (!peer.open || peer.pose?.readyState !== "open") continue;
+        try {
+          peer.pose.send(on ? "rec:1" : "rec:0");
+        } catch {
+        }
+      }
+    };
+    say();
+    if (on) this.recordingTimer = setInterval(say, 2e3);
+    else setTimeout(say, 400);
+  }
   drop(pubkey, announce) {
     const peer = this.peers.get(pubkey);
     if (!peer) return;
@@ -2354,6 +2390,7 @@ var RoomSession = class {
   sweep() {
     const now = Date.now();
     for (const [pubkey, peer] of this.peers) {
+      this.markRecording(peer);
       if (!peer.open && now - peer.startedAt > CONNECT_TIMEOUT_MS) this.drop(pubkey, false);
       else if (peer.open && now - peer.lastSeen > SILENT_TIMEOUT_MS) this.drop(pubkey, true);
     }

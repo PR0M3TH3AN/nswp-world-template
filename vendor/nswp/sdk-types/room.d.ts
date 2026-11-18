@@ -7,6 +7,8 @@ export interface Member {
     color: number;
     /** How they look (spec §4.2). What their session key generates, until they say otherwise. */
     look: Look;
+    /** They have said they are recording what they see (spec §9). */
+    recording: boolean;
 }
 export interface JoinOptions {
     /** Room name. People who share a world URL and a name share a room. Default "lobby". */
@@ -30,6 +32,8 @@ interface Events {
     pose: (member: Member, pose: Pose) => void;
     /** A member said how they look. Arrives shortly after `member`. */
     look: (member: Member, look: Look) => void;
+    /** A member started or stopped recording what they see. */
+    recording: (member: Member, on: boolean) => void;
     audio: (member: Member, stream: MediaStream) => void;
     status: (status: RoomStatus) => void;
 }
@@ -47,6 +51,7 @@ export declare class RoomSession {
     private readonly seen;
     private readonly listeners;
     private readonly look;
+    private recordingTimer;
     private mic;
     private timers;
     private closed;
@@ -74,6 +79,13 @@ export declare class RoomSession {
     private audioTransceiver;
     private offerTo;
     private answerTo;
+    private markRecording;
+    /**
+     * Say that you are recording what you see, or have stopped. The others are
+     * shown a light on your figure while it is true. An honest client says so
+     * whenever it records other people; nothing can make a dishonest one.
+     */
+    setRecording(on: boolean): void;
     private drop;
     private sweep;
     /** Send your pose to everyone. Call 10–20 times a second, from a timer rather than the render loop. */
