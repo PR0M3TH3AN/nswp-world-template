@@ -218,6 +218,16 @@ their game through, so look yourself before you publish.
 | `previews/` | Your world's preview picture |
 | `dist/` | The built site. Made by `npm run build`, not committed |
 
+## The protocol
+
+The rules this world follows are written down as nine short documents:
+[the NSWP protocol documents](https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/tree/main/protocol). You don't need them to build a scene. Read
+them if you want to know what a door, an arrival or a look is on the wire, or
+to build a world without this template:
+[what a world owes a visitor](https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/blob/main/protocol/09-what-a-world-owes.md) is the one to start
+with, and [how worlds are found](https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/blob/main/protocol/08-lists.md) says how yours gets a door in
+someone's lobby.
+
 ## What to know before relying on it
 
 - The protocol is an early draft, not an adopted standard. Formats may change.
