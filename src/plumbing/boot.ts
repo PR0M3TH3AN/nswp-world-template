@@ -175,6 +175,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
 
   // ------------------------------------------------------------- input
   const raycaster = new THREE.Raycaster();
+  // Signs are sprites, and a sprite can't be tested against a ray without
+  // knowing the camera. Rays from a hand controller don't set it themselves.
+  raycaster.camera = camera;
   const pointer = new THREE.Vector2(2, 2); // off-screen until the pointer moves
   // A portal that is hidden, or inside something hidden, can't be used.
   const shown = (g: PortalGate) => {
