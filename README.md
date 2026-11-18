@@ -175,10 +175,11 @@ at this folder and ask for what you want, for example:
 
 Then run `npm run check`. It fails if a rule was broken along the way.
 
-In two trials, assistants given this folder and a plain request kept every
-rule, including when the request asked them to break one. What they couldn't
-do was see the result: one built a maze too dark to play. Ask yours to run
-`npm run look` and check the picture, and look yourself before you publish.
+In three trials, assistants given this folder and a plain request kept every
+rule, including when the request asked them to break one. What the first two
+couldn't do was see the result: one built a maze too dark to play. The third
+had `npm run look`, used it, and built the same maze lit. None of them played
+their game through, so look yourself before you publish.
 
 ## What's in the folder
 
