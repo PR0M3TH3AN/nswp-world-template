@@ -103,7 +103,7 @@ export interface Presence {
     shareMusic(track: MediaStreamTrack | null): Promise<void>;
     /** Whether to hear music people nearby share, and how loud. Off until the visitor turns it on. */
     setHearShared(on: boolean, volume: number): void;
-    /** Stop hearing one member's music, or hear it again. Their voice is not affected. */
+    /** Stop hearing one member's music, or hear it again, whether or not they are sharing any now. Their voice is not affected. */
     muteMusic(pubkey: string, on: boolean): void;
     isMusicMuted(pubkey: string): boolean;
     /** Whether this visitor is offering their screen to the room. */
@@ -121,8 +121,9 @@ export interface Presence {
     /** The line a member's screen arrives on, or null before they are connected. It is empty unless watched. */
     screenOf(pubkey: string): MediaStream | null;
     /**
-     * Stop hearing one member, or hear them again. They are still seen, and still see and hear this visitor.
-     * Nobody is told. It lasts while they are here.
+     * Stop hearing one member's voice, or hear it again. They are still seen, and still see and hear this
+     * visitor. Their music, if they share any, is a separate choice (`muteMusic`). Nobody is told. It lasts while
+     * they are here.
      */
     mute(pubkey: string, on: boolean): void;
     isMuted(pubkey: string): boolean;

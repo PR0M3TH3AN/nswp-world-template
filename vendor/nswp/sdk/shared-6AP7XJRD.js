@@ -4251,7 +4251,7 @@ function createPresence(d) {
     sinceChoosing += dt;
     if (sinceChoosing > 0.4) {
       sinceChoosing = 0;
-      const sharing = [...avatars.values()].filter((a) => a.member.music).map((a) => ({ pubkey: a.member.pubkey, metres: away(a), refused: mutedKeys.has(a.member.pubkey) || tuneMuted.has(a.member.pubkey) }));
+      const sharing = [...avatars.values()].filter((a) => a.member.music).map((a) => ({ pubkey: a.member.pubkey, metres: away(a), refused: tuneMuted.has(a.member.pubkey) }));
       const want = new Set(musicToHear(sharing, hearShared));
       for (const a of avatars.values()) {
         const on = want.has(a.member.pubkey);
@@ -4556,7 +4556,6 @@ function createPresence(d) {
       if (on) mutedKeys.add(pubkey);
       else mutedKeys.delete(pubkey);
       avatars.get(pubkey)?.audio?.setVolume(on ? 0 : voiceVolume);
-      sinceChoosing = 1;
       changed();
     },
     isMuted(pubkey) {
@@ -4917,7 +4916,7 @@ function addRoomControls(controls, presence, opts = {}) {
       id: "people",
       label: "People",
       icon: "people",
-      note: () => !presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one to see where they are, and to stop hearing them or block them.`
+      note: () => !presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one to see where they are, and to mute their voice or their music, or block them.`
     });
     here.forEach(
       (m, i) => controls.add({
@@ -4961,36 +4960,37 @@ function addRoomControls(controls, presence, opts = {}) {
         }
       });
     }
-    if (who?.music && sounds) {
-      extras.push("person-music");
-      controls.add({
-        id: "person-music",
-        section: "people",
-        icon: "sound",
-        on: () => !presence.isMusicMuted(who.pubkey),
-        label: () => presence.isMusicMuted(who.pubkey) ? `Hear ${who.name}'s music again` : `Stop hearing ${who.name}'s music`,
-        act: () => {
-          const now = !presence.isMusicMuted(who.pubkey);
-          presence.muteMusic(who.pubkey, now);
-          controls.say(now ? `You no longer hear ${who.name}'s music. You still hear them speak.` : `You hear ${who.name}'s music again when you are near.`);
-        }
-      });
-    }
     if (who) {
-      extras.push("person-mute", "person-block");
+      extras.push("person-mute", "person-music", "person-block");
       controls.add(
         {
           id: "person-mute",
           section: "people",
           icon: () => presence.isMuted(who.pubkey) ? "mic" : "micOff",
           on: () => presence.isMuted(who.pubkey),
-          label: () => presence.isMuted(who.pubkey) ? `Hear ${who.name} again` : `Stop hearing ${who.name}`,
+          label: () => presence.isMuted(who.pubkey) ? `Unmute ${who.name}'s voice` : `Mute ${who.name}'s voice`,
           act: () => {
             const now = !presence.isMuted(who.pubkey);
             presence.mute(who.pubkey, now);
-            controls.say(now ? `You no longer hear ${who.name}. They still see and hear you, and aren't told.` : `You hear ${who.name} again.`);
+            controls.say(now ? `You no longer hear ${who.name} speak. They still see and hear you, and aren't told.` : `You hear ${who.name} speak again.`);
           }
         },
+        ...sounds ? [
+          {
+            id: "person-music",
+            section: "people",
+            icon: (() => presence.isMusicMuted(who.pubkey) ? "sound" : "soundOff"),
+            on: () => presence.isMusicMuted(who.pubkey),
+            label: () => presence.isMusicMuted(who.pubkey) ? `Unmute ${who.name}'s music` : `Mute ${who.name}'s music`,
+            act: () => {
+              const now = !presence.isMusicMuted(who.pubkey);
+              presence.muteMusic(who.pubkey, now);
+              controls.say(
+                now ? `You won't hear music ${who.name} shares. You still hear them speak.` : sounds.levels.hearShared ? `You hear ${who.name}'s music again when they share it and you are near.` : `${who.name}'s music is no longer muted. To hear anyone's shared music, turn it on in Sound.`
+              );
+            }
+          }
+        ] : [],
         {
           id: "person-block",
           section: "people",

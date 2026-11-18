@@ -286,8 +286,8 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   It is sent only to people who choose to watch, who see it on a panel of
   their own. The plumbing does it. Don't show anyone a screen they didn't
   choose, and don't record one.
-- **Muting and blocking.** In the People list a visitor can stop hearing
-  someone, or block them. A block happens in their own browser and nobody is
+- **Muting and blocking.** In the People list a visitor can mute someone's
+  voice, mute their music, or block them. A block happens in their own browser and nobody is
   told. The plumbing does it; don't publish, log or send who blocked whom.
 - **Staying joined.** A visitor who was in a room where they came from
   arrives joined here, and one who is joined here stays joined where they go
