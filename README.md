@@ -210,12 +210,23 @@ looking at what an assistant or a new dependency adds to `src/`.
 ## Making it your home
 
 If you use BitPortal, this world can be where you start, in place of
-BitPortal's own room. Once it is online, signed and announced (the next
-section), open BitPortal's Settings, find **Where you start**, type this
-world's address and press **Check this world**. BitPortal checks that it is
-yours both ways (you announced it with your key, and this site admits your
-key), that it is on an `https` address, and that it says it can be a home,
-which this template does. Then **Start here**.
+BitPortal's own room. BitPortal lets a world be your home only when it is
+shown to be yours both ways: this site admits your key, and you announced
+this address with your key. "Your key" here is the one you sign in to
+BitPortal with, which is a different key from the one this folder signs
+with.
+
+1. Put your own public key in `world.json`, beside `"world"`:
+   `"owner": "npub1…"`. It is the npub your sign-in shows. Never a secret
+   key. Then put the world online, signed (the next section). The site now
+   admits your key as well as its own.
+2. In BitPortal, signed in, open **Announce a world**. Give this world's
+   address, and as its ID the `d` from `world.json`. Publish. That is you
+   saying, with your key, that this address is yours.
+3. In BitPortal's Settings, find **Where you start**, type this world's
+   address and press **Check this world**. It also checks that the address
+   is `https` and that the world says it can be a home, which this template
+   does. Then **Start here**.
 
 From then on, going home from any world brings you here, and **Your doors**
 in this world's menu takes you to BitPortal's room, where your saved doors,
