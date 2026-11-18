@@ -592,7 +592,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // can dress everyone its own way with `figureStyle`.
     const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => refresh() });
     // A visitor who was in the room where they came from stays joined here: their own client says so (NSWP-03).
-    ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context }));
+    ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context, panels }));
     presenceUpdate = (dt) => presence.update(dt);
     hooks.roomInfo = () => presence.info();
     selfLook = () => presence.selfLook();
