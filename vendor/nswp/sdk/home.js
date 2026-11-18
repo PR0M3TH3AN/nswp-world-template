@@ -1,7 +1,7 @@
 import {
   createPortalWindow,
   textSprite
-} from "./shared-4IRBIL65.js";
+} from "./shared-SSELMUPP.js";
 import "./shared-PMZZ7JZF.js";
 
 // packages/sdk/src/home.ts

@@ -84,6 +84,11 @@ Visitors move with W, A, S, D, or by pointing at the floor and clicking,
 tapping, or pulling the trigger to step there. A scene says where they may not
 stand by returning `canStand(x, z)`.
 
+In a headset the page's buttons are out of reach, so a small **Menu** button
+floats low in front of the visitor. It opens the way back to their lobby, Turn
+around, the room and microphone controls, and Leave VR. A scene can add
+buttons of its own.
+
 ### Seeing it without a browser
 
 ```bash

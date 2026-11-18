@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { attachRoomControls, capturePanorama, createPresence } from "nswp-sdk/three";
+import { attachRoomControls, capturePanorama, createPresence, createWorldMenu, menuItemFor, turnVisitor, type WorldMenu } from "nswp-sdk/three";
 import site from "virtual:site";
 import configJson from "../../world.json";
 import type { BuildScene, PortalOptions, SceneContext, WorldConfig } from "./types.js";
@@ -35,6 +35,8 @@ interface TestHooks {
   step(x: number, z: number): void;
   /** Where the visitor's head is over the floor: [x, z] in metres. */
   where(): [number, number];
+  /** The menu shown in a headset: `describe()` says what it shows, `pressLabelled(text)` presses a button. */
+  menu?: WorldMenu;
   roomInfo(): unknown;
   device?: unknown;
 }
@@ -173,6 +175,32 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     homeButton.addEventListener("click", () => void portal.home({ xrSession: renderer.xr.getSession() }));
   }
 
+  // ------------------------------------------------------------- the menu in a headset
+  // In a headset the page around the scene is gone, and its buttons with it.
+  // The same buttons go in a small menu in the scene, with whatever the scene adds.
+  // It is this world's own menu, not a trusted one: a visitor's sure way out of
+  // any world is their headset's own controls.
+  const pageButton = (id: string) => {
+    const b = $<HTMLButtonElement>(id);
+    return b ? [menuItemFor(b)] : [];
+  };
+  const menu = createWorldMenu({
+    note: () => {
+      const line = $("room-status");
+      return line && !line.hidden ? (line.textContent ?? "") : "";
+    },
+    items: [
+      ...pageButton("home-button"),
+      { label: "Turn around", act: () => turnVisitor(rig, camera, 180) },
+      ...(handle.menu ?? []),
+      ...pageButton("room-button"),
+      ...pageButton("mic-button"),
+      { label: "Leave VR", act: () => renderer.xr.getSession()?.end() },
+    ],
+  });
+  scene.add(menu.group);
+  hooks.menu = menu;
+
   // ------------------------------------------------------------- input
   const raycaster = new THREE.Raycaster();
   // Signs are sprites, and a sprite can't be tested against a ray without
@@ -299,10 +327,12 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     );
     c.addEventListener("select", () => {
       state.lastSelect = i;
-      const gate = aimFrom(c);
-      if (gate) void go(gate);
+      const gate = aimFrom(c); // leaves the ray pointing where this hand points
+      const button = menu.pick(raycaster);
+      if (button) menu.press(button);
+      else if (gate) void go(gate);
       else {
-        const spot = floorUnder(); // aimFrom left the ray pointing where this hand points
+        const spot = floorUnder();
         if (spot) stepTo(spot);
       }
     });
@@ -431,9 +461,15 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     let aimed: PortalGate | null = null;
     reticle.visible = false;
     if (renderer.xr.isPresenting) {
+      let button: THREE.Mesh | null = null;
       for (const c of controllers) {
         if (!c.visible) continue;
         const gate = aimFrom(c);
+        const onMenu = menu.pick(raycaster);
+        if (onMenu) {
+          button = onMenu;
+          continue;
+        }
         aimed = gate ?? aimed;
         const spot = gate ? null : floorUnder();
         if (spot) {
@@ -441,6 +477,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
           reticle.visible = true;
         }
       }
+      menu.aim(button);
       const through = walkedInto();
       if (through) void go(through);
     } else {
@@ -451,6 +488,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     }
     for (const g of gates) g.aimed = g === aimed ? 1 : 0;
     for (const g of ownGates) g.update(t, dt);
+    menu.update(dt, camera, renderer.xr.isPresenting);
     presenceUpdate(dt);
     handle.update?.(t, dt);
     renderer.render(scene, camera);
