@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addCameraControls, addPanelControls, addRoomControls, createStroll, reachOf, TAP_REACH, addViewControls, capturePanorama, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addCameraControls, addPanelControls, addRoomControls, addSoundControls, createSounds, createStroll, reachOf, TAP_REACH, addViewControls, capturePanorama, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -26,6 +26,8 @@ import type { BuildScene, PortalOptions, SceneContext, WorldConfig } from "./typ
 
 interface TestHooks {
   state: Record<string, unknown>;
+  /** What this place sounds like: cues, its music, and the visitor's own. */
+  sounds?: unknown;
   /** The visitor's camera: what it has taken. */
   camera?: Camera;
   /** What the visitor's hands are doing in a headset, as the input layer reads them. */
@@ -162,6 +164,11 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   const controls = createControls({ title: config.world.title, address: new URL(config.world.url).host, theme: { accent: layout.room.accent }, ...config.controls });
   const hud = mountHud(controls);
   hooks.controls = controls;
+  // Sound: the kit's cues unless world.json names this world's own, the place's music, and the visitor's own
+  // songs. The volumes are the visitor's, kept for this site.
+  const sounds = createSounds({ context: THREE.AudioContext.getContext() as unknown as AudioContext, seed: config.world.title, theme: config.sounds ?? null });
+  addSoundControls(controls, sounds);
+  hooks.sounds = sounds;
 
   // ------------------------------------------------------------- your scene
   const gates: PortalGate[] = [];
@@ -185,6 +192,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     config,
     layout,
     controls,
+    sounds,
     arrival: context,
     addPortal(to: PortalDestination | { coordinate: string }, opts: PortalOptions = {}) {
       let destination: PortalDestination;
@@ -235,6 +243,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     if (state.leaving) return;
     state.leaving = true;
     stopWalking();
+    sounds.play("cross");
     await crossing.leave({ title: String(gate.group.userData.label ?? "another place"), address: hostOf(gate.destination.url) });
     document.body.classList.add("leaving");
     await portal.go(gate.destination, { xrSession: renderer.xr.getSession(), ...travelling() });
@@ -243,6 +252,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     const back = arrival.returnAirlock();
     if (!back || state.leaving) return;
     state.leaving = true;
+    sounds.play("cross");
     await crossing.leave({ title: "home", address: hostOf(back) });
     document.body.classList.add("leaving");
     await portal.home({ xrSession: renderer.xr.getSession(), ...travelling() });
@@ -251,6 +261,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     const back = arrival.returnAirlock();
     if (!back || state.leaving) return;
     state.leaving = true;
+    sounds.play("cross");
     await crossing.leave({ title: "your doors", address: hostOf(back) });
     document.body.classList.add("leaving");
     await portal.doors({ xrSession: renderer.xr.getSession(), ...travelling() });
@@ -355,6 +366,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       rig.position.z += dz;
     },
     speed: 2,
+    onBlocked: () => sounds.bump(),
   });
   stopWalking = () => stroll.stop();
   const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -568,6 +580,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     if (canStand(headAt.x + step.x, headAt.z + step.z)) rig.position.add(step);
     else if (canStand(headAt.x + step.x, headAt.z)) rig.position.x += step.x;
     else if (canStand(headAt.x, headAt.z + step.z)) rig.position.z += step.z;
+    else sounds.bump();
   };
   hooks.where = () => {
     const at = camera.getWorldPosition(new THREE.Vector3());
@@ -594,6 +607,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // A visitor who was in the room where they came from stays joined here: their own client says so (NSWP-03).
     ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context, panels }));
     presenceUpdate = (dt) => presence.update(dt);
+    // How loud other people are is the visitor's to set, with the rest of their volumes.
+    sounds.onChange((levels) => presence.setVolume(levels.off ? 0 : levels.voices));
     hooks.roomInfo = () => presence.info();
     selfLook = () => presence.selfLook();
     sayRecording = (on) => presence.setRecording(on);
@@ -655,10 +670,14 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   const startedAt = performance.now();
   let last = 0;
   let wasBusy = false;
+  const movedFrom = rig.position.clone();
   renderer.setAnimationLoop(() => {
     const t = (performance.now() - startedAt) / 1000;
     const dt = Math.min(t - last, 0.1);
     last = t;
+    // Steps are made from how far the visitor was moved, not from how their head sways.
+    if (state.ready) sounds.moved(Math.hypot(rig.position.x - movedFrom.x, rig.position.z - movedFrom.z));
+    movedFrom.copy(rig.position);
     let aimed: PortalGate | null = null;
     reticle.visible = false;
     input!.update(dt);
@@ -720,6 +739,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     renderer.render(scene, camera);
   });
   state.portalCount = gates.length;
+  // Out of a door, if they came through one. A browser may hold this back until their first touch.
+  if (context) sounds.play("arrive");
   state.ready = true;
   worldOpened();
 }

@@ -26,6 +26,9 @@ var ICONS = {
   /** A panel: a frame with a bar along its top. */
   panel: "M4 5h16v14H4ZM4 9h16M15 7h.01M17.5 7h.01",
   note: "M6 3h9l4 4v14H6ZM14 3v5h5M9 13h7M9 17h5",
+  /** A loudspeaker, sounding and crossed out. */
+  sound: "M4 9.500v5h3.500L13 19V5L7.500 9.500ZM16.500 9a4.500 4.500 0 0 1 0 6M19 6.500a8 8 0 0 1 0 11",
+  soundOff: "M4 9.500v5h3.500L13 19V5L7.500 9.500ZM16.500 9.500l4.500 5M21 9.500l-4.500 5",
   people: "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3 20a6 6 0 0 1 12 0M16 11a2.5 2.5 0 1 0 0-5M21 20a5 5 0 0 0-4-4.9"
 };
 

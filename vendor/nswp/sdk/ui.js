@@ -7,7 +7,7 @@ import {
   resolveTheme,
   rgb,
   saveVisitorTheme
-} from "./shared-BP5WDRDO.js";
+} from "./shared-SJAWET5K.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/ui/model.ts
@@ -37,6 +37,7 @@ function createControls(opts) {
   const actions = [];
   const listeners = /* @__PURE__ */ new Set();
   const sayers = /* @__PURE__ */ new Set();
+  const signals = /* @__PURE__ */ new Set();
   let visitor = loadVisitorTheme();
   let theme = resolveTheme(opts.theme, visitor);
   let target = "";
@@ -106,6 +107,7 @@ function createControls(opts) {
     run(id) {
       const a = actions.find((x) => x.id === id);
       if (!a || a.hidden?.()) return false;
+      for (const fn of signals) fn("press");
       void Promise.resolve().then(() => a.act()).catch(() => {
       }).finally(changed);
       return true;
@@ -142,6 +144,18 @@ function createControls(opts) {
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
+    },
+    signal(name) {
+      for (const fn of signals) {
+        try {
+          fn(name);
+        } catch {
+        }
+      }
+    },
+    onSignal(fn) {
+      signals.add(fn);
+      return () => signals.delete(fn);
     },
     onSay(fn) {
       sayers.add(fn);
@@ -441,6 +455,7 @@ function mountHud(controls, opts = {}) {
   const setOpen = (next) => {
     if (open === next) return;
     open = next;
+    controls.signal(open ? "menuOpen" : "menuClose");
     draw();
     if (open) tabs.querySelector('[aria-selected="true"]')?.focus();
     else (controls.presence === "quiet" ? quiet : menu).focus();

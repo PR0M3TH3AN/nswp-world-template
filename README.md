@@ -187,6 +187,11 @@ it yourself. `npm run check:live` tells you if it is missing.
 
 ## Working on it from inside it
 
+**It has sound.** Steps, presses, doors, and a quiet music made from your
+world's title. Visitors set their own volumes and can play their own songs,
+which only they hear. To use sounds of your own, see
+[`sounds/README.md`](sounds/README.md).
+
 You can stand in your world while you change it.
 
 - **A refresh puts you back where you stood,** facing the way you faced. If

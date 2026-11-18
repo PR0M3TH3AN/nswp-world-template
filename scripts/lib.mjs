@@ -12,6 +12,32 @@ export const dist = join(root, "dist");
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
 const PICTURES = join(root, "pictures");
+const SOUNDS = join(root, "sounds");
+const SOUND_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.(ogg|oga|opus|mp3|m4a|aac|wav|webm|flac)$/;
+const CUE_NAMES = ["step", "land", "bump", "grab", "drop", "hover", "press", "menuOpen", "menuClose", "cross", "arrive", "join", "leave", "micOn", "micOff", "notice", "error"];
+/** The files in sounds/ that can be served: sound files with plain names. */
+export function soundFiles() {
+  return existsSync(SOUNDS) ? readdirSync(SOUNDS).filter((f) => SOUND_FILE.test(f)) : [];
+}
+/** What is wrong with world.json's "sounds", in words for the builder. */
+function soundProblems(sounds) {
+  const out = [];
+  if (sounds === undefined) return out;
+  if (!sounds || typeof sounds !== "object" || Array.isArray(sounds)) return ['world.json: "sounds" is { "cues": { … }, "music": … }.'];
+  const have = new Set(soundFiles());
+  const check = (what, value) => {
+    if (value === null || value === undefined) return;
+    const name = typeof value === "string" && value.startsWith("sounds/") ? value.slice(7) : null;
+    if (!name || !SOUND_FILE.test(name)) out.push(`world.json: ${what} is "sounds/<file>", a sound file in the sounds folder, or null for silence. It can't be an address on another site.`);
+    else if (!have.has(name)) out.push(`world.json: ${what} names sounds/${name}, which isn't in the sounds folder.`);
+  };
+  for (const [cue, value] of Object.entries(sounds.cues ?? {})) {
+    if (!CUE_NAMES.includes(cue)) out.push(`world.json: "${cue}" isn't a sound the plumbing makes. The cues are: ${CUE_NAMES.join(", ")}.`);
+    else check(`the "${cue}" sound`, value);
+  }
+  check('"music"', sounds.music);
+  return out;
+}
 const MAX_PICTURE_BYTES = 1024 * 1024; // the protocol's ceiling for a picture in a frame
 
 /**
@@ -94,6 +120,7 @@ export function validate({ config, home, pictures }) {
   // Who the world is for is the builder's to say, and a site that keeps adult worlds out reads it.
   if (config.world?.audience === undefined) warnings.push('world.json: say who this world is for with "audience": "kids", "general" (not made for kids) or "adult" (NSFW). Without it, sites that are careful may not list it.');
   else if (!["kids", "general", "adult"].includes(config.world.audience)) errors.push('world.json: "audience" is "kids", "general" or "adult".');
+  errors.push(...soundProblems(config.sounds));
   if (config.owner !== undefined && ownerKey(config) === null) errors.push('world.json: "owner" isn\'t a public key. It is your own, the way your sign-in shows it: npub1… and 63 characters long. Never a secret key.');
   return { errors, warnings, world: world.ok ? world.value : null, layout: layout.ok ? layout.value : null };
 }
@@ -183,6 +210,11 @@ function writeStatic({ config, signed, pictures }) {
     mkdirSync(join(dist, "previews"), { recursive: true });
     for (const f of readdirSync(join(root, "previews"))) if (/^[0-9a-f]{64}\.webp$/.test(f)) cpSync(join(root, "previews", f), join(dist, "previews", f));
   }
+  const sounds = soundFiles();
+  if (sounds.length) {
+    mkdirSync(join(dist, "sounds"), { recursive: true });
+    for (const f of sounds) cpSync(join(SOUNDS, f), join(dist, "sounds", f));
+  }
   if (pictures.files.length) {
     mkdirSync(join(dist, "pictures"), { recursive: true });
     for (const f of pictures.files) cpSync(join(PICTURES, f), join(dist, "pictures", f));
@@ -192,7 +224,7 @@ function writeStatic({ config, signed, pictures }) {
     writeFileSync(join(dist, ".well-known", "nswp.json"), `${JSON.stringify(manifestFor(config, signed.world.pubkey), null, 2)}\n`);
   }
   // Response headers, in the two forms static hosts read. Other hosts: see the README.
-  const csp = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "connect-src 'self' https: wss:", "base-uri 'none'", "form-action 'none'"].join("; ");
+  const csp = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "media-src 'self' blob:", "connect-src 'self' https: wss:", "base-uri 'none'", "form-action 'none'"].join("; ");
   const all = [
     ["Content-Security-Policy", csp],
     ["Referrer-Policy", "no-referrer"],

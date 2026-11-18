@@ -129,6 +129,13 @@ export interface Controls {
     subscribe(fn: () => void): () => void;
     /** Be told when there is something to say. */
     onSay(fn: (text: string) => void): () => void;
+    /**
+     * Say that something happened, by a short name: a control was pressed
+     * (`press`, which `run` says itself), the menu opened, a room was joined.
+     * Nothing is shown. It is for whatever makes the controls heard or felt.
+     */
+    signal(name: string): void;
+    onSignal(fn: (name: string) => void): () => void;
 }
 export interface ControlsOptions {
     /** The world's name. */

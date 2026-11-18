@@ -269,6 +269,14 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   else is in the room. Recording a clip shows the others a light. If your
   scene has things that shouldn't be in a picture, list them in
   `hideFromPreview`: the camera leaves those out too.
+- **Sound.** Every world has sounds without doing anything: steps, presses,
+  doors, a quiet music made from the world's title, and a Sound menu where a
+  visitor sets their own volumes and plays their own songs. To give the world
+  its own, put files in `sounds/` and name them under `"sounds"` in
+  `world.json` (see `sounds/README.md`). From a scene, `ctx.sounds.play(cue)`
+  plays one of the cues. Don't play sound any other way: no `<audio>` tags or
+  audio contexts of your own, nothing from another site, nothing before the
+  visitor's first touch, and nothing that goes round their volumes.
 - **A shared screen.** A visitor at a desk can offer their screen to the room.
   It is sent only to people who choose to watch, who see it on a panel of
   their own. The plumbing does it. Don't show anyone a screen they didn't
