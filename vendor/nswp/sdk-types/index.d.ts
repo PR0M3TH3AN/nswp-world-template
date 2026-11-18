@@ -52,6 +52,12 @@ export interface GoOptions {
     xrSession?: XRSession | null;
     /** Override the Airlock choice (tests, dedicated browsers). */
     airlock?: string;
+    /**
+     * The visitor is in a headset session as they leave. Their Airlock passes
+     * it on, so the next place can offer the way back in at once. Left out, it
+     * is taken from whether `xrSession` was given.
+     */
+    immersive?: boolean;
 }
 export declare const portal: {
     /** Which Airlock `go()` would use right now, or null for the built-in screen. */

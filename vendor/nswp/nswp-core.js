@@ -4821,6 +4821,10 @@ function decodeArrival(value) {
       out.sessionKey = json.sessionKey;
     } else c.warn("invalid_pass", "pass", "Ignoring a pass that doesn't come with the session key it names.");
   }
+  if (json.immersive !== void 0 && json.immersive !== false) {
+    if (json.immersive === true) out.immersive = true;
+    else c.warn("invalid_immersive", "immersive", "Ignoring an immersive hint that isn't true or false.");
+  }
   if (json.receipts !== void 0) {
     if (Array.isArray(json.receipts) && json.receipts.length <= LIMITS.maxReceipts && json.receipts.every(hasEventShape)) {
       out.receipts = json.receipts;
@@ -4964,15 +4968,19 @@ function parsePortal(input) {
   }
   return c.result(portal);
 }
-function buildAirlockUrl(airlock, dest) {
+function buildAirlockUrl(airlock, dest, opts = {}) {
   const u = new URL(airlock);
   const to = dest.naddr ?? dest.url;
   if (!to) throw new Error("buildAirlockUrl: destination needs an naddr or a url");
   const parts = [`to=${encodeURIComponent(to)}`];
   if (dest.naddr && dest.url) parts.push(`url=${encodeURIComponent(dest.url)}`);
   if (dest.entryPoint) parts.push(`entry=${encodeURIComponent(dest.entryPoint)}`);
+  if (opts.immersive) parts.push("xr=1");
   u.hash = parts.join("&");
   return u.href;
+}
+function fragmentSaysImmersive(hash) {
+  return hash.replace(/^#/, "").split("&").includes("xr=1");
 }
 function parseAirlockFragment(hash) {
   const params = /* @__PURE__ */ new Map();
@@ -4997,6 +5005,7 @@ function parseAirlockFragment(hash) {
   } else req.url = to;
   const entry = params.get("entry");
   if (entry && ENTRY_POINT3.test(entry)) req.entryPoint = entry;
+  if (params.get("xr") === "1") req.immersive = true;
   return req;
 }
 
@@ -5983,6 +5992,7 @@ export {
   encodeNpub,
   fetchManifest,
   finalizeEvent,
+  fragmentSaysImmersive,
   generatedLook,
   getConversationKey,
   getEventHash,

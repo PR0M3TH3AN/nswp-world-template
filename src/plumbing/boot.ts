@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addCameraControls, addRoomControls, addViewControls, capturePanorama, createConsole, createPresence, createXrInput, type Camera, type GrabOptions, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addCameraControls, addRoomControls, addViewControls, capturePanorama, createConsole, createCrossing, createPresence, createXrInput, type Camera, type GrabOptions, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -30,6 +30,8 @@ interface TestHooks {
   camera?: Camera;
   /** What the visitor's hands are doing in a headset, as the input layer reads them. */
   input?: () => unknown;
+  /** Where a crossing stands: arriving in the chamber, its doors opening, leaving, or none. */
+  crossing?: () => string;
   portals(): { label: string; destination: PortalDestination; position: number[] }[];
   goThrough(index: number): Promise<void>;
   capturePreview(width?: number): Promise<{ base64: string; width: number; height: number; bytes: number }>;
@@ -135,6 +137,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   const gates: PortalGate[] = [];
   const ownGates: PortalGate[] = []; // made by addPortal, so animated here
   let built = false;
+  // Settles when the world is drawn and ready to be walked into.
+  let worldOpened = () => {};
+  const opened = new Promise<void>((resolve) => (worldOpened = resolve));
   // Hands in a headset are set up further down, once there is something to point with.
   let input: XrInput | null = null;
   const toHold: [THREE.Object3D, GrabOptions | undefined][] = [];
@@ -182,11 +187,31 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // ------------------------------------------------------------- leaving
   // Every way out goes through an Airlock: a plain page that shows the real
   // address and waits for the visitor to agree (spec §6.2).
+  // Leaving and arriving happen in the kit's chamber: the same small room at both ends of every trip. It is
+  // scenery, and has nothing in it to press: the visitor's Airlock is what checks where a door really leads.
+  const crossing = createCrossing({ scene, camera, accent: controls.theme.accent, motion: () => controls.theme.motion });
+  hooks.crossing = () => crossing.state;
+  const hostOf = (url: string | undefined) => {
+    try {
+      return url ? new URL(url).host : "";
+    } catch {
+      return "";
+    }
+  };
   const go = async (gate: PortalGate) => {
     if (state.leaving) return;
     state.leaving = true;
+    await crossing.leave({ title: String(gate.group.userData.label ?? "another place"), address: hostOf(gate.destination.url) });
     document.body.classList.add("leaving");
     await portal.go(gate.destination, { xrSession: renderer.xr.getSession() });
+  };
+  const goHome = async () => {
+    const back = arrival.returnAirlock();
+    if (!back || state.leaving) return;
+    state.leaving = true;
+    await crossing.leave({ title: "your lobby", address: hostOf(back) });
+    document.body.classList.add("leaving");
+    await portal.home({ xrSession: renderer.xr.getSession() });
   };
   hooks.goThrough = async (i) => {
     const gate = gates[i];
@@ -202,7 +227,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     label: "Back to your lobby",
     short: "Home",
     hidden: () => !arrival.returnAirlock(),
-    act: () => void portal.home({ xrSession: renderer.xr.getSession() }),
+    act: () => void goHome(),
   });
   controls.addSection({
     id: "help",
@@ -238,7 +263,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // ------------------------------------------------------------- moving
   // Where the visitor may stand is the scene's to say (walls, edges). Movement
   // of every kind asks first, so a scene blocks all of them in one place.
-  const canStand = (x: number, z: number) => handle.canStand?.(x, z) ?? true;
+  const canStand = (x: number, z: number) => crossing.allows(x, z) && (handle.canStand?.(x, z) ?? true);
   const headAt = new THREE.Vector3();
   /** Move the visitor's head towards (x, z) in a straight line, stopping at the first place they may not stand. */
   const moveTowards = (x: number, z: number) => {
@@ -461,7 +486,23 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   };
 
   // ------------------------------------------------------------- VR
-  state.vrSupported = await addViewControls(controls, { renderer, rig, camera, hud, onState: (s) => (state.xr = s) });
+  // Someone who came through an Airlock starts in the chamber, and its doors open when the world is ready. If they
+  // left a headset session to get here, the one thing asked of them is whether to go back into one.
+  let offered = !!context?.immersive;
+  if (context) {
+    camera.updateMatrixWorld(true);
+    crossing.arrive({ title: config.world.title, address: location.host, ready: opened, hold: () => offered });
+  }
+  state.vrSupported = await addViewControls(controls, {
+    renderer,
+    rig,
+    camera,
+    hud,
+    onState: (s) => (state.xr = s),
+    ...(context?.immersive ? { arrived: { title: config.world.title } } : {}),
+    onOffer: (showing) => (offered = showing),
+  });
+  if (!state.vrSupported) offered = false;
 
   addEventListener("resize", () => {
     camera.aspect = innerWidth / innerHeight;
@@ -479,6 +520,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     let aimed: PortalGate | null = null;
     reticle.visible = false;
     input!.update(dt);
+    crossing.update(t, dt);
     if (renderer.xr.isPresenting) {
       let button: string | null = null;
       for (const c of controllers) {
@@ -517,6 +559,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   });
   state.portalCount = gates.length;
   state.ready = true;
+  worldOpened();
 }
 
 /**
