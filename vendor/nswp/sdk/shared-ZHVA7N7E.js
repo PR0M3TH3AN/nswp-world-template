@@ -1,6 +1,6 @@
 import {
   room
-} from "./shared-SZE7OFS6.js";
+} from "./shared-7X4E2NOK.js";
 import {
   ICONS,
   rgb
@@ -613,6 +613,217 @@ function storeBlocked(list, storage = local()) {
     else storage?.removeItem(KEY);
   } catch {
   }
+}
+
+// packages/sdk/src/sound-store.ts
+var CUES = [
+  "step",
+  // a footstep, walking
+  "land",
+  // arriving at the end of a jump: a step in a headset, or one taken at once
+  "bump",
+  // walking into something that can't be walked through
+  "grab",
+  "drop",
+  "hover",
+  "press",
+  "menuOpen",
+  "menuClose",
+  "cross",
+  // leaving through a door
+  "arrive",
+  // coming out of one
+  "join",
+  // someone is in the room who wasn't: the visitor, or another person
+  "leave",
+  "micOn",
+  "micOff",
+  "notice",
+  // the kit has something to say
+  "error"
+];
+var tone = (from, to, at, dur, gain, wave = "sine") => ({
+  kind: "tone",
+  wave,
+  from,
+  ...to === void 0 ? {} : { to },
+  at,
+  dur,
+  gain
+});
+var noise = (band, at, dur, gain) => ({ kind: "noise", band, at, dur, gain });
+var RECIPES = {
+  step: [noise(850, 0, 0.06, 0.2), tone(120, 70, 0, 0.07, 0.16)],
+  land: [tone(190, 62, 0, 0.16, 0.3), noise(480, 0, 0.11, 0.2)],
+  bump: [tone(96, 58, 0, 0.12, 0.28, "triangle"), noise(260, 0, 0.05, 0.14)],
+  grab: [tone(520, 780, 0, 0.07, 0.16, "triangle")],
+  drop: [tone(700, 420, 0, 0.08, 0.16, "triangle")],
+  hover: [tone(1400, void 0, 0, 0.025, 0.05)],
+  press: [tone(880, 1320, 0, 0.05, 0.15, "triangle")],
+  menuOpen: [tone(660, void 0, 0, 0.05, 0.12), tone(990, void 0, 0.05, 0.07, 0.12)],
+  menuClose: [tone(990, void 0, 0, 0.05, 0.12), tone(660, void 0, 0.05, 0.07, 0.12)],
+  cross: [tone(196, 784, 0, 0.5, 0.22), noise(1400, 0.05, 0.45, 0.07), tone(392, 1568, 0.1, 0.4, 0.08)],
+  arrive: [tone(784, 392, 0, 0.42, 0.2), tone(1176, 588, 0.04, 0.38, 0.08), noise(900, 0, 0.2, 0.05)],
+  join: [tone(523.25, void 0, 0, 0.09, 0.14), tone(783.99, void 0, 0.09, 0.14, 0.14)],
+  leave: [tone(783.99, void 0, 0, 0.09, 0.12), tone(523.25, void 0, 0.09, 0.14, 0.12)],
+  micOn: [tone(600, 900, 0, 0.08, 0.14)],
+  micOff: [tone(900, 600, 0, 0.08, 0.14)],
+  notice: [tone(1046.5, void 0, 0, 0.08, 0.09), tone(1318.5, void 0, 0.08, 0.12, 0.08)],
+  error: [tone(220, void 0, 0, 0.11, 0.13, "square"), tone(185, void 0, 0.14, 0.14, 0.13, "square")]
+};
+function cueRecipe(cue) {
+  return RECIPES[cue];
+}
+var SOUND_LIMITS = {
+  /** A world's own cue: a file this size at most, this long at most. Longer ones aren't sounds for something that happened. */
+  cueBytes: 512 * 1024,
+  cueSeconds: 3,
+  /** Kinds of file a world may name. */
+  extensions: ["ogg", "oga", "opus", "mp3", "m4a", "aac", "wav", "webm", "flac"],
+  /** The visitor's own songs: this many, each this size at most. */
+  songs: 60,
+  songBytes: 40 * 1024 * 1024,
+  titleChars: 80
+};
+function ownSound(address, base) {
+  if (typeof address !== "string" || address.length > 2e3) return null;
+  let u;
+  let b;
+  try {
+    b = new URL(base);
+    u = new URL(address, b);
+  } catch {
+    return null;
+  }
+  if (u.origin !== b.origin || u.protocol !== "https:" && u.protocol !== "http:") return null;
+  const ext = u.pathname.split(".").pop()?.toLowerCase() ?? "";
+  if (!SOUND_LIMITS.extensions.includes(ext)) return null;
+  u.hash = "";
+  return u.href;
+}
+function cleanTheme(input, base) {
+  const out = { cues: {} };
+  if (!input || typeof input !== "object") return out;
+  const { cues, music } = input;
+  if (cues && typeof cues === "object") {
+    for (const cue of CUES) {
+      const v = cues[cue];
+      if (v === null) out.cues[cue] = null;
+      else if (v !== void 0) {
+        const address = ownSound(v, base);
+        if (address) out.cues[cue] = address;
+      }
+    }
+  }
+  if (music === null) out.music = null;
+  else if (music !== void 0) {
+    const address = ownSound(music, base);
+    if (address) out.music = address;
+  }
+  return out;
+}
+var DEFAULT_LEVELS = { off: false, effects: 0.7, music: 0.45, voices: 1, hearShared: false, shared: 0.7 };
+var LEVEL_STEPS = [0, 0.35, 0.7, 1];
+var LEVEL_WORDS = ["off", "low", "medium", "high"];
+var unit = (v, fallback) => typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback;
+function cleanLevels(input) {
+  const i = input && typeof input === "object" ? input : {};
+  return {
+    off: i.off === true,
+    effects: unit(i.effects, DEFAULT_LEVELS.effects),
+    music: unit(i.music, DEFAULT_LEVELS.music),
+    voices: unit(i.voices, DEFAULT_LEVELS.voices),
+    hearShared: i.hearShared === true,
+    shared: unit(i.shared, DEFAULT_LEVELS.shared)
+  };
+}
+function levelStep(v) {
+  let best = 0;
+  LEVEL_STEPS.forEach((s, i) => {
+    if (Math.abs(s - v) < Math.abs(LEVEL_STEPS[best] - v)) best = i;
+  });
+  return best;
+}
+function nextLevel(v) {
+  return LEVEL_STEPS[(levelStep(v) + 1) % LEVEL_STEPS.length];
+}
+var MUSIC_RANGE = 12;
+var MUSIC_SOURCES = 2;
+var MUSIC_DUCK = 0.35;
+function musicToHear(sharing, hear) {
+  if (!hear) return [];
+  return sharing.filter((s) => !s.refused && Number.isFinite(s.metres) && s.metres <= MUSIC_RANGE).sort((a, b) => a.metres - b.metres || a.pubkey.localeCompare(b.pubkey)).slice(0, MUSIC_SOURCES).map((s) => s.pubkey);
+}
+function musicFade(metres) {
+  if (!(metres >= 0)) return 0;
+  const near = 2;
+  if (metres <= near) return 1;
+  if (metres >= MUSIC_RANGE) return 0;
+  const t = (metres - near) / (MUSIC_RANGE - near);
+  return (1 - t) * (1 - t);
+}
+function seeded(seed) {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  let a = h >>> 0;
+  return () => {
+    a = a + 1831565813 >>> 0;
+    let t = a;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+var ROOTS = [98, 110, 116.54, 130.81, 146.83, 155.56];
+var SCALES = [
+  [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3],
+  // major pentatonic: open, bright
+  [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5],
+  // minor pentatonic: darker
+  [1, 9 / 8, 4 / 3, 3 / 2, 16 / 9],
+  // suspended: unresolved, still
+  [1, 5 / 4, 3 / 2, 15 / 8, 9 / 4]
+  // major seventh: warm
+];
+function ambiencePlan(seed) {
+  const r = seeded(`ambience:${seed}`);
+  const root = ROOTS[Math.floor(r() * ROOTS.length)];
+  const scale = SCALES[Math.floor(r() * SCALES.length)];
+  const fifth = scale.includes(3 / 2) ? 3 / 2 : scale[3];
+  const drones = [1, fifth, 2, scale[2] * 2].map((m) => ({ hz: root * m, detune: (r() - 0.5) * 14, swell: 11 + r() * 18 }));
+  const least = 3.5 + r() * 3;
+  return { root, scale, drones, colour: 500 + r() * 900, gap: [least, least + 3 + r() * 4] };
+}
+function songTitle(fileName) {
+  const raw = typeof fileName === "string" ? fileName : "";
+  const cleaned = raw.split(/[\\/]/).pop().replace(/\.[a-z0-9]{1,5}$/i, "").normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/[_\s]+/g, " ").trim();
+  return [...cleaned].slice(0, SOUND_LIMITS.titleChars).join("").trim() || "A song";
+}
+function cleanSongs(input) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of input) {
+    if (!s || typeof s !== "object") continue;
+    const { id, title, size, at } = s;
+    if (typeof id !== "string" || !/^[a-z0-9-]{4,40}$/.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, title: songTitle(title), size: typeof size === "number" && size > 0 ? Math.floor(size) : 0, at: typeof at === "number" && at > 0 ? Math.floor(at) : 0 });
+    if (out.length >= SOUND_LIMITS.songs) break;
+  }
+  return out;
+}
+function songRefusal(file, have) {
+  const ext = (file.name ?? "").split(".").pop()?.toLowerCase() ?? "";
+  const isSound = (file.type ?? "").startsWith("audio/") || SOUND_LIMITS.extensions.includes(ext);
+  if (!isSound) return "That isn't a sound file.";
+  if (!file.size) return "That file is empty.";
+  if (file.size > SOUND_LIMITS.songBytes) return `That file is over ${Math.round(SOUND_LIMITS.songBytes / 1024 / 1024)} MB, which is more than is kept here.`;
+  if (have >= SOUND_LIMITS.songs) return `${SOUND_LIMITS.songs} songs are kept here at most. Take one out first.`;
+  return null;
 }
 
 // packages/sdk/src/turn.ts
@@ -2985,195 +3196,6 @@ function createStroll(o) {
   };
 }
 
-// packages/sdk/src/sound-store.ts
-var CUES = [
-  "step",
-  // a footstep, walking
-  "land",
-  // arriving at the end of a jump: a step in a headset, or one taken at once
-  "bump",
-  // walking into something that can't be walked through
-  "grab",
-  "drop",
-  "hover",
-  "press",
-  "menuOpen",
-  "menuClose",
-  "cross",
-  // leaving through a door
-  "arrive",
-  // coming out of one
-  "join",
-  // someone is in the room who wasn't: the visitor, or another person
-  "leave",
-  "micOn",
-  "micOff",
-  "notice",
-  // the kit has something to say
-  "error"
-];
-var tone = (from, to, at, dur, gain, wave = "sine") => ({
-  kind: "tone",
-  wave,
-  from,
-  ...to === void 0 ? {} : { to },
-  at,
-  dur,
-  gain
-});
-var noise = (band, at, dur, gain) => ({ kind: "noise", band, at, dur, gain });
-var RECIPES = {
-  step: [noise(850, 0, 0.06, 0.2), tone(120, 70, 0, 0.07, 0.16)],
-  land: [tone(190, 62, 0, 0.16, 0.3), noise(480, 0, 0.11, 0.2)],
-  bump: [tone(96, 58, 0, 0.12, 0.28, "triangle"), noise(260, 0, 0.05, 0.14)],
-  grab: [tone(520, 780, 0, 0.07, 0.16, "triangle")],
-  drop: [tone(700, 420, 0, 0.08, 0.16, "triangle")],
-  hover: [tone(1400, void 0, 0, 0.025, 0.05)],
-  press: [tone(880, 1320, 0, 0.05, 0.15, "triangle")],
-  menuOpen: [tone(660, void 0, 0, 0.05, 0.12), tone(990, void 0, 0.05, 0.07, 0.12)],
-  menuClose: [tone(990, void 0, 0, 0.05, 0.12), tone(660, void 0, 0.05, 0.07, 0.12)],
-  cross: [tone(196, 784, 0, 0.5, 0.22), noise(1400, 0.05, 0.45, 0.07), tone(392, 1568, 0.1, 0.4, 0.08)],
-  arrive: [tone(784, 392, 0, 0.42, 0.2), tone(1176, 588, 0.04, 0.38, 0.08), noise(900, 0, 0.2, 0.05)],
-  join: [tone(523.25, void 0, 0, 0.09, 0.14), tone(783.99, void 0, 0.09, 0.14, 0.14)],
-  leave: [tone(783.99, void 0, 0, 0.09, 0.12), tone(523.25, void 0, 0.09, 0.14, 0.12)],
-  micOn: [tone(600, 900, 0, 0.08, 0.14)],
-  micOff: [tone(900, 600, 0, 0.08, 0.14)],
-  notice: [tone(1046.5, void 0, 0, 0.08, 0.09), tone(1318.5, void 0, 0.08, 0.12, 0.08)],
-  error: [tone(220, void 0, 0, 0.11, 0.13, "square"), tone(185, void 0, 0.14, 0.14, 0.13, "square")]
-};
-function cueRecipe(cue) {
-  return RECIPES[cue];
-}
-var SOUND_LIMITS = {
-  /** A world's own cue: a file this size at most, this long at most. Longer ones aren't sounds for something that happened. */
-  cueBytes: 512 * 1024,
-  cueSeconds: 3,
-  /** Kinds of file a world may name. */
-  extensions: ["ogg", "oga", "opus", "mp3", "m4a", "aac", "wav", "webm", "flac"],
-  /** The visitor's own songs: this many, each this size at most. */
-  songs: 60,
-  songBytes: 40 * 1024 * 1024,
-  titleChars: 80
-};
-function ownSound(address, base) {
-  if (typeof address !== "string" || address.length > 2e3) return null;
-  let u;
-  let b;
-  try {
-    b = new URL(base);
-    u = new URL(address, b);
-  } catch {
-    return null;
-  }
-  if (u.origin !== b.origin || u.protocol !== "https:" && u.protocol !== "http:") return null;
-  const ext = u.pathname.split(".").pop()?.toLowerCase() ?? "";
-  if (!SOUND_LIMITS.extensions.includes(ext)) return null;
-  u.hash = "";
-  return u.href;
-}
-function cleanTheme(input, base) {
-  const out = { cues: {} };
-  if (!input || typeof input !== "object") return out;
-  const { cues, music } = input;
-  if (cues && typeof cues === "object") {
-    for (const cue of CUES) {
-      const v = cues[cue];
-      if (v === null) out.cues[cue] = null;
-      else if (v !== void 0) {
-        const address = ownSound(v, base);
-        if (address) out.cues[cue] = address;
-      }
-    }
-  }
-  if (music === null) out.music = null;
-  else if (music !== void 0) {
-    const address = ownSound(music, base);
-    if (address) out.music = address;
-  }
-  return out;
-}
-var DEFAULT_LEVELS = { off: false, effects: 0.7, music: 0.45, voices: 1 };
-var LEVEL_STEPS = [0, 0.35, 0.7, 1];
-var LEVEL_WORDS = ["off", "low", "medium", "high"];
-var unit = (v, fallback) => typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback;
-function cleanLevels(input) {
-  const i = input && typeof input === "object" ? input : {};
-  return { off: i.off === true, effects: unit(i.effects, DEFAULT_LEVELS.effects), music: unit(i.music, DEFAULT_LEVELS.music), voices: unit(i.voices, DEFAULT_LEVELS.voices) };
-}
-function levelStep(v) {
-  let best = 0;
-  LEVEL_STEPS.forEach((s, i) => {
-    if (Math.abs(s - v) < Math.abs(LEVEL_STEPS[best] - v)) best = i;
-  });
-  return best;
-}
-function nextLevel(v) {
-  return LEVEL_STEPS[(levelStep(v) + 1) % LEVEL_STEPS.length];
-}
-function seeded(seed) {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  let a = h >>> 0;
-  return () => {
-    a = a + 1831565813 >>> 0;
-    let t = a;
-    t = Math.imul(t ^ t >>> 15, t | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
-var ROOTS = [98, 110, 116.54, 130.81, 146.83, 155.56];
-var SCALES = [
-  [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3],
-  // major pentatonic: open, bright
-  [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5],
-  // minor pentatonic: darker
-  [1, 9 / 8, 4 / 3, 3 / 2, 16 / 9],
-  // suspended: unresolved, still
-  [1, 5 / 4, 3 / 2, 15 / 8, 9 / 4]
-  // major seventh: warm
-];
-function ambiencePlan(seed) {
-  const r = seeded(`ambience:${seed}`);
-  const root = ROOTS[Math.floor(r() * ROOTS.length)];
-  const scale = SCALES[Math.floor(r() * SCALES.length)];
-  const fifth = scale.includes(3 / 2) ? 3 / 2 : scale[3];
-  const drones = [1, fifth, 2, scale[2] * 2].map((m) => ({ hz: root * m, detune: (r() - 0.5) * 14, swell: 11 + r() * 18 }));
-  const least = 3.5 + r() * 3;
-  return { root, scale, drones, colour: 500 + r() * 900, gap: [least, least + 3 + r() * 4] };
-}
-function songTitle(fileName) {
-  const raw = typeof fileName === "string" ? fileName : "";
-  const cleaned = raw.split(/[\\/]/).pop().replace(/\.[a-z0-9]{1,5}$/i, "").normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/[_\s]+/g, " ").trim();
-  return [...cleaned].slice(0, SOUND_LIMITS.titleChars).join("").trim() || "A song";
-}
-function cleanSongs(input) {
-  if (!Array.isArray(input)) return [];
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const s of input) {
-    if (!s || typeof s !== "object") continue;
-    const { id, title, size, at } = s;
-    if (typeof id !== "string" || !/^[a-z0-9-]{4,40}$/.test(id) || seen.has(id)) continue;
-    seen.add(id);
-    out.push({ id, title: songTitle(title), size: typeof size === "number" && size > 0 ? Math.floor(size) : 0, at: typeof at === "number" && at > 0 ? Math.floor(at) : 0 });
-    if (out.length >= SOUND_LIMITS.songs) break;
-  }
-  return out;
-}
-function songRefusal(file, have) {
-  const ext = (file.name ?? "").split(".").pop()?.toLowerCase() ?? "";
-  const isSound = (file.type ?? "").startsWith("audio/") || SOUND_LIMITS.extensions.includes(ext);
-  if (!isSound) return "That isn't a sound file.";
-  if (!file.size) return "That file is empty.";
-  if (file.size > SOUND_LIMITS.songBytes) return `That file is over ${Math.round(SOUND_LIMITS.songBytes / 1024 / 1024)} MB, which is more than is kept here.`;
-  if (have >= SOUND_LIMITS.songs) return `${SOUND_LIMITS.songs} songs are kept here at most. Take one out first.`;
-  return null;
-}
-
 // packages/sdk/src/sound.ts
 var GAP2 = { step: 0.14, hover: 0.08, bump: 0.5, land: 0.2, notice: 0.25 };
 var STRIDE = 0.75;
@@ -3226,7 +3248,7 @@ function createSounds(o = {}) {
       }
     }
   };
-  const juke = { audio: null, url: "", current: null, playing: false };
+  const juke = { audio: null, url: "", current: null, playing: false, tap: null };
   const apply = () => {
     const t = ctx.currentTime;
     master.gain.setTargetAtTime(levels.off ? 0 : 1, t, 0.05);
@@ -3431,6 +3453,17 @@ function createSounds(o = {}) {
     apply();
     changed();
   };
+  const player = () => {
+    if (!juke.audio || !juke.tap) {
+      juke.audio = new Audio();
+      const source = ctx.createMediaElementSource(juke.audio);
+      source.connect(ownMusic);
+      juke.tap = ctx.createMediaStreamDestination();
+      source.connect(juke.tap);
+      juke.audio.addEventListener("ended", () => void jukebox.next());
+    }
+    return { audio: juke.audio, tap: juke.tap };
+  };
   const jukebox = {
     list: () => [...songs],
     async add(file) {
@@ -3457,11 +3490,7 @@ function createSounds(o = {}) {
     async play(id) {
       const song = id ? songs.find((s) => s.id === id) : juke.current ?? songs[0];
       if (!song || disposed) return false;
-      if (!juke.audio) {
-        juke.audio = new Audio();
-        ctx.createMediaElementSource(juke.audio).connect(ownMusic);
-        juke.audio.addEventListener("ended", () => void jukebox.next());
-      }
+      player();
       if (juke.current?.id !== song.id || !juke.url) {
         const file = await fileStore("readonly", (s) => s.get(`song:${song.id}`));
         if (!file) return false;
@@ -3495,7 +3524,8 @@ function createSounds(o = {}) {
     },
     get current() {
       return juke.current;
-    }
+    },
+    output: () => player().tap.stream.getAudioTracks()[0]
   };
   const samples = new Float32Array(meter.fftSize);
   return {
@@ -4169,6 +4199,77 @@ function createPresence(d) {
     dress(a, member.look);
     return a;
   };
+  let tuneTrack = null;
+  const tunes = /* @__PURE__ */ new Map();
+  const tuneMuted = /* @__PURE__ */ new Set();
+  let hearShared = false;
+  let sharedVolume = 0.7;
+  let voiceVolume = 1;
+  let duck = 1;
+  let sinceChoosing = 0;
+  const playTune = (a, stream) => {
+    if (a.tune) return;
+    const el = new Audio();
+    el.muted = true;
+    el.srcObject = stream;
+    void el.play().catch(() => {
+    });
+    const pa = new THREE12.PositionalAudio(listener);
+    pa.setMediaStreamSource(stream);
+    pa.setRefDistance(MUSIC_RANGE);
+    pa.setVolume(0);
+    a.head.add(pa);
+    const meter = listener.context.createAnalyser();
+    meter.fftSize = 512;
+    listener.context.createMediaStreamSource(stream).connect(meter);
+    a.tune = pa;
+    a.tuneElement = el;
+    a.tuneMeter = meter;
+    a.tuneVolume = 0;
+  };
+  const stopTune = (a) => {
+    a.tune?.disconnect();
+    a.tune?.removeFromParent();
+    if (a.tuneElement) a.tuneElement.srcObject = null;
+    delete a.tune;
+    delete a.tuneElement;
+    delete a.tuneMeter;
+    a.tuneVolume = 0;
+  };
+  const rms = (meter, buf) => {
+    if (!meter) return 0;
+    meter.getFloatTimeDomainData(buf);
+    return Math.sqrt(buf.reduce((sum, x) => sum + x * x, 0) / buf.length);
+  };
+  const levelBuf = new Float32Array(512);
+  const headAt = new THREE12.Vector3();
+  const theirs = new THREE12.Vector3();
+  const tendMusic = (dt) => {
+    if (!session) return;
+    d.camera.getWorldPosition(headAt);
+    const away = (a) => a.head.getWorldPosition(theirs).distanceTo(headAt);
+    sinceChoosing += dt;
+    if (sinceChoosing > 0.4) {
+      sinceChoosing = 0;
+      const sharing = [...avatars.values()].filter((a) => a.member.music).map((a) => ({ pubkey: a.member.pubkey, metres: away(a), refused: mutedKeys.has(a.member.pubkey) || tuneMuted.has(a.member.pubkey) }));
+      const want = new Set(musicToHear(sharing, hearShared));
+      for (const a of avatars.values()) {
+        const on = want.has(a.member.pubkey);
+        session.listen(a.member.pubkey, on);
+        const stream = tunes.get(a.member.pubkey);
+        if (on && stream) playTune(a, stream);
+        else if (!on && a.tune) stopTune(a);
+      }
+    }
+    let speaking = false;
+    for (const a of avatars.values()) if (a.analyser && !mutedKeys.has(a.member.pubkey) && rms(a.analyser, levelBuf) > 0.02) speaking = true;
+    duck += ((speaking ? MUSIC_DUCK : 1) - duck) * Math.min(1, dt * (speaking ? 8 : 1.5));
+    for (const a of avatars.values()) {
+      if (!a.tune) continue;
+      a.tuneVolume = sharedVolume * duck * musicFade(away(a));
+      a.tune.setVolume(a.tuneVolume);
+    }
+  };
   let screenTrack = null;
   const screens = /* @__PURE__ */ new Map();
   const stopScreen = () => {
@@ -4196,7 +4297,7 @@ function createPresence(d) {
     const analyser = listener.context.createAnalyser();
     analyser.fftSize = 512;
     listener.context.createMediaStreamSource(stream).connect(analyser);
-    if (mutedKeys.has(avatar.member.pubkey)) pa.setVolume(0);
+    pa.setVolume(mutedKeys.has(avatar.member.pubkey) ? 0 : voiceVolume);
     avatar.audio = pa;
     avatar.element = el;
     avatar.analyser = analyser;
@@ -4206,6 +4307,7 @@ function createPresence(d) {
     if (!a) return;
     avatars.delete(pubkey);
     a.audio?.disconnect();
+    stopTune(a);
     if (a.element) a.element.srcObject = null;
     d.scene.remove(a.root);
     a.figure.dispose();
@@ -4244,6 +4346,8 @@ function createPresence(d) {
     session = null;
     stopScreen();
     screens.clear();
+    tuneTrack = null;
+    tunes.clear();
     for (const key of [...avatars.keys()]) removeAvatar(key);
     pendingStreams.clear();
     changed();
@@ -4306,6 +4410,7 @@ function createPresence(d) {
     });
     s.on("leave", (m) => {
       screens.delete(m.pubkey);
+      tunes.delete(m.pubkey);
       removeAvatar(m.pubkey);
       pendingStreams.delete(m.pubkey);
       changed();
@@ -4320,6 +4425,10 @@ function createPresence(d) {
       screens.set(m.pubkey, stream);
     });
     s.on("screen", () => changed());
+    s.on("music", (m, stream) => {
+      tunes.set(m.pubkey, stream);
+    });
+    s.on("tune", () => changed());
     s.on("audio", (m, stream) => {
       pendingStreams.set(m.pubkey, stream);
       const a = avatars.get(m.pubkey);
@@ -4414,12 +4523,40 @@ function createPresence(d) {
       return [...avatars.values()].map((a) => a.member);
     },
     setVolume(volume) {
-      listener.setMasterVolume(Math.min(1, Math.max(0, volume)));
+      voiceVolume = Math.min(1, Math.max(0, volume));
+      for (const a of avatars.values()) a.audio?.setVolume(mutedKeys.has(a.member.pubkey) ? 0 : voiceVolume);
+    },
+    get musicOn() {
+      return !!tuneTrack;
+    },
+    get musicListeners() {
+      return session?.musicListeners ?? 0;
+    },
+    async shareMusic(track) {
+      if (!session) return;
+      tuneTrack = track;
+      await session.setMusic(track);
+      changed();
+    },
+    setHearShared(on, volume) {
+      hearShared = on;
+      sharedVolume = Math.min(1, Math.max(0, volume));
+      sinceChoosing = 1;
+    },
+    muteMusic(pubkey, on) {
+      if (on) tuneMuted.add(pubkey);
+      else tuneMuted.delete(pubkey);
+      sinceChoosing = 1;
+      changed();
+    },
+    isMusicMuted(pubkey) {
+      return tuneMuted.has(pubkey);
     },
     mute(pubkey, on) {
       if (on) mutedKeys.add(pubkey);
       else mutedKeys.delete(pubkey);
-      avatars.get(pubkey)?.audio?.setVolume(on ? 0 : 1);
+      avatars.get(pubkey)?.audio?.setVolume(on ? 0 : voiceVolume);
+      sinceChoosing = 1;
       changed();
     },
     isMuted(pubkey) {
@@ -4457,6 +4594,7 @@ function createPresence(d) {
       return dest.stream.getAudioTracks()[0];
     },
     update(dt) {
+      tendMusic(dt);
       const k = 1 - Math.exp(-dt * 14);
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
@@ -4499,6 +4637,10 @@ function createPresence(d) {
           hands: [!!a.target?.left, !!a.target?.right],
           audioLevel: Math.round(level * 1e3) / 1e3,
           muted: mutedKeys.has(a.member.pubkey),
+          music: !!a.member.music,
+          hearing: !!a.tune,
+          musicVolume: Math.round((a.tuneVolume ?? 0) * 1e3) / 1e3,
+          musicLevel: Math.round(rms(a.tuneMeter, levelBuf) * 1e3) / 1e3,
           look: a.member.look,
           guest: a.member.guest,
           identity: a.member.identity ?? null
@@ -4660,6 +4802,7 @@ function addRoomControls(controls, presence, opts = {}) {
   const useTone = new URLSearchParams(opts.search ?? location.search).get("mic") === "tone";
   const useTestScreen = new URLSearchParams(opts.search ?? location.search).get("screen") === "test";
   const canShare = useTestScreen || typeof navigator.mediaDevices?.getDisplayMedia === "function";
+  const sounds = opts.sharedMusic === false ? null : opts.sounds ?? null;
   let invited = roomNameFromHash(location.hash);
   let busy = false;
   let last = invited ? "You were invited to a private room. Joining shows your IP address to the others in it." : "Joining lets you see and hear others here. It shows your IP address to them.";
@@ -4673,12 +4816,12 @@ function addRoomControls(controls, presence, opts = {}) {
     const others = s.members.length;
     const who = s.status === "no-relays" ? "can't reach any relay" : others === 0 ? "nobody else here yet" : others === 1 ? "1 other person here" : `${others} other people here`;
     const as = s.self.guest ? "" : ` You are here as ${s.self.name}.`;
-    return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${as}${presence.micOn ? " Your microphone is on." : ""}${presence.screenOn ? ` You are sharing your screen: ${presence.screenViewers === 0 ? "nobody is watching" : presence.screenViewers === 1 ? "1 person is watching" : `${presence.screenViewers} people are watching`}.` : ""}`;
+    return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${as}${presence.micOn ? " Your microphone is on." : ""}${presence.musicOn ? ` Your music is offered to people near you: ${presence.musicListeners === 0 ? "nobody is hearing it" : presence.musicListeners === 1 ? "1 person is hearing it" : `${presence.musicListeners} people are hearing it`}.` : ""}${presence.screenOn ? ` You are sharing your screen: ${presence.screenViewers === 0 ? "nobody is watching" : presence.screenViewers === 1 ? "1 person is watching" : `${presence.screenViewers} people are watching`}.` : ""}`;
   };
   const refresh = () => {
     const s = presence.session;
     opts.onState?.(
-      s ? { name: s.name, private: !!presence.roomName, status: s.status, self: s.self.pubkey, members: s.members.map((m) => m.pubkey), relays: s.relayCount, mic: presence.micOn, screen: presence.screenOn, sharing: s.members.filter((m) => m.sharing).map((m) => m.pubkey), watching: [...watching.keys()] } : null
+      s ? { name: s.name, private: !!presence.roomName, status: s.status, self: s.self.pubkey, members: s.members.map((m) => m.pubkey), relays: s.relayCount, mic: presence.micOn, screen: presence.screenOn, music: presence.musicOn, musicListeners: presence.musicListeners, sharing: s.members.filter((m) => m.sharing).map((m) => m.pubkey), watching: [...watching.keys()] } : null
     );
     controls.addSection({ id: "room", label: "Room", icon: "room", note: status });
     people();
@@ -4760,6 +4903,7 @@ function addRoomControls(controls, presence, opts = {}) {
   let extras = [];
   let chosen = null;
   let headcount = 0;
+  let toldOfMusic = false;
   const recorders = /* @__PURE__ */ new Set();
   const people = () => {
     const here = presence.session ? presence.people() : [];
@@ -4781,7 +4925,7 @@ function addRoomControls(controls, presence, opts = {}) {
         section: "people",
         kind: "swatch",
         color: m.look.light,
-        label: () => `${m.name}${m.recording ? ", recording" : ""}${m.sharing ? ", sharing their screen" : ""}`,
+        label: () => `${m.name}${m.recording ? ", recording" : ""}${m.sharing ? ", sharing their screen" : ""}${m.music ? ", sharing music" : ""}`,
         act: () => {
           chosen = m.pubkey;
           people();
@@ -4790,6 +4934,10 @@ function addRoomControls(controls, presence, opts = {}) {
         }
       })
     );
+    if (sounds && !toldOfMusic && !sounds.levels.hearShared && here.some((m) => m.music)) {
+      toldOfMusic = true;
+      controls.say(`${here.find((m) => m.music).name} is sharing music. To hear what people near you share, turn it on in Sound.`);
+    }
     for (const key of [...watching.keys()]) if (!here.some((m) => m.pubkey === key && m.sharing)) stopWatching(key);
     for (const m of here) {
       if (m.sharing && !sharers.has(m.pubkey)) controls.say(opts.panels ? `${m.name} is sharing their screen. Select them in People to watch.` : `${m.name} is sharing their screen.`);
@@ -4810,6 +4958,21 @@ function addRoomControls(controls, presence, opts = {}) {
           else if (startWatching(who)) controls.say(`${who.name}'s screen is opening on a panel of your own. Put the panel away to stop.`);
           else controls.say(`${who.name}'s screen can't be shown here.`);
           refresh();
+        }
+      });
+    }
+    if (who?.music && sounds) {
+      extras.push("person-music");
+      controls.add({
+        id: "person-music",
+        section: "people",
+        icon: "sound",
+        on: () => !presence.isMusicMuted(who.pubkey),
+        label: () => presence.isMusicMuted(who.pubkey) ? `Hear ${who.name}'s music again` : `Stop hearing ${who.name}'s music`,
+        act: () => {
+          const now = !presence.isMusicMuted(who.pubkey);
+          presence.muteMusic(who.pubkey, now);
+          controls.say(now ? `You no longer hear ${who.name}'s music. You still hear them speak.` : `You hear ${who.name}'s music again when you are near.`);
         }
       });
     }
@@ -4915,6 +5078,47 @@ function addRoomControls(controls, presence, opts = {}) {
         refresh();
       }
     },
+    ...sounds ? [
+      {
+        id: "sound-share",
+        section: "sound",
+        icon: "sound",
+        on: () => presence.musicOn,
+        label: () => presence.musicOn ? "Sharing your music with people near you: on" : "Share your music with people near you",
+        hidden: () => !presence.session || sounds.jukebox.list().length === 0,
+        act: async () => {
+          if (presence.musicOn) {
+            await presence.shareMusic(null);
+            tell("You stopped sharing your music.");
+            return refresh();
+          }
+          await presence.shareMusic(sounds.jukebox.output());
+          tell(
+            `Your music is offered to people near you. It reaches only those who have chosen to hear shared music, and fades with distance.${presence.micOn ? " With your microphone on, wear headphones, or they hear it twice." : ""}`
+          );
+          refresh();
+        }
+      },
+      {
+        id: "sound-hear",
+        section: "sound",
+        icon: "sound",
+        on: () => sounds.levels.hearShared,
+        label: () => sounds.levels.hearShared ? "Hear music others share: on" : "Hear music others share: off",
+        act: () => {
+          sounds.setLevels({ hearShared: !sounds.levels.hearShared });
+          controls.say(sounds.levels.hearShared ? "You'll hear music that people near you share, quieter the further they are." : "You won't hear anyone's shared music.");
+        }
+      },
+      {
+        id: "sound-shared",
+        section: "sound",
+        hidden: () => !sounds.levels.hearShared,
+        on: () => sounds.levels.shared > 0,
+        label: () => `Others' music: ${LEVEL_WORDS[levelStep(sounds.levels.shared)]}`,
+        act: () => sounds.setLevels({ shared: nextLevel(sounds.levels.shared) })
+      }
+    ] : [],
     {
       id: "room-screen",
       section: "room",
@@ -4963,6 +5167,10 @@ function addRoomControls(controls, presence, opts = {}) {
       }
     }
   );
+  (opts.sounds ?? null)?.onChange((l) => {
+    presence.setVolume(l.off ? 0 : l.voices);
+    presence.setHearShared(!!sounds && !l.off && l.hearShared, l.shared);
+  });
   let kept = null;
   try {
     kept = wasRefreshed() ? sessionStorage.getItem(JOINED_KEY()) : null;
@@ -5094,6 +5302,7 @@ export {
   createAlloy,
   MeshBuilder,
   createFigure,
+  CUES,
   turnVisitor,
   createConsole,
   readPad,
@@ -5110,7 +5319,6 @@ export {
   TAP_REACH,
   reachOf,
   createStroll,
-  CUES,
   createSounds,
   addSoundControls,
   createChamber,

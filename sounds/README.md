@@ -24,3 +24,10 @@ Then name them in `world.json`:
 - Files must be here, in this folder. A sound on another site is refused: it
   would tell that site who is visiting yours.
 - Use only sounds you have the right to use.
+
+## Music between visitors
+
+A visitor can play their own songs, which only they hear, and can offer them
+to people standing near. Others hear that only if they turned it on. If your
+world should have none of it (a concert, a quiet room), add
+`"sharedMusic": false` to `world.json`.

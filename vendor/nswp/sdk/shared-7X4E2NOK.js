@@ -2123,6 +2123,8 @@ var RoomSession = class {
     recording: /* @__PURE__ */ new Set(),
     screen: /* @__PURE__ */ new Set(),
     video: /* @__PURE__ */ new Set(),
+    tune: /* @__PURE__ */ new Set(),
+    music: /* @__PURE__ */ new Set(),
     audio: /* @__PURE__ */ new Set(),
     status: /* @__PURE__ */ new Set()
   };
@@ -2136,6 +2138,12 @@ var RoomSession = class {
   /** This visitor's shared screen, while they share one. */
   screen = null;
   screenTimer;
+  /** This visitor's music, while they share it. */
+  tune = null;
+  tuneTimer;
+  /** Whose music this visitor is listening to. */
+  heard = /* @__PURE__ */ new Set();
+  hearTimer;
   /** Whose screens this visitor is watching. */
   watched = /* @__PURE__ */ new Set();
   watchTimer;
@@ -2332,7 +2340,8 @@ var RoomSession = class {
     this.peers.set(pubkey, peer);
     pc.ontrack = (e) => {
       const stream = e.streams[0] ?? new MediaStream([e.track]);
-      this.emit(e.track.kind === "video" ? "video" : "audio", peer.member, stream);
+      if (e.track.kind === "video") this.emit("video", peer.member, stream);
+      else this.emit(e.transceiver && e.transceiver === this.musicTransceiver(pc) ? "music" : "audio", peer.member, stream);
     };
     pc.onconnectionstatechange = () => {
       if ((pc.connectionState === "failed" || pc.connectionState === "closed") && this.peers.get(pubkey) === peer) this.drop(pubkey, peer.open);
@@ -2353,6 +2362,16 @@ var RoomSession = class {
       if (e.data === "scr:1" || e.data === "scr:0") {
         peer.sharingUntil = e.data === "scr:1" ? Date.now() + RECORDING_HOLD_MS : 0;
         this.markSharing(peer);
+        return;
+      }
+      if (e.data === "mus:1" || e.data === "mus:0") {
+        peer.tuneUntil = e.data === "mus:1" ? Date.now() + RECORDING_HOLD_MS : 0;
+        this.markTune(peer);
+        return;
+      }
+      if (e.data === "hear:1" || e.data === "hear:0") {
+        peer.hearingUntil = e.data === "hear:1" ? Date.now() + RECORDING_HOLD_MS : 0;
+        void this.feedTune(peer);
         return;
       }
       if (e.data === "watch:1" || e.data === "watch:0") {
@@ -2482,6 +2501,10 @@ var RoomSession = class {
   audioTransceiver(pc) {
     return pc.getTransceivers().find((t) => t.receiver.track.kind === "audio");
   }
+  /** The second sound line: music. Voice is the first. */
+  musicTransceiver(pc) {
+    return pc.getTransceivers().filter((t) => t.receiver.track.kind === "audio")[1];
+  }
   videoTransceiver(pc) {
     return pc.getTransceivers().find((t) => t.receiver.track.kind === "video");
   }
@@ -2490,6 +2513,7 @@ var RoomSession = class {
     const audio = peer.pc.addTransceiver("audio", { direction: "sendrecv" });
     if (this.mic) await audio.sender.replaceTrack(this.mic);
     peer.pc.addTransceiver("video", { direction: "sendrecv" });
+    peer.pc.addTransceiver("audio", { direction: "sendrecv" });
     this.wirePoseChannel(peer, peer.pc.createDataChannel("pose", { ordered: false, maxRetransmits: 0 }));
     await peer.pc.setLocalDescription(await peer.pc.createOffer());
     const sdp = await this.gathered(peer.pc);
@@ -2508,6 +2532,8 @@ var RoomSession = class {
     }
     const video = this.videoTransceiver(peer.pc);
     if (video) video.direction = "sendrecv";
+    const music = this.musicTransceiver(peer.pc);
+    if (music) music.direction = "sendrecv";
     await peer.pc.setLocalDescription(await peer.pc.createAnswer());
     const answer = await this.gathered(peer.pc);
     if (this.peers.get(pubkey) === peer) this.publish(buildSignal(this.topic, this.key, pubkey, { t: "answer", sdp: answer }));
@@ -2542,6 +2568,68 @@ var RoomSession = class {
       }
     } catch {
     }
+  }
+  markTune(peer) {
+    const on = (peer.tuneUntil ?? 0) > Date.now();
+    if (on === !!peer.member.music) return;
+    peer.member.music = on;
+    if (!on) this.heard.delete(peer.member.pubkey);
+    this.emit("tune", peer.member, on);
+  }
+  /** Send this visitor's music to a member who is listening to it, and stop when they aren't or there is none. */
+  async feedTune(peer) {
+    const wants = !!this.tune && (peer.hearingUntil ?? 0) > Date.now();
+    if (wants === !!peer.tuned) return;
+    peer.tuned = wants;
+    try {
+      await this.musicTransceiver(peer.pc)?.sender.replaceTrack(wants ? this.tune : null);
+    } catch {
+    }
+  }
+  /**
+   * Offer music to the room, or stop. Like a screen, offering sends nothing
+   * by itself: it goes only to members who ask to hear it, and they ask only
+   * while they are near and have said they want to hear shared music at all.
+   */
+  async setMusic(track) {
+    this.tune = track;
+    this.self.music = !!track;
+    clearInterval(this.tuneTimer);
+    const say = () => this.tellAll(this.tune ? "mus:1" : "mus:0");
+    say();
+    if (track) this.tuneTimer = setInterval(say, 2e3);
+    else setTimeout(say, 400);
+    await Promise.all(
+      [...this.peers.values()].map(async (peer) => {
+        peer.tuned = false;
+        await this.feedTune(peer).catch(() => {
+        });
+        if (!track) await this.musicTransceiver(peer.pc)?.sender.replaceTrack(null).catch(() => {
+        });
+      })
+    );
+  }
+  /** How many members this visitor's music is going to now. */
+  get musicListeners() {
+    return this.tune ? [...this.peers.values()].filter((p) => p.open && p.tuned).length : 0;
+  }
+  /** Ask to be sent a member's music, or to stop being sent it. Asked again every couple of seconds while listening. */
+  listen(pubkey, on) {
+    if (on === this.heard.has(pubkey)) return;
+    if (on) this.heard.add(pubkey);
+    else this.heard.delete(pubkey);
+    const peer = this.peers.get(pubkey);
+    if (peer?.open && peer.pose?.readyState === "open") {
+      try {
+        peer.pose.send(on ? "hear:1" : "hear:0");
+      } catch {
+      }
+    }
+    clearInterval(this.hearTimer);
+    if (this.heard.size) this.hearTimer = setInterval(() => this.tellAll("hear:1", (p) => this.heard.has(p.member.pubkey)), 2e3);
+  }
+  isListening(pubkey) {
+    return this.heard.has(pubkey);
   }
   tellAll(word, to) {
     for (const peer of this.peers.values()) {
@@ -2642,6 +2730,8 @@ var RoomSession = class {
       this.markRecording(peer);
       this.markSharing(peer);
       void this.feed(peer);
+      this.markTune(peer);
+      void this.feedTune(peer);
       if (!peer.open && now - peer.startedAt > CONNECT_TIMEOUT_MS) this.drop(pubkey, false);
       else if (peer.open && now - peer.lastSeen > SILENT_TIMEOUT_MS) this.drop(pubkey, true);
     }
@@ -2681,6 +2771,8 @@ var RoomSession = class {
     this.closed = true;
     clearInterval(this.screenTimer);
     clearInterval(this.watchTimer);
+    clearInterval(this.tuneTimer);
+    clearInterval(this.hearTimer);
     for (const t of this.timers) clearInterval(t);
     removeEventListener("pagehide", this.onPageHide);
     for (const pubkey of [...this.peers.keys()]) this.drop(pubkey, true);

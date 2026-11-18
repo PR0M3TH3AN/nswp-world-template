@@ -605,7 +605,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // can dress everyone its own way with `figureStyle`.
     const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => refresh() });
     // A visitor who was in the room where they came from stays joined here: their own client says so (NSWP-03).
-    ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context, panels }));
+    ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context, panels, sounds, ...(config.sharedMusic === false ? { sharedMusic: false } : {}) }));
     presenceUpdate = (dt) => presence.update(dt);
     // How loud other people are is the visitor's to set, with the rest of their volumes.
     sounds.onChange((levels) => presence.setVolume(levels.off ? 0 : levels.voices));

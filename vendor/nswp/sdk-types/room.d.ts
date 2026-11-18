@@ -15,6 +15,8 @@ export interface Member {
     recording: boolean;
     /** They are offering their screen to the room. It is sent only to members who ask to watch. */
     sharing?: boolean;
+    /** They are offering their music to people near them. It is sent only to members who ask to hear it. */
+    music?: boolean;
 }
 export interface JoinOptions {
     /** Room name. People who share a world URL and a name share a room. Default "lobby". */
@@ -59,6 +61,10 @@ interface Events {
     audio: (member: Member, stream: MediaStream) => void;
     /** A member started or stopped offering their screen. */
     screen: (member: Member, on: boolean) => void;
+    /** A member started or stopped offering their music. */
+    tune: (member: Member, on: boolean) => void;
+    /** The line a member's music arrives on. It carries sound only while they share and this visitor listens. */
+    music: (member: Member, stream: MediaStream) => void;
     /** The line a member's screen arrives on. It carries pictures only while they share and this visitor watches. */
     video: (member: Member, stream: MediaStream) => void;
     status: (status: RoomStatus) => void;
@@ -88,6 +94,12 @@ export declare class RoomSession {
     /** This visitor's shared screen, while they share one. */
     private screen;
     private screenTimer;
+    /** This visitor's music, while they share it. */
+    private tune;
+    private tuneTimer;
+    /** Whose music this visitor is listening to. */
+    private readonly heard;
+    private hearTimer;
     /** Whose screens this visitor is watching. */
     private readonly watched;
     private watchTimer;
@@ -143,6 +155,8 @@ export declare class RoomSession {
     private introduce;
     private gathered;
     private audioTransceiver;
+    /** The second sound line: music. Voice is the first. */
+    private musicTransceiver;
     private videoTransceiver;
     private offerTo;
     private answerTo;
@@ -150,6 +164,20 @@ export declare class RoomSession {
     private markSharing;
     /** Send this visitor's screen to a member who is watching it, and stop when they aren't or there is none. */
     private feed;
+    private markTune;
+    /** Send this visitor's music to a member who is listening to it, and stop when they aren't or there is none. */
+    private feedTune;
+    /**
+     * Offer music to the room, or stop. Like a screen, offering sends nothing
+     * by itself: it goes only to members who ask to hear it, and they ask only
+     * while they are near and have said they want to hear shared music at all.
+     */
+    setMusic(track: MediaStreamTrack | null): Promise<void>;
+    /** How many members this visitor's music is going to now. */
+    get musicListeners(): number;
+    /** Ask to be sent a member's music, or to stop being sent it. Asked again every couple of seconds while listening. */
+    listen(pubkey: string, on: boolean): void;
+    isListening(pubkey: string): boolean;
     private tellAll;
     /**
      * Offer a screen to the room, or stop. Offering sends nothing by itself:

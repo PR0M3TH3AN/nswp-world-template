@@ -277,6 +277,11 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   plays one of the cues. Don't play sound any other way: no `<audio>` tags or
   audio contexts of your own, nothing from another site, nothing before the
   visitor's first touch, and nothing that goes round their volumes.
+- **Music between visitors.** A visitor can share the music they are playing
+  with people near them, and others hear it only if they turned that on. It
+  fades with distance. To have none of it in your world, set
+  `"sharedMusic": false` in `world.json`. You can't turn it on for anyone,
+  and mustn't play one visitor's music to another any other way.
 - **A shared screen.** A visitor at a desk can offer their screen to the room.
   It is sent only to people who choose to watch, who see it on a panel of
   their own. The plumbing does it. Don't show anyone a screen they didn't

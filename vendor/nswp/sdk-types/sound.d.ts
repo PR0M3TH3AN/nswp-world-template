@@ -30,6 +30,12 @@ export interface Jukebox {
     next(): Promise<boolean>;
     readonly playing: boolean;
     readonly current: Song | null;
+    /**
+     * What the jukebox is playing, as a line that can be sent to someone else:
+     * for sharing music with people nearby, which is the visitor's to turn on.
+     * It is the music as it is, whatever their own volume is set to.
+     */
+    output(): MediaStreamTrack;
 }
 export interface Sounds {
     /** Play a cue: the world's, the default, or nothing if it is silenced or the visitor has effects off. */
