@@ -4,8 +4,8 @@ import {
   createAlloy,
   createPortalWindow,
   textSprite
-} from "./shared-UD6S6NGN.js";
-import "./shared-AALJL3XN.js";
+} from "./shared-D6CPNVNP.js";
+import "./shared-E3UFEQZL.js";
 import "./shared-64R25HDC.js";
 
 // packages/sdk/src/home.ts

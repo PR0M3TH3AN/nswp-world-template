@@ -2967,6 +2967,7 @@ var schnorr = /* @__PURE__ */ (() => {
 
 // packages/core/dist/constants.js
 var WORLD_KIND = 37300;
+var CURATION_SET_KIND = 30004;
 var SCHEMAS = {
   manifest: "nswp/manifest/0.3",
   portal: "nswp/portal/0.3",
@@ -3090,6 +3091,9 @@ function verifyEvent(v) {
 }
 function getTags(e, name) {
   return e.tags.filter((t) => t[0] === name);
+}
+function getTagValue(e, name) {
+  return e.tags.find((t) => t[0] === name)?.[1];
 }
 
 // node_modules/@scure/base/index.js
@@ -3895,7 +3899,7 @@ function parseManifest(input, opts = {}) {
       publishers[pk] = { worlds: v.worlds };
     }
   }
-  const worlds = {};
+  const worlds2 = {};
   if (!isPlainObject(input.worlds)) {
     c.error("missing_field", "worlds", "worlds must be an object keyed by world ID.");
   } else {
@@ -3951,7 +3955,7 @@ function parseManifest(input, opts = {}) {
         else
           c.warn("url_not_https", `${p}.airlock`, "airlock must be an https URL; ignored.");
       }
-      worlds[id] = w;
+      worlds2[id] = w;
     }
   }
   const relays = [];
@@ -3962,7 +3966,7 @@ function parseManifest(input, opts = {}) {
       for (const r of input.relays)
         isWssUrl(r) ? relays.push(r) : c.warn("invalid_relay", "relays", `Ignoring relay "${r}" (not wss).`);
   }
-  return c.result({ schema: typeof schema === "string" ? schema : SCHEMAS.manifest, listing, publishers, worlds, relays });
+  return c.result({ schema: typeof schema === "string" ? schema : SCHEMAS.manifest, listing, publishers, worlds: worlds2, relays });
 }
 function verifyOrigin(world, manifest, manifestUrl) {
   const checks = [];
@@ -4222,6 +4226,90 @@ var LAYOUT_LIMITS = {
   pictureBytes: 1024 * 1024
 };
 
+// packages/core/dist/list.js
+var LIST_LIMITS = { worlds: 200, titleChars: 200, descriptionChars: 1e3 };
+function buildListEvent(l) {
+  const tags = [["d", l.d], ["title", l.title]];
+  if (l.description)
+    tags.push(["description", l.description]);
+  for (const w of l.worlds)
+    tags.push(["a", w]);
+  tags.push(["alt", `A list of spatial worlds: ${l.title}`]);
+  return { kind: CURATION_SET_KIND, created_at: l.createdAt ?? nowSeconds(), tags, content: "" };
+}
+function parseListEvent(input, opts = {}) {
+  const c = new Collector();
+  if (typeof input !== "object" || input === null) {
+    c.error("not_an_event", "", "Expected a Nostr event object.");
+    return c.result(null);
+  }
+  const e = input;
+  if (e.kind !== CURATION_SET_KIND)
+    c.error("wrong_kind", "kind", `Expected kind ${CURATION_SET_KIND}, got ${String(e.kind)}.`);
+  if (!Array.isArray(e.tags) || !e.tags.every((t) => Array.isArray(t) && t.every((x) => typeof x === "string"))) {
+    c.error("invalid_tags", "tags", "tags must be an array of string arrays.");
+    return c.result(null);
+  }
+  if (!Number.isInteger(e.created_at))
+    c.error("invalid_created_at", "created_at", "created_at must be an integer.");
+  if (opts.requireSigned && !hasEventShape(input))
+    c.error("not_signed", "", "Expected a signed event with id, pubkey and sig.");
+  const pubkey = isHex64(e.pubkey) ? e.pubkey : void 0;
+  if (e.pubkey !== void 0 && !pubkey)
+    c.error("invalid_pubkey", "pubkey", "pubkey must be 64 lowercase hex characters.");
+  const tags = e.tags;
+  const d = getTagValue({ tags }, "d");
+  if (d === void 0)
+    c.error("missing_tag", "tags.d", "A list needs a d tag.");
+  else if (d.length > LIMITS.maxIdLength)
+    c.error("value_too_long", "tags.d", `d must be at most ${LIMITS.maxIdLength} characters.`);
+  let title = getTagValue({ tags }, "title") ?? "";
+  if (title.length > LIST_LIMITS.titleChars) {
+    c.warn("value_too_long", "tags.title", "The title is cut short.");
+    title = title.slice(0, LIST_LIMITS.titleChars);
+  }
+  let description = getTagValue({ tags }, "description") ?? "";
+  if (description.length > LIST_LIMITS.descriptionChars) {
+    c.warn("value_too_long", "tags.description", "The description is cut short.");
+    description = description.slice(0, LIST_LIMITS.descriptionChars);
+  }
+  const worlds2 = [];
+  let over = false;
+  for (const t of getTags({ tags }, "a")) {
+    const parsed = t[1] ? parseCoordinate(t[1]) : null;
+    if (!parsed || parsed.kind !== WORLD_KIND || parsed.identifier === "")
+      continue;
+    const id = coordinate(parsed);
+    if (worlds2.includes(id))
+      continue;
+    if (worlds2.length === LIST_LIMITS.worlds) {
+      over = true;
+      break;
+    }
+    worlds2.push(id);
+  }
+  if (over)
+    c.warn("too_many_worlds", "tags.a", `Only the first ${LIST_LIMITS.worlds} worlds on a list are read.`);
+  const list = { d: d ?? "", title: title || (d ?? ""), description, worlds: worlds2, createdAt: Number.isInteger(e.created_at) ? e.created_at : 0 };
+  if (pubkey) {
+    list.pubkey = pubkey;
+    if (d !== void 0)
+      list.coordinate = coordinate({ kind: CURATION_SET_KIND, pubkey, identifier: d });
+  }
+  return c.result(list);
+}
+
+// packages/core/dist/pass.js
+var PASS_LIMITS = {
+  defaultTtlSec: 4 * 3600,
+  maxTtlSec: 12 * 3600,
+  /** How far a reader's clock and a signer's may disagree. */
+  skewSec: 120,
+  nameChars: 48,
+  /** A pass as JSON, as it travels between the members of a room. */
+  chars: 4e3
+};
+
 // packages/core/dist/index.js
 var VERSION = "0.1.0";
 
@@ -4232,7 +4320,7 @@ var flag = (name) => {
   return i >= 0 ? argv[i + 1] : void 0;
 };
 var has = (name) => argv.includes(`--${name}`);
-var positional = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[i - 1].startsWith("--") && !["json"].includes(argv[i - 1].slice(2))));
+var positional = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[i - 1].startsWith("--") && !["json", "verify"].includes(argv[i - 1].slice(2))));
 var tty = process.stdout.isTTY;
 var paint = (code) => (s) => tty ? `\x1B[${code}m${s}\x1B[0m` : s;
 var green = paint("32");
@@ -4341,8 +4429,8 @@ function validateFile(path) {
   let kind = "unknown";
   let r;
   if (typeof data?.kind === "number") {
-    kind = `event (kind ${data.kind})`;
-    r = parseWorldEvent(data);
+    kind = data.kind === CURATION_SET_KIND ? "list (kind 30004)" : `event (kind ${data.kind})`;
+    r = data.kind === CURATION_SET_KIND ? parseListEvent(data) : parseWorldEvent(data);
     if (hasEventShape(data)) console.log(verifyEvent(data) ? `${OK} signature valid` : `${BAD} signature INVALID`);
   } else if (typeof data?.schema === "string" && data.schema.startsWith("nswp/manifest/")) {
     kind = "manifest";
@@ -4351,7 +4439,7 @@ function validateFile(path) {
     kind = "portal";
     r = parsePortal(data);
   } else {
-    console.log(`${BAD} Not a world event, manifest or portal.`);
+    console.log(`${BAD} Not a world event, list, manifest or portal.`);
     return 1;
   }
   console.log(`${r.ok ? OK : BAD} ${kind} ${r.ok ? "is valid" : "is invalid"}`);
@@ -4399,6 +4487,86 @@ function signWorld(inputPath) {
   printIssues([], r.warnings);
   return 0;
 }
+function worldCoordinate(s) {
+  if (s.startsWith("naddr1")) {
+    const p = decodeNaddr(s);
+    if (p.kind !== WORLD_KIND) throw new Error(`${s.slice(0, 24)}\u2026 is not a world (kind ${p.kind})`);
+    return coordinate(p);
+  }
+  return s;
+}
+function signList(inputPath) {
+  const keyFile = flag("key-file");
+  if (!keyFile) {
+    console.log(`${BAD} --key-file is required`);
+    return 1;
+  }
+  const input = JSON.parse(readFileSync(inputPath, "utf8"));
+  if (typeof input.d !== "string" || typeof input.title !== "string" || !Array.isArray(input.worlds)) {
+    console.log(`${BAD} A list needs "d", "title" and "worlds" (an array of world addresses).`);
+    return 1;
+  }
+  const worlds2 = input.worlds.map(worldCoordinate);
+  const event = finalizeEvent(buildListEvent({ ...input, worlds: worlds2 }), readKey(keyFile));
+  const r = parseListEvent(event, { requireSigned: true });
+  if (!r.ok) {
+    printIssues(r.errors, r.warnings);
+    return 1;
+  }
+  if (r.value.worlds.length !== new Set(worlds2).size) {
+    console.log(`${BAD} ${new Set(worlds2).size - r.value.worlds.length} of the worlds are not world addresses (37300:<pubkey>:<d>, or an naddr).`);
+    return 1;
+  }
+  const text = `${JSON.stringify(event, null, 2)}
+`;
+  const outPath = flag("out");
+  if (outPath) {
+    writeFileSync(outPath, text);
+    console.log(`${OK} Signed "${r.value.title}" (${r.value.worlds.length} world${r.value.worlds.length === 1 ? "" : "s"}) \u2192 ${outPath}`);
+    console.log(`  Once published, this is the address people follow it by:`);
+    console.log(`  ${encodeNaddr({ kind: CURATION_SET_KIND, pubkey: event.pubkey, identifier: input.d, relays: relaysArg().slice(0, 2) })}`);
+  } else process.stdout.write(text);
+  printIssues([], r.warnings);
+  return 0;
+}
+async function worlds() {
+  const json = has("json");
+  const relays = relaysArg();
+  const skip = /* @__PURE__ */ new Set();
+  const notOn = flag("not-on");
+  if (notOn) {
+    const file = JSON.parse(readFileSync(notOn, "utf8"));
+    const l = parseListEvent(file?.set ?? file);
+    if (!l.ok) {
+      printIssues(l.errors, l.warnings);
+      return 1;
+    }
+    for (const w of l.value.worlds) skip.add(w);
+  }
+  const res = await queryRelays(relays, { kinds: [WORLD_KIND], limit: 500 }, 6e3);
+  const rows = [];
+  const events = latestAddressable(res.events).sort((a, b) => b.created_at - a.created_at);
+  for (const e of events) {
+    const w = parseWorldEvent(e);
+    if (!w.ok || !w.value.coordinate || skip.has(w.value.coordinate) || w.value.status === "retired") continue;
+    let verified = null;
+    if (has("verify")) {
+      const m = await fetchManifest(w.value.url);
+      verified = m.manifest ? verifyOrigin(w.value, m.manifest, m.url).verified : false;
+    }
+    const naddr = encodeNaddr({ kind: WORLD_KIND, pubkey: e.pubkey, identifier: w.value.d, relays: relays.slice(0, 2) });
+    rows.push({ coordinate: w.value.coordinate, title: w.value.title, url: w.value.url, announced: new Date(e.created_at * 1e3).toISOString().slice(0, 10), verified, naddr });
+    if (!json) {
+      const mark = verified === null ? " " : verified ? OK : WARN;
+      console.log(`${mark} ${bold(w.value.title)} ${dim(w.value.url)}`);
+      console.log(dim(`    ${new Date(e.created_at * 1e3).toISOString().slice(0, 10)}  ${verified === null ? "" : verified ? "verified  " : "not verified  "}${w.value.coordinate}`));
+    }
+  }
+  if (json) console.log(JSON.stringify({ relays: res.relays, worlds: rows }, null, 2));
+  else console.log(`
+${rows.length} world${rows.length === 1 ? "" : "s"}${notOn ? " not on that list" : ""}. ${has("verify") ? "" : dim("Add --verify to check each site vouches for its announcement.")}`);
+  return 0;
+}
 async function publish(path) {
   const event = JSON.parse(readFileSync(path, "utf8"));
   if (!verifyEvent(event)) {
@@ -4428,6 +4596,11 @@ async function main() {
     case "sign-world":
       if (arg) return signWorld(arg);
       break;
+    case "sign-list":
+      if (arg) return signList(arg);
+      break;
+    case "worlds":
+      return worlds();
     case "publish":
       if (arg) return publish(arg);
       break;
@@ -4441,9 +4614,11 @@ async function main() {
   console.log(`nswp ${VERSION}
 
   nswp check <url> [--relays wss://a,wss://b] [--json]   check a world: manifest, CORS, announcements, verification
-  nswp validate <file.json>                               validate a world event, manifest or portal
+  nswp validate <file.json>                               validate a world event, list, manifest or portal
   nswp keygen <key-file>                                  create a publisher key (hex, mode 600)
   nswp sign-world <input.json> --key-file <f> [--out f]   sign a world announcement from a WorldInput file
+  nswp sign-list <input.json> --key-file <f> [--out f]    sign a list of worlds: { "d", "title", "description", "worlds": [addresses] }
+  nswp worlds [--verify] [--not-on <list.json>] [--json]  every world announced on the relays, newest first
   nswp publish <event.json> [--relays ...]                publish a signed event`);
   return cmd ? 1 : 0;
 }

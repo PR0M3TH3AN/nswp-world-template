@@ -1,7 +1,7 @@
 import {
   RoomSession,
   room
-} from "./shared-AALJL3XN.js";
+} from "./shared-E3UFEQZL.js";
 
 // packages/sdk/src/index.ts
 import {
@@ -10,10 +10,12 @@ import {
   buildArrivalUrl,
   checkDestination,
   decodeArrival,
-  stripArrivalParam
+  stripArrivalParam,
+  verifyRoomPass
 } from "@nswp/core";
 var RETURN_KEY = "nswp:return-airlock";
 var LOOK_KEY = "nswp:look";
+var PASS_KEY = "nswp:pass";
 var defaultAirlock;
 var cached;
 function configure(opts) {
@@ -56,6 +58,9 @@ var arrival = {
       try {
         if (cached.context.look) session()?.setItem(LOOK_KEY, cached.context.look);
         else session()?.removeItem(LOOK_KEY);
+        const { pass, sessionKey } = cached.context;
+        if (pass && sessionKey && verifyRoomPass(pass, { origin: location.origin }).ok) session()?.setItem(PASS_KEY, JSON.stringify({ pass, sessionKey }));
+        else session()?.removeItem(PASS_KEY);
       } catch {
       }
     }
@@ -69,6 +74,27 @@ var arrival = {
   look() {
     try {
       return session()?.getItem(LOOK_KEY) ?? void 0;
+    } catch {
+      return void 0;
+    }
+  },
+  /**
+   * Who this visitor chose to be here, if they came by name
+   * (protocol/10-identity.md): their public key, the name on their pass, and
+   * the pass and session key to hand to a room. Checked against this site and
+   * the clock each time; undefined for a guest, and once the pass has run out.
+   * The world never sees their own key, only this throwaway one.
+   */
+  identity() {
+    try {
+      const kept = JSON.parse(session()?.getItem(PASS_KEY) ?? "null");
+      if (!kept?.pass || typeof kept.sessionKey !== "string") return void 0;
+      const checked = verifyRoomPass(kept.pass, { origin: location.origin });
+      if (!checked.ok) {
+        session()?.removeItem(PASS_KEY);
+        return void 0;
+      }
+      return { pubkey: checked.value.pubkey, name: checked.value.name, pass: kept.pass, sessionKey: kept.sessionKey };
     } catch {
       return void 0;
     }

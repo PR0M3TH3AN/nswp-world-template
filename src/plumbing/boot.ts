@@ -395,9 +395,11 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   let sayRecording: ((on: boolean) => void) | undefined;
   if (config.world.capabilities?.includes("rooms")) {
     let refresh = () => {};
-    // A visitor is drawn to the others as they chose to arrive: wearing their
-    // look, or plain. A scene can dress everyone its own way with `figureStyle`.
-    const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", look: () => arrival.look(), figureStyle: handle.figureStyle, onChange: () => refresh() });
+    // A visitor is drawn to the others as they chose to arrive: by name,
+    // wearing their look, or plain. Going by name means their own client signed
+    // a pass for this site (NSWP-10); this world never sees their key. A scene
+    // can dress everyone its own way with `figureStyle`.
+    const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => refresh() });
     ({ refresh } = addRoomControls(controls, presence, { onState: (s) => (state.room = s) }));
     presenceUpdate = (dt) => presence.update(dt);
     hooks.roomInfo = () => presence.info();

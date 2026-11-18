@@ -15,8 +15,8 @@ import {
   takeSelfie,
   textSprite,
   turnVisitor
-} from "./shared-UD6S6NGN.js";
-import "./shared-AALJL3XN.js";
+} from "./shared-D6CPNVNP.js";
+import "./shared-E3UFEQZL.js";
 import "./shared-64R25HDC.js";
 export {
   addCameraControls,
