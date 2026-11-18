@@ -2791,6 +2791,15 @@ var HEX128 = /^[0-9a-f]{128}$/;
 function isHex64(v) {
   return typeof v === "string" && HEX64.test(v);
 }
+function isPublicKey(v) {
+  if (!isHex64(v)) return false;
+  try {
+    schnorr.utils.lift_x(BigInt(`0x${v}`));
+    return true;
+  } catch {
+    return false;
+  }
+}
 function nowSeconds() {
   return Math.floor(Date.now() / 1e3);
 }
@@ -3285,6 +3294,23 @@ function decodeNaddr(s) {
 }
 function encodeNpub(pubkey) {
   return bech32.encode("npub", bech32.toWords(hexToBytes(pubkey)), BECH32_LIMIT);
+}
+function decodeNpub(s) {
+  const text = s.trim();
+  const real = (hex) => {
+    if (!isPublicKey(hex)) throw new NswpError("npub_invalid", "not a public key: no key has that value");
+    return hex;
+  };
+  if (/^[0-9a-f]{64}$/i.test(text)) return real(text.toLowerCase());
+  let decoded;
+  try {
+    decoded = bech32.decode(text, BECH32_LIMIT);
+  } catch (cause) {
+    throw new NswpError("npub_invalid", "not a public key: expected npub1\u2026 or 64 hex characters", { cause });
+  }
+  const bytes = bech32.fromWords(decoded.words);
+  if (decoded.prefix !== "npub" || bytes.length !== 32) throw new NswpError("npub_invalid", "not a public key: expected npub1\u2026 or 64 hex characters");
+  return real(bytesToHex(Uint8Array.from(bytes)));
 }
 function shortNpub(pubkey) {
   const npub = encodeNpub(pubkey);
@@ -5927,10 +5953,301 @@ function verifyRoomPass(event, opts) {
   return c.result({ pubkey: event.pubkey, session: session ?? "", name, expiresAt, id: event.id });
 }
 
+// packages/core/src/bridge.ts
+var BRIDGE_GRANT_KIND = 27302;
+var BRIDGE_LIMITS = {
+  /** How long a grant is good for connecting. The connection it opens may last longer. */
+  grantTtlSec: 300,
+  /** How far the Bridge's clock and the signer's may disagree. */
+  skewSec: 120,
+  /** Notes older or newer than this are ignored. */
+  signalMaxAgeSec: 60,
+  maxSdpChars: 2e4,
+  minCols: 20,
+  maxCols: 300,
+  minRows: 5,
+  maxRows: 120,
+  /** The largest frame either side sends or accepts, in bytes. */
+  frameBytes: 65536,
+  nameChars: 80,
+  whyChars: 200,
+  /** Speech is sent as 16-bit samples, one channel, at this many a second. */
+  speechRate: 16e3,
+  /** The longest anyone may speak in one go, in seconds. */
+  speechSeconds: 90,
+  /** The most text one go may come back as. */
+  speechChars: 2e3
+};
+function bridgeTopic(bridge) {
+  return bytesToHex(sha256(utf8ToBytes(`nswp/bridge/1
+${bridge}`)));
+}
+function grantCode(grantId) {
+  const n = parseInt(bytesToHex(sha256(utf8ToBytes(`nswp/bridge/code
+${grantId}`))).slice(0, 8), 16) % 1e4;
+  return String(n).padStart(4, "0");
+}
+function buildBridgeGrant(input) {
+  const created = input.createdAt ?? nowSeconds();
+  const ttl = Math.max(30, Math.min(input.ttlSec ?? BRIDGE_LIMITS.grantTtlSec, BRIDGE_LIMITS.grantTtlSec));
+  return {
+    kind: BRIDGE_GRANT_KIND,
+    created_at: created,
+    tags: [
+      ["nswp:session", input.session],
+      ["nswp:bridge", input.bridge],
+      ["expiration", String(created + ttl)]
+    ],
+    content: ""
+  };
+}
+function verifyBridgeGrant(event, opts) {
+  const c = new Collector();
+  if (!verifyEvent(event)) {
+    c.error("bad_signature", "", "The grant is not a validly signed Nostr event.");
+    return c.result(null);
+  }
+  const now = opts.now ?? nowSeconds();
+  if (event.kind !== BRIDGE_GRANT_KIND) c.error("wrong_kind", "kind", `Expected kind ${BRIDGE_GRANT_KIND}.`);
+  if (event.pubkey !== opts.owner) c.error("not_owner", "pubkey", "The grant was not signed by this Bridge's owner.");
+  const one = (name) => {
+    const t = getTags(event, name);
+    if (t.length !== 1 || !t[0][1]) {
+      c.error(t.length > 1 ? "duplicate_tag" : "missing_tag", `tags.${name}`, `Exactly one "${name}" tag is required.`);
+      return void 0;
+    }
+    return t[0][1];
+  };
+  const session = one("nswp:session");
+  const bridge = one("nswp:bridge");
+  const exp = one("expiration");
+  if (getTags(event, "nswp:origin").length) c.error("names_a_site", "tags.nswp:origin", "A grant names a Bridge and never a site.");
+  if (bridge !== void 0 && bridge !== opts.bridge) c.error("bridge_mismatch", "tags.nswp:bridge", "The grant was made for a different Bridge.");
+  if (session !== void 0) {
+    if (!isHex64(session)) c.error("invalid_session", "tags.nswp:session", "The session key must be 64 lowercase hex characters.");
+    else if (session === event.pubkey || session === opts.bridge) c.error("invalid_session", "tags.nswp:session", "The session key must be a throwaway: not the owner's key, and not the Bridge's.");
+    else if (session !== opts.session) c.error("session_mismatch", "tags.nswp:session", "The grant is for a different session key.");
+  }
+  const expiresAt = exp !== void 0 ? Number(exp) : NaN;
+  if (exp !== void 0) {
+    if (!/^\d+$/.test(exp) || !Number.isSafeInteger(expiresAt)) c.error("invalid_expiration", "tags.expiration", "expiration must be an integer timestamp.");
+    else {
+      if (expiresAt <= now) c.error("grant_expired", "tags.expiration", "The grant has expired.");
+      if (expiresAt - event.created_at > BRIDGE_LIMITS.grantTtlSec) c.error("ttl_too_long", "tags.expiration", `A grant may live at most ${BRIDGE_LIMITS.grantTtlSec} seconds.`);
+    }
+  }
+  if (event.created_at > now + BRIDGE_LIMITS.skewSec) c.error("created_in_future", "created_at", "The grant is dated in the future.");
+  if (opts.seen?.has(event.id)) c.error("grant_reused", "id", "The grant has been used before.");
+  return c.result({ id: event.id, session: session ?? "", expiresAt });
+}
+var BRIDGE_WORLD_GRANT_KIND = 27303;
+var WORLD_GRANT_LIMITS = {
+  defaultTtlSec: 8 * 3600,
+  maxTtlSec: 12 * 3600
+};
+function cleanWorldOrigin(input) {
+  if (typeof input !== "string" || input.length > 300) return null;
+  let u;
+  try {
+    u = new URL(input.trim());
+  } catch {
+    return null;
+  }
+  if (u.username || u.password) return null;
+  const own = u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]";
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && own)) return null;
+  return u.origin;
+}
+function buildWorldGrant(input) {
+  const world = cleanWorldOrigin(input.world);
+  if (!world) throw new Error("not a world's address: https, or this computer itself");
+  const created = input.createdAt ?? nowSeconds();
+  const ttl = Math.max(300, Math.min(input.ttlSec ?? WORLD_GRANT_LIMITS.defaultTtlSec, WORLD_GRANT_LIMITS.maxTtlSec));
+  return {
+    kind: BRIDGE_WORLD_GRANT_KIND,
+    created_at: created,
+    tags: [
+      ["nswp:session", input.session],
+      ["nswp:bridge", input.bridge],
+      ["nswp:world", world],
+      ["expiration", String(created + ttl)]
+    ],
+    content: ""
+  };
+}
+function verifyWorldGrant(event, opts) {
+  const c = new Collector();
+  if (!verifyEvent(event)) {
+    c.error("bad_signature", "", "The grant is not a validly signed Nostr event.");
+    return c.result(null);
+  }
+  const now = opts.now ?? nowSeconds();
+  if (event.kind !== BRIDGE_WORLD_GRANT_KIND) c.error("wrong_kind", "kind", `Expected kind ${BRIDGE_WORLD_GRANT_KIND}.`);
+  if (event.pubkey !== opts.owner) c.error("not_owner", "pubkey", "The grant was not signed by this Bridge's owner.");
+  const one = (name) => {
+    const t = getTags(event, name);
+    if (t.length !== 1 || !t[0][1]) {
+      c.error(t.length > 1 ? "duplicate_tag" : "missing_tag", `tags.${name}`, `Exactly one "${name}" tag is required.`);
+      return void 0;
+    }
+    return t[0][1];
+  };
+  const session = one("nswp:session");
+  const bridge = one("nswp:bridge");
+  const world = one("nswp:world");
+  const exp = one("expiration");
+  if (getTags(event, "nswp:origin").length) c.error("names_a_site", "tags.nswp:origin", "A world grant names its world with nswp:world, and carries no nswp:origin.");
+  if (bridge !== void 0 && bridge !== opts.bridge) c.error("bridge_mismatch", "tags.nswp:bridge", "The grant was made for a different Bridge.");
+  if (world !== void 0) {
+    if (cleanWorldOrigin(world) !== world) c.error("invalid_world", "tags.nswp:world", "The world must be an origin: https, or this computer itself.");
+    else if (!opts.worlds.includes(world)) c.error("world_not_allowed", "tags.nswp:world", "This Bridge was not told about that world.");
+  }
+  if (session !== void 0) {
+    if (!isHex64(session)) c.error("invalid_session", "tags.nswp:session", "The session key must be 64 lowercase hex characters.");
+    else if (session === event.pubkey || session === opts.bridge) c.error("invalid_session", "tags.nswp:session", "The session key must be a throwaway: not the owner's key, and not the Bridge's.");
+    else if (session !== opts.session) c.error("session_mismatch", "tags.nswp:session", "The grant is for a different session key.");
+  }
+  const expiresAt = exp !== void 0 ? Number(exp) : NaN;
+  if (exp !== void 0) {
+    if (!/^\d+$/.test(exp) || !Number.isSafeInteger(expiresAt)) c.error("invalid_expiration", "tags.expiration", "expiration must be an integer timestamp.");
+    else {
+      if (expiresAt <= now) c.error("grant_expired", "tags.expiration", "The grant has expired.");
+      if (expiresAt - event.created_at > WORLD_GRANT_LIMITS.maxTtlSec) c.error("ttl_too_long", "tags.expiration", `A world grant may live at most ${WORLD_GRANT_LIMITS.maxTtlSec / 3600} hours.`);
+    }
+  }
+  if (event.created_at > now + BRIDGE_LIMITS.skewSec) c.error("created_in_future", "created_at", "The grant is dated in the future.");
+  return c.result({ id: event.id, session: session ?? "", world: world ?? "", expiresAt });
+}
+var b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+var unb64url = (text) => Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0));
+function packBrought(b) {
+  return b64url(utf8ToBytes(JSON.stringify({ v: 1, grant: b.grant, sessionKey: b.sessionKey, bridge: b.bridge, name: b.name, relays: b.relays, immersive: b.immersive })));
+}
+function readBrought(text, origin, now = nowSeconds()) {
+  if (typeof text !== "string" || text.length > 6e3) return null;
+  let o;
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(unb64url(text)));
+    if (typeof parsed !== "object" || parsed === null) return null;
+    o = parsed;
+  } catch {
+    return null;
+  }
+  const world = cleanWorldOrigin(origin);
+  if (o.v !== 1 || !world || typeof o.sessionKey !== "string" || !/^[0-9a-f]{64}$/.test(o.sessionKey) || !isHex64(o.bridge)) return null;
+  let session;
+  try {
+    session = getPublicKey(Uint8Array.from(o.sessionKey.match(/../g).map((h) => parseInt(h, 16))));
+  } catch {
+    return null;
+  }
+  if (!verifyEvent(o.grant)) return null;
+  const checked = verifyWorldGrant(o.grant, { owner: o.grant.pubkey, bridge: o.bridge, session, worlds: [world], now });
+  if (!checked.ok) return null;
+  const relays = (Array.isArray(o.relays) ? o.relays : []).filter((r) => typeof r === "string" && r.length <= 200 && /^wss:\/\/[^\s]+$/.test(r)).slice(0, 4);
+  const name = typeof o.name === "string" ? [...o.name.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/\s+/g, " ").trim()].slice(0, 32).join("") : "";
+  return { grant: o.grant, sessionKey: o.sessionKey, bridge: o.bridge, name: name || "your computer", relays, immersive: o.immersive === true };
+}
+function validMessage2(m) {
+  if (typeof m !== "object" || m === null) return false;
+  const o = m;
+  const sdp = () => typeof o.sdp === "string" && o.sdp.length > 0 && o.sdp.length <= BRIDGE_LIMITS.maxSdpChars;
+  switch (o.t) {
+    case "open":
+      return sdp() && typeof o.grant === "object" && o.grant !== null;
+    case "wait":
+      return true;
+    case "answer":
+      return sdp();
+    case "refused":
+      return typeof o.why === "string" && o.why.length <= BRIDGE_LIMITS.whyChars;
+    default:
+      return false;
+  }
+}
+function buildBridgeSignal(bridge, key, to, message, o = {}) {
+  const content = nip44Encrypt(JSON.stringify(message), getConversationKey(key, to));
+  const tags = [["x", bridgeTopic(bridge)], ["p", to], ...o.re ? [["e", o.re]] : []];
+  return finalizeEvent({ kind: ROOM_SIGNAL_KIND, created_at: o.createdAt ?? nowSeconds(), tags, content }, key);
+}
+function openBridgeSignal(event, key, bridge, now = nowSeconds()) {
+  if (!verifyEvent(event) || event.kind !== ROOM_SIGNAL_KIND) return null;
+  if (getTagValue(event, "x") !== bridgeTopic(bridge)) return null;
+  if (Math.abs(now - event.created_at) > BRIDGE_LIMITS.signalMaxAgeSec) return null;
+  const self = getPublicKey(key);
+  if (event.pubkey === self || getTagValue(event, "p") !== self) return null;
+  let message;
+  try {
+    message = JSON.parse(nip44Decrypt(event.content, getConversationKey(key, event.pubkey)));
+  } catch {
+    return null;
+  }
+  if (!validMessage2(message)) return null;
+  const re = getTagValue(event, "e");
+  if (message.t === "open" !== (re === void 0)) return null;
+  if (re !== void 0 && !isHex64(re)) return null;
+  return { from: event.pubkey, message, id: event.id, ...re !== void 0 ? { re } : {} };
+}
+var whole = (n, lo, hi) => typeof n === "number" && Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.floor(n))) : null;
+function cleanSize(cols, rows) {
+  const c = whole(cols, BRIDGE_LIMITS.minCols, BRIDGE_LIMITS.maxCols);
+  const r = whole(rows, BRIDGE_LIMITS.minRows, BRIDGE_LIMITS.maxRows);
+  return c === null || r === null ? null : { cols: c, rows: r };
+}
+function parseBridgeControl(text) {
+  if (text.length > 1e3) return null;
+  let o;
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    o = parsed;
+  } catch {
+    return null;
+  }
+  if (o.t === "size") {
+    const size = cleanSize(o.cols, o.rows);
+    return size ? { t: "size", ...size } : null;
+  }
+  if (o.t === "here") return { t: "here" };
+  if (o.t === "ready") {
+    if (typeof o.name !== "string") return null;
+    const name = [...o.name.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/\s+/g, " ").trim()].slice(0, BRIDGE_LIMITS.nameChars).join("");
+    return { t: "ready", name, speech: o.speech === true };
+  }
+  if (o.t === "exit") {
+    const code = whole(o.code, -1, 255);
+    return code === null ? null : { t: "exit", code };
+  }
+  return null;
+}
+function cleanSpeechText(text) {
+  const cleaned = text.normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/\s+/g, " ").trim();
+  return [...cleaned].slice(0, BRIDGE_LIMITS.speechChars).join("");
+}
+function parseSpeechControl(text) {
+  if (text.length > BRIDGE_LIMITS.speechChars * 8) return null;
+  let o;
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    o = parsed;
+  } catch {
+    return null;
+  }
+  if (o.t === "begin") return { t: "begin", lang: typeof o.lang === "string" && /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(o.lang) ? o.lang : "en" };
+  if (o.t === "end" || o.t === "cancel") return { t: o.t };
+  if (o.t === "text") return typeof o.text === "string" ? { t: "text", text: cleanSpeechText(o.text) } : null;
+  if (o.t === "sorry") return { t: "sorry", why: typeof o.why === "string" ? cleanSpeechText(o.why).slice(0, BRIDGE_LIMITS.whyChars) : "" };
+  return null;
+}
+
 // packages/core/src/index.ts
 var VERSION = "0.1.0";
 export {
   AVATAR_KIND,
+  BRIDGE_GRANT_KIND,
+  BRIDGE_LIMITS,
+  BRIDGE_WORLD_GRANT_KIND,
   BUILTIN_ITEMS,
   CAPABILITIES,
   COMFORT,
@@ -5963,13 +6280,17 @@ export {
   STATUSES,
   VERSION,
   WELL_KNOWN_PATH,
+  WORLD_GRANT_LIMITS,
   WORLD_KIND,
   applyChoices,
   arrivalParam,
   assertManifest,
+  bridgeTopic,
   buildAirlockUrl,
   buildArrivalUrl,
   buildAvatarEvent,
+  buildBridgeGrant,
+  buildBridgeSignal,
   buildEntryAssertion,
   buildHello,
   buildLayoutEvent,
@@ -5977,15 +6298,20 @@ export {
   buildRoomPass,
   buildSignal,
   buildWorldEvent,
+  buildWorldGrant,
   checkDestination,
   checkPictureBytes,
   checkPreviewBytes,
   claimsKey,
   cleanName,
+  cleanSize,
+  cleanSpeechText,
+  cleanWorldOrigin,
   coordinate,
   decodeArrival,
   decodeLook,
   decodeNaddr,
+  decodeNpub,
   encodeArrival,
   encodeLook,
   encodeNaddr,
@@ -5999,12 +6325,14 @@ export {
   getPublicKey,
   getTagValue,
   getTags,
+  grantCode,
   guestColor,
   guestName,
   hasEventShape,
   isHex64,
   isHttpsUrl,
   isPlainObject,
+  isPublicKey,
   isWssUrl,
   latestAddressable,
   lookFromTags,
@@ -6015,21 +6343,26 @@ export {
   nip44Encrypt,
   normalizeUrl,
   nowSeconds,
+  openBridgeSignal,
   openSignal,
+  packBrought,
   packPose,
   parseAirlockFragment,
   parseAvatarEvent,
+  parseBridgeControl,
   parseCoordinate,
   parseLayoutEvent,
   parseListEvent,
   parseManifest,
   parsePortal,
+  parseSpeechControl,
   parseWorldEvent,
   portalTarget,
   previewOnWorldOrigin,
   publishEvent,
   queryRelays,
   randomNonce,
+  readBrought,
   roomTopic,
   serializeEvent,
   shortNpub,
@@ -6038,9 +6371,11 @@ export {
   stripArrivalParam,
   toHex,
   unpackPose,
+  verifyBridgeGrant,
   verifyEntryAssertion,
   verifyEvent,
   verifyOrigin,
   verifyRoomPass,
+  verifyWorldGrant,
   wellKnownUrl
 };

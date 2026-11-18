@@ -7,7 +7,8 @@ import {
   resolveTheme,
   rgb,
   saveVisitorTheme
-} from "./shared-64R25HDC.js";
+} from "./shared-BP5WDRDO.js";
+import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/ui/model.ts
 var PRESENCES = ["full", "quiet", "hidden"];
@@ -24,6 +25,7 @@ var STANDARD = [
   { id: "room", label: "Room", icon: "room" },
   { id: "people", label: "People", icon: "people" },
   { id: "camera", label: "Camera", icon: "camera" },
+  { id: "panels", label: "Panels", icon: "panel" },
   { id: "view", label: "View", icon: "vr" },
   { id: "moving", label: "Moving", icon: "step" },
   { id: "look", label: "Look", icon: "look", note: "How these controls look to you. Kept in this browser, for this site." },

@@ -4310,6 +4310,12 @@ var PASS_LIMITS = {
   chars: 4e3
 };
 
+// packages/core/dist/bridge.js
+var WORLD_GRANT_LIMITS = {
+  defaultTtlSec: 8 * 3600,
+  maxTtlSec: 12 * 3600
+};
+
 // packages/core/dist/index.js
 var VERSION = "0.1.0";
 

@@ -2,6 +2,7 @@ import {
   RoomSession,
   room
 } from "./shared-E3UFEQZL.js";
+import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/index.ts
 import {
@@ -13,6 +14,69 @@ import {
   stripArrivalParam,
   verifyRoomPass
 } from "@nswp/core";
+
+// packages/sdk/src/bring.ts
+import { readBrought } from "@nswp/core";
+var PARAM = "nswp-bring";
+var KEPT = "nswp:brought";
+function tab() {
+  try {
+    return sessionStorage;
+  } catch {
+    return null;
+  }
+}
+function somethingBrought() {
+  try {
+    return new URLSearchParams(location.hash.replace(/^#/, "")).has(PARAM) || !!tab()?.getItem(KEPT);
+  } catch {
+    return false;
+  }
+}
+function takeBrought(now = Math.floor(Date.now() / 1e3)) {
+  const store = tab();
+  let text = null;
+  let fresh = false;
+  try {
+    const params = new URLSearchParams(location.hash.replace(/^#/, ""));
+    text = params.get(PARAM);
+    if (text !== null) {
+      fresh = true;
+      params.delete(PARAM);
+      const rest = params.toString();
+      history.replaceState(history.state, "", `${location.pathname}${location.search}${rest ? `#${rest}` : ""}`);
+    }
+  } catch {
+  }
+  text ??= store?.getItem(KEPT) ?? null;
+  if (text === null) return null;
+  const brought = readBrought(text, location.origin, now);
+  if (!brought) {
+    store?.removeItem(KEPT);
+    return null;
+  }
+  try {
+    store?.setItem(KEPT, text);
+  } catch {
+  }
+  return { ...brought, immersive: fresh && brought.immersive, fresh };
+}
+function watchBrought() {
+  addEventListener("hashchange", () => {
+    try {
+      if (!new URLSearchParams(location.hash.replace(/^#/, "")).has(PARAM)) return;
+    } catch {
+      return;
+    }
+    takeBrought();
+    location.reload();
+  });
+}
+function dropBrought() {
+  tab()?.removeItem(KEPT);
+}
+
+// packages/sdk/src/index.ts
 var RETURN_KEY = "nswp:return-airlock";
 var LOOK_KEY = "nswp:look";
 var PASS_KEY = "nswp:pass";
@@ -202,6 +266,10 @@ export {
   RoomSession,
   arrival,
   configure,
+  dropBrought,
   portal,
-  room
+  room,
+  somethingBrought,
+  takeBrought,
+  watchBrought
 };

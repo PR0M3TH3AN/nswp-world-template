@@ -160,5 +160,11 @@ export declare function addViewControls(controls: Controls, d: {
 export { createFigure, type Figure, type FigureFacts, type FigureStyle } from "./figure.js";
 export { createXrInput, type GrabOptions, type XrInput, type XrInputInfo, type XrInputOptions } from "./input.js";
 export { DEFAULT_COMFORT, readPad, type Comfort, type PadState } from "./actions.js";
+export { addPanelControls, createPanels, type Panel, type PanelContent, type PanelInfo, type Panels, type PanelsOptions } from "./panels.js";
+export { LIBRARY_LIMITS, PANEL_LIMITS, PANEL_LOOKS, type LibraryItem, type PanelLook, type PanelPlace, type PanelRecord, type PanelSource } from "./panel-store.js";
+export { createStay, wasRefreshed, type Stay, type Stood } from "./stay.js";
+export { browserVoice, computerVoice, createVoice, recordVoice, toPcm16, type Hearing, type Voice, type VoiceSource, type VoiceState } from "./speech.js";
+export { createKeyboard, type AskOptions, type Keyboard, type KeyboardOptions } from "./keyboard.js";
+export { createLibrary, type Library, type LibraryOptions } from "./library.js";
 export { createChamber, createCrossing, type ArriveOptions, type Chamber, type Crossing, type CrossingOptions, type CrossingState } from "./chamber.js";
 export { addCameraControls, canRecord, recordClip, saveFile, takePicture, takeSelfie, type Camera, type CameraOptions, type Capture, type Clip } from "./camera.js";

@@ -14,6 +14,8 @@ them in one place.
 | [@scure/base](https://github.com/paulmillr/scure-base) | bech32 and base64 | MIT | Paul Miller |
 | [tldts](https://github.com/remusao/tldts) | Finding a site's registrable domain | MIT | Rémi Berson |
 | [Public Suffix List](https://publicsuffix.org/), inside tldts | The list of domain suffixes | MPL 2.0 | Mozilla Foundation |
+| [xterm.js](https://github.com/xtermjs/xterm.js) (`@xterm/headless`) | Reading what a terminal program writes, in `nswp-sdk/terminal` only | MIT | The xterm.js authors |
+| [werift](https://github.com/shinyoshiaki/werift-webrtc) | The direct connection, in the Bridge (`nswp-bridge.mjs`) only | MIT | shinyoshiaki |
 
 Not built in, and supplied by whoever uses the SDK:
 

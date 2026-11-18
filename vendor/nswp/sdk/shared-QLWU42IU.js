@@ -4,10 +4,18 @@ import {
 import {
   ICONS,
   rgb
-} from "./shared-64R25HDC.js";
+} from "./shared-BP5WDRDO.js";
+import {
+  LiveKeys,
+  TextEntry,
+  createVoice,
+  keyAt,
+  placeKeys,
+  placeLiveKeys
+} from "./shared-WWPRVQWW.js";
 
 // packages/sdk/src/three.ts
-import * as THREE9 from "three";
+import * as THREE12 from "three";
 import { decodeLook, encodeNpub, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
@@ -431,8 +439,8 @@ function buildHead(b, look, main, accent, omit) {
 }
 function buildBody(b, look, main, accent, omit, proven = false) {
   const k = look.build === "slight" ? 0.86 : look.build === "broad" ? 1.2 : 1;
-  const cloth = (row, rows, side, sides, turn = 0) => {
-    const a = (side + 0.5) / sides * Math.PI * 2 + turn;
+  const cloth = (row, rows, side, sides, turn2 = 0) => {
+    const a = (side + 0.5) / sides * Math.PI * 2 + turn2;
     switch (look.pattern) {
       case "halves":
         return Math.cos(a) > 0 ? accent : main;
@@ -446,7 +454,7 @@ function buildBody(b, look, main, accent, omit, proven = false) {
         return main;
     }
   };
-  const turned = (profile, sides, band, turn = 0) => b.lathe(profile, [0, 0, 0], sides, (row, side) => row === 0 ? { glow: 0.4 } : row === band ? { glow: 0.75 } : { color: cloth(row, profile.length - 1, side, sides, turn), shade: 0.9 + row % 2 * 0.18 }, { turn });
+  const turned = (profile, sides, band, turn2 = 0) => b.lathe(profile, [0, 0, 0], sides, (row, side) => row === 0 ? { glow: 0.4 } : row === band ? { glow: 0.75 } : { color: cloth(row, profile.length - 1, side, sides, turn2), shade: 0.9 + row % 2 * 0.18 }, { turn: turn2 });
   let chest;
   switch (look.body) {
     case "coat":
@@ -484,13 +492,13 @@ function buildBody(b, look, main, accent, omit, proven = false) {
     }
   }
   if (omit.has("mark")) return;
-  const plate = (x, y, z, cell, facing) => {
+  const plate = (x, y, z, cell, facing2) => {
     const pitch = cell * 1.14;
     const wide = pitch * 5 + cell * 0.7;
-    b.box([wide, wide, 0.02], [x, y, z - facing * 8e-3], { color: DARK, bevel: 6e-3 });
+    b.box([wide, wide, 0.02], [x, y, z - facing2 * 8e-3], { color: DARK, bevel: 6e-3 });
     if (proven) {
-      const [half, band, zz] = [wide / 2 + cell * 0.55, cell * 0.38, z + facing * 25e-4];
-      const bar = (x0, y0, x1, y1) => b.quad([x + x0, y + y0, zz], [x + x1, y + y0, zz], [x + x1, y + y1, zz], [x + x0, y + y1, zz], { glow: 1 }, [0, 0, facing]);
+      const [half, band, zz] = [wide / 2 + cell * 0.55, cell * 0.38, z + facing2 * 25e-4];
+      const bar = (x0, y0, x1, y1) => b.quad([x + x0, y + y0, zz], [x + x1, y + y0, zz], [x + x1, y + y1, zz], [x + x0, y + y1, zz], { glow: 1 }, [0, 0, facing2]);
       bar(-half, half - band, half, half);
       bar(-half, -half, half, -half + band);
       bar(-half, -half + band, -half + band, half - band);
@@ -499,8 +507,8 @@ function buildBody(b, look, main, accent, omit, proven = false) {
     markGrid(look.mark).forEach(
       (row, r) => row.forEach((on, c) => {
         if (!on) return;
-        const [cx, cy, cz] = [x + (c - 2) * pitch, y + (2 - r) * pitch, z + facing * 25e-4];
-        b.quad([cx - cell / 2, cy - cell / 2, cz], [cx + cell / 2, cy - cell / 2, cz], [cx + cell / 2, cy + cell / 2, cz], [cx - cell / 2, cy + cell / 2, cz], { glow: 1 }, [0, 0, facing]);
+        const [cx, cy, cz] = [x + (c - 2) * pitch, y + (2 - r) * pitch, z + facing2 * 25e-4];
+        b.quad([cx - cell / 2, cy - cell / 2, cz], [cx + cell / 2, cy - cell / 2, cz], [cx + cell / 2, cy + cell / 2, cz], [cx - cell / 2, cy + cell / 2, cz], { glow: 1 }, [0, 0, facing2]);
       })
     );
   };
@@ -846,7 +854,7 @@ function createConsole(controls, opts) {
     return info;
   });
   const head = new THREE5.Vector3();
-  const facing = new THREE5.Vector3();
+  const facing2 = new THREE5.Vector3();
   const want = new THREE5.Vector3();
   const hand = new THREE5.Vector3();
   const toHand = new THREE5.Vector3();
@@ -915,7 +923,7 @@ function createConsole(controls, opts) {
       }
       clock += dt;
       camera.getWorldPosition(head);
-      camera.getWorldDirection(facing);
+      camera.getWorldDirection(facing2);
       const t = controls.theme;
       const presence = controls.presence;
       const tracked = t.wrist === "off" || presence === "hidden" ? void 0 : grips.find((x) => x.hand === t.wrist && x.grip.visible);
@@ -923,7 +931,7 @@ function createConsole(controls, opts) {
         tracked.grip.getWorldPosition(hand);
         toHand.copy(hand).sub(head);
         const far = toHand.length();
-        const inView = toHand.normalize().dot(facing);
+        const inView = toHand.normalize().dot(facing2);
         if (far < 0.48 && inView > 0.88) {
           wristFor += dt;
           wristAway = 0;
@@ -934,7 +942,7 @@ function createConsole(controls, opts) {
         if (!open && wristFor > 0.35) setOpen(true, "wrist");
         if (open && mount === "wrist" && wristAway > 0.4) setOpen(false, "wrist");
       } else if (open && mount === "wrist") setOpen(false, "wrist");
-      const flat = Math.hypot(facing.x, facing.z) || 1;
+      const flat = Math.hypot(facing2.x, facing2.z) || 1;
       if (open && mount === "wrist" && tracked) {
         want.set(hand.x, hand.y + 0.16, hand.z);
         if (!placed) group.position.copy(want);
@@ -944,7 +952,7 @@ function createConsole(controls, opts) {
         group.lookAt(head);
       } else {
         const reach = open ? 1.05 : 0.75;
-        want.set(head.x + facing.x / flat * reach, Math.max(0.4, head.y - (open ? 0.18 : 0.52)), head.z + facing.z / flat * reach);
+        want.set(head.x + facing2.x / flat * reach, Math.max(0.4, head.y - (open ? 0.18 : 0.52)), head.z + facing2.z / flat * reach);
         if (!placed) {
           group.position.copy(want);
           placed = true;
@@ -1298,7 +1306,7 @@ function createXrInput(opts) {
         if (off > ball.radius + 0.04 + along * 0.02) continue;
         if (off / along < closest) [best, closest] = [thing, off / along];
       }
-      pulled = !!best;
+      pulled = !!best && best.pull;
     }
     if (!best) return false;
     const object = best.object;
@@ -1442,7 +1450,7 @@ function createXrInput(opts) {
     setComfort,
     update,
     grabbable(object, o = {}) {
-      things.set(object, { object, reach: o.reach ?? 0.1, far: o.far ?? true, release: o.release ?? "stay", ...o.onGrab ? { onGrab: o.onGrab } : {}, ...o.onRelease ? { onRelease: o.onRelease } : {} });
+      things.set(object, { object, reach: o.reach ?? 0.1, far: o.far ?? true, pull: o.pull ?? true, release: o.release ?? "stay", ...o.onGrab ? { onGrab: o.onGrab } : {}, ...o.onRelease ? { onRelease: o.onRelease } : {} });
       return () => {
         for (const [slot, h] of held) if (h.thing.object === object) release(slot);
         things.delete(object);
@@ -1477,10 +1485,1412 @@ function createXrInput(opts) {
   };
 }
 
-// packages/sdk/src/chamber.ts
+// packages/sdk/src/panels.ts
+import * as THREE9 from "three";
+
+// packages/sdk/src/keyboard.ts
 import * as THREE7 from "three";
+
+// packages/sdk/src/panel-store.ts
+var PANEL_LOOKS = [
+  { name: "Solid", opacity: 1, dark: 1 },
+  { name: "Dark parts see-through", opacity: 1, dark: 0.4 },
+  { name: "Dark parts clear", opacity: 1, dark: 0.08 },
+  { name: "All of it faint", opacity: 0.6, dark: 0.35 }
+];
+function cleanLook(input) {
+  const l = input && typeof input === "object" ? input : {};
+  return { opacity: finite(l.opacity) ? clamp(l.opacity, 0.15, 1) : 1, dark: finite(l.dark) ? clamp(l.dark, 0, 1) : 1 };
+}
+function nextLook(now) {
+  const at = PANEL_LOOKS.findIndex((l) => Math.abs(l.opacity - now.opacity) < 0.01 && Math.abs(l.dark - now.dark) < 0.01);
+  return PANEL_LOOKS[(at + 1) % PANEL_LOOKS.length];
+}
+var PANEL_LIMITS = {
+  count: 24,
+  titleChars: 80,
+  noteChars: 4e3,
+  srcChars: 2048,
+  minWidth: 0.3,
+  maxWidth: 3,
+  /** A panel is never kept further from the middle of a world than this, in metres. */
+  reach: 500,
+  /** The largest file of the visitor's own that is kept, in bytes. */
+  fileBytes: 64 * 1024 * 1024
+};
+var ID = /^[a-z0-9-]{4,40}$/;
+var finite = (n) => typeof n === "number" && Number.isFinite(n);
+var clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+function tidy(text, max, lines = false) {
+  if (typeof text !== "string") return "";
+  const cleaned = text.replace(lines ? /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g : /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ");
+  return [...lines ? cleaned : cleaned.replace(/\s+/g, " ").trim()].slice(0, max).join("");
+}
+function cleanPlace(input) {
+  if (!input || typeof input !== "object") return null;
+  const p = input;
+  const at = p.position;
+  if (!Array.isArray(at) || at.length !== 3 || !at.every(finite) || at.some((n) => Math.abs(n) > PANEL_LIMITS.reach)) return null;
+  if (!finite(p.width)) return null;
+  return {
+    position: [at[0], at[1], at[2]],
+    yaw: finite(p.yaw) ? (p.yaw % 360 + 360) % 360 : 0,
+    pitch: finite(p.pitch) ? clamp(p.pitch, -60, 60) : 0,
+    width: clamp(p.width, PANEL_LIMITS.minWidth, PANEL_LIMITS.maxWidth)
+  };
+}
+function cleanSource(input) {
+  if (!input || typeof input !== "object") return null;
+  const s = input;
+  const title = tidy(s.title, PANEL_LIMITS.titleChars);
+  if (s.kind === "note") {
+    const text = tidy(s.text, PANEL_LIMITS.noteChars, true);
+    return text.trim() || title ? { kind: "note", title, text } : null;
+  }
+  if (s.kind === "picture" || s.kind === "video") {
+    if (typeof s.src !== "string" || s.src.length === 0 || s.src.length > PANEL_LIMITS.srcChars) return null;
+    if (!/^(kept:[a-z0-9-]{4,40}|https:\/\/|\/|\.\/|blob:)/.test(s.src)) return null;
+    return { kind: s.kind, title, src: s.src };
+  }
+  return null;
+}
+function cleanRecords(input) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  for (const item of input) {
+    if (!item || typeof item !== "object" || typeof item.id !== "string" || !ID.test(item.id) || out.some((r) => r.id === item.id)) continue;
+    const source = cleanSource(item.source);
+    const place = cleanPlace(item.place);
+    if (!source || !place || "src" in source && source.src.startsWith("blob:")) continue;
+    const look = item.look ? cleanLook(item.look) : null;
+    const pin = cleanPin(item.pin);
+    out.push({ id: item.id, source, place, ...look && (look.opacity < 1 || look.dark < 1) ? { look } : {}, ...pin ? { pin } : {} });
+    if (out.length === PANEL_LIMITS.count) break;
+  }
+  return out;
+}
+function cleanPin(input) {
+  if (!Array.isArray(input) || input.length !== 3 || !input.every(finite)) return null;
+  const z = clamp(input[2], -6, -0.25);
+  return [clamp(input[0], -4, 4), clamp(input[1], -2.5, 2.5), z];
+}
+var turn = (from, to) => ((to - from) % 360 + 540) % 360 - 180;
+function tagAlong(now, head, dt, o = {}) {
+  const ease = Math.min(1, dt * 5);
+  const off = turn(now.yaw, head.yaw);
+  const turning = Math.abs(off) > (o.turn ?? 38) || now.turning && Math.abs(off) > 3;
+  const [dx, dy, dz] = [head.position[0] - now.position[0], head.position[1] - now.position[1], head.position[2] - now.position[2]];
+  const far = Math.hypot(dx, dy, dz);
+  const moving = far > (o.reach ?? 0.4) || now.moving && far > 0.03;
+  return {
+    yaw: turning ? ((now.yaw + off * ease) % 360 + 360) % 360 : now.yaw,
+    position: moving ? [now.position[0] + dx * ease, now.position[1] + dy * ease, now.position[2] + dz * ease] : now.position,
+    turning,
+    moving
+  };
+}
+function facing(at, head) {
+  const [dx, dy, dz] = [head[0] - at[0], head[1] - at[1], head[2] - at[2]];
+  const flat = Math.hypot(dx, dz);
+  if (flat < 1e-6) return { yaw: 0, pitch: 0 };
+  const deg = 180 / Math.PI;
+  return { yaw: (Math.atan2(dx, dz) * deg % 360 + 360) % 360, pitch: clamp(-Math.atan2(dy, flat) * deg, -35, 35) };
+}
+function inFront(head, yawDegrees, already = 0, distance = 1.3) {
+  const step = Math.ceil(already % 7 / 2) * 48 * (already % 2 ? -1 : 1);
+  const a = (yawDegrees + step) * Math.PI / 180;
+  return [head[0] - Math.sin(a) * distance, clamp(head[1] - 0.05, 0.6, 3), head[2] - Math.cos(a) * distance];
+}
+function newId(random = Math.random) {
+  return `p-${Array.from({ length: 10 }, () => Math.floor(random() * 36).toString(36)).join("")}`;
+}
+function wrapText(text, width, measure, maxLines = 40) {
+  const out = [];
+  for (const paragraph of text.split("\n")) {
+    let line = "";
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const next = line ? `${line} ${word}` : word;
+      if (measure(next) <= width || !line) line = next;
+      else {
+        out.push(line);
+        line = word;
+      }
+      while (measure(line) > width && line.length > 1) {
+        let cut = line.length - 1;
+        while (cut > 1 && measure(line.slice(0, cut)) > width) cut--;
+        out.push(line.slice(0, cut));
+        line = line.slice(cut);
+      }
+    }
+    out.push(line);
+    if (out.length > maxLines) break;
+  }
+  if (out.length > maxLines) {
+    out.length = maxLines;
+    out[maxLines - 1] = `${out[maxLines - 1].replace(/.$/u, "")}\u2026`;
+  }
+  return out;
+}
+var LIBRARY_LIMITS = { count: 60, thumbChars: 6e4 };
+function cleanLibrary(input) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  for (const item of input) {
+    if (!item || typeof item !== "object" || typeof item.id !== "string" || !ID.test(item.id) || out.some((x) => x.id === item.id)) continue;
+    if (item.kind !== "picture" && item.kind !== "video") continue;
+    const thumb = typeof item.thumb === "string" && item.thumb.length <= LIBRARY_LIMITS.thumbChars && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(item.thumb) ? item.thumb : "";
+    out.push({ id: item.id, kind: item.kind, title: tidy(item.title, PANEL_LIMITS.titleChars), bytes: finite(item.bytes) && item.bytes >= 0 ? item.bytes : 0, addedAt: finite(item.addedAt) ? item.addedAt : 0, thumb });
+  }
+  return out.sort((a, b) => b.addedAt - a.addedAt).slice(0, LIBRARY_LIMITS.count);
+}
+function libraryPage(items, page, perPage) {
+  const pages = Math.max(1, Math.ceil(items.length / perPage));
+  const at = Math.min(pages - 1, Math.max(0, Math.floor(page)));
+  return { items: items.slice(at * perPage, (at + 1) * perPage), page: at, pages };
+}
+
+// packages/sdk/src/keyboard.ts
+var W2 = 1024;
+var SHOW = 300;
+var KEYS = 520;
+var LIVE_STRIP = 92;
+var WIDTH = 0.8;
+function createKeyboard(o) {
+  const accent = `#${new THREE7.Color(o.accent ?? 16758364).getHexString()}`;
+  const ink = o.textColor ?? "#eef5fb";
+  const canvas = document.createElement("canvas");
+  canvas.width = W2;
+  canvas.height = SHOW + KEYS;
+  const g = canvas.getContext("2d");
+  const texture = new THREE7.CanvasTexture(canvas);
+  texture.colorSpace = THREE7.SRGBColorSpace;
+  texture.anisotropy = 8;
+  const board = new THREE7.Mesh(new THREE7.PlaneGeometry(WIDTH, WIDTH * canvas.height / W2), new THREE7.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
+  board.name = "keyboard";
+  const group = new THREE7.Group();
+  group.name = "keyboard";
+  group.add(board);
+  group.visible = false;
+  o.scene.add(group);
+  let entry = new TextEntry();
+  let title = "";
+  let keys = [];
+  let aimed = null;
+  let done = null;
+  let stale = true;
+  let field = null;
+  let live = null;
+  const voice = o.voice ?? createVoice();
+  let notice = "";
+  const say = (message) => {
+    notice = message;
+    stale = true;
+  };
+  const systemOffered = () => !!o.session?.()?.isSystemKeyboardSupported;
+  const lay = () => {
+    const mic = !!voice.source;
+    keys = live ? placeLiveKeys(live.keys.layer, { mic }) : placeKeys(entry.layer, { multiline: entry.multiline, system: systemOffered(), mic });
+    stale = true;
+  };
+  const paint = () => {
+    stale = false;
+    g.clearRect(0, 0, W2, canvas.height);
+    const top = live ? SHOW - LIVE_STRIP : 0;
+    g.fillStyle = "rgba(10, 16, 24, 0.94)";
+    g.beginPath();
+    g.roundRect(0, top, W2, SHOW - 16 - top, 26);
+    g.fill();
+    g.textBaseline = "top";
+    g.fillStyle = accent;
+    g.font = "bold 30px system-ui, sans-serif";
+    if (live) g.fillText(notice || (live.keys.ctrl ? `${title}. Ctrl is on for the next key.` : title), 36, top + 22, W2 - 72);
+    else {
+      g.fillText(notice || title, 36, 24, W2 - 72);
+      g.fillStyle = ink;
+      g.font = "40px system-ui, sans-serif";
+      const lines = wrapText(`${entry.value}\u258F`, W2 - 72, (s) => g.measureText(s).width, 400);
+      lines.slice(-4).forEach((line, i) => g.fillText(line, 36, 76 + i * 50));
+    }
+    for (const k of keys) {
+      const [x, y, w, h] = [k.x * W2, SHOW + k.y * KEYS, k.width * W2, k.height * KEYS];
+      const shift = live ? live.keys.shift : entry.shift;
+      const on = aimed === k.id || k.kind === "shift" && shift !== "off" || k.kind === "ctrl" && !!live?.keys.ctrl || k.kind === "mic" && voice.state !== "idle";
+      g.fillStyle = on ? accent : k.kind === "char" || k.kind === "space" ? "#162231" : k.kind === "done" ? "#24384c" : "#0e1722";
+      g.beginPath();
+      g.roundRect(x, y, w, h, 16);
+      g.fill();
+      if (k.kind === "shift" && shift === "lock") {
+        g.fillStyle = "#04070b";
+        g.fillRect(x + w / 2 - 22, y + h - 16, 44, 5);
+      }
+      g.fillStyle = on ? "#04070b" : ink;
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.font = k.kind === "char" ? "44px system-ui, sans-serif" : "bold 28px system-ui, sans-serif";
+      g.fillText(live ? live.keys.label(k) : entry.label(k), x + w / 2, y + h / 2 + 2, w - 12);
+      g.textAlign = "left";
+    }
+    texture.needsUpdate = true;
+  };
+  const finish = (value) => {
+    if (!done) return;
+    voice.cancel();
+    notice = "";
+    const resolve = done;
+    done = null;
+    group.visible = false;
+    aimed = null;
+    field?.remove();
+    field = null;
+    removeEventListener("keydown", onKey, true);
+    removeEventListener("paste", onPaste, true);
+    resolve(value);
+  };
+  const onKey = (e) => {
+    if (e.target === field) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    let handled = true;
+    if (e.key === "Escape") finish(null);
+    else if (e.key === "Backspace") entry.erase();
+    else if (e.key === "Enter") {
+      if (entry.multiline && !e.shiftKey) entry.type("\n");
+      else finish(entry.value);
+    } else if (e.key.length === 1 || [...e.key].length === 1) entry.type(e.key);
+    else handled = e.key.length > 1 && !/^F\d+$/.test(e.key);
+    if (handled) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+    stale = true;
+  };
+  const onPaste = (e) => {
+    if (e.target === field) return;
+    const text = e.clipboardData?.getData("text/plain");
+    if (!text) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    entry.type(text);
+    stale = true;
+  };
+  const useSystem = () => {
+    if (field) return;
+    field = document.createElement("textarea");
+    Object.assign(field.style, { position: "fixed", left: "0", bottom: "0", width: "1px", height: "1px", opacity: "0" });
+    field.maxLength = entry.maxLength;
+    field.value = entry.value;
+    field.addEventListener("input", () => {
+      entry.value = "";
+      entry.type(field.value);
+      stale = true;
+    });
+    document.body.append(field);
+    field.focus();
+  };
+  const unheard = voice.subscribe(() => done || live ? lay() : void 0);
+  const at = new THREE7.Vector3();
+  const facing2 = new THREE7.Vector3();
+  const local = new THREE7.Vector3();
+  const putUp = (under = false) => {
+    o.camera.getWorldPosition(at);
+    o.camera.getWorldDirection(facing2);
+    facing2.y = 0;
+    if (facing2.lengthSq() < 1e-6) facing2.set(0, 0, -1);
+    facing2.normalize();
+    const reach = under ? 0.62 : 0.68;
+    group.position.set(at.x + facing2.x * reach, Math.max(under ? 0.42 : 0.5, at.y - (under ? 0.58 : 0.4)), at.z + facing2.z * reach);
+    group.rotation.set((under ? -42 : -32) * (Math.PI / 180), Math.atan2(-facing2.x, -facing2.z), 0, "YXZ");
+    group.visible = true;
+  };
+  const closeLive = () => {
+    if (!live) return;
+    const was = live;
+    live = null;
+    aimed = null;
+    voice.cancel();
+    notice = "";
+    if (!done) group.visible = false;
+    was.o.onClose?.();
+  };
+  const api = {
+    group,
+    get open() {
+      return !!done || !!live;
+    },
+    get isLive() {
+      return !!live;
+    },
+    live(l) {
+      if (done) finish(null);
+      closeLive();
+      live = { keys: new LiveKeys(), o: l };
+      title = l.title;
+      lay();
+      putUp(true);
+    },
+    closeLive,
+    ask(a) {
+      if (done) finish(null);
+      closeLive();
+      entry = new TextEntry({ ...a.value !== void 0 ? { value: a.value } : {}, ...a.multiline !== void 0 ? { multiline: a.multiline } : {}, ...a.maxLength !== void 0 ? { maxLength: a.maxLength } : {} });
+      title = a.title;
+      lay();
+      putUp();
+      addEventListener("keydown", onKey, true);
+      addEventListener("paste", onPaste, true);
+      return new Promise((resolve) => {
+        done = resolve;
+      });
+    },
+    cancel() {
+      finish(null);
+      closeLive();
+    },
+    pick(raycaster) {
+      if (!done && !live) return null;
+      const hit = raycaster.intersectObject(board, false)[0];
+      if (!hit?.uv) return null;
+      const y = (1 - hit.uv.y) * canvas.height;
+      if (live && y < SHOW - LIVE_STRIP) return null;
+      const k = y >= SHOW ? keyAt(keys, hit.uv.x, (y - SHOW) / KEYS) : null;
+      return `kb:${k?.id ?? ""}`;
+    },
+    aim(hit) {
+      const id = hit?.startsWith("kb:") ? hit.slice(3) || null : null;
+      if (id === aimed) return;
+      aimed = id;
+      stale = true;
+    },
+    press(hit) {
+      if (!hit.startsWith("kb:") || hit.length === 3) return;
+      if (live) {
+        const what2 = live.keys.press(hit.slice(3), keys);
+        if (what2 && "close" in what2) return closeLive();
+        const to = live.o;
+        if (what2 && "mic" in what2) voice.toggle({ onText: (text) => to.onKey(`${text} `), say });
+        lay();
+        if (what2 && "send" in what2) live.o.onKey(what2.send);
+        return;
+      }
+      if (!done) return;
+      const what = entry.press(hit.slice(3), keys);
+      if (what === "mic") {
+        const into = entry;
+        voice.toggle({
+          onText(text) {
+            into.type(into.value && !/\s$/.test(into.value) ? ` ${text}` : text);
+            stale = true;
+          },
+          say
+        });
+      }
+      if (what === "done") return finish(entry.value);
+      if (what === "cancel") return finish(null);
+      if (what === "system") useSystem();
+      lay();
+    },
+    pointOf(hit) {
+      const k = hit.startsWith("kb:") ? keys.find((x) => x.id === hit.slice(3)) : null;
+      if (!k || !done && !live) return null;
+      const height = WIDTH * canvas.height / W2;
+      const v = (SHOW + (k.y + k.height / 2) * KEYS) / canvas.height;
+      local.set((k.x + k.width / 2 - 0.5) * WIDTH, (0.5 - v) * height, 0);
+      group.updateMatrixWorld(true);
+      return board.localToWorld(local.clone());
+    },
+    voice,
+    info: () => ({ voice: voice.state, notice, open: !!done || !!live, live: !!live, title, value: live ? "" : entry.value, layer: live ? live.keys.layer : entry.layer, shift: live ? live.keys.shift : entry.shift, ctrl: !!live?.keys.ctrl, keys: keys.map((k) => k.id) }),
+    update() {
+      if ((done || live) && stale) paint();
+    },
+    dispose() {
+      finish(null);
+      closeLive();
+      unheard();
+      o.scene.remove(group);
+      board.geometry.dispose();
+      board.material.dispose();
+      texture.dispose();
+    }
+  };
+  return api;
+}
+
+// packages/sdk/src/library.ts
+import * as THREE8 from "three";
+var DB = "nswp-panels";
+function files() {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open(DB, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore("files");
+    open.onsuccess = () => resolve(open.result);
+    open.onerror = () => reject(open.error);
+  });
+}
+async function fileStore(mode, run) {
+  try {
+    const db = await files();
+    return await new Promise((resolve, reject) => {
+      const request = run(db.transaction("files", mode).objectStore("files"));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } catch {
+    return void 0;
+  }
+}
+async function thumbnail(file, kind) {
+  const draw = (source, w, h) => {
+    if (!w || !h) return "";
+    const canvas = document.createElement("canvas");
+    canvas.width = 240;
+    canvas.height = Math.max(1, Math.round(240 * h / w));
+    canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+    const data = canvas.toDataURL("image/jpeg", 0.7);
+    return data.length <= LIBRARY_LIMITS.thumbChars ? data : "";
+  };
+  try {
+    if (kind === "picture") {
+      const bitmap = await createImageBitmap(file);
+      const data = draw(bitmap, bitmap.width, bitmap.height);
+      bitmap.close();
+      return data;
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "auto";
+      video.src = url;
+      await new Promise((resolve, reject) => {
+        video.addEventListener("loadeddata", () => resolve(), { once: true });
+        video.addEventListener("error", () => reject(new Error("unreadable")), { once: true });
+        setTimeout(() => reject(new Error("slow")), 4e3);
+      });
+      return draw(video, video.videoWidth, video.videoHeight);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  } catch {
+    return "";
+  }
+}
+var W3 = 1024;
+var H2 = 768;
+var COLS = 4;
+var ROWS = 2;
+var TOP = 96;
+var FOOT = 104;
+var WIDTH2 = 1.1;
+function createLibrary(o) {
+  const accent = `#${new THREE8.Color(o.accent ?? 16758364).getHexString()}`;
+  const ink = o.textColor ?? "#eef5fb";
+  let items = [];
+  if (o.keep) {
+    try {
+      items = cleanLibrary(JSON.parse(localStorage.getItem(`${o.keep}:library`) ?? "[]"));
+    } catch {
+    }
+  }
+  const save = () => {
+    stale = true;
+    o.onChange?.();
+    if (!o.keep) return;
+    try {
+      localStorage.setItem(`${o.keep}:library`, JSON.stringify(items));
+    } catch {
+    }
+  };
+  const canvas = document.createElement("canvas");
+  canvas.width = W3;
+  canvas.height = H2;
+  const g = canvas.getContext("2d");
+  const texture = new THREE8.CanvasTexture(canvas);
+  texture.colorSpace = THREE8.SRGBColorSpace;
+  texture.anisotropy = 8;
+  const board = new THREE8.Mesh(new THREE8.PlaneGeometry(WIDTH2, WIDTH2 * H2 / W3), new THREE8.MeshBasicMaterial({ map: texture, toneMapped: false }));
+  board.name = "library";
+  const group = new THREE8.Group();
+  group.name = "library";
+  group.add(board);
+  group.visible = false;
+  o.scene.add(group);
+  let page = 0;
+  let removing = false;
+  let aimed = null;
+  let stale = true;
+  let regions = [];
+  const thumbs = /* @__PURE__ */ new Map();
+  const thumbOf = (item) => {
+    if (!item.thumb) return null;
+    let image = thumbs.get(item.id);
+    if (!image) {
+      image = new Image();
+      image.onload = () => stale = true;
+      image.src = item.thumb;
+      thumbs.set(item.id, image);
+    }
+    return image.complete && image.naturalWidth ? image : null;
+  };
+  const paint = () => {
+    stale = false;
+    regions = [];
+    const shown = libraryPage(items, page, COLS * ROWS);
+    page = shown.page;
+    g.fillStyle = "#0a1018";
+    g.fillRect(0, 0, W3, H2);
+    g.fillStyle = "#101a26";
+    g.fillRect(0, 0, W3, TOP);
+    g.fillStyle = ink;
+    g.textBaseline = "middle";
+    g.textAlign = "left";
+    g.font = "bold 40px system-ui, sans-serif";
+    g.fillText(removing ? "Select one to remove it" : "Your pictures and video", 36, TOP / 2 + 2, W3 - 200);
+    const button = (id, label, x, y, w, h, on = false) => {
+      regions.push({ id, x, y, w, h });
+      const lit = aimed === id || on;
+      g.fillStyle = lit ? accent : "#162231";
+      g.beginPath();
+      g.roundRect(x, y, w, h, 16);
+      g.fill();
+      g.fillStyle = lit ? "#04070b" : ink;
+      g.textAlign = "center";
+      g.font = "bold 30px system-ui, sans-serif";
+      g.fillText(label, x + w / 2, y + h / 2 + 2, w - 16);
+      g.textAlign = "left";
+    };
+    button("close", "Close", W3 - 164, 18, 140, TOP - 36);
+    if (shown.items.length === 0) {
+      g.fillStyle = ink;
+      g.globalAlpha = 0.8;
+      g.font = "34px system-ui, sans-serif";
+      g.textAlign = "center";
+      g.fillText("Nothing here yet.", W3 / 2, H2 / 2 - 40);
+      g.fillText("Hang a picture or video on a flat screen,", W3 / 2, H2 / 2 + 10);
+      g.fillText("or take a picture with the camera.", W3 / 2, H2 / 2 + 56);
+      g.textAlign = "left";
+      g.globalAlpha = 1;
+    }
+    const cellW = (W3 - 48) / COLS;
+    const cellH = (H2 - TOP - FOOT - 24) / ROWS;
+    shown.items.forEach((item, i) => {
+      const [x, y] = [24 + i % COLS * cellW + 10, TOP + 12 + Math.floor(i / COLS) * cellH + 8];
+      const [w, h] = [cellW - 20, cellH - 16];
+      const id = `item:${item.id}`;
+      regions.push({ id, x, y, w, h });
+      g.fillStyle = aimed === id ? accent : "#162231";
+      g.beginPath();
+      g.roundRect(x, y, w, h, 14);
+      g.fill();
+      const image = thumbOf(item);
+      const [px, py, pw, ph] = [x + 8, y + 8, w - 16, h - 60];
+      g.fillStyle = "#05090e";
+      g.fillRect(px, py, pw, ph);
+      if (image) {
+        const scale = Math.min(pw / image.naturalWidth, ph / image.naturalHeight);
+        const [dw, dh] = [image.naturalWidth * scale, image.naturalHeight * scale];
+        g.drawImage(image, px + (pw - dw) / 2, py + (ph - dh) / 2, dw, dh);
+      }
+      if (item.kind === "video") {
+        g.fillStyle = "rgba(4, 7, 11, 0.7)";
+        g.beginPath();
+        g.arc(px + pw / 2, py + ph / 2, 30, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = ink;
+        g.beginPath();
+        g.moveTo(px + pw / 2 - 10, py + ph / 2 - 15);
+        g.lineTo(px + pw / 2 + 16, py + ph / 2);
+        g.lineTo(px + pw / 2 - 10, py + ph / 2 + 15);
+        g.fill();
+      }
+      g.fillStyle = aimed === id ? "#04070b" : ink;
+      g.font = "26px system-ui, sans-serif";
+      g.fillText(item.title || (item.kind === "video" ? "A video" : "A picture"), x + 12, y + h - 26, w - 24);
+    });
+    const fy = H2 - FOOT + 14;
+    if (shown.pages > 1) {
+      button("prev", "Earlier", 24, fy, 170, FOOT - 28);
+      button("next", "Later", 206, fy, 170, FOOT - 28);
+      g.fillStyle = ink;
+      g.font = "28px system-ui, sans-serif";
+      g.fillText(`${shown.page + 1} of ${shown.pages}`, 400, fy + (FOOT - 28) / 2 + 2);
+    }
+    if (items.length) button("removing", removing ? "Stop removing" : "Remove one", W3 - 300, fy, 276, FOOT - 28, removing);
+    texture.needsUpdate = true;
+  };
+  const at = new THREE8.Vector3();
+  const facing2 = new THREE8.Vector3();
+  const api = {
+    group,
+    list: () => items,
+    async add(file, name = "") {
+      const kind = file.type.startsWith("image/") ? "picture" : file.type.startsWith("video/") ? "video" : null;
+      if (!kind || file.size > PANEL_LIMITS.fileBytes || items.length >= LIBRARY_LIMITS.count) return null;
+      const id = newId();
+      if (await fileStore("readwrite", (s) => s.put(file, id)) === void 0) return null;
+      const item = { id, kind, title: name.replace(/\.[a-z0-9]+$/i, "").slice(0, PANEL_LIMITS.titleChars), bytes: file.size, addedAt: Math.floor(Date.now() / 1e3), thumb: await thumbnail(file, kind) };
+      items = cleanLibrary([item, ...items]);
+      save();
+      return items.find((x) => x.id === id) ?? null;
+    },
+    async remove(id) {
+      if (!items.some((x) => x.id === id)) return;
+      items = items.filter((x) => x.id !== id);
+      thumbs.delete(id);
+      await fileStore("readwrite", (s) => s.delete(id));
+      save();
+    },
+    get showing() {
+      return group.visible;
+    },
+    set showing(v) {
+      if (v === group.visible) return;
+      group.visible = v;
+      removing = false;
+      aimed = null;
+      stale = true;
+      if (v) {
+        o.camera.getWorldPosition(at);
+        o.camera.getWorldDirection(facing2);
+        facing2.y = 0;
+        if (facing2.lengthSq() < 1e-6) facing2.set(0, 0, -1);
+        facing2.normalize();
+        group.position.set(at.x + facing2.x * 1.15, Math.max(0.8, at.y - 0.05), at.z + facing2.z * 1.15);
+        group.rotation.set(0, Math.atan2(-facing2.x, -facing2.z), 0);
+      }
+      o.onChange?.();
+    },
+    pick(raycaster) {
+      if (!group.visible) return null;
+      const hit = raycaster.intersectObject(board, false)[0];
+      if (!hit?.uv) return null;
+      const [x, y] = [hit.uv.x * W3, (1 - hit.uv.y) * H2];
+      const r = regions.find((q) => x >= q.x && x <= q.x + q.w && y >= q.y && y <= q.y + q.h);
+      return `lib:${r?.id ?? ""}`;
+    },
+    aim(hit) {
+      const id = hit?.startsWith("lib:") ? hit.slice(4) || null : null;
+      if (id === aimed) return;
+      aimed = id;
+      stale = true;
+    },
+    press(hit) {
+      if (!group.visible || !hit.startsWith("lib:")) return;
+      const id = hit.slice(4);
+      if (id === "close") api.showing = false;
+      else if (id === "prev") page--;
+      else if (id === "next") page++;
+      else if (id === "removing") removing = !removing;
+      else if (id.startsWith("item:")) {
+        const item = items.find((x) => x.id === id.slice(5));
+        if (item && removing) void api.remove(item.id);
+        else if (item) o.onChoose(item);
+      }
+      stale = true;
+    },
+    pointOf(hit) {
+      const r = hit.startsWith("lib:") ? regions.find((q) => q.id === hit.slice(4)) : null;
+      if (!r || !group.visible) return null;
+      const height = WIDTH2 * H2 / W3;
+      group.updateMatrixWorld(true);
+      return board.localToWorld(new THREE8.Vector3(((r.x + r.w / 2) / W3 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H2) * height, 0));
+    },
+    info: () => ({ showing: group.visible, page, pages: libraryPage(items, page, COLS * ROWS).pages, removing, cells: regions.map((r) => r.id) }),
+    update() {
+      if (group.visible && stale) paint();
+    },
+    dispose() {
+      o.scene.remove(group);
+      board.geometry.dispose();
+      board.material.dispose();
+      texture.dispose();
+    }
+  };
+  return api;
+}
+
+// packages/sdk/src/panels.ts
+var BAR = 0.085;
+var GAP = 0.012;
+var BUTTON = 0.062;
+var DEG = Math.PI / 180;
+function canvasTexture(width, height, draw) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  draw(canvas.getContext("2d"), width, height);
+  const texture = new THREE9.CanvasTexture(canvas);
+  texture.colorSpace = THREE9.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+function noteTexture(source, ink) {
+  const W4 = 1024;
+  const pad = 56;
+  const measure = document.createElement("canvas").getContext("2d");
+  measure.font = "40px system-ui, sans-serif";
+  const lines = wrapText(source.text, W4 - pad * 2, (s) => measure.measureText(s).width);
+  const H4 = Math.round(Math.min(2048, Math.max(360, pad * 2 + lines.length * 56 + 12)));
+  const texture = canvasTexture(W4, H4, (g) => {
+    g.fillStyle = "#0a1018";
+    g.fillRect(0, 0, W4, H4);
+    g.fillStyle = ink;
+    g.textBaseline = "top";
+    g.font = "40px system-ui, sans-serif";
+    lines.forEach((line, i) => g.fillText(line, pad, pad + i * 56));
+  });
+  return { texture, aspect: W4 / H4 };
+}
+function glyphTexture(glyph, ink) {
+  return canvasTexture(128, 128, (g) => {
+    g.fillStyle = "#101a26";
+    g.beginPath();
+    g.roundRect(4, 4, 120, 120, 26);
+    g.fill();
+    g.strokeStyle = ink;
+    g.fillStyle = ink;
+    g.lineWidth = 11;
+    g.lineCap = "round";
+    g.beginPath();
+    if (glyph === "close") {
+      g.moveTo(42, 42);
+      g.lineTo(86, 86);
+      g.moveTo(86, 42);
+      g.lineTo(42, 86);
+      g.stroke();
+    } else if (glyph === "smaller" || glyph === "larger") {
+      g.moveTo(38, 64);
+      g.lineTo(90, 64);
+      if (glyph === "larger") {
+        g.moveTo(64, 38);
+        g.lineTo(64, 90);
+      }
+      g.stroke();
+    } else if (glyph === "glass") {
+      g.lineWidth = 8;
+      g.strokeRect(38, 38, 52, 52);
+      g.beginPath();
+      g.moveTo(38, 90);
+      g.lineTo(90, 38);
+      g.lineTo(90, 90);
+      g.closePath();
+      g.fill();
+    } else if (glyph === "pin") {
+      g.lineWidth = 9;
+      g.arc(64, 50, 17, 0, Math.PI * 2);
+      g.fill();
+      g.beginPath();
+      g.moveTo(64, 62);
+      g.lineTo(64, 98);
+      g.stroke();
+    } else if (glyph === "play") {
+      g.moveTo(48, 36);
+      g.lineTo(92, 64);
+      g.lineTo(48, 92);
+      g.closePath();
+      g.fill();
+    } else {
+      g.fillRect(42, 38, 16, 52);
+      g.fillRect(70, 38, 16, 52);
+    }
+  });
+}
+function barTexture(title, ink) {
+  return canvasTexture(1024, Math.round(1024 * BAR), (g, w, h) => {
+    g.fillStyle = "#101a26";
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = ink;
+    g.textBaseline = "middle";
+    g.font = "bold 42px system-ui, sans-serif";
+    g.fillText(title, 96, h / 2 + 2, w - 96 - 440);
+  });
+}
+function createPanels(o) {
+  const accent = new THREE9.Color(o.accent ?? 16758364);
+  const ink = o.textColor ?? "#eef5fb";
+  const root = new THREE9.Group();
+  root.name = "panels";
+  o.scene.add(root);
+  const live = /* @__PURE__ */ new Map();
+  const metal = createAlloy(accent, { gloss: 0.5 });
+  const glyphs = /* @__PURE__ */ new Map();
+  const glyph = (g) => glyphs.get(g) ?? (glyphs.set(g, glyphTexture(g, ink)), glyphs.get(g));
+  const frameShape = (() => {
+    const b = new MeshBuilder().at();
+    b.tone = new THREE9.Color(1186340);
+    b.light = accent.clone();
+    b.box([1, 1, 0.022], [0, 0, 0], { bevel: 8e-3 });
+    return b.geometry();
+  })();
+  const head = new THREE9.Vector3();
+  const at = new THREE9.Vector3();
+  const headV3 = () => {
+    o.camera.getWorldPosition(head);
+    return [head.x, head.y, head.z];
+  };
+  const save = () => {
+    o.onChange?.();
+    if (!o.keep) return;
+    try {
+      localStorage.setItem(
+        o.keep,
+        JSON.stringify([...live.values()].flatMap((p) => p.record ? [{ id: p.record.id, source: p.record.source, place: p.place(), ...p.seeThrough.opacity < 1 || p.seeThrough.dark < 1 ? { look: p.seeThrough } : {}, ...p.pinAt ? { pin: p.pinAt } : {} }] : []))
+      );
+    } catch {
+    }
+  };
+  const keyboard = createKeyboard({ scene: o.scene, camera: o.camera, accent, textColor: ink, ...o.session ? { session: o.session } : {} });
+  const library = createLibrary({
+    scene: o.scene,
+    camera: o.camera,
+    accent,
+    textColor: ink,
+    ...o.keep ? { keep: o.keep } : {},
+    onChoose: (item) => {
+      try {
+        open({ kind: item.kind, title: item.title, src: `kept:${item.id}` });
+      } catch {
+      }
+    },
+    onChange: () => {
+      const have = new Set(library.list().map((x) => `kept:${x.id}`));
+      for (const p of [...live.values()]) if (p.source.kind !== "custom" && "src" in p.source && p.source.src.startsWith("kept:") && !have.has(p.source.src)) p.close();
+      o.onChange?.();
+    }
+  });
+  const layout = (p) => {
+    const h = 1 / p.aspect;
+    p.body.scale.set(1, h, 1);
+    const top = h / 2 + GAP + BAR / 2;
+    if (!p.held) {
+      p.bar.position.set(0, top, 0);
+      p.bar.quaternion.identity();
+      p.bar.scale.set(1, 1, 1);
+    }
+    const frame = p.group.getObjectByName("frame");
+    if (frame) {
+      frame.scale.set(1.03, h + BAR + GAP + 0.03, 1);
+      frame.position.set(0, (BAR + GAP) / 2, -0.014);
+    }
+    let x = 0.5 - BUTTON / 2 - 0.012;
+    for (const name of ["close", "larger", "smaller", "glass", "pin"]) {
+      p.buttons.get(name)?.position.set(x, top, 4e-3);
+      x -= BUTTON + 0.014;
+    }
+    p.buttons.get("play")?.position.set(-0.5 + BUTTON / 2 + 0.012, top, 4e-3);
+    p.group.scale.setScalar(p.width);
+  };
+  const setPlace = (p, place) => {
+    if (place.position) p.group.position.set(...place.position);
+    if (place.yaw !== void 0 || place.pitch !== void 0) {
+      const now = p.place();
+      p.group.rotation.set((place.pitch ?? now.pitch) * DEG, (place.yaw ?? now.yaw) * DEG, 0, "YXZ");
+    }
+    if (place.width !== void 0) {
+      p.width = Math.min(PANEL_LIMITS.maxWidth, Math.max(PANEL_LIMITS.minWidth, place.width));
+      layout(p);
+    }
+  };
+  const applyLook = (p) => {
+    const material = p.body.material;
+    const solid = p.seeThrough.opacity >= 1 && p.seeThrough.dark >= 1;
+    material.opacity = p.seeThrough.opacity;
+    material.transparent = !solid;
+    material.depthWrite = solid;
+    p.dark.value = p.seeThrough.dark;
+    p.body.renderOrder = solid ? 0 : 2;
+    const frame = p.group.getObjectByName("frame");
+    if (frame) frame.visible = solid;
+    material.needsUpdate = true;
+  };
+  const seeThroughDark = (material, dark) => {
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.nswpDark = dark;
+      shader.fragmentShader = shader.fragmentShader.replace("#include <common>", "#include <common>\nuniform float nswpDark;").replace("#include <map_fragment>", "#include <map_fragment>\n	diffuseColor.a *= mix(nswpDark, 1.0, smoothstep(0.02, 0.2, dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114))));");
+    };
+    material.customProgramCacheKey = () => "nswp-panel-body";
+  };
+  const presenting = () => !!o.session?.();
+  let follow = null;
+  const anchorAt = new THREE9.Vector3();
+  const anchorTurn = new THREE9.Quaternion();
+  const offset = new THREE9.Vector3();
+  const UP = new THREE9.Vector3(0, 1, 0);
+  const anchor = (dt) => {
+    o.camera.getWorldPosition(anchorAt);
+    if (!presenting()) {
+      o.camera.getWorldQuaternion(anchorTurn);
+      follow = null;
+      return;
+    }
+    o.camera.getWorldDirection(at);
+    const head2 = { position: anchorAt.toArray(), yaw: Math.atan2(-at.x, -at.z) / DEG };
+    follow = follow ? tagAlong(follow, head2, dt) : { ...head2, turning: false, moving: false };
+    anchorAt.set(...follow.position);
+    anchorTurn.setFromAxisAngle(UP, follow.yaw * DEG);
+  };
+  const pinFrom = (p) => {
+    anchor(0);
+    offset.copy(p.group.position).sub(anchorAt).applyQuaternion(anchorTurn.clone().invert());
+    return cleanPin(offset.toArray());
+  };
+  const turnToFace = (p) => {
+    const f = facing(p.group.position.toArray(), headV3());
+    p.group.rotation.set(f.pitch * DEG, f.yaw * DEG, 0, "YXZ");
+  };
+  const close = (p) => {
+    if (!live.delete(p.id)) return;
+    p.release?.();
+    p.video?.pause();
+    if (p.video) p.video.src = "";
+    if (p.blobUrl) URL.revokeObjectURL(p.blobUrl);
+    root.remove(p.group);
+    p.bar.removeFromParent();
+    for (const mesh of [p.body, p.bar]) {
+      mesh.geometry.dispose();
+      const m = mesh.material;
+      if (p.source.kind !== "custom" || mesh !== p.body) m.map?.dispose();
+      m.dispose();
+    }
+    for (const b of p.buttons.values()) b.material.dispose();
+    save();
+    if (p.source.kind === "custom") p.source.onClose?.();
+  };
+  const flat = (texture, w = 1, h = 1) => new THREE9.Mesh(new THREE9.PlaneGeometry(w, h), new THREE9.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
+  const open = (content, opts = {}) => {
+    const source = content.kind === "custom" ? content : cleanSource(content);
+    if (!source) throw new Error("nswp-sdk: a panel needs something to show (a note with words, or a picture or video with an address).");
+    if (live.size >= PANEL_LIMITS.count && !(opts.id && live.has(opts.id))) throw new Error(`nswp-sdk: ${PANEL_LIMITS.count} panels are open. Put one away first.`);
+    const id = opts.id ?? newId();
+    live.get(id)?.close();
+    const group = new THREE9.Group();
+    group.name = `panel:${id}`;
+    const body = flat(null);
+    body.name = `${id}:body`;
+    const bar = flat(barTexture(source.title || (source.kind === "note" ? "Note" : source.kind === "picture" ? "Picture" : source.kind === "video" ? "Video" : ""), ink), 1, BAR);
+    bar.name = `${id}:bar`;
+    const frame = new THREE9.Mesh(frameShape, metal);
+    frame.name = "frame";
+    frame.raycast = () => {
+    };
+    const buttons = /* @__PURE__ */ new Map();
+    const button = (name, g) => {
+      const mesh = flat(glyph(g), BUTTON, BUTTON);
+      mesh.name = `${id}:${name}`;
+      buttons.set(name, mesh);
+      group.add(mesh);
+    };
+    button("close", "close");
+    button("larger", "larger");
+    button("smaller", "smaller");
+    button("glass", "glass");
+    button("pin", "pin");
+    const dark = { value: 1 };
+    seeThroughDark(body.material, dark);
+    if (source.kind === "video") button("play", "play");
+    group.add(frame, body, bar);
+    root.add(group);
+    const p = {
+      id,
+      group,
+      source,
+      record: null,
+      body,
+      bar,
+      buttons,
+      video: null,
+      aspect: 16 / 9,
+      width: source.kind === "note" ? 0.8 : 1.1,
+      ready: false,
+      held: false,
+      seeThrough: cleanLook(opts.look),
+      dark,
+      pinAt: null,
+      get look() {
+        return { ...p.seeThrough };
+      },
+      setLook(look) {
+        p.seeThrough = cleanLook({ ...p.seeThrough, ...look });
+        applyLook(p);
+        save();
+      },
+      get pin() {
+        return p.pinAt ? [...p.pinAt] : null;
+      },
+      setPinned(on) {
+        p.pinAt = on ? pinFrom(p) : null;
+        lit(p);
+        save();
+      },
+      place() {
+        const e = new THREE9.Euler().setFromQuaternion(group.quaternion, "YXZ");
+        const round = (n) => Math.round(n * 1e3) / 1e3;
+        return { position: group.position.toArray().map(round), yaw: round((e.y / DEG % 360 + 360) % 360), pitch: round(e.x / DEG), width: round(p.width) };
+      },
+      moveTo(place) {
+        setPlace(p, place);
+        save();
+      },
+      close: () => close(p)
+    };
+    live.set(id, p);
+    const show = (texture, aspect) => {
+      const material = body.material;
+      material.map = texture;
+      material.color.set(16777215);
+      material.needsUpdate = true;
+      p.aspect = Math.min(4, Math.max(0.25, aspect));
+      p.ready = true;
+      layout(p);
+      applyLook(p);
+    };
+    if (source.kind === "note") {
+      const drawn = noteTexture(source, ink);
+      show(drawn.texture, drawn.aspect);
+    } else if (source.kind === "custom") show(source.texture, source.aspect);
+    else {
+      void (async () => {
+        let src = source.src;
+        if (src.startsWith("kept:")) {
+          const blob = await fileStore("readonly", (s) => s.get(src.slice(5)));
+          if (!blob) return void (live.has(id) && p.close());
+          if (!live.has(id)) return;
+          src = p.blobUrl = URL.createObjectURL(blob);
+        }
+        if (source.kind === "picture") {
+          const image = new Image();
+          image.onload = () => {
+            if (!live.has(id)) return;
+            const texture = new THREE9.Texture(image);
+            texture.colorSpace = THREE9.SRGBColorSpace;
+            texture.needsUpdate = true;
+            show(texture, image.naturalWidth / Math.max(1, image.naturalHeight));
+          };
+          image.src = src;
+        } else {
+          const video = document.createElement("video");
+          video.playsInline = true;
+          video.loop = true;
+          video.preload = "metadata";
+          p.video = video;
+          video.addEventListener("loadedmetadata", () => {
+            if (!live.has(id) || !video.videoWidth) return;
+            const texture = new THREE9.VideoTexture(video);
+            texture.colorSpace = THREE9.SRGBColorSpace;
+            show(texture, video.videoWidth / video.videoHeight);
+          });
+          const mark = () => {
+            const m = buttons.get("play")?.material;
+            if (m) m.map = glyph(video.paused ? "play" : "pause");
+            o.onChange?.();
+          };
+          video.addEventListener("play", mark);
+          video.addEventListener("pause", mark);
+          video.src = src;
+        }
+      })();
+    }
+    layout(p);
+    const given = opts.place ? { ...opts.place } : {};
+    if (!given.position) given.position = inFront(headV3(), o.camera.getWorldDirection(at).x === 0 && at.z === 0 ? 0 : Math.atan2(-at.x, -at.z) / DEG, live.size - 1);
+    setPlace(p, given);
+    if (given.yaw === void 0) turnToFace(p);
+    if (o.input) {
+      p.release = o.input.grabbable(bar, {
+        reach: 0.12,
+        pull: false,
+        onGrab: () => {
+          p.held = true;
+        },
+        onRelease: () => {
+          p.held = false;
+          group.add(bar);
+          layout(p);
+          turnToFace(p);
+          if (p.pinAt) p.pinAt = pinFrom(p);
+          save();
+        }
+      });
+    }
+    applyLook(p);
+    p.pinAt = opts.pin ? cleanPin(opts.pin) : null;
+    lit(p);
+    if (opts.keep !== false && source.kind !== "custom" && !("src" in source && source.src.startsWith("blob:"))) p.record = { id, source, place: p.place() };
+    save();
+    return p;
+  };
+  const restored = (async () => {
+    if (!o.keep) return;
+    let kept = [];
+    try {
+      kept = cleanRecords(JSON.parse(localStorage.getItem(o.keep) ?? "[]"));
+    } catch {
+    }
+    for (const r of kept) {
+      const place = cleanPlace(r.place);
+      if (place) open(r.source, { id: r.id, place, ...r.look ? { look: r.look } : {}, ...r.pin ? { pin: r.pin } : {} });
+    }
+  })();
+  const targets = () => [...live.values()].flatMap((p) => [p.body, ...p.held ? [] : [p.bar], ...p.buttons.values()]);
+  let aimed = null;
+  let pointed = null;
+  let drag = null;
+  const find = (hit) => {
+    const cut = hit.lastIndexOf(":");
+    const p = live.get(hit.slice(0, cut));
+    return p ? [p, hit.slice(cut + 1)] : null;
+  };
+  const tint = (hit, on) => {
+    const found = hit ? find(hit) : null;
+    const mesh = found?.[0].buttons.get(found[1]);
+    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE9.Color(16777215));
+  };
+  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE9.Color(16777215));
+  const api = {
+    open,
+    async openFile(file) {
+      const kind = file.type.startsWith("image/") ? "picture" : file.type.startsWith("video/") ? "video" : null;
+      if (!kind || file.size > PANEL_LIMITS.fileBytes) return null;
+      const item = await library.add(file, file.name ?? "");
+      if (item) return open({ kind, title: item.title, src: `kept:${item.id}` });
+      return open({ kind, title: (file.name ?? "").replace(/\.[a-z0-9]+$/i, ""), src: URL.createObjectURL(file) }, { keep: false });
+    },
+    keyboard,
+    library,
+    pointOf: (hit) => hit.startsWith("kb:") ? keyboard.pointOf(hit) : hit.startsWith("lib:") ? library.pointOf(hit) : null,
+    list: () => [...live.values()],
+    get visible() {
+      return root.visible;
+    },
+    set visible(v) {
+      root.visible = v;
+      if (!v) for (const p of live.values()) p.video?.pause();
+      o.onChange?.();
+    },
+    pick(raycaster) {
+      const above = keyboard.pick(raycaster) ?? library.pick(raycaster);
+      if (above) return above;
+      if (!root.visible) return null;
+      const hit = raycaster.intersectObjects(targets(), false)[0];
+      pointed = hit?.uv ? { name: hit.object.name, x: hit.uv.x, y: 1 - hit.uv.y } : null;
+      return hit ? hit.object.name : null;
+    },
+    aim(hit) {
+      keyboard.aim(hit);
+      library.aim(hit);
+      if (hit === aimed) return;
+      tint(aimed, false);
+      aimed = hit;
+      tint(aimed, true);
+    },
+    press(hit) {
+      if (hit.startsWith("kb:")) return keyboard.press(hit);
+      if (hit.startsWith("lib:")) return library.press(hit);
+      const found = find(hit);
+      if (!found) return;
+      const [p, part] = found;
+      if (part === "close") return p.close();
+      if (part === "larger" || part === "smaller") {
+        p.moveTo({ width: p.width * (part === "larger" ? 1.25 : 0.8) });
+        return;
+      }
+      if (part === "glass") return p.setLook(nextLook(p.seeThrough));
+      if (part === "pin") return p.setPinned(!p.pinAt);
+      if (part === "body" && p.source.kind === "custom") return p.source.onPress?.(pointed?.name === hit ? pointed.x : 0.5, pointed?.name === hit ? pointed.y : 0.5);
+      if ((part === "play" || part === "body") && p.video) void (p.video.paused ? p.video.play().catch(() => {
+      }) : Promise.resolve(p.video.pause()));
+    },
+    pointer(phase, raycaster) {
+      if (phase === "down") {
+        if (keyboard.pick(raycaster) ?? library.pick(raycaster)) return false;
+        const hit = root.visible ? raycaster.intersectObjects(targets(), false)[0] : void 0;
+        const found = hit ? find(hit.object.name) : null;
+        if (!found || found[1] !== "bar") return false;
+        drag = { p: found[0], far: hit.distance, moved: false };
+        return true;
+      }
+      if (!drag) return false;
+      if (phase === "move") {
+        const p = drag.p;
+        const down = (1 / p.aspect / 2 + GAP + BAR / 2) * p.width;
+        raycaster.ray.at(drag.far, at);
+        p.group.position.set(at.x, at.y - down, at.z);
+        turnToFace(p);
+        drag.moved = true;
+        return true;
+      }
+      const moved = drag.moved;
+      if (moved && drag.p.pinAt) drag.p.pinAt = pinFrom(drag.p);
+      drag = null;
+      if (moved) save();
+      return moved;
+    },
+    update(t, dt = 1 / 60) {
+      metal.tick(t);
+      keyboard.update(t);
+      library.update();
+      if ([...live.values()].some((p) => p.pinAt)) {
+        anchor(dt);
+        for (const p of live.values()) {
+          if (!p.pinAt || p.held || drag?.p === p) continue;
+          offset.set(...p.pinAt).applyQuaternion(anchorTurn).add(anchorAt);
+          p.group.position.copy(offset);
+          turnToFace(p);
+        }
+      }
+      for (const p of live.values()) {
+        if (!p.held) continue;
+        p.bar.getWorldPosition(at);
+        const down = (1 / p.aspect / 2 + GAP + BAR / 2) * p.width;
+        p.group.position.set(at.x, at.y - down, at.z);
+        turnToFace(p);
+      }
+    },
+    restored,
+    info: () => [...live.values()].map((p) => ({
+      id: p.id,
+      kind: p.source.kind,
+      title: p.source.title,
+      place: p.place(),
+      playing: p.video ? !p.video.paused : null,
+      held: p.held,
+      ready: p.ready,
+      look: { ...p.seeThrough },
+      pinned: !!p.pinAt
+    })),
+    dispose() {
+      for (const p of live.values()) {
+        p.release?.();
+        p.video?.pause();
+        if (p.blobUrl) URL.revokeObjectURL(p.blobUrl);
+      }
+      live.clear();
+      keyboard.dispose();
+      library.dispose();
+      o.scene.remove(root);
+      frameShape.dispose();
+      metal.dispose();
+      for (const g of glyphs.values()) g.dispose();
+    }
+  };
+  return api;
+}
+function askForNote(done) {
+  const dialog = document.createElement("dialog");
+  dialog.setAttribute("aria-label", "Write a note");
+  Object.assign(dialog.style, { width: "min(92vw, 520px)", padding: "20px", border: "1px solid #2a3a4a", borderRadius: "14px", background: "#0a1018", color: "#eef5fb", font: "16px/1.5 system-ui, sans-serif" });
+  const field = (el, label) => {
+    const wrap2 = document.createElement("label");
+    wrap2.textContent = label;
+    Object.assign(wrap2.style, { display: "grid", gap: "6px", marginBottom: "14px" });
+    Object.assign(el.style, { font: "inherit", padding: "10px", color: "inherit", background: "#101a26", border: "1px solid #2a3a4a", borderRadius: "8px" });
+    wrap2.append(el);
+    return wrap2;
+  };
+  const title = document.createElement("input");
+  title.maxLength = PANEL_LIMITS.titleChars;
+  const text = document.createElement("textarea");
+  text.rows = 7;
+  text.maxLength = PANEL_LIMITS.noteChars;
+  const row = document.createElement("div");
+  Object.assign(row.style, { display: "flex", gap: "10px", justifyContent: "flex-end" });
+  const button = (label, primary, act) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    Object.assign(b.style, { font: "inherit", fontWeight: primary ? "700" : "500", padding: "10px 18px", borderRadius: "8px", border: "1px solid #2a3a4a", background: primary ? "#eef5fb" : "none", color: primary ? "#04070b" : "inherit", cursor: "pointer" });
+    b.addEventListener("click", act);
+    return b;
+  };
+  const finish = (note) => {
+    dialog.close();
+    dialog.remove();
+    done(note);
+  };
+  row.append(
+    button("Cancel", false, () => finish(null)),
+    button("Hang it", true, () => finish(text.value.trim() || title.value.trim() ? { title: title.value, text: text.value } : null))
+  );
+  dialog.addEventListener("cancel", () => finish(null));
+  dialog.append(field(title, "A heading, if you want one"), field(text, "The note"), row);
+  document.body.append(dialog);
+  dialog.showModal();
+  text.focus();
+}
+function addPanelControls(controls, panels, o) {
+  const note = () => o.presenting() ? "Take a panel by its bar to move it. Write a note on the keyboard, or hang something from your pictures and video." : `Notes, pictures and video in frames you can hang anywhere. Drag one by its bar.${o.kept ? " They are kept in this browser and are here next visit." : ""} A panel can't show another website.`;
+  controls.addSection({ id: "panels", label: "Panels", icon: "panel", note });
+  const hang = (source) => {
+    try {
+      panels.open(source);
+    } catch (err) {
+      controls.say(err instanceof Error && /Put one away/.test(err.message) ? `${PANEL_LIMITS.count} panels are open. Put one away first.` : "That couldn't be hung.");
+    }
+  };
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = "image/*,video/*";
+  picker.hidden = true;
+  document.body.append(picker);
+  picker.addEventListener("change", () => {
+    const file = picker.files?.[0];
+    picker.value = "";
+    if (!file) return;
+    void panels.openFile(file).then(
+      (p) => controls.say(p ? "Hung in front of you." : file.size > PANEL_LIMITS.fileBytes ? "That file is too large to hang: 64 MB at most." : "Only pictures and videos can be hung."),
+      () => controls.say(`${PANEL_LIMITS.count} panels are open. Put one away first.`)
+    );
+  });
+  controls.add(
+    {
+      id: "panel-note",
+      section: "panels",
+      icon: "note",
+      label: "Write a note",
+      short: "Note",
+      act: () => {
+        if (o.presenting()) {
+          void panels.keyboard.ask({ title: "A note. Done hangs it in front of you.", multiline: true, maxLength: PANEL_LIMITS.noteChars }).then((text) => {
+            if (text?.trim()) hang({ kind: "note", title: "", text });
+          });
+        } else
+          askForNote((n) => {
+            if (n) hang({ kind: "note", ...n });
+          });
+      }
+    },
+    {
+      id: "panel-library",
+      section: "panels",
+      icon: "panel",
+      on: () => panels.library.showing,
+      label: () => panels.library.showing ? "Put your pictures and video away" : "Your pictures and video",
+      short: "Yours",
+      act: () => {
+        panels.library.showing = !panels.library.showing;
+      }
+    },
+    // The device's own files: the browser shows those itself, as a flat window, so this is offered outside a headset.
+    { id: "panel-file", section: "panels", icon: "panel", label: "Hang a picture or video from this device", short: "Hang", hidden: o.presenting, act: () => picker.click() },
+    {
+      id: "panel-hide",
+      section: "panels",
+      icon: "exit",
+      hidden: () => panels.list().length === 0,
+      on: () => !panels.visible,
+      label: () => panels.visible ? "Hide your panels" : "Show your panels",
+      short: "Hide",
+      act: () => {
+        panels.visible = !panels.visible;
+      }
+    }
+  );
+}
+
+// packages/sdk/src/chamber.ts
+import * as THREE10 from "three";
 var R = 1.8;
-var H2 = 2.8;
+var H3 = 2.8;
 var BAYS = 10;
 var DOOR_W = 1.04;
 var DOOR_H = 2.2;
@@ -1501,16 +2911,16 @@ function signTexture(lines, color) {
     const y = rows.length === 1 ? 192 : rows.length === 2 ? 138 + i * 118 : 92 + i * 100;
     g.fillText(line, 512, y, 944);
   });
-  const texture = new THREE7.CanvasTexture(canvas);
-  texture.colorSpace = THREE7.SRGBColorSpace;
+  const texture = new THREE10.CanvasTexture(canvas);
+  texture.colorSpace = THREE10.SRGBColorSpace;
   return texture;
 }
 function createChamber(accent, opts = {}) {
-  const light = new THREE7.Color(accent);
+  const light = new THREE10.Color(accent);
   const metal = createAlloy(light, { gloss: 0.5, speed: 0.9 });
   const builder = () => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE7.Color(1317668);
+    b.tone = new THREE10.Color(1317668);
     b.light = light.clone();
     return b;
   };
@@ -1522,13 +2932,13 @@ function createChamber(accent, opts = {}) {
   const wallShape = builder();
   for (let i = 1; i < BAYS; i++) {
     const a = i * 2 * Math.PI / BAYS;
-    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE7.MathUtils.radToDeg(a));
-    wallShape.box([bay, H2, 0.12], [0, H2 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
-    for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H2 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
+    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE10.MathUtils.radToDeg(a));
+    wallShape.box([bay, H3, 0.12], [0, H3 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
+    for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H3 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
   }
   wallShape.at([0, 0, -reach]);
-  for (const side of [-1, 1]) wallShape.box([(bay - DOOR_W) / 2, H2, 0.16], [side * (bay + DOOR_W) / 4, H2 / 2, 0], { bevel: 0.02 });
-  wallShape.box([DOOR_W, H2 - DOOR_H, 0.16], [0, DOOR_H + (H2 - DOOR_H) / 2, 0], { bevel: 0.02 });
+  for (const side of [-1, 1]) wallShape.box([(bay - DOOR_W) / 2, H3, 0.16], [side * (bay + DOOR_W) / 4, H3 / 2, 0], { bevel: 0.02 });
+  wallShape.box([DOOR_W, H3 - DOOR_H, 0.16], [0, DOOR_H + (H3 - DOOR_H) / 2, 0], { bevel: 0.02 });
   wallShape.line([-DOOR_W / 2, DOOR_H - 0.012, 0.082], [DOOR_W / 2, DOOR_H - 0.012, 0.082], 0.024, [0, 0, 1]);
   const walls = wallShape.build(metal);
   const lidShape = builder();
@@ -1542,11 +2952,11 @@ function createChamber(accent, opts = {}) {
     leaf.position.set(side * DOOR_W / 2, 0, -reach);
     return leaf;
   });
-  const sign = new THREE7.Mesh(new THREE7.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE7.MeshBasicMaterial({ transparent: true }));
-  sign.position.set(0, DOOR_H + (H2 - DOOR_H) / 2, -reach + 0.085);
-  const rising = new THREE7.Group();
+  const sign = new THREE10.Mesh(new THREE10.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE10.MeshBasicMaterial({ transparent: true }));
+  sign.position.set(0, DOOR_H + (H3 - DOOR_H) / 2, -reach + 0.085);
+  const rising = new THREE10.Group();
   rising.add(walls, ...leaves, sign);
-  const group = new THREE7.Group();
+  const group = new THREE10.Group();
   group.add(floor, rising, lid);
   let door = 0;
   let presence = 1;
@@ -1556,7 +2966,7 @@ function createChamber(accent, opts = {}) {
     rising.visible = presence > 2e-3;
     floor.scale.setScalar(Math.max(1e-3, Math.min(1, presence * 1.6)));
     floor.visible = presence > 2e-3;
-    lid.position.y = H2 + (1 - up) * 3.5;
+    lid.position.y = H3 + (1 - up) * 3.5;
     lid.visible = presence > 0.5;
     const open = door * door * (3 - 2 * door);
     for (const leaf of leaves) leaf.scale.x = Math.max(0.02, 1 - open);
@@ -1609,15 +3019,15 @@ function createCrossing(o) {
   let hold;
   let shut = null;
   const moves = () => o.motion?.() ?? true;
-  const at = new THREE7.Vector3();
-  const facing = new THREE7.Vector3();
+  const at = new THREE10.Vector3();
+  const facing2 = new THREE10.Vector3();
   const place = () => {
     chamber?.dispose();
     const made = createChamber(o.accent, o.textColor ? { textColor: o.textColor } : {});
     o.camera.getWorldPosition(at);
-    o.camera.getWorldDirection(facing);
+    o.camera.getWorldDirection(facing2);
     made.group.position.set(at.x, 0, at.z);
-    made.group.rotation.y = Math.atan2(-facing.x, -facing.z);
+    made.group.rotation.y = Math.atan2(-facing2.x, -facing2.z);
     o.scene.add(made.group);
     chamber = made;
     return made;
@@ -1696,16 +3106,16 @@ function createCrossing(o) {
 }
 
 // packages/sdk/src/camera.ts
-import * as THREE8 from "three";
+import * as THREE11 from "three";
 async function takePicture(renderer, scene, camera, opts = {}) {
   const width = Math.round(opts.width ?? 1920);
   const height = Math.round(opts.height ?? 1080);
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
   const xrWasEnabled = renderer.xr.enabled;
   const previousTarget = renderer.getRenderTarget();
-  const target = new THREE8.WebGLRenderTarget(width, height, { samples: 4 });
-  target.texture.colorSpace = THREE8.SRGBColorSpace;
-  const eye = new THREE8.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
+  const target = new THREE11.WebGLRenderTarget(width, height, { samples: 4 });
+  target.texture.colorSpace = THREE11.SRGBColorSpace;
+  const eye = new THREE11.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
   camera.updateWorldMatrix(true, false);
   camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
   eye.updateMatrixWorld(true);
@@ -1736,17 +3146,17 @@ async function takePicture(renderer, scene, camera, opts = {}) {
 }
 async function takeSelfie(renderer, scene, head, look, opts = {}) {
   head.updateWorldMatrix(true, false);
-  const at = new THREE8.Vector3();
-  const facing = new THREE8.Quaternion();
-  head.matrixWorld.decompose(at, facing, new THREE8.Vector3());
-  const ahead = new THREE8.Vector3(0, 0, -1).applyQuaternion(facing).setY(0);
+  const at = new THREE11.Vector3();
+  const facing2 = new THREE11.Quaternion();
+  head.matrixWorld.decompose(at, facing2, new THREE11.Vector3());
+  const ahead = new THREE11.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
   if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
   ahead.normalize();
   const figure = createFigure(look);
   figure.group.position.copy(at);
   figure.group.rotation.y = Math.atan2(-ahead.x, -ahead.z);
   scene.add(figure.group);
-  const eye = new THREE8.PerspectiveCamera(58, 1, 0.05, head.far);
+  const eye = new THREE11.PerspectiveCamera(58, 1, 0.05, head.far);
   eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
   eye.position.y = at.y + 0.08;
   eye.lookAt(at.x, at.y - 0.22, at.z);
@@ -1815,6 +3225,7 @@ function addCameraControls(controls, d) {
   let latest = null;
   const keep = (capture) => {
     latest = capture;
+    d.onCapture?.(capture);
     if (presenting()) {
       kept.push(capture);
       tell(`Kept. Save ${kept.length === 1 ? "it" : `all ${kept.length}`} from the Camera menu when you leave VR.`);
@@ -1909,16 +3320,16 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE9.CanvasTexture(canvas);
-  tex.colorSpace = THREE9.SRGBColorSpace;
-  const sprite = new THREE9.Sprite(new THREE9.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE12.CanvasTexture(canvas);
+  tex.colorSpace = THREE12.SRGBColorSpace;
+  const sprite = new THREE12.Sprite(new THREE12.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
 function createPresence(d) {
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE9.AudioListener();
+  const listener = new THREE12.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -1940,9 +3351,9 @@ function createPresence(d) {
       fade.addColorStop(1, "rgba(255,255,255,0)");
       g.fillStyle = fade;
       g.fillRect(0, 0, 64, 64);
-      dot = new THREE9.CanvasTexture(canvas);
+      dot = new THREE12.CanvasTexture(canvas);
     }
-    return new THREE9.Sprite(new THREE9.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
+    return new THREE12.Sprite(new THREE12.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
   };
   const showRecording = (a, on) => {
     if (on && !a.light) {
@@ -1987,7 +3398,7 @@ function createPresence(d) {
     });
   };
   const makeAvatar = (member) => {
-    const root = new THREE9.Group();
+    const root = new THREE12.Group();
     root.visible = false;
     const label = textSprite(member.name, labelColor, 0.5);
     label.position.set(0, 0.42, 0);
@@ -2003,7 +3414,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE9.PositionalAudio(listener);
+    const pa = new THREE12.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -2024,8 +3435,8 @@ function createPresence(d) {
     d.scene.remove(a.root);
     a.figure.dispose();
   };
-  const v = new THREE9.Vector3();
-  const q = new THREE9.Quaternion();
+  const v = new THREE12.Vector3();
+  const q = new THREE12.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -2125,9 +3536,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE9.Vector3();
-  const tq = new THREE9.Quaternion();
-  const euler = new THREE9.Euler();
+  const tp = new THREE12.Vector3();
+  const tq = new THREE12.Quaternion();
+  const euler = new THREE12.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -2189,7 +3600,7 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE9.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE12.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
         a.materials[0].material.tick?.(performance.now() / 1e3);
         if (a.beam?.visible && performance.now() > (a.beamUntil ?? 0)) a.beam.visible = false;
@@ -2254,11 +3665,11 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE9.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE9.HalfFloatType });
-  const flatTarget = new THREE9.WebGLRenderTarget(width, height);
-  flatTarget.texture.colorSpace = THREE9.SRGBColorSpace;
-  const material = new THREE9.ShaderMaterial({
-    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE9.Vector3() }, up: { value: new THREE9.Vector3() }, right: { value: new THREE9.Vector3() } },
+  const faceTarget = new THREE12.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE12.HalfFloatType });
+  const flatTarget = new THREE12.WebGLRenderTarget(width, height);
+  flatTarget.texture.colorSpace = THREE12.SRGBColorSpace;
+  const material = new THREE12.ShaderMaterial({
+    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE12.Vector3() }, up: { value: new THREE12.Vector3() }, right: { value: new THREE12.Vector3() } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
       void main(){
@@ -2275,19 +3686,19 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     depthTest: false,
     depthWrite: false
   });
-  const quad = new THREE9.Mesh(new THREE9.PlaneGeometry(2, 2), material);
-  const quadScene = new THREE9.Scene();
+  const quad = new THREE12.Mesh(new THREE12.PlaneGeometry(2, 2), material);
+  const quadScene = new THREE12.Scene();
   quadScene.add(quad);
-  const quadCamera = new THREE9.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const faceCamera = new THREE9.PerspectiveCamera(90, 1, 0.05, 700);
+  const quadCamera = new THREE12.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const faceCamera = new THREE12.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   const views = [
-    [new THREE9.Vector3(0, 0, -1), new THREE9.Vector3(0, 1, 0)],
-    [new THREE9.Vector3(1, 0, 0), new THREE9.Vector3(0, 1, 0)],
-    [new THREE9.Vector3(0, 0, 1), new THREE9.Vector3(0, 1, 0)],
-    [new THREE9.Vector3(-1, 0, 0), new THREE9.Vector3(0, 1, 0)],
-    [new THREE9.Vector3(0, 1, 0), new THREE9.Vector3(0, 0, 1)],
-    [new THREE9.Vector3(0, -1, 0), new THREE9.Vector3(0, 0, -1)]
+    [new THREE12.Vector3(0, 0, -1), new THREE12.Vector3(0, 1, 0)],
+    [new THREE12.Vector3(1, 0, 0), new THREE12.Vector3(0, 1, 0)],
+    [new THREE12.Vector3(0, 0, 1), new THREE12.Vector3(0, 1, 0)],
+    [new THREE12.Vector3(-1, 0, 0), new THREE12.Vector3(0, 1, 0)],
+    [new THREE12.Vector3(0, 1, 0), new THREE12.Vector3(0, 0, 1)],
+    [new THREE12.Vector3(0, -1, 0), new THREE12.Vector3(0, 0, -1)]
   ];
   try {
     for (const o of hidden) o.visible = false;
@@ -2334,24 +3745,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE9.Texture(image);
-  texture.colorSpace = THREE9.SRGBColorSpace;
-  texture.wrapS = THREE9.RepeatWrapping;
+  const texture = new THREE12.Texture(image);
+  texture.colorSpace = THREE12.SRGBColorSpace;
+  texture.wrapS = THREE12.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE9.LinearFilter;
-  texture.magFilter = THREE9.LinearFilter;
+  texture.minFilter = THREE12.LinearFilter;
+  texture.magFilter = THREE12.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE9.ShaderMaterial({
+  const material = new THREE12.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE9.Matrix3() },
-      center: { value: new THREE9.Vector3() },
+      toLocal: { value: new THREE12.Matrix3() },
+      center: { value: new THREE12.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -2371,10 +3782,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE9.DoubleSide
+    side: THREE12.DoubleSide
   });
-  const mesh = new THREE9.Mesh(geometry, material);
-  const rotation = new THREE9.Matrix4();
+  const mesh = new THREE12.Mesh(geometry, material);
+  const rotation = new THREE12.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();
@@ -2622,6 +4033,13 @@ export {
   readPad,
   DEFAULT_COMFORT,
   createXrInput,
+  PANEL_LOOKS,
+  PANEL_LIMITS,
+  LIBRARY_LIMITS,
+  createKeyboard,
+  createLibrary,
+  createPanels,
+  addPanelControls,
   createChamber,
   createCrossing,
   takePicture,

@@ -31,6 +31,8 @@ export interface GrabOptions {
     reach?: number;
     /** May it be picked up by pointing at it from a distance and squeezing? It comes to the hand. Default true. */
     far?: boolean;
+    /** Taken from a distance, does it come to the hand? False keeps it at arm's length and moves it from there: right for something large. Default true. */
+    pull?: boolean;
     /** When let go: stay where it is put, or go back to where it was. Default "stay". */
     release?: "stay" | "return";
     onGrab?: (slot: number) => void;
