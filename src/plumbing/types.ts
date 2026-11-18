@@ -9,14 +9,14 @@ export interface WorldConfig {
   /** The Airlock a visitor is sent through when they arrived without one of their own. */
   airlock: string;
   relays: string[];
-  /** Where visitors can arrive. `main-entrance` is the default. Positions are metres; yaw is radians. */
+  /** Where visitors can arrive. `main-entrance` is the default. Positions are metres; yaw is degrees, 0 facing −Z. */
   entryPoints: Record<string, { position: [number, number, number]; yaw: number }>;
   sky?: string;
 }
 
 export interface PortalOptions {
   label?: string;
-  /** Where the portal stands, in metres. The ring is lifted to head height for you. */
+  /** Where the doorway stands on the floor, in metres. */
   position?: [number, number, number];
   /** Degrees about the vertical. 0 faces the main entrance. */
   rotation?: number;
@@ -34,7 +34,11 @@ export interface SceneContext {
   layout: Layout;
   /** How the visitor arrived, or null if they came by an ordinary link. */
   arrival: Arrival | null;
-  /** Make a portal to another place and add it to the scene. */
+  /**
+   * Make a portal to another place and add it to the scene. The plumbing
+   * animates it, looks up its name, and lets visitors through. To switch one
+   * off, set `gate.group.visible = false`: a hidden portal can't be used.
+   */
   addPortal(destination: PortalDestination, opts?: PortalOptions): PortalGate;
   /** Hand over portals made elsewhere (the home's own, say) so visitors can go through them. */
   usePortals(gates: PortalGate[]): void;
@@ -42,6 +46,15 @@ export interface SceneContext {
 
 export interface SceneHandle {
   update?(t: number, dt: number): void;
+  /**
+   * May a visitor stand with their head above this spot on the floor? Return
+   * false inside walls and past edges. Walking with the keyboard and stepping
+   * both ask first. A visitor walking about their real room in a headset can't
+   * be stopped, and shouldn't be moved against their will.
+   */
+  canStand?(x: number, z: number): boolean;
+  /** Set false to turn off stepping (point at the floor and select to stand there). On by default. */
+  stepping?: boolean;
   /** Things to leave out of this world's preview picture, such as anything about one visitor. */
   hideFromPreview?: THREE.Object3D[];
 }

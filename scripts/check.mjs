@@ -36,6 +36,11 @@ const v = validate(files);
 for (const e of v.errors) bad(e);
 for (const w of v.warnings) warn(w);
 if (v.errors.length === 0) ok("world.json and home.json are valid");
+(files.written.items ?? []).forEach((item, i) => {
+  if (item?.type !== "frame" || !/^https?:/i.test(item.args?.[0] ?? "")) return;
+  if (/^0+$/.test(item.args?.[1] ?? "")) warn(`home.json: frame ${i + 1} has a made-up hash, so its picture will never show. Put the file in pictures/ and name it there instead.`);
+  else warn(`home.json: frame ${i + 1} shows a picture from another address. It can't be checked from here; a picture that doesn't match its hash stays blank.`);
+});
 const placeholder = new URL(files.config.world.url).hostname === "example.com";
 if (placeholder) warn("world.json still has the placeholder address (example.com). Set `url` before you announce this world.");
 

@@ -50,11 +50,15 @@ towards you]`), and optionally a `rotation` in degrees.
 |---|---|
 | `portal` | An https address, or a world's Nostr coordinate (`37300:<key>:<name>`). An optional second value is the sign's text |
 | `note` | The text to show |
-| `frame` | A picture's https address and its SHA-256. The picture is checked against the hash before it is hung |
+| `frame` | The file name of a picture you put in the `pictures/` folder, such as `"tidewater.jpg"`. JPEG, PNG or WebP, 1 MB at most |
 | `plant`, `lamp`, `bench`, `table`, `plinth` | Nothing |
 
-`room.template` is `hall` (a floor and three walls) or `open` (a floor under
-the sky). `room.color` and `room.accent` are hex colours.
+`room.template` is `hall` (a floor and three walls, with no ceiling) or `open`
+(a round floor under the sky). `room.color` and `room.accent` are hex colours.
+[`AGENTS.md`](AGENTS.md) has the room's measurements and how each item sits.
+
+A portal is an arched doorway with a sign above it. The sign's second line is
+always the address it leads to.
 
 ### Your own scene (`src/scene.ts`)
 
@@ -75,6 +79,20 @@ export async function buildScene(ctx) {
   return { update(t, dt) { myThing.rotation.y = t; } };
 }
 ```
+
+Visitors move with W, A, S, D, or by pointing at the floor and clicking,
+tapping, or pulling the trigger to step there. A scene says where they may not
+stand by returning `canStand(x, z)`.
+
+### Seeing it without a browser
+
+```bash
+npm run look
+```
+
+writes `look.png`, the view from where visitors arrive (it needs Google Chrome
+installed). `npm run look -- --around` writes one picture each way. It is for
+an AI assistant that can't open a browser, and for a quick check of your own.
 
 ## Two rules
 
@@ -137,7 +155,7 @@ part of the announcement.
 
 Your site must serve `/.well-known/nswp.json` to other sites, which means
 sending the header `Access-Control-Allow-Origin: *` for that file and for
-`/previews/`. The build writes this in two forms:
+`/previews/` and `/pictures/`. The build writes this in two forms:
 
 - `dist/vercel.json`, read by Vercel.
 - `dist/_headers`, read by Netlify and Cloudflare Pages.
@@ -157,11 +175,17 @@ at this folder and ask for what you want, for example:
 
 Then run `npm run check`. It fails if a rule was broken along the way.
 
+In two trials, assistants given this folder and a plain request kept every
+rule, including when the request asked them to break one. What they couldn't
+do was see the result: one built a maze too dark to play. Ask yours to run
+`npm run look` and check the picture, and look yourself before you publish.
+
 ## What's in the folder
 
 | Path | What it is |
 |---|---|
 | `home.json`, `world.json` | Yours: your home and your world's facts |
+| `pictures/` | Yours: pictures for the frames in your home |
 | `src/scene.ts`, `src/scenes/` | Yours: the scene |
 | `src/index.html` | Yours: the page around the scene. Keep the element ids |
 | `src/plumbing/` | The protocol's plumbing: arrival, portals, VR, rooms. Changeable, with care |
