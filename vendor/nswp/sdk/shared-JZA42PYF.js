@@ -746,7 +746,7 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const quadScene = new THREE3.Scene();
   quadScene.add(quad);
   const quadCamera = new THREE3.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const faceCamera = new THREE3.PerspectiveCamera(90, 1, 0.05, 200);
+  const faceCamera = new THREE3.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   const views = [
     [new THREE3.Vector3(0, 0, -1), new THREE3.Vector3(0, 1, 0)],

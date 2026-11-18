@@ -1,7 +1,7 @@
 {
   "d": "home",
   "title": "My place",
-  "room": {"template": "hall", "color": "#101217", "accent": "#3fc584"},
+  "room": {"template": "hall", "color": "#060b11", "accent": "#3df2a0"},
   "access": "follows",
   "items": [
     {"type": "note", "position": [0, 2.6, -6], "args": ["Welcome. This room is drawn from home.json."]},

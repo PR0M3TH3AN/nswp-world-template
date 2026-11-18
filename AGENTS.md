@@ -107,8 +107,8 @@ to them; 90 faces +X.
 
 | Room | What is there |
 |---|---|
-| `hall` | A floor 16 m wide from z = 5 back to z = −9, with walls 4.5 m high at the back (z = −9) and both sides (x = ±8). No ceiling, and open on the visitor's side. To hang something on the back wall, put it at z = −8.85. On the left wall, x = −7.85 with rotation 90; on the right wall, x = 7.85 with rotation −90 |
-| `open` | A round floor 24 m across under the sky, with no walls. Nothing to hang things on: stand them on the floor |
+| `hall` | A floor 16 m wide from z = 5 back to z = −9, with walls 4.5 m high at the back (z = −9) and both sides (x = ±8). The grid runs on past the walls to the horizon. No ceiling, and open on the visitor's side. To hang something on the back wall, put it at z = −8.85. On the left wall, x = −7.85 with rotation 90; on the right wall, x = 7.85 with rotation −90 |
+| `open` | The open grid, with a ring of light 24 m across marking the middle and no walls. Nothing to hang things on: stand them on the floor |
 
 | Item | Size and how it sits |
 |---|---|
@@ -118,7 +118,7 @@ to them; 90 faces +X.
 | `bench` | 1.4 m wide. Someone sitting on it faces the way it faces |
 | `table` | 1.2 m by 0.7 m, 0.75 m high |
 | `plinth` | 0.6 m square, 1 m high |
-| `plant`, `lamp` | Stand on the floor. Only the first four lamps cast light |
+| `plant`, `lamp` | Stand on the floor. A lamp is a glowing cube on a pole, with a pool of light drawn under it |
 
 A frame with no picture file yet: leave the frame out, or the owner sees an
 empty board. Don't invent an address or a hash. `npm run check` points out a
@@ -154,11 +154,21 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   Check with `npm run look` that they don't arrive facing a wall.
 - **The plumbing adds nothing you can see.** No lights, no floor. A scene that
   adds neither is black. `createHome()` from `nswp-sdk/home` adds both.
+- **The look.** The home is drawn in the grid look: a dark ground ruled with
+  light to the horizon, and things built from dark blocks with lit edges. You
+  can use the same pieces in any scene (`src/scenes/game.ts` does):
+  `createEnvironment(accent)` for the ground, and `createBlocks(accent)` for
+  anything solid. With blocks, call `blocks.at([x, y, z], degrees)` to place
+  what follows, `blocks.box([w, h, d], [x, y, z], { color, lit })` for each
+  box (the second triple is its centre), and `scene.add(blocks.build())` once
+  at the end. Every box is drawn together, in two draw calls, and needs no
+  light. A scene doesn't have to use this look at all: it is the owner's.
 - **Light it more than seems necessary.** You can't see the result, and a
-  headset's screen is dimmer than a monitor. A night scene still needs
-  `new THREE.HemisphereLight(0xbfd0ff, 0x1b2a24, 1.6)` or about that, and a
-  ground lighter than `0x1a1a1a`. Give dark scenes things that glow (emissive
-  materials) to steer by. Then look.
+  headset's screen is dimmer than a monitor. Blocks and the grid need no
+  light: they are drawn at their own brightness. Anything else you add with
+  Three.js's ordinary materials does: `new THREE.HemisphereLight(0xbfd0ff,
+  0x1b2a24, 1.6)` or about that. Give dark scenes things that glow (`lit`
+  blocks, emissive materials) to steer by. Then look.
 - **Portals.** `ctx.addPortal({ url }, { label, position, rotation, color })`,
   or `ctx.addPortal({ coordinate: "37300:<key>:<name>" }, …)` for a world named
   the way `home.json` names one.

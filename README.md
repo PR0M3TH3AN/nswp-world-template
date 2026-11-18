@@ -53,8 +53,10 @@ towards you]`), and optionally a `rotation` in degrees.
 | `frame` | The file name of a picture you put in the `pictures/` folder, such as `"tidewater.jpg"`. JPEG, PNG or WebP, 1 MB at most |
 | `plant`, `lamp`, `bench`, `table`, `plinth` | Nothing |
 
-`room.template` is `hall` (a floor and three walls, with no ceiling) or `open`
-(a round floor under the sky). `room.color` and `room.accent` are hex colours.
+`room.template` is `hall` (three walls, with no ceiling) or `open` (the open
+grid). `room.color` is the ground's colour and `room.accent` is the colour of
+its light: the grid, the edges of things, anything that glows. The home is
+drawn as a dark ground ruled with light, with furniture built from blocks.
 [`AGENTS.md`](AGENTS.md) has the room's measurements and how each item sits.
 
 A portal is an arched doorway with a sign above it. The sign's second line is

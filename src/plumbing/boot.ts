@@ -91,8 +91,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   $("stage")!.append(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(config.sky ?? "#0a0b0d");
-  const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 200);
+  scene.background = new THREE.Color(config.sky ?? "#04070b");
+  // The far plane is a long way off: the ground a home stands on runs to a horizon.
+  const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 700);
   camera.position.set(0, 1.6, 0);
   const rig = new THREE.Group();
   rig.add(camera);
