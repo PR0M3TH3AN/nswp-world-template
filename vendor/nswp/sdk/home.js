@@ -202,13 +202,42 @@ function bandProfile(wide, thick) {
 function metalTone(ground) {
   return new THREE.Color(ground).multiplyScalar(2.4).lerp(new THREE.Color(1450542), 0.5);
 }
-function addKnot(b, size = 0.7) {
-  const k = size / 6;
+function addKnot(b, size = 0.7, p = 2, q = 3) {
+  const [R, r] = [1, 0.48];
+  const k = size / (2 * (R + r));
   const frames = loopFrames((u) => {
     const t = u * Math.PI * 2;
-    return [(Math.sin(t) + 2 * Math.sin(2 * t)) * k, (Math.cos(t) - 2 * Math.cos(2 * t)) * k, -Math.sin(3 * t) * k * 1.25];
-  }, 150);
-  b.sweep(bandProfile(size * 0.16, size * 0.045), frames, (side) => side === 5 ? { glow: 1 } : side === 1 || side === 9 ? { shade: 1.35 } : side === 11 || side === 0 || side === 10 ? { shade: 0.75 } : {}, { loop: true });
+    const out = R + r * Math.cos(q * t);
+    return [out * Math.cos(p * t) * k, out * Math.sin(p * t) * k, r * Math.sin(q * t) * k * 1.3];
+  }, 60 * Math.max(p, q));
+  const wide = size * (q > 3 ? 0.1 : 0.14);
+  b.sweep(bandProfile(wide, size * 0.04), frames, (side) => side === 5 ? { glow: 1 } : side === 1 || side === 9 ? { shade: 1.35 } : side === 11 || side === 0 || side === 10 ? { shade: 0.75 } : {}, { loop: true });
+}
+function addHelix(b, size = 0.8) {
+  const radius = size * 0.2;
+  const turns = 1.5;
+  const steps = 64;
+  for (const start of [0, Math.PI]) {
+    const frames = [];
+    for (let i = 0; i <= steps; i++) {
+      const u = i / steps;
+      const a = start + u * turns * Math.PI * 2;
+      const out = radius * (0.25 + 0.75 * Math.sin(u * Math.PI));
+      const x = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+      const travel = new THREE.Vector3(-Math.sin(a) * out * turns * Math.PI * 2, size, Math.cos(a) * out * turns * Math.PI * 2).normalize();
+      const y = travel.clone().cross(x).normalize();
+      frames.push({ p: [x.x * out, size * (u - 0.5), x.z * out], x: [x.x, x.y, x.z], y: [y.x, y.y, y.z], t: u * size * 3 });
+    }
+    b.sweep(bandProfile(size * 0.1, size * 0.03), frames, (side) => side === 5 ? { glow: 1 } : side === 1 || side === 9 ? { shade: 1.35 } : side >= 10 || side === 0 ? { shade: 0.7 } : {});
+  }
+  for (let i = 1; i < 9; i++) {
+    const u = i / 9;
+    const a = u * turns * Math.PI * 2;
+    const out = radius * (0.25 + 0.75 * Math.sin(u * Math.PI));
+    b.place(new THREE.Matrix4().makeRotationY(-a).setPosition(0, size * (u - 0.5), 0));
+    b.box([out * 2, size * 0.012, size * 0.012], [0, 0, 0], { glow: 0.8 });
+  }
+  b.at();
 }
 function addGyro(b, size = 0.7) {
   const hoops = [
@@ -318,17 +347,17 @@ float noise3(vec3 p){
     mix(mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), f.x), mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), f.x), f.y),
     f.z);
 }`;
-function planSky(seed) {
+function planSky(seed, ask = {}) {
   const rand = seeded(seed * 31 + 5);
-  const side = rand() > 0.5 ? 1 : -1;
-  const az = side * THREE2.MathUtils.degToRad(30 + rand() * 22);
-  const el = THREE2.MathUtils.degToRad(19 + rand() * 4);
+  const side = ask.turn !== void 0 ? ask.turn < 0 ? -1 : 1 : rand() > 0.5 ? 1 : -1;
+  const az = ask.turn !== void 0 ? THREE2.MathUtils.degToRad(ask.turn) : side * THREE2.MathUtils.degToRad(30 + rand() * 22);
+  const el = THREE2.MathUtils.degToRad(ask.height ?? 19 + rand() * 4);
   const planet = new THREE2.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
   const right = new THREE2.Vector3(0, 1, 0).cross(planet).normalize().negate();
   const up = planet.clone().cross(right).normalize().negate();
   const lean = rand() * Math.PI * 2;
   const band = new THREE2.Vector3(Math.cos(lean) * 0.75, 0.62, Math.sin(lean) * 0.75).normalize();
-  return { planet, right, up, size: 0.12 + rand() * 0.03, side, band };
+  return { planet, right, up, size: (0.12 + rand() * 0.03) * (ask.size ?? 1), side, band };
 }
 function createSky(glow, ground, seed, plan) {
   const sky = new THREE2.Mesh(
@@ -668,7 +697,7 @@ function createEnvironment(accent, opts = {}) {
   const clear = opts.clear ?? 14;
   const seed = opts.seed ?? Math.round((glow.r * 7 + glow.g * 13 + glow.b * 29 + ground.r * 31) * 1e3);
   const ticking = [];
-  const plan = planSky(seed);
+  const plan = planSky(seed, opts.planet);
   const sky = createSky(glow, ground, seed, plan);
   const floor = createGround(glow, ground);
   ticking.push(sky.material, floor.material);
@@ -1118,6 +1147,7 @@ export {
   addBench,
   addCrystal,
   addGyro,
+  addHelix,
   addKnot,
   addLamp,
   addPictureFrame,

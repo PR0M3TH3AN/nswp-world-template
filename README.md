@@ -230,4 +230,5 @@ their game through, so look yourself before you publish.
 
 ## Licence
 
-MIT. See [`LICENSE`](LICENSE).
+MIT. See [`LICENSE`](LICENSE). The copy of the NSWP library in `vendor/nswp/`
+has its own licence and the notices for what is built into it beside it.

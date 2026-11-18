@@ -31,6 +31,16 @@ export interface EnvironmentOptions {
     constellations?: boolean;
     /** Any number: it turns the sky, so two worlds don't share one. Taken from the colours when left out. */
     seed?: number;
+    /**
+     * Where the ringed world hangs, for a place that wants to say: degrees to
+     * the right of the way in (negative for left), degrees above the horizon,
+     * and how big it is next to its usual size.
+     */
+    planet?: {
+        turn?: number;
+        height?: number;
+        size?: number;
+    };
 }
 /** The ground colour this look is drawn on unless a place asks for another. */
 export declare const GROUND = 263947;
