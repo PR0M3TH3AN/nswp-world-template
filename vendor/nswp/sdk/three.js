@@ -1,4 +1,5 @@
 import {
+  DEFAULT_COMFORT,
   addCameraControls,
   addRoomControls,
   addViewControls,
@@ -8,17 +9,20 @@ import {
   createFigure,
   createPortalWindow,
   createPresence,
+  createXrInput,
   panoramaTexture,
+  readPad,
   recordClip,
   saveFile,
   takePicture,
   takeSelfie,
   textSprite,
   turnVisitor
-} from "./shared-D6CPNVNP.js";
+} from "./shared-TX4P2CQ7.js";
 import "./shared-E3UFEQZL.js";
 import "./shared-64R25HDC.js";
 export {
+  DEFAULT_COMFORT,
   addCameraControls,
   addRoomControls,
   addViewControls,
@@ -28,7 +32,9 @@ export {
   createFigure,
   createPortalWindow,
   createPresence,
+  createXrInput,
   panoramaTexture,
+  readPad,
   recordClip,
   saveFile,
   takePicture,

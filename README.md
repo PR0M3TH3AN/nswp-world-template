@@ -237,6 +237,8 @@ someone's lobby.
 - The shared room connects visitors directly to each other, which shows them
   each other's IP addresses. The page says so before anyone joins.
 - Nothing here has been tried on a real headset yet, only in an emulated one.
+  That includes controllers' sticks and grips and tracked hands, which the
+  plumbing reads for any make of headset.
 
 ## Licence
 
