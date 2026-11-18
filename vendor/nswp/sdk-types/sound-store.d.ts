@@ -40,6 +40,10 @@ export declare const SOUND_LIMITS: {
     readonly cueSeconds: 3;
     /** Kinds of file a world may name. */
     readonly extensions: readonly ["ogg", "oga", "opus", "mp3", "m4a", "aac", "wav", "webm", "flac"];
+    /** Files for one cue: one is chosen each time, so a sound heard often isn't the same sound every time. */
+    readonly variants: 6;
+    /** Pieces of music for one place: they play in turn. */
+    readonly tracks: 8;
     /** The visitor's own songs: this many, each this size at most. */
     readonly songs: 60;
     readonly songBytes: number;
@@ -52,16 +56,38 @@ export declare const SOUND_LIMITS: {
  * left out for the music the kit makes.
  */
 export interface SoundTheme {
-    cues?: Partial<Record<Cue, string | null>>;
-    music?: string | null;
+    /** A file, or several to choose among each time, or null for silence. */
+    cues?: Partial<Record<Cue, string | string[] | null>>;
+    /** A piece of music, or several to play in turn, or null for none. */
+    music?: string | string[] | null;
+    /**
+     * A steady sound under the music: a room's hum. An address, null for
+     * none, or left out for the kit's own where the kit's sounds are served.
+     */
+    hum?: string | null;
 }
 /** The same, read and checked: every address is on the world's own site and names a sound file. */
 export interface CleanTheme {
-    cues: Partial<Record<Cue, string | null>>;
-    music?: string | null;
+    cues: Partial<Record<Cue, string[] | null>>;
+    music?: string[] | null;
+    hum?: string | null;
 }
 /** Read a world's theme, trusting nothing in it. What can't be used falls back to the default, never to silence. */
 export declare function cleanTheme(input: unknown, base: string): CleanTheme;
+/**
+ * The kit's own sound files, as a site serves them: a folder holding
+ * `sounds.json` and the files it names. Each sound may come in two forms,
+ * because no one form plays in every browser: `{ "ogg": "…", "mp3": "…" }`.
+ */
+export interface KitSounds {
+    cues: Partial<Record<Cue, string[]>>;
+    music?: string[];
+    hum?: string;
+}
+/** Read the kit's `sounds.json`, choosing for each sound the form this browser plays. Addresses are relative to the folder. */
+export declare function cleanKit(input: unknown, folder: string, playsOgg: boolean): KitSounds;
+/** Which of several to play next: any but the one just played, so nothing is heard twice running. */
+export declare function nextVariant(count: number, last: number, random?: () => number): number;
 /** The visitor's volumes, each from 0 to 1. Theirs, kept for this site, and nothing a world sets. */
 export interface SoundLevels {
     /** Everything off, whatever the rest says. */
@@ -79,6 +105,8 @@ export interface SoundLevels {
     hearShared: boolean;
     /** How loud other people's music is. */
     shared: number;
+    /** Whether the room's hum is heard: the steady sound under the music, where a place has one. */
+    hum: boolean;
 }
 export declare const DEFAULT_LEVELS: SoundLevels;
 /** The steps a volume goes through when its control is pressed. */

@@ -680,6 +680,10 @@ var SOUND_LIMITS = {
   cueSeconds: 3,
   /** Kinds of file a world may name. */
   extensions: ["ogg", "oga", "opus", "mp3", "m4a", "aac", "wav", "webm", "flac"],
+  /** Files for one cue: one is chosen each time, so a sound heard often isn't the same sound every time. */
+  variants: 6,
+  /** Pieces of music for one place: they play in turn. */
+  tracks: 8,
   /** The visitor's own songs: this many, each this size at most. */
   songs: 60,
   songBytes: 40 * 1024 * 1024,
@@ -701,28 +705,70 @@ function ownSound(address, base) {
   u.hash = "";
   return u.href;
 }
+function ownSounds(value, base, limit) {
+  const out = [];
+  for (const v of Array.isArray(value) ? value : [value]) {
+    const address = ownSound(v, base);
+    if (address && !out.includes(address)) out.push(address);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
 function cleanTheme(input, base) {
   const out = { cues: {} };
   if (!input || typeof input !== "object") return out;
-  const { cues, music } = input;
+  const { cues, music, hum } = input;
   if (cues && typeof cues === "object") {
     for (const cue of CUES) {
       const v = cues[cue];
       if (v === null) out.cues[cue] = null;
       else if (v !== void 0) {
-        const address = ownSound(v, base);
-        if (address) out.cues[cue] = address;
+        const files2 = ownSounds(v, base, SOUND_LIMITS.variants);
+        if (files2.length) out.cues[cue] = files2;
       }
     }
   }
   if (music === null) out.music = null;
   else if (music !== void 0) {
-    const address = ownSound(music, base);
-    if (address) out.music = address;
+    const tracks = ownSounds(music, base, SOUND_LIMITS.tracks);
+    if (tracks.length) out.music = tracks;
+  }
+  if (hum === null) out.hum = null;
+  else if (hum !== void 0) {
+    const address = ownSound(hum, base);
+    if (address) out.hum = address;
   }
   return out;
 }
-var DEFAULT_LEVELS = { off: false, effects: 0.7, music: 0.45, voices: 1, hearShared: false, shared: 0.7 };
+function cleanKit(input, folder, playsOgg) {
+  const out = { cues: {} };
+  if (!input || typeof input !== "object") return out;
+  const pick = (entry) => {
+    if (!entry || typeof entry !== "object") return entry;
+    const { ogg, mp3 } = entry;
+    return playsOgg ? ogg ?? mp3 : mp3 ?? ogg;
+  };
+  const many = (value, limit) => ownSounds((Array.isArray(value) ? value : [value]).map(pick), folder, limit);
+  const { cues, music, hum } = input;
+  if (cues && typeof cues === "object") {
+    for (const cue of CUES) {
+      const files2 = many(cues[cue], SOUND_LIMITS.variants);
+      if (files2.length) out.cues[cue] = files2;
+    }
+  }
+  const tracks = many(music, SOUND_LIMITS.tracks);
+  if (tracks.length) out.music = tracks;
+  const h = ownSound(pick(hum), folder);
+  if (h) out.hum = h;
+  return out;
+}
+function nextVariant(count, last, random = Math.random) {
+  if (count <= 1) return 0;
+  if (last < 0 || last >= count) return Math.min(count - 1, Math.floor(random() * count));
+  const i = Math.floor(random() * (count - 1));
+  return i >= last ? i + 1 : i;
+}
+var DEFAULT_LEVELS = { off: false, effects: 0.7, music: 0.45, voices: 1, hearShared: false, shared: 0.7, hum: true };
 var LEVEL_STEPS = [0, 0.35, 0.7, 1];
 var LEVEL_WORDS = ["off", "low", "medium", "high"];
 var unit = (v, fallback) => typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback;
@@ -734,7 +780,8 @@ function cleanLevels(input) {
     music: unit(i.music, DEFAULT_LEVELS.music),
     voices: unit(i.voices, DEFAULT_LEVELS.voices),
     hearShared: i.hearShared === true,
-    shared: unit(i.shared, DEFAULT_LEVELS.shared)
+    shared: unit(i.shared, DEFAULT_LEVELS.shared),
+    hum: i.hum !== false
   };
 }
 function levelStep(v) {
@@ -3238,6 +3285,8 @@ function createSounds(o = {}) {
   const placeMusic = ctx.createGain();
   const ownMusic = ctx.createGain();
   for (const g of [effects, placeMusic, ownMusic]) g.connect(master);
+  const humGain = ctx.createGain();
+  humGain.connect(placeMusic);
   const listeners = /* @__PURE__ */ new Set();
   const changed = () => {
     for (const fn of listeners) {
@@ -3255,6 +3304,7 @@ function createSounds(o = {}) {
     effects.gain.setTargetAtTime(levels.effects, t, 0.05);
     placeMusic.gain.setTargetAtTime(levels.music * (juke.playing ? 0.1 : 1), t, 0.4);
     ownMusic.gain.setTargetAtTime(levels.music, t, 0.05);
+    humGain.gain.setTargetAtTime(levels.hum ? 1 : 0, t, 0.3);
   };
   apply();
   let noiseBuffer = null;
@@ -3293,7 +3343,6 @@ function createSounds(o = {}) {
       src.stop(start + p.dur + 0.02);
     }
   };
-  const buffers = /* @__PURE__ */ new Map();
   const CUE_LOUDNESS = 0.14;
   const loudnessOf = (buffer) => {
     let sum = 0;
@@ -3307,35 +3356,68 @@ function createSounds(o = {}) {
     }
     return n ? Math.sqrt(sum / n) : 0;
   };
-  for (const [cue, address] of Object.entries(theme.cues)) {
-    if (!address) continue;
-    void (async () => {
-      try {
-        const res = await fetch(address);
-        if (!res.ok) return;
-        const bytes = await res.arrayBuffer();
-        if (bytes.byteLength > SOUND_LIMITS.cueBytes) return;
-        const buffer = await ctx.decodeAudioData(bytes);
-        if (buffer.duration > SOUND_LIMITS.cueSeconds || disposed) return;
-        const loud = loudnessOf(buffer);
-        buffers.set(cue, { buffer, gain: loud > CUE_LOUDNESS ? CUE_LOUDNESS / loud : 1 });
-      } catch {
+  const loadCue = async (address) => {
+    try {
+      const res = await fetch(address);
+      if (!res.ok) return null;
+      const bytes = await res.arrayBuffer();
+      if (bytes.byteLength > SOUND_LIMITS.cueBytes) return null;
+      const buffer = await ctx.decodeAudioData(bytes);
+      if (buffer.duration > SOUND_LIMITS.cueSeconds || disposed) return null;
+      const loud = loudnessOf(buffer);
+      return { buffer, gain: loud > CUE_LOUDNESS ? CUE_LOUDNESS / loud : 1 };
+    } catch {
+      return null;
+    }
+  };
+  const own = /* @__PURE__ */ new Map();
+  const fromKit = /* @__PURE__ */ new Map();
+  const loadInto = (into, files2) => {
+    for (const [cue, addresses] of Object.entries(files2)) {
+      for (const address of addresses ?? []) {
+        void loadCue(address).then((loaded) => {
+          if (loaded) into.set(cue, [...into.get(cue) ?? [], loaded]);
+        });
       }
-    })();
-  }
+    }
+  };
+  let kit = { cues: {} };
+  const kitReady = o.kit ? (async () => {
+    try {
+      const folder = new URL(o.kit.endsWith("/") ? o.kit : `${o.kit}/`, base).href;
+      const res = await fetch(new URL("sounds.json", folder).href);
+      if (!res.ok) return;
+      const playsOgg = new Audio().canPlayType('audio/ogg; codecs="opus"') !== "";
+      kit = cleanKit(await res.json(), folder, playsOgg);
+    } catch {
+    }
+  })() : Promise.resolve();
+  let cuesAsked = false;
+  const loadCues = () => {
+    if (cuesAsked || disposed) return;
+    cuesAsked = true;
+    loadInto(own, theme.cues);
+    void kitReady.then(() => {
+      const rest = Object.fromEntries(Object.entries(kit.cues).filter(([cue]) => theme.cues[cue] === void 0));
+      loadInto(fromKit, rest);
+    });
+  };
   const last = /* @__PURE__ */ new Map();
+  const lastVariant = /* @__PURE__ */ new Map();
   const play = (cue) => {
     if (disposed || levels.off || levels.effects <= 0 || ctx.state !== "running") return;
     if (theme.cues[cue] === null) return;
     const now = ctx.currentTime;
     if (now - (last.get(cue) ?? -1) < (GAP2[cue] ?? 0.03)) return;
     last.set(cue, now);
-    const own = buffers.get(cue);
-    if (own) {
+    const files2 = own.get(cue) ?? fromKit.get(cue);
+    if (files2?.length) {
+      const which = nextVariant(files2.length, lastVariant.get(cue) ?? -1);
+      lastVariant.set(cue, which);
       const src = ctx.createBufferSource();
-      src.buffer = own.buffer;
+      src.buffer = files2[which].buffer;
       const level = ctx.createGain();
-      level.gain.value = own.gain;
+      level.gain.value = files2[which].gain;
       src.connect(level);
       level.connect(effects);
       src.start();
@@ -3356,26 +3438,121 @@ function createSounds(o = {}) {
       play("step");
     }
   };
-  const kind = theme.music === null ? "none" : theme.music ? "world" : "made";
-  let stopMusic = null;
-  const startMusic = () => {
-    if (stopMusic || disposed || kind === "none") return;
-    if (kind === "world") {
-      const audio = new Audio(theme.music);
-      audio.loop = true;
-      const node = ctx.createMediaElementSource(audio);
-      const back = ctx.createGain();
-      back.gain.value = 0.6;
-      node.connect(back);
-      back.connect(placeMusic);
-      void audio.play().catch(() => {
+  const loopPlayer = (tracks, into, opts = {}) => {
+    const fade = opts.fade ?? 2;
+    const out = ctx.createGain();
+    out.gain.value = opts.gain ?? 1;
+    out.connect(into);
+    const deck = () => {
+      const audio = new Audio();
+      audio.preload = "auto";
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      ctx.createMediaElementSource(audio).connect(gain);
+      gain.connect(out);
+      return { audio, gain };
+    };
+    const decks = [deck(), deck()];
+    let active = 0;
+    let index = 0;
+    let turning = false;
+    let stopped = false;
+    const curve = (rising) => Float32Array.from({ length: 32 }, (_, k) => (rising ? Math.sin : Math.cos)(k / 31 * Math.PI / 2));
+    const turn2 = () => {
+      if (turning || stopped) return;
+      turning = true;
+      const from = decks[active];
+      const to = decks[1 - active];
+      index = (index + 1) % tracks.length;
+      to.audio.src = tracks[index];
+      to.audio.currentTime = 0;
+      void to.audio.play().then(
+        () => {
+          const t = ctx.currentTime + 0.02;
+          from.gain.gain.cancelScheduledValues(t);
+          to.gain.gain.cancelScheduledValues(t);
+          from.gain.gain.setValueCurveAtTime(curve(false), t, fade);
+          to.gain.gain.setValueCurveAtTime(curve(true), t, fade);
+          active = 1 - active;
+          setTimeout(() => {
+            from.audio.pause();
+            turning = false;
+          }, (fade + 0.1) * 1e3);
+        },
+        () => {
+          turning = false;
+        }
+      );
+    };
+    for (const d of decks) {
+      d.audio.addEventListener("timeupdate", () => {
+        if (d !== decks[active] || !Number.isFinite(d.audio.duration)) return;
+        if (d.audio.duration - d.audio.currentTime <= fade + 0.35) turn2();
       });
-      stopMusic = () => {
-        audio.pause();
-        node.disconnect();
-      };
-      return;
+      d.audio.addEventListener("ended", () => {
+        if (d === decks[active]) turn2();
+      });
+      d.audio.addEventListener("error", () => {
+        if (stopped || d !== decks[active] || turning) return;
+        stopped = true;
+        opts.onFail?.();
+      });
     }
+    const first = decks[0];
+    first.audio.src = tracks[0];
+    void first.audio.play().then(
+      () => first.gain.gain.setTargetAtTime(1, ctx.currentTime, 0.8),
+      () => {
+      }
+    );
+    return {
+      stop() {
+        stopped = true;
+        for (const d of decks) {
+          d.audio.pause();
+          d.audio.removeAttribute("src");
+        }
+        out.disconnect();
+      },
+      /** How many times one piece has handed on to the next. For tests. */
+      get index() {
+        return index;
+      }
+    };
+  };
+  let kind = theme.music === null ? "none" : theme.music ? "world" : "made";
+  let stopMusic = null;
+  let stopHum = null;
+  let humAddress = null;
+  let musicAsked = false;
+  const startMusic = () => {
+    if (musicAsked || disposed) return;
+    musicAsked = true;
+    loadCues();
+    void kitReady.then(() => {
+      if (disposed) return;
+      humAddress = theme.hum === null ? null : theme.hum ?? kit.hum ?? null;
+      if (humAddress) stopHum = loopPlayer([humAddress], humGain, { gain: 0.55 }).stop;
+      const tracks = theme.music === null ? null : theme.music ?? kit.music ?? null;
+      if (theme.music === void 0 && kit.music) kind = "kit";
+      changed();
+      if (theme.music === null) return;
+      if (tracks) {
+        stopMusic = loopPlayer(tracks, placeMusic, {
+          gain: 0.6,
+          onFail: () => {
+            stopMusic?.();
+            kind = "made";
+            stopMusic = madeMusic();
+            changed();
+          }
+        }).stop;
+        return;
+      }
+      stopMusic = madeMusic();
+    });
+  };
+  const madeMusic = () => {
     const plan = ambiencePlan(o.seed ?? location.host);
     const bed = ctx.createGain();
     bed.gain.value = 0.12;
@@ -3426,7 +3603,7 @@ function createSounds(o = {}) {
       timer = setTimeout(note, (plan.gap[0] + random() * (plan.gap[1] - plan.gap[0])) * 1e3);
     };
     timer = setTimeout(note, 1500);
-    stopMusic = () => {
+    return () => {
       clearTimeout(timer);
       for (const n of running) {
         try {
@@ -3547,7 +3724,12 @@ function createSounds(o = {}) {
       fn(levels);
       return () => listeners.delete(fn);
     },
-    music: kind,
+    get music() {
+      return kind;
+    },
+    get hasHum() {
+      return !!humAddress;
+    },
     loudness() {
       meter.getFloatTimeDomainData(samples);
       return Math.sqrt(samples.reduce((s, x) => s + x * x, 0) / samples.length);
@@ -3557,6 +3739,7 @@ function createSounds(o = {}) {
       removeEventListener("pointerdown", onTouch, true);
       removeEventListener("keydown", onTouch, true);
       stopMusic?.();
+      stopHum?.();
       juke.audio?.pause();
       if (juke.url) URL.revokeObjectURL(juke.url);
       master.disconnect();
@@ -3592,7 +3775,7 @@ function addSoundControls(controls, sounds) {
       id: "sound",
       label: "Sound",
       icon: "sound",
-      note: () => `${sounds.levels.off ? "All sound is off. " : ""}${sounds.music === "none" ? "This place has no music of its own." : sounds.music === "world" ? "This place plays its own music." : "This place's music is made by your browser, from its name."} Your own music is kept in this browser, for this site, and only you hear it.`
+      note: () => `${sounds.levels.off ? "All sound is off. " : ""}${sounds.music === "none" ? "This place has no music of its own." : sounds.music === "world" ? "This place plays its own music." : sounds.music === "kit" ? "This place plays the music every world starts with." : "This place's music is made by your browser, from its name."} Your own music is kept in this browser, for this site, and only you hear it.`
     });
     songs.forEach(
       (s, i) => controls.add({
@@ -3628,6 +3811,15 @@ function addSoundControls(controls, sounds) {
     level("sound-effects", "Effects", "effects"),
     level("sound-music", "Music", "music"),
     level("sound-voices", "Voices", "voices"),
+    {
+      id: "sound-hum",
+      section: "sound",
+      icon: "sound",
+      on: () => sounds.levels.hum,
+      hidden: () => !sounds.hasHum,
+      label: () => sounds.levels.hum ? "The room's hum: on" : "The room's hum: off",
+      act: () => sounds.setLevels({ hum: !sounds.levels.hum })
+    },
     {
       id: "juke-add",
       section: "sound",

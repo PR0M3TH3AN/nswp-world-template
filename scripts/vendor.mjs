@@ -72,6 +72,8 @@ run(esbuild, ["packages/cli/src/index.ts", ...common, "--platform=node", `--outf
 
 // Its licence, and the notices for the libraries built into these files, travel with them.
 for (const name of ["LICENSE", "THIRD-PARTY-NOTICES.md"]) cpSync(join(repo, name), join(out, name));
+// The sounds every world starts with: recorded cues, a room's hum and a piece of music, with a note of where each came from.
+cpSync(join(repo, "packages", "sdk", "sounds"), join(out, "sounds"), { recursive: true });
 
 const version = JSON.parse(readFileSync(join(repo, "packages/core/package.json"), "utf8")).version;
 const source = { repository: git("remote", "get-url", "origin"), commit: git("rev-parse", "HEAD"), dirty };

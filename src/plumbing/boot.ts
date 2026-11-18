@@ -166,7 +166,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   hooks.controls = controls;
   // Sound: the kit's cues unless world.json names this world's own, the place's music, and the visitor's own
   // songs. The volumes are the visitor's, kept for this site.
-  const sounds = createSounds({ context: THREE.AudioContext.getContext() as unknown as AudioContext, seed: config.world.title, theme: config.sounds ?? null });
+  const sounds = createSounds({ context: THREE.AudioContext.getContext() as unknown as AudioContext, seed: config.world.title, kit: "sounds/kit/", theme: config.sounds ?? null });
   addSoundControls(controls, sounds);
   hooks.sounds = sounds;
 
