@@ -205,6 +205,11 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   is a jump of at most 5 m, never a slide. Stepping is the only way to move
   for someone on a phone or in a headset, so a scene bigger than a room must
   keep it. The floor is the plane y = 0.
+- **The camera and the People list** come with the plumbing: a picture, a
+  selfie and a short clip saved to the visitor's device, and a list of who
+  else is in the room. Recording a clip shows the others a light. If your
+  scene has things that shouldn't be in a picture, list them in
+  `hideFromPreview`: the camera leaves those out too.
 - **Other people.** In a room, each visitor is a figure built from their
   *look*: parts and colours they chose, or that their key generates. The
   plumbing draws them. To make them match your world, return `figureStyle`

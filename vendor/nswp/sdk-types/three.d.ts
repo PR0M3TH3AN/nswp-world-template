@@ -60,6 +60,14 @@ export interface Presence {
     setMicrophone(track: MediaStreamTrack | null): Promise<void>;
     /** A quiet test tone to use in place of a microphone. */
     testTone(): MediaStreamTrack;
+    /** Tell the others you are recording what you see, or have stopped. They are shown a light on your figure. */
+    setRecording(on: boolean): void;
+    /** How this visitor looks to the others: for a selfie, or a mirror. */
+    selfLook(): Member["look"] | string;
+    /** Show for a few seconds where one member is: a column of light over their head. */
+    pointOut(pubkey: string): void;
+    /** Everyone else in the room, as they are being drawn. */
+    people(): Member[];
     /** Call once per frame with the seconds since the last one. */
     update(dt: number): void;
     /** What this visitor currently sees of each member (for tests and debugging). */
@@ -138,3 +146,4 @@ export declare function addViewControls(controls: Controls, d: {
     onState?: (state: string) => void;
 }): Promise<boolean>;
 export { createFigure, type Figure, type FigureStyle } from "./figure.js";
+export { addCameraControls, canRecord, recordClip, saveFile, takePicture, takeSelfie, type Camera, type CameraOptions, type Capture, type Clip } from "./camera.js";
