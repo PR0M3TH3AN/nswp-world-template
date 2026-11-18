@@ -1,6 +1,6 @@
 import {
   room
-} from "./shared-WXPCQ4VL.js";
+} from "./shared-SZE7OFS6.js";
 import {
   ICONS,
   rgb
@@ -3503,6 +3503,14 @@ function createPresence(d) {
     dress(a, member.look);
     return a;
   };
+  let screenTrack = null;
+  const screens = /* @__PURE__ */ new Map();
+  const stopScreen = () => {
+    if (!screenTrack) return;
+    screenTrack.onended = null;
+    screenTrack.stop();
+    screenTrack = null;
+  };
   let keptBlocks = loadBlocked();
   const blockedNow = /* @__PURE__ */ new Map();
   const blockedKeys = () => [...keptBlocks.map((b) => b.key), ...blockedNow.keys()];
@@ -3568,6 +3576,8 @@ function createPresence(d) {
     sendTimer = void 0;
     session?.leave();
     session = null;
+    stopScreen();
+    screens.clear();
     for (const key of [...avatars.keys()]) removeAvatar(key);
     pendingStreams.clear();
     changed();
@@ -3629,6 +3639,7 @@ function createPresence(d) {
       changed();
     });
     s.on("leave", (m) => {
+      screens.delete(m.pubkey);
       removeAvatar(m.pubkey);
       pendingStreams.delete(m.pubkey);
       changed();
@@ -3639,6 +3650,10 @@ function createPresence(d) {
       if (!a.target) stepApart(s.self.pubkey, m.pubkey, pose);
       a.target = pose;
     });
+    s.on("video", (m, stream) => {
+      screens.set(m.pubkey, stream);
+    });
+    s.on("screen", () => changed());
     s.on("audio", (m, stream) => {
       pendingStreams.set(m.pubkey, stream);
       const a = avatars.get(m.pubkey);
@@ -3664,6 +3679,41 @@ function createPresence(d) {
     },
     get micOn() {
       return !!micTrack;
+    },
+    get screenOn() {
+      return !!screenTrack;
+    },
+    get screenViewers() {
+      return session?.screenViewers ?? 0;
+    },
+    async shareScreen(track) {
+      if (!session) {
+        track?.stop();
+        return;
+      }
+      stopScreen();
+      screenTrack = track;
+      if (track) {
+        track.contentHint = "detail";
+        track.onended = () => {
+          if (screenTrack !== track) return;
+          screenTrack = null;
+          void session?.setScreen(null);
+          changed();
+        };
+      }
+      await session.setScreen(track);
+      changed();
+    },
+    watch(pubkey, on) {
+      session?.watch(pubkey, on);
+      changed();
+    },
+    isWatching(pubkey) {
+      return !!session?.isWatching(pubkey);
+    },
+    screenOf(pubkey) {
+      return screens.get(pubkey) ?? null;
     },
     join,
     leave,
@@ -3939,6 +3989,8 @@ function createPortalWindow(geometry, pano, opts = {}) {
 var JOINED_KEY = () => `nswp:joined:${location.pathname}`;
 function addRoomControls(controls, presence, opts = {}) {
   const useTone = new URLSearchParams(opts.search ?? location.search).get("mic") === "tone";
+  const useTestScreen = new URLSearchParams(opts.search ?? location.search).get("screen") === "test";
+  const canShare = useTestScreen || typeof navigator.mediaDevices?.getDisplayMedia === "function";
   let invited = roomNameFromHash(location.hash);
   let busy = false;
   let last = invited ? "You were invited to a private room. Joining shows your IP address to the others in it." : "Joining lets you see and hear others here. It shows your IP address to them.";
@@ -3952,12 +4004,12 @@ function addRoomControls(controls, presence, opts = {}) {
     const others = s.members.length;
     const who = s.status === "no-relays" ? "can't reach any relay" : others === 0 ? "nobody else here yet" : others === 1 ? "1 other person here" : `${others} other people here`;
     const as = s.self.guest ? "" : ` You are here as ${s.self.name}.`;
-    return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${as}${presence.micOn ? " Your microphone is on." : ""}`;
+    return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${as}${presence.micOn ? " Your microphone is on." : ""}${presence.screenOn ? ` You are sharing your screen: ${presence.screenViewers === 0 ? "nobody is watching" : presence.screenViewers === 1 ? "1 person is watching" : `${presence.screenViewers} people are watching`}.` : ""}`;
   };
   const refresh = () => {
     const s = presence.session;
     opts.onState?.(
-      s ? { name: s.name, private: !!presence.roomName, status: s.status, self: s.self.pubkey, members: s.members.map((m) => m.pubkey), relays: s.relayCount, mic: presence.micOn } : null
+      s ? { name: s.name, private: !!presence.roomName, status: s.status, self: s.self.pubkey, members: s.members.map((m) => m.pubkey), relays: s.relayCount, mic: presence.micOn, screen: presence.screenOn, sharing: s.members.filter((m) => m.sharing).map((m) => m.pubkey), watching: [...watching.keys()] } : null
     );
     controls.addSection({ id: "room", label: "Room", icon: "room", note: status });
     people();
@@ -3978,6 +4030,62 @@ function addRoomControls(controls, presence, opts = {}) {
     } catch {
       return false;
     }
+  };
+  const watching = /* @__PURE__ */ new Map();
+  const sharers = /* @__PURE__ */ new Set();
+  const stopWatching = (pubkey, panelGone = false) => {
+    const w = watching.get(pubkey);
+    if (!w) return;
+    watching.delete(pubkey);
+    presence.watch(pubkey, false);
+    w.video.srcObject = null;
+    w.texture?.dispose();
+    if (!panelGone) w.panel?.close();
+  };
+  const startWatching = (m) => {
+    const stream = presence.screenOf(m.pubkey);
+    if (!opts.panels || !stream || watching.has(m.pubkey)) return false;
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    const w = { video, texture: null, panel: null };
+    watching.set(m.pubkey, w);
+    const show = () => {
+      if (w.panel || watching.get(m.pubkey) !== w || !video.videoWidth || !video.videoHeight) return;
+      w.texture = new THREE12.VideoTexture(video);
+      w.texture.colorSpace = THREE12.SRGBColorSpace;
+      w.panel = opts.panels.open(
+        { kind: "custom", title: `${m.name}'s screen`, texture: w.texture, aspect: video.videoWidth / video.videoHeight, onClose: () => stopWatching(m.pubkey, true) },
+        { keep: false }
+      );
+      refresh();
+    };
+    video.addEventListener("loadedmetadata", show);
+    video.addEventListener("resize", show);
+    void video.play().catch(() => {
+    });
+    presence.watch(m.pubkey, true);
+    return true;
+  };
+  const testScreen = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1280;
+    canvas.height = 720;
+    const g = canvas.getContext("2d");
+    let n = 0;
+    const draw = () => {
+      g.fillStyle = "#10243a";
+      g.fillRect(0, 0, 1280, 720);
+      g.fillStyle = "#ffd166";
+      g.font = "64px sans-serif";
+      g.fillText(`A shared screen, frame ${++n}`, 80, 380);
+    };
+    draw();
+    const timer = setInterval(draw, 200);
+    const track = canvas.captureStream(10).getVideoTracks()[0];
+    track.addEventListener("ended", () => clearInterval(timer));
+    return track;
   };
   let listed = [];
   let extras = [];
@@ -4001,7 +4109,7 @@ function addRoomControls(controls, presence, opts = {}) {
         section: "people",
         kind: "swatch",
         color: m.look.light,
-        label: () => m.recording ? `${m.name}, recording` : m.name,
+        label: () => `${m.name}${m.recording ? ", recording" : ""}${m.sharing ? ", sharing their screen" : ""}`,
         act: () => {
           chosen = m.pubkey;
           people();
@@ -4010,7 +4118,29 @@ function addRoomControls(controls, presence, opts = {}) {
         }
       })
     );
+    for (const key of [...watching.keys()]) if (!here.some((m) => m.pubkey === key && m.sharing)) stopWatching(key);
+    for (const m of here) {
+      if (m.sharing && !sharers.has(m.pubkey)) controls.say(opts.panels ? `${m.name} is sharing their screen. Select them in People to watch.` : `${m.name} is sharing their screen.`);
+      if (m.sharing) sharers.add(m.pubkey);
+      else sharers.delete(m.pubkey);
+    }
     const who = here.find((m) => m.pubkey === chosen);
+    if (who?.sharing && opts.panels) {
+      extras.push("person-watch");
+      controls.add({
+        id: "person-watch",
+        section: "people",
+        icon: "panel",
+        on: () => watching.has(who.pubkey),
+        label: () => watching.has(who.pubkey) ? `Stop watching ${who.name}'s screen` : `Watch ${who.name}'s screen`,
+        act: () => {
+          if (watching.has(who.pubkey)) stopWatching(who.pubkey);
+          else if (startWatching(who)) controls.say(`${who.name}'s screen is opening on a panel of your own. Put the panel away to stop.`);
+          else controls.say(`${who.name}'s screen can't be shown here.`);
+          refresh();
+        }
+      });
+    }
     if (who) {
       extras.push("person-mute", "person-block");
       controls.add(
@@ -4032,6 +4162,7 @@ function addRoomControls(controls, presence, opts = {}) {
           icon: "exit",
           label: `Block ${who.name}`,
           act: () => {
+            stopWatching(who.pubkey);
             const name = presence.block(who.pubkey);
             if (!name) return;
             chosen = null;
@@ -4076,6 +4207,7 @@ function addRoomControls(controls, presence, opts = {}) {
       hidden: () => busy,
       act: async () => {
         if (presence.session) {
+          for (const key of [...watching.keys()]) stopWatching(key);
           presence.leave();
           tell("You left the room.");
           return refresh();
@@ -4103,6 +4235,30 @@ function addRoomControls(controls, presence, opts = {}) {
       act: async () => {
         if (presence.micOn) await presence.setMicrophone(null);
         else if (!await microphone()) tell("The microphone is blocked or unavailable.");
+        refresh();
+      }
+    },
+    {
+      id: "room-screen",
+      section: "room",
+      icon: "panel",
+      on: () => presence.screenOn,
+      label: () => presence.screenOn ? "Stop sharing your screen" : "Share your screen",
+      // A phone or a headset's browser can't offer a screen. It can still watch one.
+      hidden: () => !presence.session || !canShare,
+      act: async () => {
+        if (presence.screenOn) {
+          await presence.shareScreen(null);
+          tell("You stopped sharing your screen.");
+          return refresh();
+        }
+        try {
+          const track = useTestScreen ? testScreen() : (await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 30 } }, audio: false })).getVideoTracks()[0];
+          await presence.shareScreen(track);
+          tell("Your screen is offered to this room. It is sent only to people who choose to watch. Share one window if anything else on your screen is private.");
+        } catch {
+          tell("Nothing was shared.");
+        }
         refresh();
       }
     },

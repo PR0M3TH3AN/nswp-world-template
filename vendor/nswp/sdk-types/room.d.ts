@@ -13,6 +13,8 @@ export interface Member {
     look: Look;
     /** They have said they are recording what they see (spec §9). */
     recording: boolean;
+    /** They are offering their screen to the room. It is sent only to members who ask to watch. */
+    sharing?: boolean;
 }
 export interface JoinOptions {
     /** Room name. People who share a world URL and a name share a room. Default "lobby". */
@@ -55,6 +57,10 @@ interface Events {
     /** A member started or stopped recording what they see. */
     recording: (member: Member, on: boolean) => void;
     audio: (member: Member, stream: MediaStream) => void;
+    /** A member started or stopped offering their screen. */
+    screen: (member: Member, on: boolean) => void;
+    /** The line a member's screen arrives on. It carries pictures only while they share and this visitor watches. */
+    video: (member: Member, stream: MediaStream) => void;
     status: (status: RoomStatus) => void;
 }
 export declare class RoomSession {
@@ -79,6 +85,12 @@ export declare class RoomSession {
     private pass;
     private passUntil;
     private recordingTimer;
+    /** This visitor's shared screen, while they share one. */
+    private screen;
+    private screenTimer;
+    /** Whose screens this visitor is watching. */
+    private readonly watched;
+    private watchTimer;
     private mic;
     private timers;
     private closed;
@@ -131,9 +143,31 @@ export declare class RoomSession {
     private introduce;
     private gathered;
     private audioTransceiver;
+    private videoTransceiver;
     private offerTo;
     private answerTo;
     private markRecording;
+    private markSharing;
+    /** Send this visitor's screen to a member who is watching it, and stop when they aren't or there is none. */
+    private feed;
+    private tellAll;
+    /**
+     * Offer a screen to the room, or stop. Offering sends nothing by itself:
+     * each member is told it is there, and it goes only to those who ask to
+     * watch. Stopping takes it from everyone at once.
+     */
+    setScreen(track: MediaStreamTrack | null): Promise<void>;
+    /** Whether this visitor is offering their screen. */
+    get sharing(): boolean;
+    /** How many members this visitor's screen is going to now. */
+    get screenViewers(): number;
+    /**
+     * Ask to be sent a member's screen, or to stop being sent it. Nothing
+     * arrives unless they are sharing. It is asked again every couple of
+     * seconds while watching, so a member who stops being asked stops sending.
+     */
+    watch(pubkey: string, on: boolean): void;
+    isWatching(pubkey: string): boolean;
     /**
      * Say that you are recording what you see, or have stopped. The others are
      * shown a light on your figure while it is true. An honest client says so

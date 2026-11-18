@@ -18,6 +18,7 @@ import { type JoinOptions, type Member, type RoomSession } from "./room.js";
 export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
 import type { Controls } from "./ui/model.js";
+import type { Panels } from "./panels.js";
 export interface PresenceOptions {
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
@@ -80,6 +81,20 @@ export interface Presence {
     pointOut(pubkey: string): void;
     /** Everyone else in the room, as they are being drawn. */
     people(): Member[];
+    /** Whether this visitor is offering their screen to the room. */
+    readonly screenOn: boolean;
+    /** How many members their screen is going to now. */
+    readonly screenViewers: number;
+    /**
+     * Offer a screen to the room, or stop (null). It is sent only to members who ask to watch. It ends when the
+     * visitor leaves the room, or stops it from the browser's own bar.
+     */
+    shareScreen(track: MediaStreamTrack | null): Promise<void>;
+    /** Ask to be sent a member's screen, or stop. */
+    watch(pubkey: string, on: boolean): void;
+    isWatching(pubkey: string): boolean;
+    /** The line a member's screen arrives on, or null before they are connected. It is empty unless watched. */
+    screenOf(pubkey: string): MediaStream | null;
     /**
      * Stop hearing one member, or hear them again. They are still seen, and still see and hear this visitor.
      * Nobody is told. It lasts while they are here.
@@ -172,6 +187,11 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
         joined?: boolean;
         mic?: boolean;
     } | null;
+    /**
+     * The visitor's panels. With them, a screen someone shares in the room can be watched: it opens on a panel
+     * of the watcher's own, which they move, size and put away like any other. Without them nobody here can watch.
+     */
+    panels?: Panels | null;
 }): {
     refresh(): void;
     travelling(): Travelling;

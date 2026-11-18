@@ -269,6 +269,10 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   else is in the room. Recording a clip shows the others a light. If your
   scene has things that shouldn't be in a picture, list them in
   `hideFromPreview`: the camera leaves those out too.
+- **A shared screen.** A visitor at a desk can offer their screen to the room.
+  It is sent only to people who choose to watch, who see it on a panel of
+  their own. The plumbing does it. Don't show anyone a screen they didn't
+  choose, and don't record one.
 - **Muting and blocking.** In the People list a visitor can stop hearing
   someone, or block them. A block happens in their own browser and nobody is
   told. The plumbing does it; don't publish, log or send who blocked whom.
