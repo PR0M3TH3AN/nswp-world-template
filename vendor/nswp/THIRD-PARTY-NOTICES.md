@@ -47,3 +47,10 @@ The MIT licence, which all but one of these use:
 The Public Suffix List is used unmodified, as tldts ships it. Its source is at
 <https://publicsuffix.org/list/>, under the Mozilla Public License 2.0:
 <https://www.mozilla.org/MPL/2.0/>.
+
+## Sounds
+
+The sound files in `packages/sdk/sounds/` were made for this project and are
+not third-party works. Some were generated with MOSS-SoundEffect v2.0
+(OpenMOSS, Apache License 2.0), a model whose licence places no terms on its
+output. That folder's README lists every file and how it was made.

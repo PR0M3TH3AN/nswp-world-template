@@ -11,9 +11,17 @@ Then name them in `world.json`:
 ```
 
 - A cue you name plays your file. A cue set to `null` is silent. A cue you
-  leave out keeps the default.
-- `music` is what plays in your world. `null` means none. Left out, a quiet
-  music is made from your world's title.
+  leave out keeps the default. Give a list of files and one is chosen each
+  time, so a sound heard often isn't the same every time.
+- `music` is what plays in your world. `null` means none. A list plays in
+  turn, each piece fading into the next. Left out, your world plays the piece
+  every world starts with.
+- `hum` is a steady sound under the music: one file, or `null` for none. Left
+  out, your world has the hum every world starts with. Visitors can switch it
+  off for themselves.
+- The defaults are recorded sounds that come with the template, in
+  `vendor/nswp/sounds/`; its README says where each came from. Where one
+  can't be played, the plumbing makes the sound itself.
 - The cues: `step`, `land`, `bump`, `grab`, `drop`, `hover`, `press`,
   `menuOpen`, `menuClose`, `cross`, `arrive`, `join`, `leave`, `micOn`,
   `micOff`, `notice`, `error`.

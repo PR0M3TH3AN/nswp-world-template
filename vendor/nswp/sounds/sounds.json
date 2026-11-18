@@ -1,0 +1,122 @@
+{
+  "v": 1,
+  "cues": {
+    "step": [
+      {
+        "ogg": "cues/step.ogg",
+        "mp3": "cues/step.mp3"
+      }
+    ],
+    "land": [
+      {
+        "ogg": "cues/land.ogg",
+        "mp3": "cues/land.mp3"
+      }
+    ],
+    "bump": [
+      {
+        "ogg": "cues/bump.ogg",
+        "mp3": "cues/bump.mp3"
+      }
+    ],
+    "grab": [
+      {
+        "ogg": "cues/grab.ogg",
+        "mp3": "cues/grab.mp3"
+      }
+    ],
+    "drop": [
+      {
+        "ogg": "cues/drop-1.ogg",
+        "mp3": "cues/drop-1.mp3"
+      },
+      {
+        "ogg": "cues/drop-2.ogg",
+        "mp3": "cues/drop-2.mp3"
+      }
+    ],
+    "hover": [
+      {
+        "ogg": "cues/hover-1.ogg",
+        "mp3": "cues/hover-1.mp3"
+      },
+      {
+        "ogg": "cues/hover-2.ogg",
+        "mp3": "cues/hover-2.mp3"
+      }
+    ],
+    "press": [
+      {
+        "ogg": "cues/press.ogg",
+        "mp3": "cues/press.mp3"
+      }
+    ],
+    "menuOpen": [
+      {
+        "ogg": "cues/menuOpen.ogg",
+        "mp3": "cues/menuOpen.mp3"
+      }
+    ],
+    "menuClose": [
+      {
+        "ogg": "cues/menuClose.ogg",
+        "mp3": "cues/menuClose.mp3"
+      }
+    ],
+    "cross": [
+      {
+        "ogg": "cues/cross.ogg",
+        "mp3": "cues/cross.mp3"
+      }
+    ],
+    "arrive": [
+      {
+        "ogg": "cues/arrive.ogg",
+        "mp3": "cues/arrive.mp3"
+      }
+    ],
+    "join": [
+      {
+        "ogg": "cues/join.ogg",
+        "mp3": "cues/join.mp3"
+      }
+    ],
+    "leave": [
+      {
+        "ogg": "cues/leave.ogg",
+        "mp3": "cues/leave.mp3"
+      }
+    ],
+    "micOn": [
+      {
+        "ogg": "cues/micOn.ogg",
+        "mp3": "cues/micOn.mp3"
+      }
+    ],
+    "micOff": [
+      {
+        "ogg": "cues/micOff.ogg",
+        "mp3": "cues/micOff.mp3"
+      }
+    ],
+    "notice": [
+      {
+        "ogg": "cues/notice.ogg",
+        "mp3": "cues/notice.mp3"
+      }
+    ],
+    "error": [
+      {
+        "ogg": "cues/error.ogg",
+        "mp3": "cues/error.mp3"
+      }
+    ]
+  },
+  "hum": {
+    "ogg": "hum.ogg",
+    "mp3": "hum.mp3"
+  },
+  "music": [
+    "music/default.ogg"
+  ]
+}

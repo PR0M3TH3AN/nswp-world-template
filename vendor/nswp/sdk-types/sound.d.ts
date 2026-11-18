@@ -10,6 +10,12 @@ export interface SoundsOptions {
     seed?: string;
     /** Where the theme's addresses are relative to. Left out, this page. */
     base?: string;
+    /**
+     * Where this site serves the kit's own sound files: a folder holding `sounds.json` (for example "/sounds/kit/").
+     * With it, the defaults are those files: recorded cues, a hum, a piece of music. Without it, or where a file
+     * can't be had, the defaults are the ones made in the browser.
+     */
+    kit?: string;
     /** Keep the visitor's volumes and songs under these names. Left out, the kit's own, for this site. */
     keep?: {
         levels?: string;
@@ -54,8 +60,10 @@ export interface Sounds {
     readonly jukebox: Jukebox;
     /** Be told when a volume or the jukebox changed. Called once at the start. */
     onChange(fn: (levels: SoundLevels) => void): () => void;
-    /** What the place's music is: the world's file, the kit's own, or none. */
-    readonly music: "world" | "made" | "none";
+    /** What the place's music is: the world's own, the kit's recorded default, the one made in the browser, or none. */
+    readonly music: "world" | "kit" | "made" | "none";
+    /** Whether this place has a hum to hear. */
+    readonly hasHum: boolean;
     /** How loud everything going out is right now, from 0. For tests. */
     loudness(): number;
     dispose(): void;

@@ -187,8 +187,8 @@ it yourself. `npm run check:live` tells you if it is missing.
 
 ## Working on it from inside it
 
-**It has sound.** Steps, presses, doors, and a quiet music made from your
-world's title. Visitors set their own volumes and can play their own songs,
+**It has sound.** Recorded steps, presses and doors, a room's hum, and a
+piece of music. Visitors set their own volumes and can play their own songs,
 which only they hear. To use sounds of your own, see
 [`sounds/README.md`](sounds/README.md).
 

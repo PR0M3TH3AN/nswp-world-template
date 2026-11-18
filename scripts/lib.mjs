@@ -25,17 +25,23 @@ function soundProblems(sounds) {
   if (sounds === undefined) return out;
   if (!sounds || typeof sounds !== "object" || Array.isArray(sounds)) return ['world.json: "sounds" is { "cues": { … }, "music": … }.'];
   const have = new Set(soundFiles());
-  const check = (what, value) => {
-    if (value === null || value === undefined) return;
+  const checkOne = (what, value) => {
     const name = typeof value === "string" && value.startsWith("sounds/") ? value.slice(7) : null;
     if (!name || !SOUND_FILE.test(name)) out.push(`world.json: ${what} is "sounds/<file>", a sound file in the sounds folder, or null for silence. It can't be an address on another site.`);
     else if (!have.has(name)) out.push(`world.json: ${what} names sounds/${name}, which isn't in the sounds folder.`);
+  };
+  // One file, or a list of them: several for a cue are chosen among, several pieces of music play in turn.
+  const check = (what, value) => {
+    if (value === null || value === undefined) return;
+    for (const v of Array.isArray(value) ? value : [value]) checkOne(what, v);
   };
   for (const [cue, value] of Object.entries(sounds.cues ?? {})) {
     if (!CUE_NAMES.includes(cue)) out.push(`world.json: "${cue}" isn't a sound the plumbing makes. The cues are: ${CUE_NAMES.join(", ")}.`);
     else check(`the "${cue}" sound`, value);
   }
   check('"music"', sounds.music);
+  if (Array.isArray(sounds.hum)) out.push('world.json: "hum" is one file, or null for none.');
+  else check('"hum"', sounds.hum);
   return out;
 }
 const MAX_PICTURE_BYTES = 1024 * 1024; // the protocol's ceiling for a picture in a frame
@@ -211,6 +217,9 @@ function writeStatic({ config, signed, pictures }) {
     mkdirSync(join(dist, "previews"), { recursive: true });
     for (const f of readdirSync(join(root, "previews"))) if (/^[0-9a-f]{64}\.webp$/.test(f)) cpSync(join(root, "previews", f), join(dist, "previews", f));
   }
+  // The sounds every world starts with (the kit's), and this world's own beside them.
+  const kitSounds = join(root, "vendor", "nswp", "sounds");
+  if (existsSync(kitSounds)) cpSync(kitSounds, join(dist, "sounds", "kit"), { recursive: true, filter: (f) => !/\.md$/.test(f) });
   const sounds = soundFiles();
   if (sounds.length) {
     mkdirSync(join(dist, "sounds"), { recursive: true });

@@ -21,8 +21,9 @@ export interface WorldConfig {
   sky?: string;
   /**
    * This world's own sounds. Each is a file in the `sounds/` folder, by name: `{ "cues": { "step": "sounds/step.ogg",
-   * "press": null }, "music": "sounds/loop.ogg" }`. A cue set to null is silent; one left out keeps the default.
-   * `music` set to null means no music; left out, the plumbing makes a quiet one from the world's title.
+   * "press": null }, "music": "sounds/loop.ogg", "hum": null }`. A cue set to null is silent; one left out keeps
+   * the default. A list of files for a cue is chosen among each time; a list for `music` plays in turn. `music`
+   * and `hum` set to null mean none; left out, they are the ones every world starts with.
    */
   sounds?: SoundTheme;
   /**
