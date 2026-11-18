@@ -40,4 +40,6 @@ export declare function createStroll(o: {
     move(dx: number, dz: number): void;
     /** Metres a second. */
     speed?: number;
+    /** Called when something in the way stopped the walk short. */
+    onBlocked?: () => void;
 }): Stroll;

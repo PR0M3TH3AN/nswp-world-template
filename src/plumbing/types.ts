@@ -2,7 +2,7 @@
 import type * as THREE from "three";
 import type { Arrival, Layout, PortalDestination } from "@nswp/core";
 import type { PortalGate } from "nswp-sdk/home";
-import type { FigureStyle, GrabOptions } from "nswp-sdk/three";
+import type { FigureStyle, GrabOptions, Sounds, SoundTheme } from "nswp-sdk/three";
 import type { Controls, Corner, Presence, UiKeys } from "nswp-sdk/ui";
 
 /** world.json */
@@ -19,6 +19,12 @@ export interface WorldConfig {
   /** Where visitors can arrive. `main-entrance` is the default. Positions are metres; yaw is degrees, 0 facing −Z. */
   entryPoints: Record<string, { position: [number, number, number]; yaw: number }>;
   sky?: string;
+  /**
+   * This world's own sounds. Each is a file in the `sounds/` folder, by name: `{ "cues": { "step": "sounds/step.ogg",
+   * "press": null }, "music": "sounds/loop.ogg" }`. A cue set to null is silent; one left out keeps the default.
+   * `music` set to null means no music; left out, the plumbing makes a quiet one from the world's title.
+   */
+  sounds?: SoundTheme;
   /**
    * How much room the controls take. `presence` is "full" (the whole HUD),
    * "quiet" (one mark in `corner`) or "hidden". `keys` changes or switches off
@@ -51,6 +57,12 @@ export interface SceneContext {
    * section, act })`. Say a few words for a moment with `ctx.controls.say()`.
    */
   controls: Controls;
+  /**
+   * The world's sounds. `ctx.sounds.play("grab")` plays one of the cues: the
+   * world's own file if `world.json` names one, the default otherwise, and
+   * nothing if the visitor has effects off.
+   */
+  sounds: Sounds;
   /** How the visitor arrived, or null if they came by an ordinary link. */
   arrival: Arrival | null;
   /**

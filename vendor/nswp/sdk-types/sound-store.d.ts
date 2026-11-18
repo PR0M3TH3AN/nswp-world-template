@@ -1,0 +1,127 @@
+/**
+ * What the kit's sounds are made of, with nothing that needs a browser:
+ * the list of cues and how each default is built, what a world may put in
+ * their place, the visitor's volumes, the music a place makes when nobody
+ * gave it any, and the list of a visitor's own songs.
+ *
+ * Kept apart from the part that makes noise (sound.ts) so every rule here
+ * can be tested without one.
+ */
+/**
+ * Every sound the kit makes for something that happened. A closed list: a
+ * world can replace or silence any of them, and can't add to it, so a
+ * visitor's "effects" volume always covers everything a world plays through
+ * the kit.
+ */
+export declare const CUES: readonly ["step", "land", "bump", "grab", "drop", "hover", "press", "menuOpen", "menuClose", "cross", "arrive", "join", "leave", "micOn", "micOff", "notice", "error"];
+export type Cue = (typeof CUES)[number];
+/** One piece of a default cue: a tone that may slide, or a breath of filtered noise. Times in seconds. */
+export type CuePart = {
+    kind: "tone";
+    wave: "sine" | "triangle" | "square";
+    from: number;
+    to?: number;
+    at: number;
+    dur: number;
+    gain: number;
+} | {
+    kind: "noise";
+    band: number;
+    at: number;
+    dur: number;
+    gain: number;
+};
+export declare function cueRecipe(cue: Cue): CuePart[];
+/** How long a recipe lasts, in seconds. */
+export declare function recipeLength(parts: CuePart[]): number;
+export declare const SOUND_LIMITS: {
+    /** A world's own cue: a file this size at most, this long at most. Longer ones aren't sounds for something that happened. */
+    readonly cueBytes: number;
+    readonly cueSeconds: 3;
+    /** Kinds of file a world may name. */
+    readonly extensions: readonly ["ogg", "oga", "opus", "mp3", "m4a", "aac", "wav", "webm", "flac"];
+    /** The visitor's own songs: this many, each this size at most. */
+    readonly songs: 60;
+    readonly songBytes: number;
+    readonly titleChars: 80;
+};
+/**
+ * A world's sounds. For each cue: an address of a file on the world's own
+ * site to play instead, or null for silence. A cue it doesn't name keeps the
+ * default. `music` is what plays in the place: an address, null for none, or
+ * left out for the music the kit makes.
+ */
+export interface SoundTheme {
+    cues?: Partial<Record<Cue, string | null>>;
+    music?: string | null;
+}
+/** The same, read and checked: every address is on the world's own site and names a sound file. */
+export interface CleanTheme {
+    cues: Partial<Record<Cue, string | null>>;
+    music?: string | null;
+}
+/** Read a world's theme, trusting nothing in it. What can't be used falls back to the default, never to silence. */
+export declare function cleanTheme(input: unknown, base: string): CleanTheme;
+/** The visitor's volumes, each from 0 to 1. Theirs, kept for this site, and nothing a world sets. */
+export interface SoundLevels {
+    /** Everything off, whatever the rest says. */
+    off: boolean;
+    /** Cues: steps, presses, doors. */
+    effects: number;
+    /** The place's music, and the visitor's own. */
+    music: number;
+    /** Other people's voices. */
+    voices: number;
+}
+export declare const DEFAULT_LEVELS: SoundLevels;
+/** The steps a volume goes through when its control is pressed. */
+export declare const LEVEL_STEPS: readonly [0, 0.35, 0.7, 1];
+export declare const LEVEL_WORDS: readonly ["off", "low", "medium", "high"];
+export declare function cleanLevels(input: unknown): SoundLevels;
+/** Which step a volume is nearest, from 0 to 3. */
+export declare function levelStep(v: number): number;
+/** The next volume up, going round to off after the highest. */
+export declare function nextLevel(v: number): number;
+/** A small generator of numbers from a seed: the same seed, the same numbers, on every device. */
+export declare function seeded(seed: string): () => number;
+export interface AmbiencePlan {
+    /** The note everything hangs from, in hertz. */
+    root: number;
+    /** The notes it may play, as multiples of the root, within one octave. */
+    scale: number[];
+    /** Notes held under everything: a frequency, how far it drifts in cents, and how many seconds its swell takes. */
+    drones: {
+        hz: number;
+        detune: number;
+        swell: number;
+    }[];
+    /** How bright it is: where the filter sits, in hertz. */
+    colour: number;
+    /** Seconds between the single notes that come and go over the top, least and most. */
+    gap: [number, number];
+}
+/**
+ * The music a place makes when its world gave it none: a few held notes
+ * that swell and fade, and single notes over them now and then. It comes
+ * from the place's name, so each place has its own and has the same one for
+ * everybody, with no file anywhere.
+ */
+export declare function ambiencePlan(seed: string): AmbiencePlan;
+/** A song the visitor added from their own device. The file itself is kept beside this, in this browser. */
+export interface Song {
+    id: string;
+    title: string;
+    /** Its size in bytes. */
+    size: number;
+    /** When it was added, in seconds. */
+    at: number;
+}
+/** A name for a song from its file's name: no folder, no ending, nothing invisible. */
+export declare function songTitle(fileName: unknown): string;
+export declare function cleanSongs(input: unknown): Song[];
+/** Whether a file may be kept as a song, and if not, why, in words for the visitor. */
+export declare function songRefusal(file: {
+    type?: string;
+    size?: number;
+    name?: string;
+}, have: number): string | null;
