@@ -1,8 +1,9 @@
 import {
   createPortalWindow,
   textSprite
-} from "./shared-SSELMUPP.js";
+} from "./shared-VYFLPZQB.js";
 import "./shared-PMZZ7JZF.js";
+import "./shared-WXBVZMXQ.js";
 
 // packages/sdk/src/home.ts
 import * as THREE from "three";

@@ -18,7 +18,8 @@ import * as THREE from "three";
 import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { attachRoomControls, capturePanorama, createPresence, createWorldMenu, menuItemFor, turnVisitor, type WorldMenu } from "nswp-sdk/three";
+import { addRoomControls, addViewControls, capturePanorama, createConsole, createPresence, type XrConsole } from "nswp-sdk/three";
+import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
 import type { BuildScene, PortalOptions, SceneContext, WorldConfig } from "./types.js";
@@ -35,8 +36,10 @@ interface TestHooks {
   step(x: number, z: number): void;
   /** Where the visitor's head is over the floor: [x, z] in metres. */
   where(): [number, number];
-  /** The menu shown in a headset: `describe()` says what it shows, `pressLabelled(text)` presses a button. */
-  menu?: WorldMenu;
+  /** Everything a visitor can do here: `view()` lists it, `run(id)` does one. */
+  controls?: Controls;
+  /** The console shown in a headset: `describe()` says what it shows, `pressLabelled(text)` presses something. */
+  console?: XrConsole;
   roomInfo(): unknown;
   device?: unknown;
 }
@@ -114,6 +117,14 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   }
   state.layoutWarnings = parsed.warnings.map((w) => w.message);
 
+  // ------------------------------------------------------------- the controls
+  // One list of what a visitor can do here. The HUD draws it on a flat screen
+  // and the console draws it in a headset; neither has any logic of its own.
+  // The console takes this world's accent unless the visitor has chosen a look.
+  const controls = createControls({ title: config.world.title, address: new URL(config.world.url).host, theme: { accent: layout.room.accent } });
+  const hud = mountHud(controls);
+  hooks.controls = controls;
+
   // ------------------------------------------------------------- your scene
   const gates: PortalGate[] = [];
   const ownGates: PortalGate[] = []; // made by addPortal, so animated here
@@ -125,6 +136,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     renderer,
     config,
     layout,
+    controls,
     arrival: context,
     addPortal(to: PortalDestination | { coordinate: string }, opts: PortalOptions = {}) {
       let destination: PortalDestination;
@@ -169,37 +181,27 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   };
 
   // The way back to the visitor's own lobby, offered when they came from one.
-  const homeButton = $<HTMLButtonElement>("home-button");
-  if (homeButton && arrival.returnAirlock()) {
-    homeButton.hidden = false;
-    homeButton.addEventListener("click", () => void portal.home({ xrSession: renderer.xr.getSession() }));
-  }
-
-  // ------------------------------------------------------------- the menu in a headset
-  // In a headset the page around the scene is gone, and its buttons with it.
-  // The same buttons go in a small menu in the scene, with whatever the scene adds.
-  // It is this world's own menu, not a trusted one: a visitor's sure way out of
-  // any world is their headset's own controls.
-  const pageButton = (id: string) => {
-    const b = $<HTMLButtonElement>(id);
-    return b ? [menuItemFor(b)] : [];
-  };
-  const menu = createWorldMenu({
-    note: () => {
-      const line = $("room-status");
-      return line && !line.hidden ? (line.textContent ?? "") : "";
-    },
-    items: [
-      ...pageButton("home-button"),
-      { label: "Turn around", act: () => turnVisitor(rig, camera, 180) },
-      ...(handle.menu ?? []),
-      ...pageButton("room-button"),
-      ...pageButton("mic-button"),
-      { label: "Leave VR", act: () => renderer.xr.getSession()?.end() },
-    ],
+  controls.add({
+    id: "home",
+    section: "travel",
+    icon: "home",
+    hotbar: true,
+    label: "Back to your lobby",
+    short: "Home",
+    hidden: () => !arrival.returnAirlock(),
+    act: () => void portal.home({ xrSession: renderer.xr.getSession() }),
   });
-  scene.add(menu.group);
-  hooks.menu = menu;
+  controls.addSection({
+    id: "help",
+    label: "Help",
+    icon: "help",
+    note: "Drag to look around. Walk with W, A, S, D, or point at the floor and select to step there. Select a doorway to see where it leads before you go. These controls are this world's own: your headset's or browser's own controls always get you out.",
+  });
+
+  // In a headset the page can't be seen, so the same controls go on a console in the scene.
+  const xrConsole = createConsole(controls, { renderer, rig });
+  scene.add(xrConsole.group);
+  hooks.console = xrConsole;
 
   // ------------------------------------------------------------- input
   const raycaster = new THREE.Raycaster();
@@ -328,8 +330,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     c.addEventListener("select", () => {
       state.lastSelect = i;
       const gate = aimFrom(c); // leaves the ray pointing where this hand points
-      const button = menu.pick(raycaster);
-      if (button) menu.press(button);
+      const button = xrConsole.pick(raycaster);
+      if (button) xrConsole.press(button);
       else if (gate) void go(gate);
       else {
         const spot = floorUnder();
@@ -384,24 +386,13 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
 
   // ------------------------------------------------------------- the room
   // Other visitors appear only after someone presses Join (spec §9.4).
-  const roomButton = $<HTMLButtonElement>("room-button");
-  const status = $("room-status");
   let presenceUpdate = (_dt: number) => {};
-  if (roomButton && status && config.world.capabilities?.includes("rooms")) {
+  if (config.world.capabilities?.includes("rooms")) {
     let refresh = () => {};
     const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", onChange: () => refresh() });
-    ({ refresh } = attachRoomControls(presence, {
-      roomButton,
-      micButton: $<HTMLButtonElement>("mic-button")!,
-      inviteButton: $<HTMLButtonElement>("invite-button")!,
-      status,
-      onState: (s) => (state.room = s),
-    }));
+    ({ refresh } = addRoomControls(controls, presence, { onState: (s) => (state.room = s) }));
     presenceUpdate = (dt) => presence.update(dt);
     hooks.roomInfo = () => presence.info();
-  } else if (roomButton && status) {
-    roomButton.hidden = true;
-    status.hidden = true;
   }
 
   // ------------------------------------------------------------- preview
@@ -416,34 +407,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   };
 
   // ------------------------------------------------------------- VR
-  const vrButton = $<HTMLButtonElement>("vr-button");
-  const xr = navigator.xr;
-  const supported = xr ? await xr.isSessionSupported("immersive-vr").catch(() => false) : false;
-  state.vrSupported = supported;
-  if (vrButton && supported) {
-    vrButton.disabled = false;
-    vrButton.textContent = "Enter VR";
-    vrButton.addEventListener("click", async () => {
-      if (renderer.xr.isPresenting) {
-        await renderer.xr.getSession()?.end();
-        return;
-      }
-      try {
-        const session = await xr!.requestSession("immersive-vr", { optionalFeatures: ["local-floor", "hand-tracking"] });
-        await renderer.xr.setSession(session);
-        state.xr = "presenting";
-        vrButton.textContent = "Exit VR";
-        session.addEventListener("end", () => {
-          state.xr = "ended";
-          vrButton.textContent = "Enter VR";
-        });
-      } catch (err) {
-        state.xr = `error: ${err instanceof Error ? err.message : String(err)}`;
-      }
-    });
-  } else if (vrButton) {
-    vrButton.textContent = xr ? "VR isn't available on this device" : "This browser can't do VR";
-  }
+  state.vrSupported = await addViewControls(controls, { renderer, rig, camera, hud, onState: (s) => (state.xr = s) });
 
   addEventListener("resize", () => {
     camera.aspect = innerWidth / innerHeight;
@@ -461,11 +425,11 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     let aimed: PortalGate | null = null;
     reticle.visible = false;
     if (renderer.xr.isPresenting) {
-      let button: THREE.Mesh | null = null;
+      let button: string | null = null;
       for (const c of controllers) {
         if (!c.visible) continue;
         const gate = aimFrom(c);
-        const onMenu = menu.pick(raycaster);
+        const onMenu = xrConsole.pick(raycaster);
         if (onMenu) {
           button = onMenu;
           continue;
@@ -477,7 +441,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
           reticle.visible = true;
         }
       }
-      menu.aim(button);
+      xrConsole.aim(button);
       const through = walkedInto();
       if (through) void go(through);
     } else {
@@ -488,7 +452,10 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     }
     for (const g of gates) g.aimed = g === aimed ? 1 : 0;
     for (const g of ownGates) g.update(t, dt);
-    menu.update(dt, camera, renderer.xr.isPresenting);
+    xrConsole.update(dt, camera, renderer.xr.isPresenting);
+    // Say what is being pointed at, in the words on its sign.
+    const sign = aimed ? String(aimed.group.userData.label ?? "A doorway") : "";
+    controls.setTarget(aimed ? `${sign}${aimed.destination.url ? `, at ${new URL(aimed.destination.url).host}` : ""}` : "");
     presenceUpdate(dt);
     handle.update?.(t, dt);
     renderer.render(scene, camera);

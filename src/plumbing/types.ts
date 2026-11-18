@@ -2,7 +2,7 @@
 import type * as THREE from "three";
 import type { Arrival, Layout, PortalDestination } from "@nswp/core";
 import type { PortalGate } from "nswp-sdk/home";
-import type { MenuItem } from "nswp-sdk/three";
+import type { Controls } from "nswp-sdk/ui";
 
 /** world.json */
 export interface WorldConfig {
@@ -33,6 +33,12 @@ export interface SceneContext {
   config: WorldConfig;
   /** home.json, checked and ready to draw. */
   layout: Layout;
+  /**
+   * Everything a visitor can do here, drawn as a HUD on a flat screen and as a
+   * console in a headset. Add your own: `ctx.controls.add({ id, label, icon,
+   * section, act })`. Say a few words for a moment with `ctx.controls.say()`.
+   */
+  controls: Controls;
   /** How the visitor arrived, or null if they came by an ordinary link. */
   arrival: Arrival | null;
   /**
@@ -54,11 +60,6 @@ export interface SceneHandle {
    * be stopped, and shouldn't be moved against their will.
    */
   canStand?(x: number, z: number): boolean;
-  /**
-   * Buttons of your own for the menu a visitor has in a headset, where the
-   * page's buttons can't be reached: `{ label, act }`. Keep it to a few.
-   */
-  menu?: MenuItem[];
   /** Set false to turn off stepping (point at the floor and select to stand there). On by default. */
   stepping?: boolean;
   /** Things to leave out of this world's preview picture, such as anything about one visitor. */

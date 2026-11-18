@@ -1,22 +1,23 @@
 import {
-  attachRoomControls,
+  addRoomControls,
+  addViewControls,
   capturePanorama,
+  createConsole,
   createPortalWindow,
   createPresence,
-  createWorldMenu,
-  menuItemFor,
   panoramaTexture,
   textSprite,
   turnVisitor
-} from "./shared-SSELMUPP.js";
+} from "./shared-VYFLPZQB.js";
 import "./shared-PMZZ7JZF.js";
+import "./shared-WXBVZMXQ.js";
 export {
-  attachRoomControls,
+  addRoomControls,
+  addViewControls,
   capturePanorama,
+  createConsole,
   createPortalWindow,
   createPresence,
-  createWorldMenu,
-  menuItemFor,
   panoramaTexture,
   textSprite,
   turnVisitor
