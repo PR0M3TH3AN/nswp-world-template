@@ -11,7 +11,7 @@ take visitors from one world to the next.
 The protocol's plumbing is already done here. What's left is the part worth
 doing: deciding what your world is.
 
-To see it before you copy it: <https://nswp-world-template.vercel.app/> is this
+To see it before you copy it: <https://starter.bitblocks.network/> is this
 template, deployed without a single change.
 
 ## Try it
@@ -221,8 +221,9 @@ their game through, so look yourself before you publish.
 ## What to know before relying on it
 
 - The protocol is an early draft, not an adopted standard. Formats may change.
-- `world.json` points at a test Airlock (`nswp-airlock.vercel.app`) for
-  visitors who arrive without one of their own. Use any Airlock you trust.
+- `world.json` points at BitPortal's Airlock (`portal.bitblocks.network/go/`),
+  which is itself experimental, for visitors who arrive without one of their
+  own. Use any Airlock you trust.
 - The shared room connects visitors directly to each other, which shows them
   each other's IP addresses. The page says so before anyone joins.
 - Nothing here has been tried on a real headset yet, only in an emulated one.

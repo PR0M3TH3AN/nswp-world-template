@@ -14,7 +14,7 @@
     "languages": ["en"],
     "status": "beta"
   },
-  "airlock": "https://nswp-airlock.vercel.app/",
+  "airlock": "https://portal.bitblocks.network/go/",
   "relays": ["wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://nostr.mom"],
   "entryPoints": {
     "main-entrance": { "position": [0, 0, 4], "yaw": 0 }
