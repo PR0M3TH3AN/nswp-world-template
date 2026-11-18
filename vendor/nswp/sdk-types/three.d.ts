@@ -13,6 +13,7 @@
  * address to the other members, so join only after the visitor has agreed.
  */
 import * as THREE from "three";
+import { type Alloy } from "./alloy.js";
 import { type RoomSession } from "./room.js";
 export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
@@ -54,6 +55,22 @@ export interface Presence {
     /** What this visitor currently sees of each member (for tests and debugging). */
     info(): AvatarInfo[];
 }
+export interface Figure {
+    group: THREE.Group;
+    /** Faces -Z, like a camera. Its origin is between the eyes. */
+    head: THREE.Group;
+    torso: THREE.Mesh;
+    hands: [THREE.Mesh, THREE.Mesh];
+    metal: Alloy;
+}
+/**
+ * A visitor's figure: a helmet with a band of light for a visor, a cloak, and
+ * a point of light for each hand, in the same metal as the place and lit in
+ * one colour. It is what other people in a room are drawn as. The parts are
+ * placed by whoever uses it; as made, the head is at the origin and the torso
+ * hangs below it.
+ */
+export declare function createFigure(color: THREE.ColorRepresentation): Figure;
 /** A text panel that always faces the viewer. `width` is in metres. */
 export declare function textSprite(text: string, color: string, width: number): THREE.Sprite;
 export declare function createPresence(d: PresenceOptions): Presence;

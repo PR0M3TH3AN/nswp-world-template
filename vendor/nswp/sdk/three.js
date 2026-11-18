@@ -3,12 +3,13 @@ import {
   addViewControls,
   capturePanorama,
   createConsole,
+  createFigure,
   createPortalWindow,
   createPresence,
   panoramaTexture,
   textSprite,
   turnVisitor
-} from "./shared-NS5R4FLB.js";
+} from "./shared-6GHAZLB5.js";
 import "./shared-PMZZ7JZF.js";
 import "./shared-WXBVZMXQ.js";
 export {
@@ -16,6 +17,7 @@ export {
   addViewControls,
   capturePanorama,
   createConsole,
+  createFigure,
   createPortalWindow,
   createPresence,
   panoramaTexture,

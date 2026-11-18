@@ -1,10 +1,10 @@
 /**
- * The ground a place stands on: a plane ruled with a grid of light that runs
- * to the horizon, a low glow where it ends, and a skyline of blocks.
+ * The place a world stands in: a sky, a ground ruled with light that runs to
+ * the horizon, a skyline, and dust in the air.
  *
  * It is the look of the reference worlds, of a home drawn by `createHome`, and
- * of BitPortal's room: one place to change it for all of them. Three draw
- * calls, no textures, nothing fetched, so it costs a headset almost nothing.
+ * of BitPortal's room: one place to change it for all of them. A dozen draw
+ * calls, no textures, nothing fetched.
  *
  *   const environment = createEnvironment("#3df2a0");
  *   scene.add(environment.group);
@@ -19,12 +19,18 @@ export interface Environment {
     update(t: number): void;
 }
 export interface EnvironmentOptions {
-    /** The colour of the plane the grid is drawn on. Dark by default. */
+    /** The colour of the ground the grid is drawn on, and of the night above it. Dark by default. */
     ground?: THREE.ColorRepresentation;
-    /** Metres round the middle that the nearest blocks of the skyline keep well back from. */
+    /** Metres round the middle that the nearest towers of the skyline keep well back from. */
     clear?: number;
-    /** Draw the skyline of blocks. Default true. */
+    /** Draw the skyline. Default true. */
     skyline?: boolean;
+    /** Draw dust drifting in the air near the middle. Default true. */
+    dust?: boolean;
+    /** Draw the constellations that come and go among the stars. Default true. */
+    constellations?: boolean;
+    /** Any number: it turns the sky, so two worlds don't share one. Taken from the colours when left out. */
+    seed?: number;
 }
 /** The ground colour this look is drawn on unless a place asks for another. */
 export declare const GROUND = 263947;

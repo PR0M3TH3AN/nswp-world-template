@@ -56,7 +56,8 @@ towards you]`), and optionally a `rotation` in degrees.
 `room.template` is `hall` (three walls, with no ceiling) or `open` (the open
 grid). `room.color` is the ground's colour and `room.accent` is the colour of
 its light: the grid, the edges of things, anything that glows. The home is
-drawn as a dark ground ruled with light, with furniture built from blocks.
+drawn as a dark ground ruled with light under a night sky, with modelled
+walls and furniture of dark metal.
 [`AGENTS.md`](AGENTS.md) has the room's measurements and how each item sits.
 
 A portal is an arched doorway with a sign above it. The sign's second line is

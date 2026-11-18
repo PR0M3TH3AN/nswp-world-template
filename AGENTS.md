@@ -155,20 +155,40 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
 - **The plumbing adds nothing you can see.** No lights, no floor. A scene that
   adds neither is black. `createHome()` from `nswp-sdk/home` adds both.
 - **The look.** The home is drawn in the grid look: a dark ground ruled with
-  light to the horizon, and things built from dark blocks with lit edges. You
-  can use the same pieces in any scene (`src/scenes/game.ts` does):
-  `createEnvironment(accent)` for the ground, and `createBlocks(accent)` for
-  anything solid. With blocks, call `blocks.at([x, y, z], degrees)` to place
-  what follows, `blocks.box([w, h, d], [x, y, z], { color, lit })` for each
-  box (the second triple is its centre), and `scene.add(blocks.build())` once
-  at the end. Every box is drawn together, in two draw calls, and needs no
-  light. A scene doesn't have to use this look at all: it is the owner's.
+  light under a night sky, and things of dark metal seamed with light. You can
+  use the same pieces in any scene (`src/scenes/game.ts` does), all from
+  `nswp-sdk/home`:
+  - `createEnvironment(accent)` is the sky, the ground and the skyline. Call
+    its `update(t)` each frame.
+  - `new MeshBuilder()` collects everything that stays still and hands back
+    one mesh. Set `builder.tone = metalTone(groundColour)` first.
+    `builder.at([x, y, z], degrees)` places and turns what is added next.
+  - Ready-made parts add themselves to a builder: `addWall(b, length,
+    height)`, `addBench(b, colour)`, `addTable(b, colour)`, `addLamp(b)`,
+    `addPlant(b, colour, seed)`, `addPlinth(b)`, `addTree(b, leafColour,
+    seed, height)`, `addCrystal(b, size, seed, [x, y, z], degrees)`, and three
+    sculptures centred on the builder's place: `addKnot(b, size)`,
+    `addGyro(b, size)`, `addSpiral(b, size)`.
+  - Shapes of your own: `b.box([w, h, d], [x, y, z], { bevel, panel, glow,
+    shade, color })` (the second triple is its centre; `bevel` cuts the edges
+    so they catch light; `glow: 1` makes it a light), `b.lathe([[radius,
+    height], …], [x, y, z], sides)` for anything round or tapered, and
+    `b.line(from, to, width, facing)` for a strip of light on a surface.
+  - Finish with `const metal = createAlloy(accent)`,
+    `scene.add(builder.build(metal))`, and `metal.tick(t)` each frame.
+    Something that moves is a builder and a mesh of its own.
+  - `createHalo(colour, size)` is a soft glow to put round anything that
+    should seem to give off light.
+
+  Prefer these to Three.js's plain boxes and spheres: next to modelled things
+  a plain box reads as unfinished. A scene doesn't have to use this look at
+  all: it is the owner's.
 - **Light it more than seems necessary.** You can't see the result, and a
-  headset's screen is dimmer than a monitor. Blocks and the grid need no
-  light: they are drawn at their own brightness. Anything else you add with
-  Three.js's ordinary materials does: `new THREE.HemisphereLight(0xbfd0ff,
-  0x1b2a24, 1.6)` or about that. Give dark scenes things that glow (`lit`
-  blocks, emissive materials) to steer by. Then look.
+  headset's screen is dimmer than a monitor. The kit's things need no light:
+  they are drawn at their own brightness. Anything you add with Three.js's
+  ordinary materials does: `new THREE.HemisphereLight(0xbfd0ff, 0x1b2a24,
+  1.6)` or about that. Give dark scenes things that glow (`glow` faces,
+  halos) to steer by. Then look.
 - **Portals.** `ctx.addPortal({ url }, { label, position, rotation, color })`,
   or `ctx.addPortal({ coordinate: "37300:<key>:<name>" }, …)` for a world named
   the way `home.json` names one.
