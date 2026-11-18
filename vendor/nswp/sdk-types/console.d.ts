@@ -13,6 +13,10 @@
  *    and opens the console floating there. It needs no tracked hand, so it
  *    works with gaze-and-pinch too.
  *
+ * A world with an interface of its own can turn this down (`Presence`, in
+ * ui/model.ts). Quiet, the Menu button shows only where no hand is tracked,
+ * and smaller. Hidden, nothing shows until the world opens it with setOpen().
+ *
  * Everything is pressed with `select` (spec §21.2). It is drawn by the world:
  * it is that world's console, not a trusted surface (spec §3.2).
  *

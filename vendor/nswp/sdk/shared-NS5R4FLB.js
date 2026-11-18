@@ -331,7 +331,7 @@ function createConsole(controls, opts) {
     setOpen: (next) => setOpen(next, "floating"),
     pick(raycaster) {
       if (!group.visible) return null;
-      if (!open) return raycaster.intersectObject(opener, false).length ? "open" : null;
+      if (!open) return opener.visible && raycaster.intersectObject(opener, false).length ? "open" : null;
       const hit = raycaster.intersectObject(panel, false)[0];
       if (!hit?.uv) return null;
       const x = hit.uv.x * W;
@@ -370,7 +370,8 @@ function createConsole(controls, opts) {
       camera.getWorldPosition(head);
       camera.getWorldDirection(facing);
       const t = controls.theme;
-      const tracked = t.wrist === "off" ? void 0 : grips.find((x) => x.hand === t.wrist && x.grip.visible);
+      const presence = controls.presence;
+      const tracked = t.wrist === "off" || presence === "hidden" ? void 0 : grips.find((x) => x.hand === t.wrist && x.grip.visible);
       if (tracked) {
         tracked.grip.getWorldPosition(hand);
         toHand.copy(hand).sub(head);
@@ -422,7 +423,10 @@ function createConsole(controls, opts) {
           sinceRead = 0;
           paint();
         }
-      } else opener.scale.setScalar(aimed === "open" ? 1.1 : 1);
+      } else {
+        opener.visible = presence === "full" || presence === "quiet" && !tracked;
+        opener.scale.setScalar((presence === "quiet" ? 0.7 : 1) * (aimed === "open" ? 1.1 : 1));
+      }
     },
     describe() {
       const view = controls.view();
@@ -433,13 +437,13 @@ function createConsole(controls, opts) {
         mount,
         section: open ? current?.id ?? "" : "",
         sections: open ? view.sections.map((s) => s.label) : [],
-        buttons: open ? current?.items.map((i) => i.label) ?? [] : ["Menu"],
+        buttons: open ? current?.items.map((i) => i.label) ?? [] : opener.visible ? ["Menu"] : [],
         note: open ? current?.note ?? "" : ""
       };
     },
     pressLabelled(label) {
       if (!open) {
-        if (label !== "Menu") return false;
+        if (label !== "Menu" || !opener.visible) return false;
         con.press("open");
         return true;
       }

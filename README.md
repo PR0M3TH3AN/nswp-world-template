@@ -100,7 +100,9 @@ the same as in every other world built this way.
   home's accent colour.
 
 A scene adds its own buttons with `ctx.controls.add({ id, label, icon, act })`
-and they appear in both. To take a newer version of the kit, run
+and they appear in both. A scene with an interface of its own can turn the
+controls down to one small mark in a corner (`"quiet"`), as the example game
+does, or set that for the whole world in `world.json`. To take a newer version of the kit, run
 `npm run vendor` next to an up-to-date copy of the NSWP repository, then build.
 
 ### Seeing it without a browser

@@ -224,6 +224,20 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
     headset, and they won't match. Don't restyle the kit from outside; set
     the world's accent in `home.json` (`room.accent`) and it follows.
   - Don't call it a system menu or a safe menu: it is this world's own.
+  - **When the scene has an interface of its own** (a score, a toolbar, keys
+    for playing), turn the controls down so they don't compete with it:
+    `ctx.controls.setPresence("quiet")` leaves one small mark, in the corner
+    set by `ctx.controls.setCorner("top-right")`, and it still opens
+    everything. `ctx.controls.setKeys({ hotbar: false })` frees the number
+    keys, `{ menu: "p" }` moves the menu key, and
+    `ctx.controls.claimInput(true)` takes every key until you give them back.
+    `src/scenes/game.ts` does this. The same can be set for the whole world in
+    `world.json`: `"controls": { "presence": "quiet", "corner": "top-right" }`.
+  - `"hidden"` shows nothing at all. Use it only for a moment that shouldn't
+    be interrupted, or when the scene draws these things in menus of its own,
+    and then they must all be there within one action: the way home, leaving
+    VR, the room and the microphone, turning and stepping, and the world's
+    address. A visitor counts on finding them in every world.
 - **A scene that differs each visit** (a random level) still has one preview
   picture, of whichever version was drawn when it was taken. Say so to the
   owner, and remove the `rooms` capability: visitors in a shared room would
