@@ -1,6 +1,6 @@
 import {
   room
-} from "./shared-E3UFEQZL.js";
+} from "./shared-WXPCQ4VL.js";
 import {
   ICONS,
   rgb
@@ -566,6 +566,55 @@ function createFigure(look, style = {}, facts = {}) {
   };
 }
 
+// packages/sdk/src/blocks.ts
+import { cleanName, shortNpub } from "@nswp/core";
+var BLOCK_LIMIT = 500;
+var KEY = "nswp:blocked";
+var HEX = /^[0-9a-f]{64}$/;
+function cleanBlocked(input) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const b of input) {
+    if (!b || typeof b !== "object") continue;
+    const { key, name, at } = b;
+    if (typeof key !== "string" || !HEX.test(key) || seen.has(key)) continue;
+    seen.add(key);
+    const called = typeof name === "string" ? cleanName(name) : "";
+    out.push({ key, name: called || shortNpub(key), at: typeof at === "number" && Number.isFinite(at) && at > 0 ? Math.floor(at) : 0 });
+    if (out.length >= BLOCK_LIMIT) break;
+  }
+  return out;
+}
+function withBlocked(list, who, now = Math.floor(Date.now() / 1e3)) {
+  if (!HEX.test(who.key) || list.some((b) => b.key === who.key)) return list;
+  return cleanBlocked([{ key: who.key, name: who.name ?? "", at: now }, ...list]);
+}
+function withoutBlocked(list, key) {
+  return list.filter((b) => b.key !== key);
+}
+var local = () => {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+};
+function loadBlocked(storage = local()) {
+  try {
+    return cleanBlocked(JSON.parse(storage?.getItem(KEY) ?? "[]"));
+  } catch {
+    return [];
+  }
+}
+function storeBlocked(list, storage = local()) {
+  try {
+    if (list.length) storage?.setItem(KEY, JSON.stringify(cleanBlocked(list)));
+    else storage?.removeItem(KEY);
+  } catch {
+  }
+}
+
 // packages/sdk/src/turn.ts
 import * as THREE4 from "three";
 function turnVisitor(rig, camera, degrees) {
@@ -1066,17 +1115,17 @@ function cleanComfort(input) {
   if (c.moveHand === "left" || c.moveHand === "right") out.moveHand = c.moveHand;
   return out;
 }
-var KEY = "nswp:comfort";
+var KEY2 = "nswp:comfort";
 function loadComfort() {
   try {
-    return { ...DEFAULT_COMFORT, ...cleanComfort(JSON.parse(globalThis.localStorage?.getItem(KEY) ?? "{}")) };
+    return { ...DEFAULT_COMFORT, ...cleanComfort(JSON.parse(globalThis.localStorage?.getItem(KEY2) ?? "{}")) };
   } catch {
     return { ...DEFAULT_COMFORT };
   }
 }
 function saveComfort(comfort) {
   try {
-    globalThis.localStorage?.setItem(KEY, JSON.stringify(cleanComfort(comfort)));
+    globalThis.localStorage?.setItem(KEY2, JSON.stringify(cleanComfort(comfort)));
   } catch {
   }
 }
@@ -1790,7 +1839,7 @@ function createKeyboard(o) {
   const unheard = voice.subscribe(() => done || live ? lay() : void 0);
   const at = new THREE7.Vector3();
   const facing2 = new THREE7.Vector3();
-  const local = new THREE7.Vector3();
+  const local2 = new THREE7.Vector3();
   const putUp = (under = false) => {
     o.camera.getWorldPosition(at);
     o.camera.getWorldDirection(facing2);
@@ -1894,9 +1943,9 @@ function createKeyboard(o) {
       if (!k || !done && !live) return null;
       const height = WIDTH * canvas.height / W2;
       const v = (SHOW + (k.y + k.height / 2) * KEYS) / canvas.height;
-      local.set((k.x + k.width / 2 - 0.5) * WIDTH, (0.5 - v) * height, 0);
+      local2.set((k.x + k.width / 2 - 0.5) * WIDTH, (0.5 - v) * height, 0);
       group.updateMatrixWorld(true);
-      return board.localToWorld(local.clone());
+      return board.localToWorld(local2.clone());
     },
     voice,
     info: () => ({ voice: voice.state, notice, open: !!done || !!live, live: !!live, title, value: live ? "" : entry.value, layer: live ? live.keys.layer : entry.layer, shift: live ? live.keys.shift : entry.shift, ctrl: !!live?.keys.ctrl, keys: keys.map((k) => k.id) }),
@@ -3454,6 +3503,10 @@ function createPresence(d) {
     dress(a, member.look);
     return a;
   };
+  let keptBlocks = loadBlocked();
+  const blockedNow = /* @__PURE__ */ new Map();
+  const blockedKeys = () => [...keptBlocks.map((b) => b.key), ...blockedNow.keys()];
+  const mutedKeys = /* @__PURE__ */ new Set();
   const attachAudio = (avatar, stream) => {
     if (avatar.audio) return;
     const el = new Audio();
@@ -3469,6 +3522,7 @@ function createPresence(d) {
     const analyser = listener.context.createAnalyser();
     analyser.fftSize = 512;
     listener.context.createMediaStreamSource(stream).connect(analyser);
+    if (mutedKeys.has(avatar.member.pubkey)) pa.setVolume(0);
     avatar.audio = pa;
     avatar.element = el;
     avatar.analyser = analyser;
@@ -3535,7 +3589,7 @@ function createPresence(d) {
     }
     const look = typeof d.look === "function" ? d.look() : d.look;
     const identity = typeof d.identity === "function" ? d.identity() : d.identity;
-    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {} });
+    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {}, blocked: blockedKeys() });
     session = s;
     if (!offsetApplied) {
       const off = spawnOffset(s.self.pubkey);
@@ -3643,6 +3697,36 @@ function createPresence(d) {
     people() {
       return [...avatars.values()].map((a) => a.member);
     },
+    mute(pubkey, on) {
+      if (on) mutedKeys.add(pubkey);
+      else mutedKeys.delete(pubkey);
+      avatars.get(pubkey)?.audio?.setVolume(on ? 0 : 1);
+      changed();
+    },
+    isMuted(pubkey) {
+      return mutedKeys.has(pubkey);
+    },
+    block(pubkey) {
+      const gone = session?.block(pubkey);
+      if (!gone) return null;
+      mutedKeys.delete(pubkey);
+      if (gone.identity) {
+        keptBlocks = withBlocked(keptBlocks, { key: gone.identity, name: gone.name });
+        storeBlocked(keptBlocks);
+      } else blockedNow.set(gone.session, gone.name);
+      changed();
+      return gone.name;
+    },
+    unblock(key) {
+      session?.unblock(key);
+      if (blockedNow.delete(key)) return changed();
+      keptBlocks = withoutBlocked(keptBlocks, key);
+      storeBlocked(keptBlocks);
+      changed();
+    },
+    blocked() {
+      return [...keptBlocks.map((b) => ({ key: b.key, name: b.name, kept: true })), ...[...blockedNow].map(([key, name]) => ({ key, name, kept: false }))];
+    },
     testTone() {
       const ctx = listener.context;
       const osc = ctx.createOscillator();
@@ -3695,6 +3779,7 @@ function createPresence(d) {
           head: a.target?.head.position.map((n) => Math.round(n * 100) / 100) ?? null,
           hands: [!!a.target?.left, !!a.target?.right],
           audioLevel: Math.round(level * 1e3) / 1e3,
+          muted: mutedKeys.has(a.member.pubkey),
           look: a.member.look,
           guest: a.member.guest,
           identity: a.member.identity ?? null
@@ -3895,16 +3980,20 @@ function addRoomControls(controls, presence, opts = {}) {
     }
   };
   let listed = [];
+  let extras = [];
+  let chosen = null;
   const recorders = /* @__PURE__ */ new Set();
   const people = () => {
     const here = presence.session ? presence.people() : [];
-    for (const id of listed) controls.remove(id);
+    for (const id of [...listed, ...extras]) controls.remove(id);
+    extras = [];
     listed = here.map((m) => `person-${m.pubkey.slice(0, 12)}`);
+    if (!here.some((m) => m.pubkey === chosen)) chosen = null;
     controls.addSection({
       id: "people",
       label: "People",
       icon: "people",
-      note: () => !presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one to see where they are.`
+      note: () => !presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one to see where they are, and to stop hearing them or block them.`
     });
     here.forEach(
       (m, i) => controls.add({
@@ -3914,11 +4003,61 @@ function addRoomControls(controls, presence, opts = {}) {
         color: m.look.light,
         label: () => m.recording ? `${m.name}, recording` : m.name,
         act: () => {
+          chosen = m.pubkey;
+          people();
           presence.pointOut(m.pubkey);
           controls.say(m.identity ? `${m.name} is under the column of light. Their key: ${encodeNpub(m.identity)}` : `${m.name} is under the column of light. A guest: nobody has vouched for who they are.`);
         }
       })
     );
+    const who = here.find((m) => m.pubkey === chosen);
+    if (who) {
+      extras.push("person-mute", "person-block");
+      controls.add(
+        {
+          id: "person-mute",
+          section: "people",
+          icon: () => presence.isMuted(who.pubkey) ? "mic" : "micOff",
+          on: () => presence.isMuted(who.pubkey),
+          label: () => presence.isMuted(who.pubkey) ? `Hear ${who.name} again` : `Stop hearing ${who.name}`,
+          act: () => {
+            const now = !presence.isMuted(who.pubkey);
+            presence.mute(who.pubkey, now);
+            controls.say(now ? `You no longer hear ${who.name}. They still see and hear you, and aren't told.` : `You hear ${who.name} again.`);
+          }
+        },
+        {
+          id: "person-block",
+          section: "people",
+          icon: "exit",
+          label: `Block ${who.name}`,
+          act: () => {
+            const name = presence.block(who.pubkey);
+            if (!name) return;
+            chosen = null;
+            controls.say(
+              who.identity ? `${name} is blocked. You won't see or hear each other here, now or when they come back by that name. To them, you have left.` : `${name} is blocked for this visit. You won't see or hear each other. A guest gets a new key each visit, so it can't hold beyond this one.`
+            );
+            refresh();
+          }
+        }
+      );
+    }
+    for (const b of presence.blocked()) {
+      const id = `unblock-${b.key.slice(0, 12)}`;
+      extras.push(id);
+      controls.add({
+        id,
+        section: "people",
+        icon: "check",
+        label: `Let ${b.name} back${b.kept ? "" : " (blocked this visit)"}`,
+        act: () => {
+          presence.unblock(b.key);
+          controls.say(`${b.name} is no longer blocked. You'll see each other again within half a minute if they are here.`);
+          refresh();
+        }
+      });
+    }
     for (const m of here) {
       if (m.recording && !recorders.has(m.pubkey)) controls.say(`${m.name} is recording what they see.`);
       if (m.recording) recorders.add(m.pubkey);
