@@ -59,6 +59,8 @@ export interface AvatarInfo {
     guest: boolean;
     /** The identity key behind them, if proven. */
     identity: string | null;
+    /** This visitor has stopped hearing them. */
+    muted: boolean;
 }
 export interface Presence {
     readonly session: RoomSession | null;
@@ -78,6 +80,26 @@ export interface Presence {
     pointOut(pubkey: string): void;
     /** Everyone else in the room, as they are being drawn. */
     people(): Member[];
+    /**
+     * Stop hearing one member, or hear them again. They are still seen, and still see and hear this visitor.
+     * Nobody is told. It lasts while they are here.
+     */
+    mute(pubkey: string, on: boolean): void;
+    isMuted(pubkey: string): boolean;
+    /**
+     * Stop being in a room with one member: the connection to them is closed and not made again. To them, this
+     * visitor has left. Someone who came by name stays blocked on this site when they come back; a guest is a new
+     * key each visit, so that block lasts this visit. Returns their name, or null if they aren't here.
+     */
+    block(pubkey: string): string | null;
+    /** Let someone back, by the key `blocked()` lists them under. */
+    unblock(key: string): void;
+    /** Everyone this visitor has blocked: named people, kept on this site, and guests blocked this visit. */
+    blocked(): {
+        key: string;
+        name: string;
+        kept: boolean;
+    }[];
     /** Call once per frame with the seconds since the last one. */
     update(dt: number): void;
     /** What this visitor currently sees of each member (for tests and debugging). */

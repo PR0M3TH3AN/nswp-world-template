@@ -37,6 +37,11 @@ export interface JoinOptions {
         pass: NostrEvent;
         sessionKey: string;
     };
+    /**
+     * Keys this visitor has blocked: the identity keys of people who came by
+     * name, or session keys from this visit. Nobody on it is connected to.
+     */
+    blocked?: Iterable<string>;
 }
 export type RoomStatus = "connecting" | "open" | "no-relays" | "closed";
 interface Events {
@@ -59,6 +64,8 @@ export declare class RoomSession {
     status: RoomStatus;
     private readonly key;
     private readonly relays;
+    /** Keys this visitor won't be in a room with: session keys, and the identity keys behind names. */
+    private readonly blocked;
     private readonly maxMembers;
     private readonly iceServers;
     private readonly sockets;
@@ -76,6 +83,22 @@ export declare class RoomSession {
     private timers;
     private closed;
     constructor(opts?: JoinOptions);
+    /**
+     * Stop being in a room with someone. The connection to them is closed and
+     * no new one is made, by their session key and, if they came by name, by
+     * the key behind the name: so it holds when they come back. It is this
+     * visitor's decision alone and nobody else is told; to the blocked person,
+     * this visitor has left. Returns what was blocked, or null if they aren't
+     * here.
+     */
+    block(pubkey: string): {
+        session: string;
+        identity?: string;
+        name: string;
+    } | null;
+    /** Let someone back: they are connected to again the next time either side announces itself. */
+    unblock(key: string): void;
+    isBlocked(key: string): boolean;
     on<K extends keyof Events>(event: K, fn: Events[K]): () => void;
     private emit;
     get members(): Member[];

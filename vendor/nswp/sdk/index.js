@@ -1,7 +1,7 @@
 import {
   RoomSession,
   room
-} from "./shared-E3UFEQZL.js";
+} from "./shared-WXPCQ4VL.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/index.ts

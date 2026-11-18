@@ -269,6 +269,9 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   else is in the room. Recording a clip shows the others a light. If your
   scene has things that shouldn't be in a picture, list them in
   `hideFromPreview`: the camera leaves those out too.
+- **Muting and blocking.** In the People list a visitor can stop hearing
+  someone, or block them. A block happens in their own browser and nobody is
+  told. The plumbing does it; don't publish, log or send who blocked whom.
 - **Staying joined.** A visitor who was in a room where they came from
   arrives joined here, and one who is joined here stays joined where they go
   next, with their microphone if they have told their own client it may

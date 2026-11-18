@@ -2107,6 +2107,8 @@ var RoomSession = class {
   status = "connecting";
   key;
   relays;
+  /** Keys this visitor won't be in a room with: session keys, and the identity keys behind names. */
+  blocked = /* @__PURE__ */ new Set();
   maxMembers;
   iceServers;
   sockets = /* @__PURE__ */ new Map();
@@ -2163,6 +2165,35 @@ var RoomSession = class {
     this.relays = opts.relays ?? DEFAULT_RELAYS;
     this.maxMembers = opts.maxMembers ?? ROOM_LIMITS.defaultMaxMembers;
     this.iceServers = opts.iceServers ?? DEFAULT_ICE;
+    for (const k of opts.blocked ?? []) if (/^[0-9a-f]{64}$/.test(k)) this.blocked.add(k);
+  }
+  /**
+   * Stop being in a room with someone. The connection to them is closed and
+   * no new one is made, by their session key and, if they came by name, by
+   * the key behind the name: so it holds when they come back. It is this
+   * visitor's decision alone and nobody else is told; to the blocked person,
+   * this visitor has left. Returns what was blocked, or null if they aren't
+   * here.
+   */
+  block(pubkey) {
+    const peer = this.peers.get(pubkey);
+    if (!peer) return null;
+    const { identity, name } = peer.member;
+    this.blocked.add(pubkey);
+    if (identity) this.blocked.add(identity);
+    try {
+      this.publish(buildSignal(this.topic, this.key, pubkey, { t: "bye" }));
+    } catch {
+    }
+    this.drop(pubkey, true);
+    return { session: pubkey, ...identity ? { identity } : {}, name };
+  }
+  /** Let someone back: they are connected to again the next time either side announces itself. */
+  unblock(key) {
+    this.blocked.delete(key);
+  }
+  isBlocked(key) {
+    return this.blocked.has(key);
   }
   on(event, fn) {
     this.listeners[event].add(fn);
@@ -2246,6 +2277,7 @@ var RoomSession = class {
     const opened = openSignal(raw, this.key, this.topic);
     if (!opened || this.closed) return;
     const { from, message } = opened;
+    if (this.blocked.has(from)) return;
     const existing = this.peers.get(from);
     try {
       switch (message.t) {
@@ -2360,6 +2392,15 @@ var RoomSession = class {
     const checked = verifyRoomPass(event, { origin: this.origin, session: peer.member.pubkey });
     if (!checked.ok) {
       peer.refused++;
+      return;
+    }
+    if (this.blocked.has(checked.value.pubkey)) {
+      this.blocked.add(peer.member.pubkey);
+      try {
+        this.publish(buildSignal(this.topic, this.key, peer.member.pubkey, { t: "bye" }));
+      } catch {
+      }
+      this.drop(peer.member.pubkey, true);
       return;
     }
     peer.passUntil = checked.value.expiresAt;
