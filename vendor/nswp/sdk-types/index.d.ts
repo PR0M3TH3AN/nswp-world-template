@@ -65,6 +65,13 @@ export interface GoOptions {
      * is taken from whether `xrSession` was given.
      */
     immersive?: boolean;
+    /**
+     * The visitor is in this world's open room as they leave (`addRoomControls(...).travelling()`). Their Airlock
+     * may pass it on, so they stay among people where they arrive (protocol/02-doors.md, "Staying joined").
+     */
+    joined?: boolean;
+    /** Their microphone is on. Passed only with `joined`, and only kept by a client they have told it may be. */
+    mic?: boolean;
 }
 export declare const portal: {
     /** Which Airlock `go()` would use right now, or null for the built-in screen. */

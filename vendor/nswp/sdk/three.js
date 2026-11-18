@@ -3,6 +3,8 @@ import {
   LIBRARY_LIMITS,
   PANEL_LIMITS,
   PANEL_LOOKS,
+  TAP_REACH,
+  WALK_SPEED,
   addCameraControls,
   addPanelControls,
   addRoomControls,
@@ -18,8 +20,10 @@ import {
   createPanels,
   createPortalWindow,
   createPresence,
+  createStroll,
   createXrInput,
   panoramaTexture,
+  reachOf,
   readPad,
   recordClip,
   saveFile,
@@ -27,7 +31,7 @@ import {
   takeSelfie,
   textSprite,
   turnVisitor
-} from "./shared-QLWU42IU.js";
+} from "./shared-F63XNZHD.js";
 import "./shared-E3UFEQZL.js";
 import "./shared-BP5WDRDO.js";
 import {
@@ -45,6 +49,8 @@ export {
   LIBRARY_LIMITS,
   PANEL_LIMITS,
   PANEL_LOOKS,
+  TAP_REACH,
+  WALK_SPEED,
   addCameraControls,
   addPanelControls,
   addRoomControls,
@@ -63,9 +69,11 @@ export {
   createPortalWindow,
   createPresence,
   createStay,
+  createStroll,
   createVoice,
   createXrInput,
   panoramaTexture,
+  reachOf,
   readPad,
   recordClip,
   recordVoice,

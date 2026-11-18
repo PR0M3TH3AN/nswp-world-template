@@ -11,7 +11,8 @@ import {
   createVoice,
   keyAt,
   placeKeys,
-  placeLiveKeys
+  placeLiveKeys,
+  wasRefreshed
 } from "./shared-WWPRVQWW.js";
 
 // packages/sdk/src/three.ts
@@ -2887,6 +2888,52 @@ function addPanelControls(controls, panels, o) {
   );
 }
 
+// packages/sdk/src/stroll.ts
+var WALK_SPEED2 = 2.4;
+var TAP_REACH = 3;
+function reachOf(fromX, fromZ, toX, toZ, reach = TAP_REACH) {
+  const dx = toX - fromX;
+  const dz = toZ - fromZ;
+  const far = Math.hypot(dx, dz);
+  if (!Number.isFinite(far) || far <= reach || far === 0) return [toX, toZ];
+  return [fromX + dx / far * reach, fromZ + dz / far * reach];
+}
+function createStroll(o) {
+  const speed = o.speed ?? WALK_SPEED2;
+  let target = null;
+  return {
+    to(x, z) {
+      target = Number.isFinite(x) && Number.isFinite(z) ? [x, z] : null;
+    },
+    stop() {
+      target = null;
+    },
+    update(dt) {
+      if (!target) return;
+      const [x, z] = o.where();
+      const dx = target[0] - x;
+      const dz = target[1] - z;
+      const far = Math.hypot(dx, dz);
+      const step = Math.min(far, speed * Math.min(Math.max(dt, 0), 0.1));
+      if (far < 0.02 || step <= 0) {
+        if (far < 0.02) target = null;
+        return;
+      }
+      const sx = dx / far * step;
+      const sz = dz / far * step;
+      if (!o.canStand(x + sx, z + sz)) {
+        target = null;
+        return;
+      }
+      o.move(sx, sz);
+      if (far - step < 0.02) target = null;
+    },
+    get going() {
+      return target !== null;
+    }
+  };
+}
+
 // packages/sdk/src/chamber.ts
 import * as THREE10 from "three";
 var R = 1.8;
@@ -3475,6 +3522,17 @@ function createPresence(d) {
     leave();
     roomName = name;
     void listener.context.resume();
+    if (listener.context.state !== "running") {
+      const wake = () => {
+        void listener.context.resume();
+        for (const a of avatars.values()) void a.element?.play().catch(() => {
+        });
+        removeEventListener("pointerdown", wake, true);
+        removeEventListener("keydown", wake, true);
+      };
+      addEventListener("pointerdown", wake, true);
+      addEventListener("keydown", wake, true);
+    }
     const look = typeof d.look === "function" ? d.look() : d.look;
     const identity = typeof d.identity === "function" ? d.identity() : d.identity;
     const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {} });
@@ -3793,6 +3851,7 @@ function createPortalWindow(geometry, pano, opts = {}) {
   };
   return mesh;
 }
+var JOINED_KEY = () => `nswp:joined:${location.pathname}`;
 function addRoomControls(controls, presence, opts = {}) {
   const useTone = new URLSearchParams(opts.search ?? location.search).get("mic") === "tone";
   let invited = roomNameFromHash(location.hash);
@@ -3817,6 +3876,23 @@ function addRoomControls(controls, presence, opts = {}) {
     );
     controls.addSection({ id: "room", label: "Room", icon: "room", note: status });
     people();
+    remember();
+  };
+  const remember = () => {
+    try {
+      if (presence.session) sessionStorage.setItem(JOINED_KEY(), presence.micOn ? "mic" : "joined");
+      else if (!busy) sessionStorage.removeItem(JOINED_KEY());
+    } catch {
+    }
+  };
+  const microphone = async () => {
+    try {
+      const track = useTone ? presence.testTone() : (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })).getAudioTracks()[0];
+      await presence.setMicrophone(track);
+      return true;
+    } catch {
+      return false;
+    }
   };
   let listed = [];
   const recorders = /* @__PURE__ */ new Set();
@@ -3887,14 +3963,7 @@ function addRoomControls(controls, presence, opts = {}) {
       hidden: () => !presence.session,
       act: async () => {
         if (presence.micOn) await presence.setMicrophone(null);
-        else {
-          try {
-            const track = useTone ? presence.testTone() : (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })).getAudioTracks()[0];
-            await presence.setMicrophone(track);
-          } catch {
-            tell("The microphone is blocked or unavailable.");
-          }
-        }
+        else if (!await microphone()) tell("The microphone is blocked or unavailable.");
         refresh();
       }
     },
@@ -3922,8 +3991,33 @@ function addRoomControls(controls, presence, opts = {}) {
       }
     }
   );
+  let kept = null;
+  try {
+    kept = wasRefreshed() ? sessionStorage.getItem(JOINED_KEY()) : null;
+  } catch {
+  }
   refresh();
-  return { refresh };
+  const carried = opts.arrived?.joined ? { mic: !!opts.arrived.mic, from: "there" } : kept ? { mic: kept === "mic", from: "refresh" } : null;
+  if (carried && (carried.from === "refresh" || !invited)) {
+    busy = true;
+    void (async () => {
+      try {
+        await presence.join(carried.from === "refresh" ? invited : null);
+        const heard = carried.mic ? await microphone() : false;
+        const early = 2500 - performance.now();
+        if (early > 0) await new Promise((done) => setTimeout(done, early));
+        tell(
+          `You are still in the room${carried.from === "there" ? ", as you were where you came from" : ""}: others here can see you${heard ? " and hear you" : ""}.${carried.mic && !heard ? " Your microphone is off here: the browser didn't allow it." : ""} Leave is where Join was.`
+        );
+      } catch (err) {
+        tell(`Couldn't stay joined: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        busy = false;
+        refresh();
+      }
+    })();
+  }
+  return { refresh, travelling: () => ({ joined: !!presence.session && !presence.roomName, mic: !!presence.session && !presence.roomName && presence.micOn }) };
 }
 function offerHeadset(title, enter, stay) {
   const scrim = document.createElement("div");
@@ -4040,6 +4134,10 @@ export {
   createLibrary,
   createPanels,
   addPanelControls,
+  WALK_SPEED2 as WALK_SPEED,
+  TAP_REACH,
+  reachOf,
+  createStroll,
   createChamber,
   createCrossing,
   takePicture,
