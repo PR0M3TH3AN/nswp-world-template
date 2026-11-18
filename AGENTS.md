@@ -82,8 +82,8 @@ owner's key they are how other places refer to this world.
 - For automated testing, the page exposes `window.__nswpTest`: `state.ready`
   turns true when the scene is up, `portals()` lists the portals,
   `teleport(x, z)` moves the visitor, `face(degrees)` turns them, `step(x, z)`
-  steps towards a spot as pointing at the floor would, and `goThrough(i)` uses
-  a portal.
+  steps towards a spot as pointing at the floor would, `where()` says where
+  they are, and `goThrough(i)` uses a portal.
 
 ## Never do these without the owner asking in so many words
 
@@ -156,7 +156,9 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   `new THREE.HemisphereLight(0xbfd0ff, 0x1b2a24, 1.6)` or about that, and a
   ground lighter than `0x1a1a1a`. Give dark scenes things that glow (emissive
   materials) to steer by. Then look.
-- **Portals.** `ctx.addPortal({ url }, { label, position, rotation, color })`.
+- **Portals.** `ctx.addPortal({ url }, { label, position, rotation, color })`,
+  or `ctx.addPortal({ coordinate: "37300:<key>:<name>" }, …)` for a world named
+  the way `home.json` names one.
   `position` is where the doorway stands on the floor. The plumbing does the
   rest: it animates the doorway, looks up the place's name for the sign, and
   handles clicking it, pointing at it in VR and walking through it. A portal
@@ -170,7 +172,10 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   for someone on a phone or in a headset, so a scene bigger than a room must
   keep it. The floor is the plane y = 0.
 - **Walls and edges.** Return `canStand(x, z)` from your scene. Both ways of
-  moving ask it first, so one function keeps visitors out of walls. Don't push
+  moving ask it first, so one function keeps visitors out of walls. Keep them
+  0.3 m back from every wall, or they end with their face inside it. A step is
+  checked every 0.1 m along its way, so a wall at least 0.3 m thick can't be
+  stepped over. Don't push
   the visitor back yourself: someone walking about their real room in a headset
   can step through a virtual wall, and moving them against their will makes
   people ill.
@@ -183,6 +188,14 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   hand pinches and gaze-and-pinch all send it, so the world works on every
   headset. Don't read controller buttons or thumbsticks for anything essential.
 - **Text.** `textSprite(text, color, widthInMetres)` from `nswp-sdk/three`.
+  In a headset the page around the scene is gone, so anything a visitor must
+  read belongs in the scene. Put it on a sign where they will look. For
+  something that must follow them, such as a score, add a small sprite to
+  `ctx.camera`, low in view (around `[0, -0.3, -1.5]`), never across the middle.
+- **A scene that differs each visit** (a random level) still has one preview
+  picture, of whichever version was drawn when it was taken. Say so to the
+  owner, and remove the `rooms` capability: visitors in a shared room would
+  each see something else.
 
 ## Keeping it fast
 

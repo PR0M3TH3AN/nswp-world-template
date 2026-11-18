@@ -39,7 +39,7 @@ export interface SceneContext {
    * animates it, looks up its name, and lets visitors through. To switch one
    * off, set `gate.group.visible = false`: a hidden portal can't be used.
    */
-  addPortal(destination: PortalDestination, opts?: PortalOptions): PortalGate;
+  addPortal(destination: PortalDestination | { coordinate: string }, opts?: PortalOptions): PortalGate;
   /** Hand over portals made elsewhere (the home's own, say) so visitors can go through them. */
   usePortals(gates: PortalGate[]): void;
 }

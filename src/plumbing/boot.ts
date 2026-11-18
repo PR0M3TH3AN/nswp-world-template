@@ -15,7 +15,7 @@
  * and gaze-and-pinch all produce, so nothing here is specific to one headset.
  */
 import * as THREE from "three";
-import { decodeNaddr, parseLayoutEvent, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
+import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
 import { attachRoomControls, capturePanorama, createPresence } from "nswp-sdk/three";
@@ -33,6 +33,8 @@ interface TestHooks {
   face(degrees: number): void;
   /** Step towards a spot on the floor, as pointing at it and selecting would. */
   step(x: number, z: number): void;
+  /** Where the visitor's head is over the floor: [x, z] in metres. */
+  where(): [number, number];
   roomInfo(): unknown;
   device?: unknown;
 }
@@ -63,6 +65,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     teleport: () => {},
     face: () => {},
     step: () => {},
+    where: () => [0, 0],
     roomInfo: () => null,
   };
   window.__nswpTest = hooks;
@@ -121,7 +124,14 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     config,
     layout,
     arrival: context,
-    addPortal(destination: PortalDestination, opts: PortalOptions = {}) {
+    addPortal(to: PortalDestination | { coordinate: string }, opts: PortalOptions = {}) {
+      let destination: PortalDestination;
+      if ("coordinate" in to) {
+        // A world named the way home.json names one: 37300:<its publisher's key>:<its name>.
+        const target = portalTarget(to.coordinate);
+        if (!target || "url" in target) throw new Error(`addPortal: "${to.coordinate}" isn't a world's coordinate (37300:<key>:<name>).`);
+        destination = { naddr: encodeNaddr({ kind: WORLD_KIND, pubkey: target.pubkey, identifier: target.d, relays: config.relays.slice(0, 2) }) };
+      } else destination = to;
       const gate = createPortalGate(destination, { label: opts.label, color: opts.color ?? layout.room.accent });
       const [x, y, z] = opts.position ?? [0, 0, -3];
       gate.group.position.set(x, y, z);
@@ -328,6 +338,10 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     if (canStand(headAt.x + step.x, headAt.z + step.z)) rig.position.add(step);
     else if (canStand(headAt.x + step.x, headAt.z)) rig.position.x += step.x;
     else if (canStand(headAt.x, headAt.z + step.z)) rig.position.z += step.z;
+  };
+  hooks.where = () => {
+    const at = camera.getWorldPosition(new THREE.Vector3());
+    return [Math.round(at.x * 100) / 100, Math.round(at.z * 100) / 100];
   };
   hooks.face = (degrees) => (rig.rotation.y = THREE.MathUtils.degToRad(degrees));
   hooks.teleport = (x, z) => {
