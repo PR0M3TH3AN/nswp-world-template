@@ -5,6 +5,16 @@ with Three.js, following the Nostr Spatial Web Protocol (NSWP). The owner wants
 help changing what the world is. Your job is to build what they ask for inside
 the scene, and to leave the protocol's plumbing working.
 
+## Where the protocol is written down
+
+The plumbing here implements the Nostr Spatial Web Protocol. Its formats are
+defined in nine short documents, each with a schema and test vectors:
+<https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/tree/main/protocol>. Start with the index (`README.md` there). Read
+`09-what-a-world-owes.md` before changing anything under `src/plumbing/`, and
+the document for a format before touching code that reads or writes it. This
+folder's rules below are those documents applied to this world; where the two
+disagree, the documents are right and this file has a bug.
+
 ## Where things are
 
 | Path | Whose it is | What you may do |
