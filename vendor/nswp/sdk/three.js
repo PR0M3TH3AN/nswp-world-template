@@ -20,6 +20,7 @@ import {
   RUN,
   SPRINT,
   TAP_REACH,
+  TOP_SPEED,
   WALK_SPEED,
   addCameraControls,
   addDeskControls,
@@ -44,6 +45,7 @@ import {
   createPortalWindow,
   createPresence,
   createSounds,
+  createStepPace,
   createStroll,
   createWorldSigner,
   createXrInput,
@@ -81,7 +83,7 @@ import {
   watchFov,
   worldSigner,
   youCard
-} from "./shared-GPMAYWU3.js";
+} from "./shared-QMQSUXK4.js";
 import {
   currentForm,
   deviceForms,
@@ -138,6 +140,7 @@ export {
   RUN,
   SPRINT,
   TAP_REACH,
+  TOP_SPEED,
   WALK_SPEED,
   addCameraControls,
   addDeskControls,
@@ -167,6 +170,7 @@ export {
   createPresence,
   createSounds,
   createStay,
+  createStepPace,
   createStroll,
   createVoice,
   createWorldSigner,

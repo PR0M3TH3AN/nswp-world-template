@@ -1979,6 +1979,7 @@ import * as THREE6 from "three";
 // packages/sdk/src/stroll.ts
 var WALK_SPEED = 2.4;
 var RUN = 1.75;
+var TOP_SPEED = WALK_SPEED * RUN;
 var DOUBLE_TAP = 400;
 var TAP_REACH = 6;
 var DRAG_LOOK = 5e-3;
@@ -2001,6 +2002,26 @@ function dotsBetween(fromX, fromZ, toX, toZ, opts = {}) {
   if (!Number.isFinite(far) || far <= clear + short || !(gap > 0)) return out;
   for (let d = far - short; d >= clear && out.length < most; d -= gap) out.push([fromX + dx / far * d, fromZ + dz / far * d]);
   return out;
+}
+function createStepPace(o = {}) {
+  const speed = o.speed && o.speed > 0 ? o.speed : TOP_SPEED;
+  const now = o.now ?? (() => performance.now());
+  let readyAt = -Infinity;
+  return {
+    take(metres) {
+      const t = now();
+      if (t < readyAt) return false;
+      const far = Number.isFinite(metres) ? Math.max(0, metres) : 0;
+      readyAt = t + far / speed * 1e3;
+      return true;
+    },
+    get ready() {
+      return now() >= readyAt;
+    },
+    get wait() {
+      return Math.max(0, (readyAt - now()) / 1e3);
+    }
+  };
 }
 function createStroll(o) {
   const speed = o.speed ?? WALK_SPEED;
@@ -2491,7 +2512,8 @@ function createXrInput(opts) {
           for (const p of pads) if (Math.abs(p.pad.stick[0]) > 0.5) pulse(p.index, 0.2, 12);
         }
       }
-      if (intent.walk[0] !== 0 || intent.walk[1] !== 0) walk(intent.walk[0], intent.walk[1]);
+      const stepped = comfort.move === "steps";
+      if ((intent.walk[0] !== 0 || intent.walk[1] !== 0) && (!stepped || !opts.pace || opts.pace.take(Math.hypot(intent.walk[0], intent.walk[1])))) walk(intent.walk[0], intent.walk[1]);
       for (const slot of intent.stepFrom) {
         opts.stepFrom?.(slot);
         pulse(slot, 0.35, 20);
@@ -7388,11 +7410,13 @@ export {
   figureAction,
   WALK_SPEED,
   RUN,
+  TOP_SPEED,
   DOUBLE_TAP,
   TAP_REACH,
   DRAG_LOOK,
   reachOf,
   dotsBetween,
+  createStepPace,
   createStroll,
   readPad,
   DEFAULT_COMFORT,

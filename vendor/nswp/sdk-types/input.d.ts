@@ -57,6 +57,13 @@ export interface XrInputOptions {
      * a stick doesn't step, and pointing and selecting still does.
      */
     stepFrom?: (slot: number) => void;
+    /**
+     * The pace of stepping (stroll.ts), shared with the world's own steps: a step backwards with the stick is
+     * taken only when it allows, so stepping back is no faster than any other way of going.
+     */
+    pace?: {
+        take(metres: number): boolean;
+    };
     /** The menu button (B or Y) went down. */
     onMenu?: () => void;
     /**

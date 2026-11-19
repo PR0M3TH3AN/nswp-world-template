@@ -23,6 +23,11 @@
 export declare const WALK_SPEED = 2.4;
 /** How much faster a run is than a walk, however it is asked for: Shift, two taps, or a stick pressed in. */
 export declare const RUN = 1.75;
+/**
+ * The fastest anyone goes on foot, in metres a second: a run. Nobody in a room covers ground faster than this,
+ * whatever they hold or wear: keys, a mouse, a finger on a phone, or a headset's sticks and steps.
+ */
+export declare const TOP_SPEED: number;
 /** Two taps within this many milliseconds are a run. */
 export declare const DOUBLE_TAP = 400;
 /**
@@ -48,6 +53,30 @@ export declare function dotsBetween(fromX: number, fromZ: number, toX: number, t
     short?: number;
     most?: number;
 }): [number, number][];
+/**
+ * The pace of stepping. In a headset the casual way to move is a step that lands at once, because a slide there
+ * turns stomachs. Left unpaced, a press is a jump of five metres and a visitor who presses fast enough outruns
+ * everybody. So each step is paid for after it is taken: the next may not land until someone running would have
+ * covered the same ground. A short step is ready again almost at once; a long one takes about a second.
+ *
+ *   const pace = createStepPace();
+ *   // a step of `far` metres is asked for:
+ *   if (pace.take(far)) moveThere();
+ *   // each frame, to show whether a press would do anything:
+ *   reticle.material.opacity = pace.ready ? 0.8 : 0.25;
+ */
+export interface StepPace {
+    /** Take a step of this many metres, if one may be taken now. False, and nothing is spent, if it is too soon. */
+    take(metres: number): boolean;
+    /** Whether a step may be taken now. */
+    readonly ready: boolean;
+    /** Seconds until one may. 0 when ready. */
+    readonly wait: number;
+}
+export declare function createStepPace(o?: {
+    speed?: number;
+    now?: () => number;
+}): StepPace;
 export interface Stroll {
     /**
      * Start walking to (x, z), from wherever the visitor is. Asked twice close together, or while already
