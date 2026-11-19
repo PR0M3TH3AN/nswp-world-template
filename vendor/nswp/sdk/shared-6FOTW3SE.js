@@ -1814,7 +1814,7 @@ function seekPass() {
   seeking = signer.pass(getPublicKey(secret)).then((pass) => {
     if (pass && signer.state === "unlocked" && signer.pubkey === key && arrival.keepIdentity(pass, sessionKey)) {
       for (const fn of [...hereWatchers]) fn();
-    } else if (!pass) seekAfter = Date.now() + 10 * 6e4;
+    } else if (!pass) seekAfter = Infinity;
   }).catch(() => {
   }).finally(() => {
     seeking = null;
