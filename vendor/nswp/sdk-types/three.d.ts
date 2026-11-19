@@ -18,6 +18,7 @@ import { type JoinOptions, type Member, type RoomSession } from "./room.js";
 export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
 import type { Controls } from "./ui/model.js";
+import type { GoOptions } from "./index.js";
 import type { Panels } from "./panels.js";
 import type { Sounds } from "./sound.js";
 export interface PresenceOptions {
@@ -266,6 +267,11 @@ export declare function addViewControls(controls: Controls, d: {
     };
     /** The offer above has gone up, or been answered. */
     onOffer?: (showing: boolean) => void;
+    /**
+     * The visitor's state as they leave to say who they are (in a room, their microphone on, moving the intense
+     * way), so they come back as they left. The headset session is added here.
+     */
+    leaving?: () => GoOptions;
 }): Promise<boolean>;
 export { createFigure, type Figure, type FigureFacts, type FigureStyle } from "./figure.js";
 export { createXrInput, type GrabOptions, type XrInput, type XrInputInfo, type XrInputOptions } from "./input.js";
@@ -280,6 +286,7 @@ export { addJump, createJump, JUMP_GRAVITY, JUMP_HEIGHT, JUMP_SPEED, type AddJum
 export { viewScale } from "./sign.js";
 export { arrivedSettings, arriveWith, currentSettings, reportSettings, type TravelSettings } from "./settings.js";
 export { fullscreenWaiting, resumeFullscreen } from "./ui/fullscreen.js";
+export { identityAction, identityHost, identitySection, identityWords } from "./ui/identity.js";
 export { currentForm, deviceForms, formFor, startingForm, usedForm, type DeviceForms, type Form } from "./form.js";
 export { createFps, heldKey, lookAfter, strideOf, LOOK_SPEED, PITCH_LIMIT, SPRINT, type Fps, type FpsOptions, type Held } from "./fps.js";
 export { addSoundControls, createSounds, CUES, type Cue, type Jukebox, type Song, type SoundLevels, type Sounds, type SoundsOptions, type SoundTheme } from "./sound.js";

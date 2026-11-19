@@ -737,6 +737,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     onState: (s) => (state.xr = s),
     ...(backToHeadset ? { arrived: { title: config.world.title } } : {}),
     onOffer: (showing) => (offered = showing),
+    // Signing in is their own client's to do. They leave as they are, and come back the same: in the room, moving as they were.
+    leaving: () => ({ ...travelling(), moving: movingNow() }),
   });
   if (!state.vrSupported) offered = false;
 

@@ -12,7 +12,7 @@ import {
   resolveTheme,
   rgb,
   saveVisitorTheme
-} from "./shared-FUYALROY.js";
+} from "./shared-OQRXIQ2A.js";
 import {
   arrivedSettings,
   reportSettings
@@ -31,6 +31,8 @@ function cleanKeys(now, k) {
 var read = (t) => typeof t === "function" ? t() : t ?? "";
 var STANDARD = [
   { id: "travel", label: "Travel", icon: "door" },
+  // Who the visitor is here. It has something in it only for one who came through a client (ui/identity.ts).
+  { id: "you", label: "You", icon: "you" },
   { id: "room", label: "Room", icon: "room" },
   { id: "people", label: "People", icon: "people" },
   { id: "camera", label: "Camera", icon: "camera" },
@@ -82,6 +84,7 @@ function createControls(opts) {
       }
       changed();
     },
+    has: (id) => actions.some((x) => x.id === id),
     remove(id) {
       const i = actions.findIndex((x) => x.id === id);
       if (i !== -1) actions.splice(i, 1);

@@ -90,6 +90,8 @@ export interface Controls {
     readonly theme: UiTheme;
     add(...actions: UiAction[]): void;
     remove(id: string): void;
+    /** Whether there is a control with this id, showing or not. */
+    has(id: string): boolean;
     addSection(section: UiSection): void;
     /**
      * Say what the visitor is pointing at, or "" for nothing. `detail` is a

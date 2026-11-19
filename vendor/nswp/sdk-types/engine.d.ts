@@ -1,6 +1,6 @@
 export { bump, check, claim, door, events, headset, kit, menu, moved, open, play, presence, run, say, target, view } from "./engine-menu.js";
 /** Bumped when what the functions take or give changes, so an engine's side can tell. */
-export declare const VERSION = 4;
+export declare const VERSION = 5;
 /**
  * How the visitor arrived, as JSON. Reading it takes it out of the page's
  * address, as it must be: an arrival is for this visit and not for whoever
@@ -17,7 +17,8 @@ export declare const VERSION = 4;
  * `arrived` is false for someone who came by an ordinary link, and every
  * other field then has its plain value. `name` and `pubkey` are filled only
  * when they came by name and their pass checks out for this site; otherwise
- * `guest` is true. `canGoHome` says whether `home()` would lead anywhere.
+ * `guest` is true. `canGoHome` says whether `home()` would lead anywhere, and
+ * `signIn()` with it: both go to the visitor's own client.
  */
 export declare function arrival(): string;
 /**
@@ -38,5 +39,14 @@ export declare function start(options?: string): string;
 export declare function go(destination: string, state?: string): string;
 /** Take the visitor home: their own client's start. Returns false, and does nothing, when there is no way there. */
 export declare function home(state?: string): boolean;
+/**
+ * The visitor asked to say who they are: to sign in, switch to another
+ * profile, or go on as a guest. A world never asks that itself, so this
+ * leaves for their own client, which asks them in its own way and brings them
+ * back here, by name if they chose that. The menu offers it; call this from a
+ * button of your own if you draw one. Returns false, and does nothing, when
+ * they came through no client.
+ */
+export declare function signIn(state?: string): boolean;
 /** Take the visitor to their doors: for a world that is someone's home, which offers this where it offers the way home. */
 export declare function doors(state?: string): boolean;

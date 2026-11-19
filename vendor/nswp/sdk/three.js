@@ -44,6 +44,10 @@ import {
   createXrInput,
   dotsBetween,
   heldKey,
+  identityAction,
+  identityHost,
+  identitySection,
+  identityWords,
   isIntense,
   lookAfter,
   panoramaTexture,
@@ -57,7 +61,7 @@ import {
   textSprite,
   turnVisitor,
   viewScale
-} from "./shared-PTNWVCET.js";
+} from "./shared-R265GHOT.js";
 import {
   currentForm,
   deviceForms,
@@ -66,8 +70,8 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-VSKXDUXV.js";
-import "./shared-FUYALROY.js";
+} from "./shared-FAYIK7KJ.js";
+import "./shared-OQRXIQ2A.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -141,6 +145,10 @@ export {
   formFor,
   fullscreenWaiting,
   heldKey,
+  identityAction,
+  identityHost,
+  identitySection,
+  identityWords,
   isIntense,
   lookAfter,
   panoramaTexture,

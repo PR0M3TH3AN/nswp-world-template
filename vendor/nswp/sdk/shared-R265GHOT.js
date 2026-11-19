@@ -1,13 +1,15 @@
 import {
+  arrival,
   fullscreenAction,
+  portal,
   room,
   startingForm
-} from "./shared-VSKXDUXV.js";
+} from "./shared-FAYIK7KJ.js";
 import {
   ICONS,
   createHeldButton,
   rgb
-} from "./shared-FUYALROY.js";
+} from "./shared-OQRXIQ2A.js";
 import {
   arrivedSettings,
   reportSettings
@@ -1349,6 +1351,48 @@ function createConsole(controls, opts) {
     }
   };
   return con;
+}
+
+// packages/sdk/src/ui/identity.ts
+import { shortNpub as shortNpub2 } from "@nswp/core";
+function identityWords() {
+  const who = arrival.identity();
+  const name = who ? who.name || shortNpub2(who.pubkey) : "";
+  return who ? { signedIn: true, name, label: `Here as ${name}. Switch profile, or go as a guest`, short: "You" } : { signedIn: false, name: "", label: "You are a guest here. Sign in", short: "Sign in" };
+}
+function identityHost() {
+  const airlock = portal.airlockFor();
+  try {
+    return airlock ? new URL(airlock).host : null;
+  } catch {
+    return null;
+  }
+}
+var identitySection = () => ({
+  id: "you",
+  label: "You",
+  icon: "you",
+  note: () => {
+    const host = identityHost();
+    return host ? `Who you are is asked and kept by ${host}, the place you set out from, and never by this world. Signing in takes you there and brings you back here.` : "";
+  }
+});
+function identityAction(controls, leaving = () => ({})) {
+  let going = false;
+  return {
+    id: "identity",
+    section: "you",
+    icon: "you",
+    label: () => identityWords().label,
+    short: () => identityWords().short,
+    hidden: () => portal.airlockFor() === null,
+    act: async () => {
+      if (going) return;
+      going = true;
+      controls.say(`Taking you to ${identityHost() ?? "your own client"} to say who you are.`);
+      if (!await portal.signIn(leaving())) going = false;
+    }
+  };
 }
 
 // packages/sdk/src/input.ts
@@ -6124,6 +6168,10 @@ async function addViewControls(controls, d) {
     { id: "turn", section: "view", icon: "turn", label: "Turn around", act: () => turnVisitor(d.rig, d.camera, 180) },
     fullscreenAction(controls, presenting)
   );
+  if (!controls.has("identity") && identityHost()) {
+    controls.addSection(identitySection());
+    controls.add(identityAction(controls, () => ({ ...d.leaving?.(), xrSession: d.renderer.xr.getSession() })));
+  }
   document.addEventListener("fullscreenchange", () => controls.setTarget(""));
   controls.addSection({
     id: "view",
@@ -6142,6 +6190,10 @@ export {
   CUES,
   turnVisitor,
   createConsole,
+  identityWords,
+  identityHost,
+  identitySection,
+  identityAction,
   WALK_SPEED,
   RUN,
   DOUBLE_TAP,

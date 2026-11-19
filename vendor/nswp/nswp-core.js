@@ -4623,6 +4623,13 @@ function verifyOrigin(world, manifest, manifestUrl) {
   });
   return { verified: checks.every((ch) => ch.ok), checks };
 }
+function doorFor(manifest, url) {
+  const here = normalizeUrl(url);
+  const d = Object.keys(manifest.worlds).find((id) => normalizeUrl(manifest.worlds[id].entry.url) === here);
+  const publishers = d === void 0 ? [] : Object.keys(manifest.publishers).filter((key) => manifest.publishers[key].worlds.includes(d));
+  if (d === void 0 || publishers.length !== 1) return { url };
+  return { naddr: encodeNaddr({ kind: WORLD_KIND, pubkey: publishers[0], identifier: d, relays: manifest.relays.slice(0, 2) }), url };
+}
 async function fetchManifest(urlOrOrigin, fetchImpl = fetch, timeoutMs = 8e3) {
   const url = wellKnownUrl(urlOrOrigin);
   const issues = [];
@@ -5131,7 +5138,7 @@ function buildAirlockUrl(airlock, dest, opts = {}) {
   const parts = [`to=${encodeURIComponent(to)}`];
   if (dest.naddr && dest.url) parts.push(`url=${encodeURIComponent(dest.url)}`);
   if (dest.entryPoint) parts.push(`entry=${encodeURIComponent(dest.entryPoint)}`);
-  parts.push(...stateFlags(opts), ...isForm(opts.form) ? [`form=${opts.form}`] : [], ...settingsFlag(opts), ...blockedFlag(opts));
+  parts.push(...opts.who ? ["who=1"] : [], ...stateFlags(opts), ...isForm(opts.form) ? [`form=${opts.form}`] : [], ...settingsFlag(opts), ...blockedFlag(opts));
   u.hash = parts.join("&");
   return u.href;
 }
@@ -5186,6 +5193,7 @@ function parseAirlockFragment(hash) {
   const entry = params.get("entry");
   if (entry && ENTRY_POINT3.test(entry)) req.entryPoint = entry;
   if (params.get("xr") === "1") req.immersive = true;
+  if (params.get("who") === "1") req.who = true;
   if (params.get("joined") === "1") {
     req.joined = true;
     if (params.get("mic") === "1") req.mic = true;
@@ -6576,6 +6584,7 @@ export {
   decodeNaddr,
   decodeNpub,
   decodeSettings,
+  doorFor,
   encodeArrival,
   encodeLook,
   encodeNaddr,
