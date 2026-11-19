@@ -88,6 +88,8 @@ export interface Intent {
     menu: boolean;
     /** The jump button (A or X) went down. */
     jump: boolean;
+    /** The menu button has been held for a moment: the visitor is summoning their controls (ui/summon.ts). */
+    summon: boolean;
     /** They are running: walking smoothly, having pressed the moving stick in. */
     running: boolean;
     /** 0 to 1: how much of the view's edge to darken. */
@@ -114,6 +116,7 @@ export declare class Locomotion {
     private readonly backward;
     private menuDown;
     private jumpDown;
+    private readonly heldMenu;
     /** Running, once the moving stick is pressed in, until that stick comes back to rest. */
     private running;
     frame(dt: number, pads: HeldPad[], comfort: Comfort): Intent;

@@ -46,7 +46,20 @@ export interface AirlockUrlOptions {
      * moves").
      */
     moving?: "intense";
+    /**
+     * What the visitor is using a flat screen with as they leave (`form=touch`
+     * or `form=desk`): their fingers, or a mouse and keys. The place they
+     * arrive starts them the same way, where their device can do both. A
+     * headset session is `immersive`, and this says what they fall back to out
+     * of it. A preference and nothing more (protocol/11-the-visitors-console.md,
+     * "The same form on the other side"). Not sent on the way home: a
+     * visitor's own client knows their device.
+     */
+    form?: Form;
 }
+/** How a visitor is using a flat screen: with their fingers, or with a mouse and keys. */
+export type Form = "touch" | "desk";
+export declare const isForm: (v: unknown) => v is Form;
 /** Keys from a list that are keys, once each, up to a limit. */
 export declare function cleanKeys(input: unknown, limit: number): string[];
 /** `<airlock>#to=<naddr or url>&entry=<id>` (spec §6.2: destinations travel in the fragment). */
@@ -69,6 +82,8 @@ export interface AirlockRequest {
     blocked?: string[];
     /** The link says they were moving the intense way (`moving=intense`). */
     moving?: "intense";
+    /** The link says what they were using a flat screen with (`form=touch` or `form=desk`). */
+    form?: Form;
 }
 /** Whether a fragment says the visitor came from a headset session, with or without a destination: a way home carries it too. */
 export declare function fragmentSaysImmersive(hash: string): boolean;

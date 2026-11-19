@@ -59,6 +59,11 @@ export interface XrInputOptions {
     stepFrom?: (slot: number) => void;
     /** The menu button (B or Y) went down. */
     onMenu?: () => void;
+    /**
+     * The menu button (B or Y) has been held for a moment: the visitor is summoning their controls, which no world
+     * may refuse (ui/summon.ts). Open the console: `() => xrConsole.setOpen(true)`.
+     */
+    onSummon?: () => void;
     /** The jump button (A or X) went down. Give it the world's jump: `() => jump.jump()` (jump.ts). */
     onJump?: () => void;
     /** The light on the controllers and hands. */

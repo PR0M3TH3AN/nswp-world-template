@@ -59,6 +59,15 @@ export interface Arrival {
      * arrive. Left out, the casual way.
      */
     moving?: "intense";
+    /**
+     * What the visitor was using a flat screen with where they came from:
+     * their fingers ("touch") or a mouse and keys ("desk"). A world that lays
+     * itself out differently for the two starts them the same way, where
+     * their device can do both. A preference, and theirs to change by simply
+     * using the other. Left out, the world works it out from the device.
+     * A headset session is `immersive`.
+     */
+    form?: "touch" | "desk";
 }
 export declare function encodeArrival(a: Omit<Arrival, "v"> & {
     v?: string;

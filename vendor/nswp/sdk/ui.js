@@ -1,13 +1,18 @@
 import {
   DEFAULT_THEME,
   ICONS,
+  SUMMON_HOLD,
+  SUMMON_KEY,
+  SUMMON_SLOP,
   UI_PRESETS,
   cleanTheme,
+  createHeldButton,
+  createHoldWatch,
   loadVisitorTheme,
   resolveTheme,
   rgb,
   saveVisitorTheme
-} from "./shared-SJAWET5K.js";
+} from "./shared-FUYALROY.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/ui/model.ts
@@ -192,7 +197,7 @@ function createControls(opts) {
 
 // packages/sdk/src/ui/hud.ts
 var CSS = `
-:host { position: fixed; inset: 0; z-index: 20; pointer-events: none; display: block;
+:host { position: fixed; inset: 0; z-index: 2147483000; pointer-events: none; display: block;
   --s: 1; --accent: 255, 182, 92; --ink: 238, 245, 251; --glass: 10, 16, 24; --warn: 255, 117, 102;
   font: 500 calc(13px * var(--s)) / 1.35 ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   color: rgb(var(--ink)); -webkit-font-smoothing: antialiased; }
@@ -381,6 +386,7 @@ function mountHud(controls, opts = {}) {
   (opts.parent ?? document.body).append(host);
   let open = false;
   let section = "";
+  let chose = false;
   let drawn = "";
   const press = (item) => controls.run(item.id);
   const draw = () => {
@@ -432,6 +438,7 @@ function mountHud(controls, opts = {}) {
         const b = el("button", { class: "tab", type: "button", role: "tab", "aria-selected": String(s.id === section) }, icon(s.icon), s.label);
         b.addEventListener("click", () => {
           section = s.id;
+          chose = true;
           draw();
           tabs.querySelector('[aria-selected="true"]')?.focus();
         });
@@ -467,13 +474,26 @@ function mountHud(controls, opts = {}) {
     menu.setAttribute("aria-expanded", String(open));
     quiet.setAttribute("aria-expanded", String(open));
   };
+  const focused = () => {
+    let at = document.activeElement;
+    while (at?.shadowRoot?.activeElement) at = at.shadowRoot.activeElement;
+    return at;
+  };
+  let cameFrom = null;
   const setOpen = (next) => {
     if (open === next) return;
+    if (next) {
+      cameFrom = focused();
+      if (!chose) section = "";
+    }
     open = next;
     controls.signal(open ? "menuOpen" : "menuClose");
     draw();
-    if (open) tabs.querySelector('[aria-selected="true"]')?.focus();
-    else (controls.presence === "quiet" ? quiet : menu).focus();
+    if (open) return void tabs.querySelector('[aria-selected="true"]')?.focus();
+    const back = cameFrom;
+    cameFrom = null;
+    if (back?.isConnected && back !== document.body && getComputedStyle(back).display !== "none") back.focus({ preventScroll: true });
+    else focused()?.blur();
   };
   menu.addEventListener("click", () => setOpen(!open));
   quiet.addEventListener("click", () => setOpen(!open));
@@ -490,6 +510,28 @@ function mountHud(controls, opts = {}) {
     if (item) press(item);
   };
   addEventListener("keydown", onKey);
+  const onSummonKey = (e) => {
+    if (e.code !== SUMMON_KEY || host.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    const at = e.composedPath()[0];
+    if (at && (at.tagName === "INPUT" || at.tagName === "TEXTAREA" || at.isContentEditable)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!e.repeat) setOpen(!open);
+  };
+  const swallow = (e) => {
+    if (e.code === SUMMON_KEY && !host.hidden && !e.ctrlKey && !e.metaKey && !e.altKey) e.stopImmediatePropagation();
+  };
+  const hold = createHoldWatch({
+    onHeld: () => {
+      if (!host.hidden) setOpen(!open);
+    }
+  });
+  const onTouch = (e) => hold.touches([...e.touches].map((t) => ({ x: t.clientX, y: t.clientY })));
+  const listening = { capture: true };
+  const watching = { capture: true, passive: true };
+  addEventListener("keydown", onSummonKey, listening);
+  addEventListener("keyup", swallow, listening);
+  for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) addEventListener(type, onTouch, watching);
   const stopSay = controls.onSay((text) => {
     const line = el("div", { class: "say glass" }, text);
     says.append(line);
@@ -527,6 +569,10 @@ function mountHud(controls, opts = {}) {
       stop();
       stopSay();
       removeEventListener("keydown", onKey);
+      removeEventListener("keydown", onSummonKey, listening);
+      removeEventListener("keyup", swallow, listening);
+      for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) removeEventListener(type, onTouch, watching);
+      hold.cancel();
       host.remove();
     }
   };
@@ -534,9 +580,14 @@ function mountHud(controls, opts = {}) {
 export {
   DEFAULT_THEME,
   ICONS,
+  SUMMON_HOLD,
+  SUMMON_KEY,
+  SUMMON_SLOP,
   UI_PRESETS,
   cleanTheme,
   createControls,
+  createHeldButton,
+  createHoldWatch,
   mountHud,
   resolveTheme
 };

@@ -52,6 +52,21 @@ export declare function target(name: string, detail?: string): void;
  */
 export declare function headset(state: string): void;
 /**
+ * How much of the screen the controls take: "full", "quiet" (one small mark
+ * in a corner) or "hidden" (nothing at all). For a world with an interface
+ * of its own, which leads. Whatever is chosen, the visitor can still bring
+ * the controls up with the summons, which is theirs in every world: the key
+ * left of 1, or two fingers held still (protocol/11-the-visitors-console.md).
+ * The engine hears `menu` events as they come and go, and should stop
+ * taking the visitor's input while they are up.
+ */
+export declare function presence(level: string): void;
+/**
+ * Take every key for the world ("1" or "true"), or give them back. While
+ * claimed, the menu answers to none of its own keys. The summons still works.
+ */
+export declare function claim(on: unknown): void;
+/**
  * List a door in the menu, as JSON: `id` and `label`. Choosing it there tells
  * the engine (`{"type":"door","id":...}`), which goes through it. With
  * `remove` true, the door is taken off the list.

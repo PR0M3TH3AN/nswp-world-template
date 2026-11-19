@@ -7,3 +7,4 @@ export { createControls, type Controls, type ControlsOptions, type UiAction, typ
 export { mountHud, type Hud } from "./ui/hud.js";
 export { DEFAULT_THEME, UI_PRESETS, cleanTheme, resolveTheme, type UiTheme } from "./ui/theme.js";
 export { ICONS, type IconName } from "./ui/icons.js";
+export { createHeldButton, createHoldWatch, SUMMON_HOLD, SUMMON_KEY, SUMMON_SLOP } from "./ui/summon.js";

@@ -9,7 +9,9 @@
  * else the world's configured default, else a built-in confirmation screen.
  */
 import { type Arrival, type Issue, type NostrEvent, type PortalDestination } from "@nswp/core";
+import { type Form } from "./form.js";
 export type { Arrival, PortalDestination } from "@nswp/core";
+export { currentForm, startingForm, type Form } from "./form.js";
 export { room, RoomSession, type JoinOptions, type Member, type RoomStatus } from "./room.js";
 export type { Pose, Transform } from "@nswp/core";
 export { dropBrought, somethingBrought, takeBrought, watchBrought, type Brought } from "./bring.js";
@@ -77,6 +79,11 @@ export interface GoOptions {
      * client asks whether to block them everywhere (protocol/02-doors.md, "Blocks that travel").
      */
     blocked?: string[];
+    /**
+     * What the visitor is using a flat screen with: their fingers or a mouse and keys. Left out, it is what they
+     * last used here, which is nearly always right. It goes with them through a door, never on the way home.
+     */
+    form?: Form;
     /** The visitor is moving the intense way here (`fps.enabled` at a desk, `input.intense` in a headset), and would go on doing so where they arrive. */
     moving?: "intense" | "casual";
 }

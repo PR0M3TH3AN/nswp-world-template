@@ -195,6 +195,15 @@ walking smoothly. Fullscreen is in the menu too. Running and jumping work
 whichever way a visitor moves: Shift or two taps run, and Space, the Jump
 control or a headset's A button jumps.
 
+**A visitor's own controls are always within reach.** Your world can show
+as much of them as you like, or none: `controls.setPresence("quiet")` leaves
+one small mark, and `"hidden"` nothing at all, for a world with an interface
+of its own. Whatever you choose, a visitor can bring them up with the one
+gesture that is theirs in every world: the key left of 1, two fingers held
+still on a touch screen, or B or Y held in a headset. Don't use those for
+anything else. And a visitor arrives laid out the way they left the last
+world, for touch or for a mouse and keys.
+
 **It has sound.** Recorded steps, presses and doors, a room's hum, and a
 piece of music. Visitors set their own volumes and can play their own songs,
 which only they hear. To use sounds of your own, see
