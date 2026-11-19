@@ -99,6 +99,23 @@ export declare const portal: {
      */
     home(opts?: GoOptions): Promise<boolean>;
     /**
+     * This world's own door: the announcement its manifest lists for this page,
+     * and its address. It is what sends a visitor back here through their own
+     * client, which checks it like any other door. With no manifest, or none
+     * that names this page, the door is the address alone.
+     */
+    here(): Promise<PortalDestination>;
+    /**
+     * The visitor asked to say who they are: to sign in, switch to another
+     * profile, or go on as a guest. A world never asks that itself
+     * (protocol/09-what-a-world-owes.md), so this leaves for their own client
+     * with a door back here and the request (`who=1`). Their client asks them
+     * in its own way and brings them back, by name if they chose that
+     * (protocol/10-identity.md, "Signing in from inside a world"). Returns
+     * false, and does nothing, when they came through no client.
+     */
+    signIn(opts?: GoOptions): Promise<boolean>;
+    /**
      * Take the visitor to their doors: their client's own place for them. For
      * most visitors that is where home is too. It is a different place for one
      * whose home is a world of their own, and a world that can be a home

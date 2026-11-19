@@ -66,6 +66,15 @@ export interface AirlockUrlOptions {
      * the way home too: what they changed in a world comes home with them.
      */
     settings?: TravelSettings;
+    /**
+     * The visitor asked, from inside a world, to say who they are (`who=1`):
+     * to sign in, switch to another profile, or go on as a guest. Their own
+     * client shows them its own way of doing that before it takes them on. A
+     * request and nothing more: a link anyone can write never signs anyone in,
+     * and never sends anyone by name (protocol/10-identity.md, "Signing in
+     * from inside a world"). Only with a destination, never on the way home.
+     */
+    who?: boolean;
 }
 /** How a visitor is using a flat screen: with their fingers, or with a mouse and keys. */
 export type Form = "touch" | "desk";
@@ -96,6 +105,8 @@ export interface AirlockRequest {
     form?: Form;
     /** The link says what their settings were (`set=`). Preferences, with everything unknown already left out. */
     settings?: TravelSettings;
+    /** The link says the visitor asked to say who they are first (`who=1`). A request: it shows them a choice and makes none. */
+    who?: true;
 }
 /** Whether a fragment says the visitor came from a headset session, with or without a destination: a way home carries it too. */
 export declare function fragmentSaysImmersive(hash: string): boolean;

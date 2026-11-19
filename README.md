@@ -125,6 +125,11 @@ Whatever you build, keep these. `npm run check` looks for both.
    address and waits for them to agree. Never navigate away yourself.
 2. **Never ask a visitor for a password, a key or a sign-in.** A world doesn't
    need them. A place that asks looks exactly like a phishing page.
+   Your visitors can still sign in from inside your world: the menu has
+   "You are a guest here. Sign in" under "You", with nothing for you to
+   write. It takes them to their own client, which asks them there and
+   brings them back to your world. That button is all a world does about
+   signing in.
 
 ## Put it online
 

@@ -49,6 +49,17 @@ export interface Verification {
  * must hold. `manifestUrl` is where the manifest was actually fetched from.
  */
 export declare function verifyOrigin(world: World, manifest: Manifest, manifestUrl: string): Verification;
+/**
+ * The door to a world as its own site names it: the announcement its manifest
+ * lists for this address, and the address. A world uses it to send a visitor
+ * back to itself through their own client, which checks it like any other
+ * door. With no announcement for the address, or more than one publisher
+ * claiming it, the door is the address alone.
+ */
+export declare function doorFor(manifest: Manifest, url: string): {
+    naddr?: string;
+    url: string;
+};
 export interface FetchManifestResult {
     url: string;
     manifest?: Manifest;
