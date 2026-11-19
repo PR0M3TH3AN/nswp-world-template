@@ -256,12 +256,14 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   works whenever it is visible. For an exit that appears later, either add it
   later, or add it at the start and set `gate.group.visible = false` until
   then.
-- **Game controls.** A visitor at a desk can turn on game controls in the
-  menu: the mouse looks, W A S D walk, Shift runs, F or a click uses what is
-  in the middle of the view, Escape brings up the menu. The plumbing does it,
-  and adds Fullscreen. While they are on, the mouse pointer is hidden and has
-  no position: if your scene reacts to clicks, aim from the middle of the
-  view, not from where the mouse is.
+- **Casual and intense.** There are two ways to move, and the menu calls
+  them the same thing at a desk and in a headset. Casual is what a visitor
+  gets. Intense at a desk: the mouse looks, W A S D walk, Shift runs, F or a
+  click uses what is in the middle of the view, Escape brings up the menu.
+  Intense in a headset: walking and turning smoothly. The plumbing does both,
+  and adds Fullscreen. While the desk's intense way is on, the mouse pointer
+  is hidden and has no position: if your scene reacts to clicks, aim from the
+  middle of the view, not from where the mouse is.
 - **Moving around.** The plumbing gives every visitor two ways to move:
   W, A, S, D on a keyboard, and stepping, which is pointing at the floor and
   selecting (a click, a tap, a trigger pull or a pinch) to stand there. In a

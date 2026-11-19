@@ -66,6 +66,16 @@ export interface Comfort {
  * there for people who know they want it.
  */
 export declare const DEFAULT_COMFORT: Comfort;
+/**
+ * Two ways of moving, by name, so that one switch can choose between them.
+ * Casual is the comfortable one and the default: nothing slides. Intense is
+ * what people who play games expect: walking and turning smoothly, with the
+ * whole view. Each setting can still be changed by itself afterwards.
+ */
+export declare const CASUAL_COMFORT: Partial<Comfort>;
+export declare const INTENSE_COMFORT: Partial<Comfort>;
+/** Whether a visitor's settings amount to the intense way: they walk and turn smoothly. */
+export declare const isIntense: (comfort: Comfort) => boolean;
 /** Keep only values that are what they claim to be: this is read back from storage. */
 export declare function cleanComfort(input: unknown): Partial<Comfort>;
 export declare function loadComfort(): Comfort;
