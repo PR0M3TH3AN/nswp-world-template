@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.21.0";
+var KIT_VERSION = "0.21.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6469,7 +6469,7 @@ function cleanLocalMap(input) {
     const to = originOf(local);
     if (!from || !to) continue;
     if (from.protocol !== "https:" || isLocalHost(from.hostname)) continue;
-    if (to.protocol !== "http:" || !isLocalHost(to.hostname)) continue;
+    if (to.protocol !== "http:" && to.protocol !== "https:" || !isLocalHost(to.hostname)) continue;
     out.set(from.origin, to.origin);
   }
   return out;
@@ -6491,7 +6491,7 @@ var NONE = /* @__PURE__ */ new Map();
 var loading;
 function onLocalHost() {
   try {
-    return typeof location !== "undefined" && location.protocol === "http:" && isLocalHost(location.hostname);
+    return typeof location !== "undefined" && (location.protocol === "http:" || location.protocol === "https:") && isLocalHost(location.hostname);
   } catch {
     return false;
   }
