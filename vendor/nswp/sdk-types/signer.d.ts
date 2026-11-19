@@ -54,6 +54,11 @@ export interface WorldSigner {
     }): Promise<NostrEvent | null>;
     /** Be told when its state changes. Returns how to stop. */
     onChange(fn: () => void): () => void;
+    /**
+     * Wait until it has said whether it is unlocked, or `ms` have passed. A signer that remembers this world
+     * says so a moment after the page loads: this is how to not decide anything before it has.
+     */
+    whenAnswered(ms: number): Promise<void>;
     dispose(): void;
 }
 export interface WorldSignerOptions {

@@ -1,4 +1,5 @@
 import { type ChatView, type UiChat } from "./chat.js";
+import { type FeedView, type UiFeed } from "./feed.js";
 import type { IconName } from "./icons.js";
 import { DEFAULT_THEME, type UiTheme } from "./theme.js";
 type Text = string | (() => string);
@@ -119,6 +120,8 @@ export interface UiView {
     theme: UiTheme;
     /** What the people in the room have written (ui/chat.ts). */
     chat: ChatView;
+    /** The visitor's own public posts, and the place to send out another (ui/feed.ts). */
+    feed: FeedView;
 }
 export interface Controls {
     readonly theme: UiTheme;
@@ -167,6 +170,8 @@ export interface Controls {
     onSignal(fn: (name: string) => void): () => void;
     /** What the people in the room write to each other (ui/chat.ts). The room fills it; every renderer draws it. */
     readonly chat: UiChat;
+    /** The visitor's own public posts (ui/feed.ts). The room fills it once something signs for them; every renderer draws it. */
+    readonly feed: UiFeed;
 }
 export interface ControlsOptions {
     /** The world's name. */

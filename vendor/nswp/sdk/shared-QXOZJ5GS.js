@@ -313,6 +313,98 @@ function wrapWords(text, measure, width, rows) {
   return kept;
 }
 
+// packages/sdk/src/ui/feed.ts
+import { CHAT_LIMITS as CHAT_LIMITS2, cleanChat as cleanChat2, cleanLine } from "@nswp/core";
+var FEED_LIMITS = { shown: 420, kept: 30 };
+function createUiFeed(changed, now = () => Date.now()) {
+  let opts = null;
+  let posts = [];
+  let loading = false;
+  let said = "";
+  let version = 0;
+  let count = 0;
+  let asked = 0;
+  const bump = () => {
+    version++;
+    changed();
+  };
+  const sort = () => {
+    posts.sort((a, b) => b.at - a.at);
+    const kept = posts.filter((p, i) => p.state !== "out" || i < FEED_LIMITS.kept);
+    posts = kept;
+  };
+  return {
+    attach(next) {
+      opts = next;
+      posts = [];
+      loading = false;
+      said = "";
+      asked = 0;
+      bump();
+    },
+    detach() {
+      if (!opts) return;
+      opts = null;
+      posts = [];
+      loading = false;
+      said = "";
+      bump();
+    },
+    opened() {
+      const mine = opts;
+      if (!mine?.load || loading || asked && now() - asked < 6e4) return;
+      asked = now();
+      loading = true;
+      bump();
+      void mine.load().catch(() => null).then((got) => {
+        if (opts !== mine) return;
+        loading = false;
+        if (!got) said = "Your earlier posts couldn't be fetched just now.";
+        else {
+          const seen = new Set(posts.map((p) => p.key));
+          for (const p of got) {
+            const text = cleanLine(p.text, FEED_LIMITS.shown);
+            if (!text || seen.has(p.id) || !Number.isFinite(p.at)) continue;
+            seen.add(p.id);
+            posts.push({ key: p.id, text, at: p.at, state: "out" });
+          }
+          sort();
+        }
+        bump();
+      });
+    },
+    send(text) {
+      const mine = opts;
+      if (!mine) return "There is nothing to post with: sign in first.";
+      const words = cleanChat2(text);
+      if (!words) return null;
+      const post = { key: `new-${++count}`, text: words, at: Math.floor(now() / 1e3), state: "sending" };
+      posts.unshift(post);
+      said = "";
+      bump();
+      void mine.send(words).catch(() => ({ ok: false, said: "That wasn't sent." })).then((how) => {
+        if (opts !== mine) return;
+        post.state = how.ok ? "out" : "failed";
+        said = how.said;
+        bump();
+      });
+      return null;
+    },
+    view() {
+      return { ready: !!opts, title: "My public feed", who: opts?.who ?? "", posts, loading, said, limit: CHAT_LIMITS2.chars, version };
+    }
+  };
+}
+function ago(at, nowSec) {
+  const s = Math.max(0, nowSec - at);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  const days = Math.floor(s / 86400);
+  if (days < 30) return days === 1 ? "1 day ago" : `${days} days ago`;
+  return new Date(at * 1e3).toISOString().slice(0, 10);
+}
+
 // packages/sdk/src/ui/summon.ts
 var SUMMON_KEY = "Backquote";
 var SUMMON_HOLD = 600;
@@ -380,6 +472,9 @@ export {
   onChatChange,
   createUiChat,
   wrapWords,
+  FEED_LIMITS,
+  createUiFeed,
+  ago,
   SUMMON_KEY,
   SUMMON_HOLD,
   SUMMON_SLOP,

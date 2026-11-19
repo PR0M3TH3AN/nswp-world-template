@@ -252,7 +252,7 @@ export interface Travelling {
     /** Named people they blocked here during this visit, for their own client to ask about. */
     blocked: string[];
 }
-/** What signs a note for the visitor when they post what they write in a room's chat. */
+/** What signs a post for the visitor when they send one out from their public feed. */
 export interface RoomNotes {
     /** Whether a note can be signed now. While it can't, posting isn't offered. */
     ready(): boolean;
@@ -272,6 +272,10 @@ export interface RoomNotes {
     host?(): string | null;
     /** A signer was named and didn't answer: then what to say about it. Null when that isn't so. */
     unanswered?(): string | null;
+    /** Whose key signs, once it can: their feed is that key's posts. Left out, the feed shows only what is sent from here. */
+    pubkey?(): string | null;
+    /** What to call them over their feed: their name, or null for the short form of their key. */
+    who?(): string | null;
 }
 export declare function addRoomControls(controls: Controls, presence: Presence, opts?: {
     search?: string;
@@ -297,10 +301,10 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
     sounds?: Sounds | null;
     /** False where this world wants no shared music: a concert, a library. Its visitors' own music still plays for them. */
     sharedMusic?: boolean;
-    /** The relays a note the visitor posts from the chat goes to. Left out, the kit's own list. */
+    /** The relays a post the visitor sends out goes to, and their earlier posts are read from. Left out, the kit's own list. */
     noteRelays?: string[];
     /**
-     * What signs a note when the visitor posts what they write. Left out, the page's own signer: the hidden one
+     * What signs a post when the visitor sends one out. Left out, the page's own signer: the hidden one
      * their client named, unlocked in that client's window (`worldSigner()`), which is what a world has. A
      * visitor's own client, in a room of its own where they are already signed in, gives its own.
      */
@@ -352,7 +356,7 @@ export { arrivedSettings, arriveWith, currentSettings, reportSettings, type Trav
 export { fullscreenWaiting, prefersFullscreen, resumeFullscreen } from "./ui/fullscreen.js";
 export { loadPicture, onPicturesChange, PICTURE_LIMITS, setShowsPictures, showsPictures } from "./picture.js";
 export { addDeskControls, FOV_STEPS, LOOK_STEPS, lookScale, onDeskChange, setLookScale, setVisitorFov, visitorFov, watchFov } from "./desk.js";
-export { figureAction, identityAction, identityHost, identitySection, identityWords, signerAction, worldSigner, type Leaving } from "./ui/identity.js";
+export { byName, figureAction, hereAs, identityAction, identityHost, identitySection, identityWords, signerAction, signerNamed, worldSigner, youCard, type Leaving } from "./ui/identity.js";
 export { createWorldSigner, type SignerState, type WorldSigner } from "./signer.js";
 export { currentForm, deviceForms, formFor, startingForm, usedForm, type DeviceForms, type Form } from "./form.js";
 export { createFps, heldKey, lookAfter, strideOf, LOOK_SPEED, PITCH_LIMIT, SPRINT, type Fps, type FpsOptions, type Held } from "./fps.js";
