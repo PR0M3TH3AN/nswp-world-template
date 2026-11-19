@@ -26,11 +26,13 @@ export declare const CHAT_LIMITS: {
     readonly remembered: 32;
 };
 /**
- * Something said, as it may be shown: one line, nothing invisible that
- * reorders or hides text, no doubled spaces, at most `CHAT_LIMITS.chars`
- * characters. Returns "" when nothing is left, or for anything not a string.
+ * Somebody else's words, as they may be shown: one line, nothing invisible
+ * that reorders or hides text, no doubled spaces, at most `chars` characters.
+ * Returns "" when nothing is left, or for anything not a string.
  */
-export declare function cleanChat(text: unknown): string;
+export declare function cleanLine(text: unknown, chars: number): string;
+/** Something said in a room, as it may be shown: `cleanLine`, to `CHAT_LIMITS.chars`. */
+export declare const cleanChat: (text: unknown) => string;
 /** A new id for a line: eight hex digits, random. It only tells a repeat from a new line. */
 export declare function chatId(): string;
 /** A line as it goes on the room's channel, or null if there is nothing to say. */

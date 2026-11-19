@@ -100,6 +100,14 @@ export interface Presence {
      * asks this wherever it asks what a pointer is on. The ray's `camera` must be set, as for any sprite.
      */
     personAt(raycaster: THREE.Raycaster): string | null;
+    /**
+     * Where someone is from the visitor's own head: how far in metres, and how far to one side (-1 is hard left, 1
+     * hard right). For a sound they made. Null for someone not drawn yet.
+     */
+    whereIs(pubkey: string): {
+        distance: number;
+        pan: number;
+    } | null;
     /** Press whoever's picture the ray is on, as choosing them from the People list does. True if someone was. */
     pressAt(raycaster: THREE.Raycaster): boolean;
     /** What pressing a picture does. The room's controls set it. */

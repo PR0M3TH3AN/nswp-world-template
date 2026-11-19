@@ -10,6 +10,8 @@ export interface Member {
     name: string;
     /** Where a proven member's picture is, as their pass says. Never there for a guest. */
     picture?: string;
+    /** What a proven member wrote about themselves, as their pass says. Their own words. Never there for a guest. */
+    about?: string;
     color: number;
     /** How they look (spec §4.2). What their session key generates, until they say otherwise. */
     look: Look;

@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.23.0";
+var KIT_VERSION = "0.24.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4351,6 +4351,8 @@ var PASS_LIMITS = {
   nameChars: 48,
   /** The longest address a picture may have. */
   pictureChars: 300,
+  /** The most a pass says about its holder, in their own words. */
+  aboutChars: 280,
   /** A pass as JSON, as it travels between the members of a room. */
   chars: 4e3
 };

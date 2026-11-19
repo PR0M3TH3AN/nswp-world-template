@@ -1,13 +1,3 @@
-/**
- * Passes (protocol/10-identity.md): how a visitor is known by name in a world
- * that never holds their key.
- *
- * The visitor's own client makes a throwaway session key for one trip and
- * signs a pass with their identity key: "at this site, until this time, this
- * session key speaks for me". The world is handed the pass and the session
- * key. Anyone who checks the pass knows which identity is behind the session
- * key, and the identity key itself never leaves the client.
- */
 import { type EventTemplate } from "./event.js";
 import { type Result } from "./result.js";
 export declare const PASS_LIMITS: {
@@ -18,6 +8,8 @@ export declare const PASS_LIMITS: {
     readonly nameChars: 48;
     /** The longest address a picture may have. */
     readonly pictureChars: 300;
+    /** The most a pass says about its holder, in their own words. */
+    readonly aboutChars: 280;
     /** A pass as JSON, as it travels between the members of a room. */
     readonly chars: 4000;
 };
@@ -34,6 +26,13 @@ export declare function cleanName(name: string): string;
  * who hasn't said not to (protocol/10-identity.md, "Pictures").
  */
 export declare function cleanPicture(url: unknown): string;
+/**
+ * A few words someone wrote about themselves, as they may be shown: one line
+ * of plain text, nothing invisible that reorders or hides it, at most 280
+ * characters. Returns "" when nothing is left. It is their own say about
+ * themselves and nothing more: a reader shows it as theirs, never as a fact.
+ */
+export declare const cleanAbout: (about: unknown) => string;
 /** A seed that is a public key is a claim to that key. Only a pass makes the claim good. */
 export declare function claimsKey(seed: string): boolean;
 export interface RoomPassInput {
@@ -45,6 +44,8 @@ export interface RoomPassInput {
     name?: string;
     /** Where their picture is: the one in their Nostr profile. Left out unless it is an https address. */
     picture?: string;
+    /** A few words about themselves, from their Nostr profile. Cleaned and cut short; left out when nothing is left. */
+    about?: string;
     createdAt?: number;
     ttlSec?: number;
 }
@@ -65,6 +66,8 @@ export interface VerifiedPass {
     name: string;
     /** Where their picture is, or "" for none. It is theirs because their own key signed it; what is there is not checked. */
     picture: string;
+    /** What they wrote about themselves, cleaned, or "" for none. Their own words, not a fact. */
+    about: string;
     expiresAt: number;
     id: string;
 }
