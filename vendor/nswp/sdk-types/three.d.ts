@@ -264,6 +264,14 @@ export interface RoomNotes {
     }): Promise<NostrEvent | null>;
     /** Be told when `ready()` may have changed. */
     onChange?(fn: () => void): unknown;
+    /** A signer is there and the visitor hasn't unlocked it for this place: posting is offered, and leads there first. */
+    locked?(): boolean;
+    /** Start unlocking it, from a press. False if nothing could be opened. */
+    unlock?(): boolean;
+    /** Where that happens, as an address to name, or null. */
+    host?(): string | null;
+    /** A signer was named and didn't answer: then what to say about it. Null when that isn't so. */
+    unanswered?(): string | null;
 }
 export declare function addRoomControls(controls: Controls, presence: Presence, opts?: {
     search?: string;

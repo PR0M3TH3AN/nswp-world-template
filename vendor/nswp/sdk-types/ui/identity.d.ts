@@ -23,6 +23,8 @@ export type Leaving = (to: {
  * back as they left.
  */
 export declare function identityAction(controls: Controls, leaving?: Leaving): UiAction;
+/** What to say when a signer that was named didn't answer: what happened, and the one thing likely to help. */
+export declare function unansweredWords(signer: WorldSigner): string;
 /** This page's one signer, from the visitor's own client (signer.ts). "none" when they came through no client. */
 export declare function worldSigner(): WorldSigner;
 /**
