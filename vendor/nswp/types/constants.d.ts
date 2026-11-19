@@ -19,7 +19,7 @@ export declare const WELL_KNOWN_PATH = "/.well-known/nswp.json";
  * client can tell how old a world's controls are without loading the world
  * (protocol/01-worlds.md, "Which kit a world was built with").
  */
-export declare const KIT_VERSION = "0.26.1";
+export declare const KIT_VERSION = "0.26.2";
 /** A version as three numbers, or null for anything that isn't one. */
 export declare function parseKitVersion(v: unknown): [number, number, number] | null;
 /**

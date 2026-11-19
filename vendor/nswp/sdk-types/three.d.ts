@@ -13,6 +13,7 @@
  * address to the other members, so join only after the visitor has agreed.
  */
 import * as THREE from "three";
+import { type NostrEvent } from "@nswp/core";
 import { type FigureStyle } from "./figure.js";
 import { type JoinOptions, type Member, type RoomSession } from "./room.js";
 export { turnVisitor } from "./turn.js";
@@ -251,6 +252,19 @@ export interface Travelling {
     /** Named people they blocked here during this visit, for their own client to ask about. */
     blocked: string[];
 }
+/** What signs a note for the visitor when they post what they write in a room's chat. */
+export interface RoomNotes {
+    /** Whether a note can be signed now. While it can't, posting isn't offered. */
+    ready(): boolean;
+    /** Sign a note. Null, or a rejection, if it won't be signed. What comes back is checked before it is sent anywhere. */
+    sign(note: {
+        kind: number;
+        content: string;
+        tags: string[][];
+    }): Promise<NostrEvent | null>;
+    /** Be told when `ready()` may have changed. */
+    onChange?(fn: () => void): unknown;
+}
 export declare function addRoomControls(controls: Controls, presence: Presence, opts?: {
     search?: string;
     onState?: (state: Record<string, unknown> | null) => void;
@@ -277,6 +291,12 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
     sharedMusic?: boolean;
     /** The relays a note the visitor posts from the chat goes to. Left out, the kit's own list. */
     noteRelays?: string[];
+    /**
+     * What signs a note when the visitor posts what they write. Left out, the page's own signer: the hidden one
+     * their client named, unlocked in that client's window (`worldSigner()`), which is what a world has. A
+     * visitor's own client, in a room of its own where they are already signed in, gives its own.
+     */
+    notes?: RoomNotes;
 }): {
     refresh(): void;
     travelling(): Travelling;
