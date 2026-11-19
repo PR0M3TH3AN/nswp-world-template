@@ -71,7 +71,7 @@ import {
   viewScale,
   visitorFov,
   watchFov
-} from "./shared-HHHP6SKA.js";
+} from "./shared-F76S4HIJ.js";
 import {
   currentForm,
   deviceForms,
@@ -81,8 +81,14 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-RXYHMQRB.js";
-import "./shared-OQRXIQ2A.js";
+} from "./shared-YZGO47AG.js";
+import {
+  PICTURE_LIMITS,
+  loadPicture,
+  onPicturesChange,
+  setShowsPictures,
+  showsPictures
+} from "./shared-7WVSA4YM.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -117,6 +123,7 @@ export {
   LOOK_STEPS,
   PANEL_LIMITS,
   PANEL_LOOKS,
+  PICTURE_LIMITS,
   PITCH_LIMIT,
   RUN,
   SPRINT,
@@ -165,9 +172,11 @@ export {
   identitySection,
   identityWords,
   isIntense,
+  loadPicture,
   lookAfter,
   lookScale,
   onDeskChange,
+  onPicturesChange,
   panoramaTexture,
   prefersFullscreen,
   reachOf,
@@ -178,7 +187,9 @@ export {
   resumeFullscreen,
   saveFile,
   setLookScale,
+  setShowsPictures,
   setVisitorFov,
+  showsPictures,
   startingForm,
   strideOf,
   takePicture,

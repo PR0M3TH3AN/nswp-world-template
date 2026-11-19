@@ -16,6 +16,8 @@ export declare const PASS_LIMITS: {
     /** How far a reader's clock and a signer's may disagree. */
     readonly skewSec: 120;
     readonly nameChars: 48;
+    /** The longest address a picture may have. */
+    readonly pictureChars: 300;
     /** A pass as JSON, as it travels between the members of a room. */
     readonly chars: 4000;
 };
@@ -24,6 +26,14 @@ export declare const PASS_LIMITS: {
  * no doubled spaces, at most 48 characters. Returns "" when nothing is left.
  */
 export declare function cleanName(name: string): string;
+/**
+ * Where a picture is, as it may be fetched: an `https` address with no
+ * credentials in it, at most 300 characters. Returns "" for anything else.
+ * A picture is fetched from wherever its owner keeps it, so whoever shows one
+ * tells that place their address: a reader shows pictures only to someone
+ * who hasn't said not to (protocol/10-identity.md, "Pictures").
+ */
+export declare function cleanPicture(url: unknown): string;
 /** A seed that is a public key is a claim to that key. Only a pass makes the claim good. */
 export declare function claimsKey(seed: string): boolean;
 export interface RoomPassInput {
@@ -33,6 +43,8 @@ export interface RoomPassInput {
     origin: string;
     /** The name to be known by. Cleaned; left out when nothing is left. */
     name?: string;
+    /** Where their picture is: the one in their Nostr profile. Left out unless it is an https address. */
+    picture?: string;
     createdAt?: number;
     ttlSec?: number;
 }
@@ -51,6 +63,8 @@ export interface VerifiedPass {
     session: string;
     /** The name they chose to be known by, cleaned, or "" for none. */
     name: string;
+    /** Where their picture is, or "" for none. It is theirs because their own key signed it; what is there is not checked. */
+    picture: string;
     expiresAt: number;
     id: string;
 }

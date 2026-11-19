@@ -89,6 +89,15 @@ export interface Presence {
     selfLook(): Member["look"] | string;
     /** Show for a few seconds where one member is: a column of light over their head. */
     pointOut(pubkey: string): void;
+    /**
+     * Whose picture a ray is on, by their session key, or null. A picture over someone's head is a button: a world
+     * asks this wherever it asks what a pointer is on. The ray's `camera` must be set, as for any sprite.
+     */
+    personAt(raycaster: THREE.Raycaster): string | null;
+    /** Press whoever's picture the ray is on, as choosing them from the People list does. True if someone was. */
+    pressAt(raycaster: THREE.Raycaster): boolean;
+    /** What pressing a picture does. The room's controls set it. */
+    onPerson(cb: (pubkey: string) => void): void;
     /** Everyone else in the room, as they are being drawn. */
     people(): Member[];
     /** How loud other people's voices are for this visitor, from 0 to 1. Theirs to set, and nobody else's. */
@@ -291,6 +300,7 @@ export { addJump, createJump, JUMP_GRAVITY, JUMP_HEIGHT, JUMP_SPEED, type AddJum
 export { viewScale } from "./sign.js";
 export { arrivedSettings, arriveWith, currentSettings, reportSettings, type TravelSettings } from "./settings.js";
 export { fullscreenWaiting, prefersFullscreen, resumeFullscreen } from "./ui/fullscreen.js";
+export { loadPicture, onPicturesChange, PICTURE_LIMITS, setShowsPictures, showsPictures } from "./picture.js";
 export { addDeskControls, FOV_STEPS, LOOK_STEPS, lookScale, onDeskChange, setLookScale, setVisitorFov, visitorFov, watchFov } from "./desk.js";
 export { figureAction, identityAction, identityHost, identitySection, identityWords, type Leaving } from "./ui/identity.js";
 export { currentForm, deviceForms, formFor, startingForm, usedForm, type DeviceForms, type Form } from "./form.js";

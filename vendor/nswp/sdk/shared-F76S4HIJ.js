@@ -5,12 +5,16 @@ import {
   portal,
   room,
   startingForm
-} from "./shared-RXYHMQRB.js";
+} from "./shared-YZGO47AG.js";
 import {
   ICONS,
   createHeldButton,
-  rgb
-} from "./shared-OQRXIQ2A.js";
+  loadPicture,
+  onPicturesChange,
+  rgb,
+  setShowsPictures,
+  showsPictures
+} from "./shared-7WVSA4YM.js";
 import {
   arrivedSettings,
   reportSettings
@@ -5142,6 +5146,7 @@ function createPresence(d) {
     figure.head.position.copy(was?.head.position ?? figure.head.position);
     figure.head.quaternion.copy(was?.head.quaternion ?? figure.head.quaternion);
     figure.head.add(a.label);
+    if (a.picture) figure.head.add(a.picture);
     figure.hands.forEach((h, i) => {
       h.visible = was?.hands[i].visible ?? false;
       if (was) {
@@ -5161,11 +5166,42 @@ function createPresence(d) {
     a.head = figure.head;
     a.torso = figure.torso;
     a.hands = figure.hands;
-    a.materials = [figure.metal, a.label.material].map((material) => {
-      const opacity = material === a.label.material ? 1 : material.opacity;
+    a.materials = [figure.metal, a.label.material, ...a.picture ? [a.picture.material] : []].map((material) => {
+      const opacity = material === a.label.material || material === a.picture?.material ? 1 : material.opacity;
       material.transparent = true;
       return { material, opacity };
     });
+  };
+  const dropPicture = (a) => {
+    if (!a.picture) return;
+    a.picture.removeFromParent();
+    a.picture.material.map?.dispose();
+    a.picture.material.dispose();
+    delete a.picture;
+  };
+  const showPicture = (a) => {
+    const from = !a.member.guest && showsPictures() ? a.member.picture ?? "" : "";
+    if (from === (a.pictureFrom ?? "")) return;
+    a.pictureFrom = from;
+    dropPicture(a);
+    if (!from) return void dress(a, a.member.look);
+    void loadPicture(from).then((canvas) => {
+      if (!canvas || a.pictureFrom !== from || !avatars.has(a.member.pubkey)) return;
+      const map = new THREE13.CanvasTexture(canvas);
+      map.colorSpace = THREE13.SRGBColorSpace;
+      const sprite = new THREE13.Sprite(new THREE13.SpriteMaterial({ map, depthWrite: false }));
+      sprite.scale.set(0.2, 0.2, 1);
+      sprite.position.set(0, 0.63, 0);
+      sprite.userData.person = a.member.pubkey;
+      a.picture = sprite;
+      dress(a, a.member.look);
+      changed();
+    });
+  };
+  onPicturesChange(() => {
+    for (const a of avatars.values()) showPicture(a);
+  });
+  let onPerson = () => {
   };
   const makeAvatar = (member) => {
     const root = new THREE13.Group();
@@ -5175,6 +5211,7 @@ function createPresence(d) {
     d.scene.add(root);
     const a = { member, root, label, target: null, placed: false };
     dress(a, member.look);
+    showPicture(a);
     return a;
   };
   let hiddenAll = false;
@@ -5291,6 +5328,7 @@ function createPresence(d) {
     stopTune(a);
     if (a.element) a.element.srcObject = null;
     d.scene.remove(a.root);
+    dropPicture(a);
     a.figure.dispose();
   };
   const v = new THREE13.Vector3();
@@ -5379,6 +5417,7 @@ function createPresence(d) {
         a.label.material.dispose();
         a.label = label;
         dress(a, m.look);
+        showPicture(a);
       }
       changed();
     });
@@ -5487,6 +5526,20 @@ function createPresence(d) {
       const mine = typeof d.look === "function" ? d.look() : d.look;
       const read = mine ? decodeLook(mine) : null;
       return read?.ok ? read.value.look : plainSeed ??= `plain-${Math.random().toString(36).slice(2, 12)}`;
+    },
+    personAt(raycaster) {
+      const badges = [...avatars.values()].filter((a) => a.picture && a.root.visible).map((a) => a.picture);
+      if (!badges.length) return null;
+      const hit = raycaster.intersectObjects(badges, false)[0];
+      return hit ? String(hit.object.userData.person) : null;
+    },
+    pressAt(raycaster) {
+      const who = this.personAt(raycaster);
+      if (who) onPerson(who);
+      return who !== null;
+    },
+    onPerson(cb) {
+      onPerson = cb;
     },
     pointOut(pubkey) {
       const a = avatars.get(pubkey);
@@ -5906,6 +5959,30 @@ function addRoomControls(controls, presence, opts = {}) {
   };
   if (opts.arrived?.blocked?.length) presence.blockAlso(opts.arrived.blocked);
   const recorders = /* @__PURE__ */ new Set();
+  const choose = (m) => {
+    chosen = m.pubkey;
+    people();
+    presence.pointOut(m.pubkey);
+    controls.say(m.identity ? `${m.name} is under the column of light. Their key: ${encodeNpub(m.identity)}` : `${m.name} is under the column of light. A guest: nobody has vouched for who they are.`);
+  };
+  presence.onPerson((pubkey) => {
+    const m = presence.people().find((x) => x.pubkey === pubkey);
+    if (!m) return;
+    choose(m);
+    controls.signal("show:people");
+  });
+  controls.add({
+    id: "people-pictures",
+    section: "people",
+    icon: "selfie",
+    on: () => showsPictures(),
+    label: () => showsPictures() ? "Profile pictures: on" : "Profile pictures: off",
+    short: "Pictures",
+    act: () => {
+      setShowsPictures(!showsPictures());
+      controls.say(showsPictures() ? "People's own pictures are shown over their names. Each is fetched from wherever its owner keeps it, which tells that place your address." : "No pictures are fetched or shown, here or in the next world.");
+    }
+  });
   const people = () => {
     const here = presence.session ? presence.people() : [];
     if (presence.session && here.length !== headcount) controls.signal(here.length > headcount ? "join" : "leave");
@@ -5927,12 +6004,7 @@ function addRoomControls(controls, presence, opts = {}) {
         kind: "swatch",
         color: m.look.light,
         label: () => `${m.name}${m.recording ? ", recording" : ""}${m.sharing ? ", sharing their screen" : ""}${m.music ? ", sharing music" : ""}`,
-        act: () => {
-          chosen = m.pubkey;
-          people();
-          presence.pointOut(m.pubkey);
-          controls.say(m.identity ? `${m.name} is under the column of light. Their key: ${encodeNpub(m.identity)}` : `${m.name} is under the column of light. A guest: nobody has vouched for who they are.`);
-        }
+        act: () => choose(m)
       })
     );
     if (sounds && !toldOfMusic && !sounds.levels.hearShared && here.some((m) => m.music)) {
