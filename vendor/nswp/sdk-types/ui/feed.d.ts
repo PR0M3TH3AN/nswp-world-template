@@ -26,6 +26,8 @@ export interface FeedView {
     loading: boolean;
     /** How the last thing sent, or the asking, went, in a few words. "" for nothing to say. */
     said: string;
+    /** What the window says where they write: that it is public, as whom, and how a post is marked. */
+    lead: string;
     /** The most characters in one post written here. */
     limit: number;
     /** Goes up whenever anything above changes. */
@@ -38,8 +40,13 @@ export interface FeedSource {
     at: number;
 }
 export interface FeedOptions {
-    /** Whose feed: their name, or the short form of their key. */
-    who: string;
+    /** Whose feed: their name, or the short form of their key. A function is asked each time: a name may arrive late. */
+    who: string | (() => string);
+    /**
+     * The site every post sent from here is marked with, or "" for none. A world's signer marks each note with
+     * the world that asked (protocol/10-identity.md, "Signing from a world"), and the visitor is told so.
+     */
+    marked?: string;
     /** Sign and send what they wrote. Resolves to a few words on how it went, and whether it did. */
     send(text: string): Promise<{
         ok: boolean;

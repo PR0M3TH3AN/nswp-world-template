@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.27.0";
+var KIT_VERSION = "0.28.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -5956,6 +5956,109 @@ function bubbleSeconds(text) {
   return Math.min(12, 4 + [...text].length * 0.06);
 }
 
+// packages/core/src/pass.ts
+var PASS_LIMITS = {
+  defaultTtlSec: 4 * 3600,
+  maxTtlSec: 12 * 3600,
+  /** How far a reader's clock and a signer's may disagree. */
+  skewSec: 120,
+  nameChars: 48,
+  /** The longest address a picture may have. */
+  pictureChars: 300,
+  /** The most a pass says about its holder, in their own words. */
+  aboutChars: 280,
+  /** A pass as JSON, as it travels between the members of a room. */
+  chars: 4e3
+};
+function cleanName(name) {
+  const cleaned = name.normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/\s+/g, " ").trim();
+  return [...cleaned].slice(0, PASS_LIMITS.nameChars).join("").trim();
+}
+function cleanPicture(url) {
+  if (typeof url !== "string" || url.length > PASS_LIMITS.pictureChars) return "";
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" || u.username || u.password || !u.hostname.includes(".")) return "";
+    return u.href.length <= PASS_LIMITS.pictureChars ? u.href : "";
+  } catch {
+    return "";
+  }
+}
+var cleanAbout = (about) => cleanLine(about, PASS_LIMITS.aboutChars);
+function claimsKey(seed) {
+  return /^[0-9a-f]{64}$/i.test(seed);
+}
+function buildRoomPass(input) {
+  const created = input.createdAt ?? nowSeconds();
+  const ttl = Math.max(60, Math.min(input.ttlSec ?? PASS_LIMITS.defaultTtlSec, PASS_LIMITS.maxTtlSec));
+  const tags = [
+    ["nswp:session", input.session],
+    ["nswp:origin", new URL(input.origin).origin],
+    ["expiration", String(created + ttl)]
+  ];
+  const name = input.name ? cleanName(input.name) : "";
+  if (name) tags.push(["name", name]);
+  const picture = cleanPicture(input.picture);
+  if (picture) tags.push(["picture", picture]);
+  const about = cleanAbout(input.about);
+  if (about) tags.push(["about", about]);
+  return { kind: ROOM_PASS_KIND, created_at: created, tags, content: "" };
+}
+function verifyRoomPass(event, opts) {
+  const c = new Collector();
+  if (!verifyEvent(event)) {
+    c.error("bad_signature", "", "The pass is not a validly signed Nostr event.");
+    return c.result(null);
+  }
+  const now = opts.now ?? nowSeconds();
+  if (event.kind !== ROOM_PASS_KIND) c.error("wrong_kind", "kind", `Expected kind ${ROOM_PASS_KIND}.`);
+  const one = (name2) => {
+    const t = getTags(event, name2);
+    if (t.length !== 1 || !t[0][1]) {
+      c.error(t.length > 1 ? "duplicate_tag" : "missing_tag", `tags.${name2}`, `Exactly one "${name2}" tag is required.`);
+      return void 0;
+    }
+    return t[0][1];
+  };
+  const session = one("nswp:session");
+  const origin = one("nswp:origin");
+  const exp = one("expiration");
+  let expectedOrigin;
+  try {
+    expectedOrigin = new URL(opts.origin).origin;
+  } catch {
+    c.error("invalid_option", "origin", "opts.origin is not a URL.");
+    return c.result(null);
+  }
+  if (session !== void 0) {
+    if (!isHex64(session)) c.error("invalid_session", "tags.nswp:session", "The session key must be 64 lowercase hex characters.");
+    else if (session === event.pubkey) c.error("invalid_session", "tags.nswp:session", "A pass can't name the identity key as its own session key.");
+    else if (opts.session !== void 0 && session !== opts.session) c.error("session_mismatch", "tags.nswp:session", "The pass speaks for a different session key.");
+  }
+  if (origin !== void 0 && origin !== expectedOrigin) c.error("origin_mismatch", "tags.nswp:origin", "The pass was made for a different site.");
+  const expiresAt = exp !== void 0 ? Number(exp) : NaN;
+  if (exp !== void 0) {
+    if (!/^\d+$/.test(exp) || !Number.isSafeInteger(expiresAt)) c.error("invalid_expiration", "tags.expiration", "expiration must be an integer timestamp.");
+    else {
+      if (expiresAt <= now) c.error("pass_expired", "tags.expiration", "The pass has expired.");
+      if (expiresAt - event.created_at > PASS_LIMITS.maxTtlSec) c.error("ttl_too_long", "tags.expiration", `A pass may live at most ${PASS_LIMITS.maxTtlSec / 3600} hours.`);
+    }
+  }
+  if (event.created_at > now + PASS_LIMITS.skewSec) c.error("created_in_future", "created_at", "The pass is dated in the future.");
+  const names = getTags(event, "name");
+  if (names.length > 1) c.warn("duplicate_tag", "tags.name", "Only the first name is used.");
+  const raw = names[0]?.[1] ?? "";
+  const name = cleanName(raw);
+  if (raw !== name) c.warn("name_cleaned", "tags.name", "The name was tidied before being shown.");
+  const shown = getTags(event, "picture")[0]?.[1] ?? "";
+  const picture = cleanPicture(shown);
+  if (shown && !picture) c.warn("picture_ignored", "tags.picture", "The picture's address isn't one that can be fetched, so none is shown.");
+  const told = getTags(event, "about")[0]?.[1] ?? "";
+  const about = cleanAbout(told);
+  if (told !== about) c.warn("about_cleaned", "tags.about", "What they wrote about themselves was tidied or cut short before being shown.");
+  return c.result({ pubkey: event.pubkey, session: session ?? "", name, picture, about, expiresAt, id: event.id });
+}
+
 // packages/core/src/signing.ts
 var SIGNER_PROTOCOL = "nswp-signer";
 var SIGNER_VERSION = 1;
@@ -5967,11 +6070,11 @@ var SIGN_LIMITS = {
   tagChars: 400,
   /** How long an unlocked signer stays unlocked for a world, at most. Closing the world's page ends it sooner. */
   grantSec: 4 * 3600,
-  /** No more than this many notes for one world in `perMs`. */
-  burst: 6,
+  /** No more than this many notes for one world in `perMs`: the pace of a person, not of a script. */
+  burst: 3,
   perMs: 6e4,
   /** And no more than this many in an hour. */
-  hourly: 60
+  hourly: 20
 };
 var ORDINARY_KINDS = [1, 7];
 var NEVER_KINDS = [4, 13, 14, 15, 1059, 1060, 13194, 22242, 23194, 23195, 24133, 27235, 27300, 27301, 30078];
@@ -6062,6 +6165,7 @@ function readSignerRequest(data) {
   if (d.t === "state") return { t: "state", id: d.id };
   if (d.t === "lock") return { t: "lock", id: d.id };
   if (d.t === "sign" && d.event && typeof d.event === "object") return { t: "sign", id: d.id, event: d.event };
+  if (d.t === "pass" && isHex64(d.session)) return { t: "pass", id: d.id, session: d.session };
   return null;
 }
 function readSignerReply(data) {
@@ -6076,6 +6180,9 @@ function readSignerReply(data) {
       unlocked: d.unlocked && !!pubkey,
       ...pubkey ? { pubkey } : {},
       ...typeof d.name === "string" && cleanLine(d.name, 48) ? { name: cleanLine(d.name, 48) } : {},
+      // Their own picture and words, as their sign-in address read them from their profile: cleaned as a pass's are.
+      ...pubkey && cleanPicture(d.picture) ? { picture: cleanPicture(d.picture) } : {},
+      ...pubkey && cleanAbout(d.about) ? { about: cleanAbout(d.about) } : {},
       ...typeof d.until === "number" && Number.isFinite(d.until) ? { until: d.until } : {}
     };
   }
@@ -6295,109 +6402,6 @@ function parseListEvent(input, opts = {}) {
     if (d !== void 0) list.coordinate = coordinate({ kind: CURATION_SET_KIND, pubkey, identifier: d });
   }
   return c.result(list);
-}
-
-// packages/core/src/pass.ts
-var PASS_LIMITS = {
-  defaultTtlSec: 4 * 3600,
-  maxTtlSec: 12 * 3600,
-  /** How far a reader's clock and a signer's may disagree. */
-  skewSec: 120,
-  nameChars: 48,
-  /** The longest address a picture may have. */
-  pictureChars: 300,
-  /** The most a pass says about its holder, in their own words. */
-  aboutChars: 280,
-  /** A pass as JSON, as it travels between the members of a room. */
-  chars: 4e3
-};
-function cleanName(name) {
-  const cleaned = name.normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/\s+/g, " ").trim();
-  return [...cleaned].slice(0, PASS_LIMITS.nameChars).join("").trim();
-}
-function cleanPicture(url) {
-  if (typeof url !== "string" || url.length > PASS_LIMITS.pictureChars) return "";
-  try {
-    const u = new URL(url);
-    if (u.protocol !== "https:" || u.username || u.password || !u.hostname.includes(".")) return "";
-    return u.href.length <= PASS_LIMITS.pictureChars ? u.href : "";
-  } catch {
-    return "";
-  }
-}
-var cleanAbout = (about) => cleanLine(about, PASS_LIMITS.aboutChars);
-function claimsKey(seed) {
-  return /^[0-9a-f]{64}$/i.test(seed);
-}
-function buildRoomPass(input) {
-  const created = input.createdAt ?? nowSeconds();
-  const ttl = Math.max(60, Math.min(input.ttlSec ?? PASS_LIMITS.defaultTtlSec, PASS_LIMITS.maxTtlSec));
-  const tags = [
-    ["nswp:session", input.session],
-    ["nswp:origin", new URL(input.origin).origin],
-    ["expiration", String(created + ttl)]
-  ];
-  const name = input.name ? cleanName(input.name) : "";
-  if (name) tags.push(["name", name]);
-  const picture = cleanPicture(input.picture);
-  if (picture) tags.push(["picture", picture]);
-  const about = cleanAbout(input.about);
-  if (about) tags.push(["about", about]);
-  return { kind: ROOM_PASS_KIND, created_at: created, tags, content: "" };
-}
-function verifyRoomPass(event, opts) {
-  const c = new Collector();
-  if (!verifyEvent(event)) {
-    c.error("bad_signature", "", "The pass is not a validly signed Nostr event.");
-    return c.result(null);
-  }
-  const now = opts.now ?? nowSeconds();
-  if (event.kind !== ROOM_PASS_KIND) c.error("wrong_kind", "kind", `Expected kind ${ROOM_PASS_KIND}.`);
-  const one = (name2) => {
-    const t = getTags(event, name2);
-    if (t.length !== 1 || !t[0][1]) {
-      c.error(t.length > 1 ? "duplicate_tag" : "missing_tag", `tags.${name2}`, `Exactly one "${name2}" tag is required.`);
-      return void 0;
-    }
-    return t[0][1];
-  };
-  const session = one("nswp:session");
-  const origin = one("nswp:origin");
-  const exp = one("expiration");
-  let expectedOrigin;
-  try {
-    expectedOrigin = new URL(opts.origin).origin;
-  } catch {
-    c.error("invalid_option", "origin", "opts.origin is not a URL.");
-    return c.result(null);
-  }
-  if (session !== void 0) {
-    if (!isHex64(session)) c.error("invalid_session", "tags.nswp:session", "The session key must be 64 lowercase hex characters.");
-    else if (session === event.pubkey) c.error("invalid_session", "tags.nswp:session", "A pass can't name the identity key as its own session key.");
-    else if (opts.session !== void 0 && session !== opts.session) c.error("session_mismatch", "tags.nswp:session", "The pass speaks for a different session key.");
-  }
-  if (origin !== void 0 && origin !== expectedOrigin) c.error("origin_mismatch", "tags.nswp:origin", "The pass was made for a different site.");
-  const expiresAt = exp !== void 0 ? Number(exp) : NaN;
-  if (exp !== void 0) {
-    if (!/^\d+$/.test(exp) || !Number.isSafeInteger(expiresAt)) c.error("invalid_expiration", "tags.expiration", "expiration must be an integer timestamp.");
-    else {
-      if (expiresAt <= now) c.error("pass_expired", "tags.expiration", "The pass has expired.");
-      if (expiresAt - event.created_at > PASS_LIMITS.maxTtlSec) c.error("ttl_too_long", "tags.expiration", `A pass may live at most ${PASS_LIMITS.maxTtlSec / 3600} hours.`);
-    }
-  }
-  if (event.created_at > now + PASS_LIMITS.skewSec) c.error("created_in_future", "created_at", "The pass is dated in the future.");
-  const names = getTags(event, "name");
-  if (names.length > 1) c.warn("duplicate_tag", "tags.name", "Only the first name is used.");
-  const raw = names[0]?.[1] ?? "";
-  const name = cleanName(raw);
-  if (raw !== name) c.warn("name_cleaned", "tags.name", "The name was tidied before being shown.");
-  const shown = getTags(event, "picture")[0]?.[1] ?? "";
-  const picture = cleanPicture(shown);
-  if (shown && !picture) c.warn("picture_ignored", "tags.picture", "The picture's address isn't one that can be fetched, so none is shown.");
-  const told = getTags(event, "about")[0]?.[1] ?? "";
-  const about = cleanAbout(told);
-  if (told !== about) c.warn("about_cleaned", "tags.about", "What they wrote about themselves was tidied or cut short before being shown.");
-  return c.result({ pubkey: event.pubkey, session: session ?? "", name, picture, about, expiresAt, id: event.id });
 }
 
 // packages/core/src/bridge.ts

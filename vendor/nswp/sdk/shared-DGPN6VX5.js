@@ -5,7 +5,7 @@ import {
   portal,
   room,
   startingForm
-} from "./shared-WKZ2V4AP.js";
+} from "./shared-K6U46VNY.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -20,7 +20,7 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-QXOZJ5GS.js";
+} from "./shared-OFCNLGVT.js";
 import {
   arrivedSettings,
   reportSettings
@@ -1557,14 +1557,16 @@ function watchFov(camera, o = {}) {
 }
 
 // packages/sdk/src/ui/identity.ts
-import { encodeNpub, shortNpub as shortNpub2, signerAt as signerAt2 } from "@nswp/core";
+import { encodeNpub, getPublicKey, shortNpub as shortNpub2, signerAt as signerAt2 } from "@nswp/core";
 
 // packages/sdk/src/signer.ts
-import { cleanOrigin, isWhatWasAsked, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent, WORLD_TAG } from "@nswp/core";
+import { cleanOrigin, isWhatWasAsked, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
   name: null,
+  picture: null,
+  about: null,
   host: null,
   unanswered: false,
   copy: null,
@@ -1572,6 +1574,7 @@ var NONE = {
   lock() {
   },
   sign: async () => null,
+  pass: async () => null,
   onChange: () => () => {
   },
   whenAnswered: async () => {
@@ -1598,6 +1601,8 @@ function createWorldSigner(opts) {
   let state = "none";
   let pubkey = null;
   let name = null;
+  let picture = null;
+  let about = null;
   let origin = "";
   let windowAt = "";
   let frame = null;
@@ -1629,6 +1634,8 @@ function createWorldSigner(opts) {
       state = reply.unlocked ? "unlocked" : "locked";
       pubkey = reply.unlocked ? reply.pubkey ?? null : null;
       name = reply.unlocked ? reply.name ?? null : null;
+      picture = reply.unlocked ? reply.picture ?? null : null;
+      about = reply.unlocked ? reply.about ?? null : null;
       for (const go of [...firstAnswer]) go();
       return changed();
     }
@@ -1638,6 +1645,11 @@ function createWorldSigner(opts) {
     clearTimeout(waiting.timer);
     if (reply.t === "refused") return waiting.done(null);
     const signed = reply.event;
+    if (waiting.session) {
+      const checked = verifyRoomPass(signed, { origin: location.origin, session: waiting.session });
+      return waiting.done(checked.ok && checked.value.pubkey === pubkey ? signed : null);
+    }
+    if (!waiting.asked) return waiting.done(null);
     const marked = Array.isArray(signed?.tags) && signed.tags.some((t) => t[0] === WORLD_TAG && t[1] === cleanOrigin(location.origin));
     waiting.done(verifyEvent(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting.asked, signed) ? signed : null);
   };
@@ -1678,6 +1690,12 @@ function createWorldSigner(opts) {
     get name() {
       return name;
     },
+    get picture() {
+      return picture;
+    },
+    get about() {
+      return about;
+    },
     get unanswered() {
       return named && waited && state === "none" && !disposed;
     },
@@ -1715,6 +1733,18 @@ function createWorldSigner(opts) {
         }, 8e3);
         pending.set(id, { asked, done, timer });
         tell({ t: "sign", id, event: asked });
+      });
+    },
+    pass(session) {
+      if (state !== "unlocked" || !frame) return Promise.resolve(null);
+      const id = `p${++n}`;
+      return new Promise((done) => {
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          done(null);
+        }, 8e3);
+        pending.set(id, { session, done, timer });
+        tell({ t: "pass", id, session });
       });
     },
     onChange(fn) {
@@ -1765,11 +1795,42 @@ function hereAs() {
   const signer = worldSigner();
   return signer.state === "unlocked" && signer.pubkey === who.pubkey ? who : void 0;
 }
+var hereWatchers = /* @__PURE__ */ new Set();
+function onHereAs(fn) {
+  hereWatchers.add(fn);
+  return () => void hereWatchers.delete(fn);
+}
+var seeking = null;
+var seekAfter = 0;
+function seekPass() {
+  if (seeking) return seeking;
+  if (!signerNamed()) return Promise.resolve();
+  const signer = worldSigner();
+  const key = signer.state === "unlocked" ? signer.pubkey : null;
+  if (!key || arrival.identity()?.pubkey === key || Date.now() < seekAfter) return Promise.resolve();
+  seekAfter = Date.now() + 6e4;
+  const secret = crypto.getRandomValues(new Uint8Array(32));
+  const sessionKey = [...secret].map((b) => b.toString(16).padStart(2, "0")).join("");
+  seeking = signer.pass(getPublicKey(secret)).then((pass) => {
+    if (pass && signer.state === "unlocked" && signer.pubkey === key && arrival.keepIdentity(pass, sessionKey)) {
+      for (const fn of [...hereWatchers]) fn();
+    } else if (!pass) seekAfter = Date.now() + 10 * 6e4;
+  }).catch(() => {
+  }).finally(() => {
+    seeking = null;
+  });
+  return seeking;
+}
+var soon = (ms) => new Promise((done) => setTimeout(done, ms));
 async function byName(identity) {
-  if (!identity || !signerNamed()) return identity;
+  if (!signerNamed()) return identity;
   const signer = worldSigner();
   await signer.whenAnswered(2500);
-  return signer.state === "unlocked" && signer.pubkey === identity.pass.pubkey ? identity : void 0;
+  if (signer.state !== "unlocked" || !signer.pubkey) return void 0;
+  if (identity && signer.pubkey === identity.pass.pubkey) return identity;
+  await Promise.race([seekPass(), soon(3e3)]);
+  const who = arrival.identity();
+  return who && who.pubkey === signer.pubkey ? { pass: who.pass, sessionKey: who.sessionKey } : void 0;
 }
 function identityWords() {
   const who = hereAs();
@@ -1784,7 +1845,7 @@ function youCard() {
     return { title: who.name || shortNpub2(who.pubkey), tag: "Signed in", proven: true, sub: shortNpub2(who.pubkey), copy: npub, text: who.about ?? "", picture: who.picture ?? "", color: "", now: [] };
   }
   if (signer?.state === "unlocked" && signer.pubkey) {
-    return { title: signer.name ?? shortNpub2(signer.pubkey), tag: "Signed in to post", proven: false, sub: shortNpub2(signer.pubkey), copy: encodeNpub(signer.pubkey), text: "", picture: "", color: "", now: [] };
+    return { title: signer.name ?? shortNpub2(signer.pubkey), tag: "Signed in to post", proven: false, sub: shortNpub2(signer.pubkey), copy: encodeNpub(signer.pubkey), text: signer.about ?? "", picture: signer.picture ?? "", color: "", now: [] };
   }
   return null;
 }
@@ -1842,8 +1903,14 @@ function unansweredWords(signer) {
 }
 var shared = null;
 function worldSigner() {
-  shared ??= createWorldSigner({ under: arrival.signer(), airlock: portal.airlockFor() });
-  return shared;
+  if (shared) return shared;
+  const signer = shared = createWorldSigner({ under: arrival.signer(), airlock: portal.airlockFor() });
+  signer.onChange(() => {
+    if (signer.state !== "unlocked") seekAfter = 0;
+    void seekPass();
+  });
+  if (typeof document !== "undefined" && signerNamed()) setInterval(() => void seekPass(), 6e4);
+  return signer;
 }
 function signerAction(controls, opts = {}) {
   const signer = worldSigner();
@@ -1851,15 +1918,19 @@ function signerAction(controls, opts = {}) {
   const short = () => shortNpub2(signer.pubkey ?? "");
   signer.onChange(() => {
     if (signer.state === "unlocked" && was !== "unlocked") {
-      const who = hereAs();
-      controls.say(
-        who ? `You are signed in here as ${who.name || short()}. People in a room see your name and picture, and you can send out posts. Signing out is under You.` : `You are signed in here as ${signer.name ?? short()}, and can send out posts. In a room you are still a guest: your name comes with you from ${identityHost() ?? "your own client"}, when you are signed in there as the same person.`
-      );
+      void Promise.race([seekPass(), soon(4e3)]).then(() => {
+        if (signer.state !== "unlocked") return;
+        const who = hereAs();
+        controls.say(
+          who ? `You are signed in here as ${who.name || short()}. People in a room see your name and picture, and you can send out posts. Signing out is under You.` : `You are signed in here as ${signer.name ?? short()}, and can send out posts. In a room you are still a guest: ${signer.host ?? "your sign-in address"} gave no pass with your name on it.`
+        );
+      });
     }
     if (signer.state === "locked" && was === "unlocked") controls.say("You are signed out here. Everyone sees a guest, and nothing more can be signed as you.");
     was = signer.state;
     controls.signal("signer");
   });
+  onHereAs(() => controls.signal("signer"));
   return {
     id: "signer",
     section: "you",
@@ -6786,12 +6857,12 @@ function addRoomControls(controls, presence, opts = {}) {
       controls.feed.detach();
       return closeFeedPanel();
     }
-    controls.feed.attach({ who: notes.who?.() || (key ? shortNpub3(key) : "you"), send: postNote, load: loadPosts });
+    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub3(key) : "you"), marked: opts.notes ? "" : location.host, send: postNote, load: loadPosts });
   };
   const drawFeedPanel = () => {
     if (!feedPanel) return;
     const view = controls.feed.view();
-    const stamp2 = `${view.version}:${Math.floor(Date.now() / 6e4)}`;
+    const stamp2 = `${view.version}:${Math.floor(Date.now() / 6e4)}:${view.lead}`;
     if (stamp2 === feedPanel.drawn) return;
     feedPanel.drawn = stamp2;
     const t = controls.theme;
@@ -6805,7 +6876,8 @@ function addRoomControls(controls, presence, opts = {}) {
     g.font = "30px system-ui, sans-serif";
     g.fillStyle = t.ink;
     g.globalAlpha = 0.72;
-    wrapWords(`Public, like a tweet: anyone can read what you send out here, as ${view.who}, and it can't be taken back.`, measure, CHAT_W - 56, 3).forEach((row, r) => g.fillText(row, 28, 34 + r * 38));
+    g.font = "27px system-ui, sans-serif";
+    wrapWords(view.lead, measure, CHAT_W - 56, 4).forEach((row, r) => g.fillText(row, 28, 24 + r * 33));
     g.globalAlpha = 1;
     g.strokeStyle = t.accent;
     g.lineWidth = 3;
@@ -6922,7 +6994,13 @@ function addRoomControls(controls, presence, opts = {}) {
       refresh();
     }
   };
-  if (signerNamed()) worldSigner().onChange(() => void asWhoTheyAre());
+  if (signerNamed()) {
+    worldSigner().onChange(() => void asWhoTheyAre());
+    onHereAs(() => {
+      void asWhoTheyAre();
+      refresh();
+    });
+  }
   controls.add(
     {
       id: "room-chat",
@@ -7278,6 +7356,8 @@ export {
   createWorldSigner,
   signerNamed,
   hereAs,
+  onHereAs,
+  seekPass,
   byName,
   identityWords,
   youCard,
