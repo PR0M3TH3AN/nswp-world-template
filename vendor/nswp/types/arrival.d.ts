@@ -1,3 +1,5 @@
+/** Arrival context and entry assertions (spec §4.4). */
+import { type TravelSettings } from "./settings.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { type EventTemplate, type NostrEvent } from "./event.js";
 import { type Result } from "./result.js";
@@ -68,6 +70,15 @@ export interface Arrival {
      * A headset session is `immersive`.
      */
     form?: "touch" | "desk";
+    /**
+     * The visitor's settings where they came from: their volumes, the size of
+     * their text, whether things move, their hands in a headset, whether their
+     * screen was filled. A world starts from them, so nothing has to be set
+     * again, and they are the visitor's to change the moment they arrive.
+     * Anything unknown or out of range has been left out. Preferences and
+     * nothing more (protocol/11-the-visitors-console.md).
+     */
+    settings?: TravelSettings;
 }
 export declare function encodeArrival(a: Omit<Arrival, "v"> & {
     v?: string;

@@ -5,7 +5,9 @@
  * Three sources, weakest first: the kit's defaults, what a world asks for
  * (its own accent, say), and what the visitor chose. The visitor wins, because
  * the controls are theirs to read. Their choice is kept in this browser, for
- * this site only: nothing carries it to another world (spec §21.2).
+ * this site. The size of their text, whether things move and which wrist
+ * also go with them to the next world (settings.ts); the colours don't,
+ * since those belong to each place.
  */
 export interface UiTheme {
     /** The light the controls are drawn in. */

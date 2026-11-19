@@ -4677,6 +4677,59 @@ function assertManifest(input) {
   return r.value;
 }
 
+// packages/core/src/settings.ts
+var SETTINGS_LINK_LIMIT = 400;
+var level = (v) => typeof v === "number" && Number.isFinite(v) ? Math.round(Math.min(1, Math.max(0, v)) * 100) / 100 : void 0;
+function cleanSettings(input) {
+  const out = {};
+  if (!input || typeof input !== "object" || Array.isArray(input)) return out;
+  const s = input;
+  if (s.sound && typeof s.sound === "object" && !Array.isArray(s.sound)) {
+    const from = s.sound;
+    const sound = {};
+    if (typeof from.off === "boolean") sound.off = from.off;
+    for (const k of ["effects", "music", "voices"]) {
+      const v = level(from[k]);
+      if (v !== void 0) sound[k] = v;
+    }
+    if (typeof from.hum === "boolean") sound.hum = from.hum;
+    if (Object.keys(sound).length) out.sound = sound;
+  }
+  if (typeof s.text === "number" && Number.isFinite(s.text)) out.text = Math.round(Math.min(1.5, Math.max(0.85, s.text)) * 100) / 100;
+  if (typeof s.motion === "boolean") out.motion = s.motion;
+  if (s.wrist === "left" || s.wrist === "right" || s.wrist === "off") out.wrist = s.wrist;
+  if (s.turn === 30 || s.turn === 45 || s.turn === 90) out.turn = s.turn;
+  if (s.hand === "left" || s.hand === "right") out.hand = s.hand;
+  if (typeof s.narrow === "boolean") out.narrow = s.narrow;
+  if (typeof s.full === "boolean") out.full = s.full;
+  return out;
+}
+var hasSettings = (s) => !!s && Object.keys(s).length > 0;
+var toBase64Url = (text) => {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+var fromBase64Url = (text) => {
+  const bin = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+};
+function encodeSettings(settings) {
+  const clean3 = cleanSettings(settings);
+  if (!hasSettings(clean3)) return "";
+  const text = toBase64Url(JSON.stringify(clean3));
+  return text.length <= SETTINGS_LINK_LIMIT ? text : "";
+}
+function decodeSettings(text) {
+  if (typeof text !== "string" || !text || text.length > SETTINGS_LINK_LIMIT || !/^[A-Za-z0-9_-]+$/.test(text)) return {};
+  try {
+    return cleanSettings(JSON.parse(fromBase64Url(text)));
+  } catch {
+    return {};
+  }
+}
+
 // packages/core/src/avatar.ts
 var LOOK_PARTS = {
   build: ["medium", "slight", "broad"],
@@ -4889,6 +4942,11 @@ function decodeArrival(value) {
     if (json.moving === "intense") out.moving = "intense";
     else c.warn("invalid_moving", "moving", `Ignoring a way of moving that isn't "casual" or "intense".`);
   }
+  if (json.settings !== void 0) {
+    const settings = cleanSettings(json.settings);
+    if (hasSettings(settings)) out.settings = settings;
+    else c.warn("invalid_settings", "settings", "Ignoring settings with nothing readable in them.");
+  }
   if (json.form !== void 0) {
     if (json.form === "touch" || json.form === "desk") out.form = json.form;
     else c.warn("invalid_form", "form", `Ignoring a form that isn't "touch" or "desk".`);
@@ -5059,6 +5117,10 @@ var blockedFlag = (opts) => {
   return keys.length ? [`blocked=${keys.join(",")}`] : [];
 };
 var blockedFrom = (value) => cleanKeys((value ?? "").split(","), LIMITS.maxBlockedOnLink);
+var settingsFlag = (opts) => {
+  const text = encodeSettings(opts.settings);
+  return text ? [`set=${text}`] : [];
+};
 function stateFlags(opts) {
   return [...opts.immersive ? ["xr=1"] : [], ...opts.moving === "intense" ? ["moving=intense"] : [], ...opts.joined ? ["joined=1"] : [], ...opts.joined && opts.mic ? ["mic=1"] : []];
 }
@@ -5069,7 +5131,7 @@ function buildAirlockUrl(airlock, dest, opts = {}) {
   const parts = [`to=${encodeURIComponent(to)}`];
   if (dest.naddr && dest.url) parts.push(`url=${encodeURIComponent(dest.url)}`);
   if (dest.entryPoint) parts.push(`entry=${encodeURIComponent(dest.entryPoint)}`);
-  parts.push(...stateFlags(opts), ...isForm(opts.form) ? [`form=${opts.form}`] : [], ...blockedFlag(opts));
+  parts.push(...stateFlags(opts), ...isForm(opts.form) ? [`form=${opts.form}`] : [], ...settingsFlag(opts), ...blockedFlag(opts));
   u.hash = parts.join("&");
   return u.href;
 }
@@ -5079,7 +5141,9 @@ function fragmentSaysImmersive(hash) {
 function wayWithoutDestination(hash) {
   const parts = hash.replace(/^#/, "").split("&").filter(Boolean);
   const reported = parts.find((p) => /^blocked=[0-9a-f,]+$/.test(p));
-  if (parts.some((p) => p !== "xr=1" && p !== "doors=1" && p !== "joined=1" && p !== "mic=1" && p !== "moving=intense" && p !== reported)) return null;
+  const set = parts.find((p) => /^set=[A-Za-z0-9_-]{1,400}$/.test(p));
+  if (parts.some((p) => p !== "xr=1" && p !== "doors=1" && p !== "joined=1" && p !== "mic=1" && p !== "moving=intense" && p !== reported && p !== set)) return null;
+  const settings = set ? decodeSettings(set.slice(4)) : {};
   const joined = parts.includes("joined=1");
   const blocked = blockedFrom(reported?.slice(8));
   return {
@@ -5088,12 +5152,13 @@ function wayWithoutDestination(hash) {
     ...joined ? { joined: true } : {},
     ...joined && parts.includes("mic=1") ? { mic: true } : {},
     ...blocked.length ? { blocked } : {},
-    ...parts.includes("moving=intense") ? { moving: "intense" } : {}
+    ...parts.includes("moving=intense") ? { moving: "intense" } : {},
+    ...hasSettings(settings) ? { settings } : {}
   };
 }
 function buildWayUrl(airlock, opts = {}) {
   const u = new URL(airlock);
-  u.hash = [...opts.doors ? ["doors=1"] : [], ...stateFlags(opts), ...blockedFlag(opts)].join("&");
+  u.hash = [...opts.doors ? ["doors=1"] : [], ...stateFlags(opts), ...settingsFlag(opts), ...blockedFlag(opts)].join("&");
   return u.href;
 }
 var HOME_CAPABILITY = "home";
@@ -5130,6 +5195,8 @@ function parseAirlockFragment(hash) {
   if (params.get("moving") === "intense") req.moving = "intense";
   const form = params.get("form");
   if (isForm(form)) req.form = form;
+  const settings = decodeSettings(params.get("set"));
+  if (hasSettings(settings)) req.settings = settings;
   return req;
 }
 
@@ -6343,6 +6410,7 @@ function parseSpeechControl(text) {
 var LOCAL_MAP_PATH = "/.well-known/nswp-local.json";
 var LOCAL_MAP_WAIT = 2e3;
 var LOCAL_MAP_LIMIT = 64;
+var FOLLOWED_MOST = 16384;
 function isLocalHost(hostname) {
   const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (h === "localhost" || h.endsWith(".localhost") || h === "::1") return true;
@@ -6352,8 +6420,8 @@ function isLocalHost(hostname) {
   if ([a, b, Number(m[3]), Number(m[4])].some((n) => n > 255)) return false;
   return a === 127 || a === 10 || a === 172 && b >= 16 && b <= 31 || a === 192 && b === 168 || a === 169 && b === 254;
 }
-function originOf(text) {
-  if (typeof text !== "string" || text.length > 300) return null;
+function originOf(text, most = 300) {
+  if (typeof text !== "string" || text.length > most) return null;
   try {
     const u = new URL(text);
     return u.username || u.password ? null : u;
@@ -6377,13 +6445,13 @@ function cleanLocalMap(input) {
 }
 function mapToLocal(url, map) {
   if (!map.size) return url;
-  const u = originOf(url);
+  const u = originOf(url, FOLLOWED_MOST);
   const to = u && map.get(u.origin);
   return to ? `${to}${url.slice(u.origin.length)}` : url;
 }
 function mapFromLocal(url, map) {
   if (!map.size) return url;
-  const u = originOf(url);
+  const u = originOf(url, FOLLOWED_MOST);
   if (!u) return url;
   for (const [real, local] of map) if (local === u.origin) return `${real}${url.slice(u.origin.length)}`;
   return url;
@@ -6466,6 +6534,7 @@ export {
   ROOM_SIGNAL_KIND,
   ROOM_TEMPLATES,
   SCHEMAS,
+  SETTINGS_LINK_LIMIT,
   STATUSES,
   VERSION,
   WELL_KNOWN_PATH,
@@ -6497,6 +6566,7 @@ export {
   cleanKeys,
   cleanLocalMap,
   cleanName,
+  cleanSettings,
   cleanSize,
   cleanSpeechText,
   cleanWorldOrigin,
@@ -6505,10 +6575,12 @@ export {
   decodeLook,
   decodeNaddr,
   decodeNpub,
+  decodeSettings,
   encodeArrival,
   encodeLook,
   encodeNaddr,
   encodeNpub,
+  encodeSettings,
   fetchManifest,
   finalizeEvent,
   fragmentSaysImmersive,
@@ -6523,6 +6595,7 @@ export {
   guestColor,
   guestName,
   hasEventShape,
+  hasSettings,
   isForm,
   isHex64,
   isHttpsUrl,

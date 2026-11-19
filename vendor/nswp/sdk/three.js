@@ -54,7 +54,7 @@ import {
   textSprite,
   turnVisitor,
   viewScale
-} from "./shared-JAM2DHFR.js";
+} from "./shared-JU5C4IEA.js";
 import {
   currentForm,
   deviceForms,
@@ -63,6 +63,12 @@ import {
   usedForm
 } from "./shared-33TMTTY7.js";
 import "./shared-FUYALROY.js";
+import {
+  arriveWith,
+  arrivedSettings,
+  currentSettings,
+  reportSettings
+} from "./shared-Q3D4OUDA.js";
 import {
   browserVoice,
   computerVoice,
@@ -99,6 +105,8 @@ export {
   addRoomControls,
   addSoundControls,
   addViewControls,
+  arriveWith,
+  arrivedSettings,
   browserVoice,
   canRecord,
   capturePanorama,
@@ -120,6 +128,7 @@ export {
   createVoice,
   createXrInput,
   currentForm,
+  currentSettings,
   deviceForms,
   formFor,
   heldKey,
@@ -130,6 +139,7 @@ export {
   readPad,
   recordClip,
   recordVoice,
+  reportSettings,
   saveFile,
   startingForm,
   strideOf,

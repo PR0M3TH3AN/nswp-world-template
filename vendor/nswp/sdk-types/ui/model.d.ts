@@ -1,17 +1,3 @@
-/**
- * The controls a world gives its visitor, as a list of things they can do.
- *
- * A world says what the actions are, once. Two renderers draw them: a HUD on a
- * flat screen (`mountHud`, in `nswp-sdk/ui`) and a console inside a headset
- * (`createConsole`, in `nswp-sdk/three`). They look nothing alike, and they
- * always offer the same things, because neither holds any of the logic.
- *
- *   const controls = createControls({ title: "My world", address: "example.org" });
- *   controls.add({ id: "home", section: "travel", label: "Go home", icon: "home", hotbar: true, act: () => portal.home() });
- *
- * Adding a button, a section, or a whole new kind of control later means
- * adding to this list. Nothing about either renderer has to change.
- */
 import type { IconName } from "./icons.js";
 import { DEFAULT_THEME, type UiTheme } from "./theme.js";
 type Text = string | (() => string);

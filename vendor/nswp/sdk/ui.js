@@ -13,6 +13,10 @@ import {
   rgb,
   saveVisitorTheme
 } from "./shared-FUYALROY.js";
+import {
+  arrivedSettings,
+  reportSettings
+} from "./shared-Q3D4OUDA.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/ui/model.ts
@@ -44,6 +48,13 @@ function createControls(opts) {
   const sayers = /* @__PURE__ */ new Set();
   const signals = /* @__PURE__ */ new Set();
   let visitor = loadVisitorTheme();
+  const came = arrivedSettings();
+  const brought = { ...came.text !== void 0 ? { scale: came.text } : {}, ...came.motion !== void 0 ? { motion: came.motion } : {}, ...came.wrist !== void 0 ? { wrist: came.wrist } : {} };
+  if (Object.keys(brought).length) {
+    visitor = { ...visitor, ...brought };
+    saveVisitorTheme(visitor);
+  }
+  reportSettings("look", () => ({ ...visitor.scale !== void 0 ? { text: visitor.scale } : {}, ...visitor.motion !== void 0 ? { motion: visitor.motion } : {}, ...visitor.wrist !== void 0 ? { wrist: visitor.wrist } : {} }));
   let theme = resolveTheme(opts.theme, visitor);
   let target = "";
   let detail = [];
