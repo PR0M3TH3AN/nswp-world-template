@@ -1614,7 +1614,7 @@ function createWorldSigner(opts) {
   setTimeout(() => {
     waited = true;
     if (state === "none") changed();
-  }, 7e3);
+  }, 1e4);
   let answered = false;
   const firstAnswer = /* @__PURE__ */ new Set();
   let n = 0;
