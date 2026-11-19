@@ -273,7 +273,8 @@ export { CASUAL_COMFORT, DEFAULT_COMFORT, INTENSE_COMFORT, isIntense, readPad, t
 export { addPanelControls, createPanels, type Panel, type PanelContent, type PanelInfo, type Panels, type PanelsOptions } from "./panels.js";
 export { LIBRARY_LIMITS, PANEL_LIMITS, PANEL_LOOKS, type LibraryItem, type PanelLook, type PanelPlace, type PanelRecord, type PanelSource } from "./panel-store.js";
 export { createStay, wasRefreshed, type Stay, type Stood } from "./stay.js";
-export { createStroll, DRAG_LOOK, reachOf, TAP_REACH, WALK_SPEED, type Stroll } from "./stroll.js";
+export { createStroll, DOUBLE_TAP, DRAG_LOOK, reachOf, RUN, TAP_REACH, WALK_SPEED, type Stroll } from "./stroll.js";
+export { addJump, createJump, JUMP_GRAVITY, JUMP_HEIGHT, JUMP_SPEED, type AddJumpOptions, type Jump } from "./jump.js";
 export { viewScale } from "./sign.js";
 export { createFps, heldKey, lookAfter, strideOf, LOOK_SPEED, PITCH_LIMIT, SPRINT, type Fps, type FpsOptions, type Held } from "./fps.js";
 export { addSoundControls, createSounds, CUES, type Cue, type Jukebox, type Song, type SoundLevels, type Sounds, type SoundsOptions, type SoundTheme } from "./sound.js";

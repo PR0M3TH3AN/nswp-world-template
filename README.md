@@ -191,7 +191,9 @@ it yourself. `npm run check:live` tells you if it is missing.
 where you want to stand and drag to look round. Or intense, chosen in the
 menu, for people who play games: the mouse looks, W A S D walk, Shift runs,
 F uses, Escape is the menu. A headset has the same two, as stepping and
-walking smoothly. Fullscreen is in the menu too.
+walking smoothly. Fullscreen is in the menu too. Running and jumping work
+whichever way a visitor moves: Shift or two taps run, and Space, the Jump
+control or a headset's A button jumps.
 
 **It has sound.** Recorded steps, presses and doors, a room's hum, and a
 piece of music. Visitors set their own volumes and can play their own songs,

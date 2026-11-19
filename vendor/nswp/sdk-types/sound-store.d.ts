@@ -86,6 +86,30 @@ export interface KitSounds {
 }
 /** Read the kit's `sounds.json`, choosing for each sound the form this browser plays. Addresses are relative to the folder. */
 export declare function cleanKit(input: unknown, folder: string, playsOgg: boolean): KitSounds;
+/**
+ * How one footstep differs from the last. No two real steps sound alike: the
+ * weight on each foot differs, and so does what is under it. And a step is a
+ * quiet thing, heard a thousand times a visit, so it sits well under every
+ * other cue.
+ */
+export interface StepShape {
+    /** How loud, as a share of what any other cue is. */
+    gain: number;
+    /** How fast it is played: above 1 is higher and shorter, below is lower and longer. */
+    rate: number;
+    /** Where its brightness is cut off, in hertz: a lower number is a softer tread. */
+    cutoff: number;
+    /** Which side it is on, from -1 (left) to 1: a little to the side of the foot that made it. */
+    pan: number;
+}
+/** How loud the loudest step is, beside any other cue. */
+export declare const STEP_LEVEL = 0.45;
+/**
+ * The shape of the step a foot makes: `foot` counts steps, so even ones are
+ * the left foot and odd ones the right. The two feet differ a little and
+ * steadily, and every step differs a little more by chance.
+ */
+export declare function stepShape(foot: number, random?: () => number): StepShape;
 /** Which of several to play next: any but the one just played, so nothing is heard twice running. */
 export declare function nextVariant(count: number, last: number, random?: () => number): number;
 /** The visitor's volumes, each from 0 to 1. Theirs, kept for this site, and nothing a world sets. */

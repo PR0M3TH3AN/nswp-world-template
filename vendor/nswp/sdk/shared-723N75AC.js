@@ -762,6 +762,19 @@ function cleanKit(input, folder, playsOgg) {
   if (h) out.hum = h;
   return out;
 }
+var STEP_LEVEL = 0.45;
+function stepShape(foot, random = Math.random) {
+  const right = Math.abs(Math.trunc(foot)) % 2 === 1;
+  const side = right ? 1 : -1;
+  return {
+    // Between a little over half and all of the step's level: a light tread now and then.
+    gain: STEP_LEVEL * (0.6 + 0.4 * random()),
+    // One foot falls a touch lower than the other, and each step is up to a semitone and a half either way.
+    rate: (1 + side * 0.025) * Math.pow(2, (random() * 2 - 1) * (1.5 / 12)),
+    cutoff: 1600 + random() * 3400,
+    pan: side * (0.08 + random() * 0.1)
+  };
+}
 function nextVariant(count, last, random = Math.random) {
   if (count <= 1) return 0;
   if (last < 0 || last >= count) return Math.min(count - 1, Math.floor(random() * count));
@@ -1345,8 +1358,77 @@ function fullscreenAction(controls, presenting) {
 // packages/sdk/src/input.ts
 import * as THREE6 from "three";
 
+// packages/sdk/src/stroll.ts
+var WALK_SPEED = 2.4;
+var RUN = 1.75;
+var DOUBLE_TAP = 400;
+var TAP_REACH = 3;
+var DRAG_LOOK = 5e-3;
+function reachOf(fromX, fromZ, toX, toZ, reach = TAP_REACH) {
+  const dx = toX - fromX;
+  const dz = toZ - fromZ;
+  const far = Math.hypot(dx, dz);
+  if (!Number.isFinite(far) || far <= reach || far === 0) return [toX, toZ];
+  return [fromX + dx / far * reach, fromZ + dz / far * reach];
+}
+function createStroll(o) {
+  const speed = o.speed ?? WALK_SPEED;
+  const now = o.now ?? (() => performance.now());
+  let target = null;
+  let running = false;
+  let asked = -Infinity;
+  return {
+    to(x, z, run) {
+      const t = now();
+      const again = t - asked <= DOUBLE_TAP;
+      asked = t;
+      const wasRunning = target !== null && running;
+      target = Number.isFinite(x) && Number.isFinite(z) ? [x, z] : null;
+      running = target !== null && (run === true || again || wasRunning);
+    },
+    stop() {
+      target = null;
+      running = false;
+    },
+    update(dt) {
+      if (!target) return;
+      const [x, z] = o.where();
+      const dx = target[0] - x;
+      const dz = target[1] - z;
+      const far = Math.hypot(dx, dz);
+      const step = Math.min(far, speed * (running ? RUN : 1) * Math.min(Math.max(dt, 0), 0.1));
+      if (far < 0.02 || step <= 0) {
+        if (far < 0.02) {
+          target = null;
+          running = false;
+        }
+        return;
+      }
+      const sx = dx / far * step;
+      const sz = dz / far * step;
+      if (!o.canStand(x + sx, z + sz)) {
+        target = null;
+        running = false;
+        o.onBlocked?.();
+        return;
+      }
+      o.move(sx, sz);
+      if (far - step < 0.02) {
+        target = null;
+        running = false;
+      }
+    },
+    get going() {
+      return target !== null;
+    },
+    get running() {
+      return running;
+    }
+  };
+}
+
 // packages/sdk/src/actions.ts
-var NO_PAD = { stick: [0, 0], from: "none", trigger: 0, squeeze: 0, primary: false, secondary: false };
+var NO_PAD = { stick: [0, 0], from: "none", trigger: 0, squeeze: 0, primary: false, secondary: false, press: false };
 function deadzone(x, y, inner = 0.2) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return [0, 0];
   const far = Math.hypot(x, y);
@@ -1381,7 +1463,7 @@ function readPad(pad) {
       from = "touchpad";
     } else if (!hasStick) from = "touchpad";
   }
-  return { stick, from, trigger: value(0), squeeze: value(1), primary: !!button(4)?.pressed, secondary: !!button(5)?.pressed };
+  return { stick, from, trigger: value(0), squeeze: value(1), primary: !!button(4)?.pressed, secondary: !!button(5)?.pressed, press: from === "thumbstick" && !!button(3)?.pressed };
 }
 var DEFAULT_COMFORT = { move: "steps", turn: "steps", turnStep: 30, narrow: true, moveHand: "left" };
 var CASUAL_COMFORT = { move: "steps", turn: "steps", narrow: true };
@@ -1412,7 +1494,8 @@ function saveComfort(comfort) {
   } catch {
   }
 }
-var WALK_SPEED = 1.8;
+var WALK_SPEED2 = 1.8;
+var RUN_FACTOR = RUN;
 var TURN_SPEED = 110;
 var BACK_STEP = 1;
 var PUSH = 0.6;
@@ -1432,8 +1515,12 @@ var Locomotion = class {
   forward = /* @__PURE__ */ new Set();
   backward = /* @__PURE__ */ new Set();
   menuDown = false;
+  jumpDown = false;
+  /** Running, once the moving stick is pressed in, until that stick comes back to rest. */
+  running = false;
   frame(dt, pads, comfort) {
-    const intent = { turn: 0, walk: [0, 0], stepFrom: [], aiming: [], menu: false, narrow: 0 };
+    const intent = { turn: 0, walk: [0, 0], stepFrom: [], aiming: [], menu: false, jump: false, running: false, narrow: 0 };
+    let pushed = false;
     const roles = stickRoles(pads, comfort.moveHand);
     const seen = /* @__PURE__ */ new Set();
     let sliding = false;
@@ -1458,7 +1545,9 @@ var Locomotion = class {
       if (comfort.move === "smooth" && role !== "turn") {
         const strafe = role === "both" ? 0 : x;
         if (strafe !== 0 || y !== 0) {
-          const pace = WALK_SPEED * dt / Math.max(1, Math.hypot(strafe, y));
+          pushed = true;
+          if (p.pad.press) this.running = true;
+          const pace = WALK_SPEED2 * (this.running ? RUN_FACTOR : 1) * dt / Math.max(1, Math.hypot(strafe, y));
           intent.walk[0] += strafe * pace;
           intent.walk[1] += y * pace;
           sliding = true;
@@ -1476,9 +1565,14 @@ var Locomotion = class {
       }
     }
     for (const set of [this.turned, this.forward, this.backward]) for (const i of set) if (!seen.has(i) || !roles.has(i)) set.delete(i);
+    if (!pushed) this.running = false;
+    intent.running = this.running;
     const menu = pads.some((p) => p.pad.secondary);
     intent.menu = menu && !this.menuDown;
     this.menuDown = menu;
+    const jump = pads.some((p) => p.pad.primary);
+    intent.jump = jump && !this.jumpDown;
+    this.jumpDown = jump;
     intent.narrow = sliding && comfort.narrow ? 1 : 0;
     return intent;
   }
@@ -1764,6 +1858,7 @@ function createXrInput(opts) {
         pulse(slot, 0.35, 20);
       }
       if (intent.menu) opts.onMenu?.();
+      if (intent.jump) opts.onJump?.();
       aiming = intent.aiming;
       narrow += (intent.narrow - narrow) * Math.min(1, dt * (intent.narrow > narrow ? 12 : 3));
       vignette.material.uniforms.uAmount.value = narrow * 0.85;
@@ -3242,66 +3337,10 @@ function addPanelControls(controls, panels, o) {
   );
 }
 
-// packages/sdk/src/stroll.ts
-var WALK_SPEED2 = 2.4;
-var TAP_REACH = 3;
-var DRAG_LOOK = 5e-3;
-function reachOf(fromX, fromZ, toX, toZ, reach = TAP_REACH) {
-  const dx = toX - fromX;
-  const dz = toZ - fromZ;
-  const far = Math.hypot(dx, dz);
-  if (!Number.isFinite(far) || far <= reach || far === 0) return [toX, toZ];
-  return [fromX + dx / far * reach, fromZ + dz / far * reach];
-}
-function createStroll(o) {
-  const speed = o.speed ?? WALK_SPEED2;
-  let target = null;
-  return {
-    to(x, z) {
-      target = Number.isFinite(x) && Number.isFinite(z) ? [x, z] : null;
-    },
-    stop() {
-      target = null;
-    },
-    update(dt) {
-      if (!target) return;
-      const [x, z] = o.where();
-      const dx = target[0] - x;
-      const dz = target[1] - z;
-      const far = Math.hypot(dx, dz);
-      const step = Math.min(far, speed * Math.min(Math.max(dt, 0), 0.1));
-      if (far < 0.02 || step <= 0) {
-        if (far < 0.02) target = null;
-        return;
-      }
-      const sx = dx / far * step;
-      const sz = dz / far * step;
-      if (!o.canStand(x + sx, z + sz)) {
-        target = null;
-        o.onBlocked?.();
-        return;
-      }
-      o.move(sx, sz);
-      if (far - step < 0.02) target = null;
-    },
-    get going() {
-      return target !== null;
-    }
-  };
-}
-
-// packages/sdk/src/sign.ts
-function viewScale(metres, opts) {
-  const least = opts.least ?? 0.15;
-  const most = opts.most ?? 1.5;
-  if (!(metres >= 0) || !(opts.at > 0)) return 1;
-  return Math.min(most, Math.max(least, metres / opts.at));
-}
-
 // packages/sdk/src/fps.ts
 var LOOK_SPEED = 22e-4;
 var PITCH_LIMIT = 85 * Math.PI / 180;
-var SPRINT = 1.75;
+var SPRINT = RUN;
 function lookAfter(yaw, pitch, dx, dy, speed = LOOK_SPEED) {
   const clean = (n) => Number.isFinite(n) ? n : 0;
   return { yaw: yaw - clean(dx) * speed, pitch: Math.min(PITCH_LIMIT, Math.max(-PITCH_LIMIT, pitch - clean(dy) * speed)) };
@@ -3340,8 +3379,8 @@ var DESK_KEY = "nswp:fps";
 var DESK_WORDS = {
   intense: "Desk controls: intense",
   casual: "Desk controls: casual",
-  nowIntense: "Intense: click the view to look round with the mouse. W, A, S, D walk, Shift runs, F uses what is in front of you, and Escape brings up this menu.",
-  nowCasual: "Casual: click where you want to stand, and drag to look round.",
+  nowIntense: "Intense: click the view to look round with the mouse. W, A, S, D walk, Shift runs, Space jumps, F uses what is in front of you, and Escape brings up this menu.",
+  nowCasual: "Casual: click where you want to stand, twice to run there, and drag to look round. W, A, S, D walk, Shift runs and Space jumps.",
   click: "Click the view to look round. Escape brings up the menu."
 };
 var hasMouse = () => typeof matchMedia === "function" && matchMedia("(pointer: fine)").matches;
@@ -3532,6 +3571,99 @@ function createFps(o) {
   };
 }
 
+// packages/sdk/src/jump.ts
+var JUMP_HEIGHT = 0.45;
+var JUMP_GRAVITY = 9.8;
+var JUMP_SPEED = Math.sqrt(2 * JUMP_GRAVITY * JUMP_HEIGHT);
+function createJump(o = {}) {
+  let height = 0;
+  let since = 0;
+  let airborne = false;
+  return {
+    jump() {
+      if (airborne) return false;
+      airborne = true;
+      since = 0;
+      o.onJump?.();
+      return true;
+    },
+    update(dt) {
+      if (!airborne) return 0;
+      since += Math.min(Math.max(dt, 0), 0.25);
+      height = JUMP_SPEED * since - 0.5 * JUMP_GRAVITY * since * since;
+      if (height <= 0) {
+        height = 0;
+        airborne = false;
+        o.onLand?.();
+      }
+      return height;
+    },
+    get height() {
+      return height;
+    },
+    get airborne() {
+      return airborne;
+    },
+    land() {
+      height = 0;
+      airborne = false;
+    },
+    dispose() {
+    }
+  };
+}
+function addJump(controls, o) {
+  const jump = createJump({ onJump: () => o.sounds?.play("step"), onLand: () => o.sounds?.play("land") });
+  const typing = (e) => {
+    const t = e.composedPath?.()[0] ?? e.target;
+    return !!t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+  };
+  const claimed = () => {
+    const keys = controls.view().keys;
+    return keys.menu === null && !keys.hotbar;
+  };
+  const ours = (e) => e.code === "Space" && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e) && !o.hud?.open && !o.presenting() && !o.busy?.() && !claimed();
+  const onKey = (e) => {
+    if (!ours(e)) return;
+    e.preventDefault();
+    const active = document.activeElement;
+    if (active && active !== document.body && (active.tagName === "BUTTON" || active.shadowRoot)) active.blur();
+    if (!e.repeat) jump.jump();
+  };
+  const onKeyUp = (e) => {
+    if (ours(e)) e.preventDefault();
+  };
+  addEventListener("keydown", onKey);
+  addEventListener("keyup", onKeyUp);
+  controls.add({
+    id: "jump",
+    section: "moving",
+    icon: "step",
+    label: "Jump",
+    short: "Jump",
+    // With a keyboard it is Space. Without one, it is kept at hand.
+    hotbar: !hasMouse(),
+    hidden: () => o.presenting(),
+    act: () => void jump.jump()
+  });
+  const dispose = jump.dispose;
+  jump.dispose = () => {
+    dispose();
+    removeEventListener("keydown", onKey);
+    removeEventListener("keyup", onKeyUp);
+    controls.remove("jump");
+  };
+  return jump;
+}
+
+// packages/sdk/src/sign.ts
+function viewScale(metres, opts) {
+  const least = opts.least ?? 0.15;
+  const most = opts.most ?? 1.5;
+  if (!(metres >= 0) || !(opts.at > 0)) return 1;
+  return Math.min(most, Math.max(least, metres / opts.at));
+}
+
 // packages/sdk/src/sound.ts
 var GAP2 = { step: 0.14, hover: 0.08, bump: 0.5, land: 0.2, notice: 0.25 };
 var STRIDE = 0.75;
@@ -3604,18 +3736,18 @@ function createSounds(o = {}) {
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     return noiseBuffer;
   };
-  const playPart = (p, when) => {
+  const playPart = (p, when, to = effects, rate = 1) => {
     const start = when + p.at;
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, start);
     gain.gain.linearRampToValueAtTime(p.gain, start + Math.min(6e-3, p.dur / 3));
     gain.gain.exponentialRampToValueAtTime(8e-4, start + p.dur);
-    gain.connect(effects);
+    gain.connect(to);
     if (p.kind === "tone") {
       const osc = ctx.createOscillator();
       osc.type = p.wave;
-      osc.frequency.setValueAtTime(p.from, start);
-      if (p.to !== void 0) osc.frequency.exponentialRampToValueAtTime(p.to, start + p.dur);
+      osc.frequency.setValueAtTime(p.from * rate, start);
+      if (p.to !== void 0) osc.frequency.exponentialRampToValueAtTime(p.to * rate, start + p.dur);
       osc.connect(gain);
       osc.start(start);
       osc.stop(start + p.dur + 0.02);
@@ -3624,7 +3756,7 @@ function createSounds(o = {}) {
       src.buffer = noise2();
       const band = ctx.createBiquadFilter();
       band.type = "bandpass";
-      band.frequency.value = p.band;
+      band.frequency.value = p.band * rate;
       band.Q.value = 1.1;
       src.connect(band);
       band.connect(gain);
@@ -3693,26 +3825,46 @@ function createSounds(o = {}) {
   };
   const last = /* @__PURE__ */ new Map();
   const lastVariant = /* @__PURE__ */ new Map();
+  let foot = 0;
+  const shaped = (shape) => {
+    const soft = ctx.createBiquadFilter();
+    soft.type = "lowpass";
+    soft.frequency.value = shape.cutoff;
+    soft.Q.value = 0.5;
+    const level = ctx.createGain();
+    level.gain.value = shape.gain;
+    soft.connect(level);
+    if (typeof ctx.createStereoPanner === "function") {
+      const side = ctx.createStereoPanner();
+      side.pan.value = shape.pan;
+      level.connect(side);
+      side.connect(effects);
+    } else level.connect(effects);
+    return soft;
+  };
   const play = (cue) => {
     if (disposed || levels.off || levels.effects <= 0 || ctx.state !== "running") return;
     if (theme.cues[cue] === null) return;
     const now = ctx.currentTime;
     if (now - (last.get(cue) ?? -1) < (GAP2[cue] ?? 0.03)) return;
     last.set(cue, now);
+    const shape = cue === "step" ? stepShape(foot++) : null;
+    const out = shape ? shaped(shape) : effects;
     const files2 = own.get(cue) ?? fromKit.get(cue);
     if (files2?.length) {
       const which = nextVariant(files2.length, lastVariant.get(cue) ?? -1);
       lastVariant.set(cue, which);
       const src = ctx.createBufferSource();
       src.buffer = files2[which].buffer;
+      if (shape) src.playbackRate.value = shape.rate;
       const level = ctx.createGain();
       level.gain.value = files2[which].gain;
       src.connect(level);
-      level.connect(effects);
+      level.connect(out);
       src.start();
       return;
     }
-    for (const part of cueRecipe(cue)) playPart(part, now + 5e-3);
+    for (const part of cueRecipe(cue)) playPart(part, now + 5e-3, out, shape?.rate ?? 1);
   };
   let walked = 0;
   const moved = (metres) => {
@@ -5840,6 +5992,13 @@ export {
   CUES,
   turnVisitor,
   createConsole,
+  WALK_SPEED,
+  RUN,
+  DOUBLE_TAP,
+  TAP_REACH,
+  DRAG_LOOK,
+  reachOf,
+  createStroll,
   readPad,
   DEFAULT_COMFORT,
   CASUAL_COMFORT,
@@ -5853,12 +6012,6 @@ export {
   createLibrary,
   createPanels,
   addPanelControls,
-  WALK_SPEED2 as WALK_SPEED,
-  TAP_REACH,
-  DRAG_LOOK,
-  reachOf,
-  createStroll,
-  viewScale,
   LOOK_SPEED,
   PITCH_LIMIT,
   SPRINT,
@@ -5866,6 +6019,12 @@ export {
   strideOf,
   heldKey,
   createFps,
+  JUMP_HEIGHT,
+  JUMP_GRAVITY,
+  JUMP_SPEED,
+  createJump,
+  addJump,
+  viewScale,
   createSounds,
   addSoundControls,
   CHAMBER_ORDER,

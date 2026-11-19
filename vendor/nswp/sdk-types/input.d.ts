@@ -59,6 +59,8 @@ export interface XrInputOptions {
     stepFrom?: (slot: number) => void;
     /** The menu button (B or Y) went down. */
     onMenu?: () => void;
+    /** The jump button (A or X) went down. Give it the world's jump: `() => jump.jump()` (jump.ts). */
+    onJump?: () => void;
     /** The light on the controllers and hands. */
     accent?: THREE.ColorRepresentation;
     /** Give the visitor their choices under "Moving" in the controls. */

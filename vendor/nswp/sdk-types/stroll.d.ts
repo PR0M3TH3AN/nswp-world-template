@@ -7,6 +7,10 @@
  * on a flat screen a tap is a walk, at the pace the keys walk, to a spot no
  * further than a few steps away. A second tap changes where they are headed.
  *
+ * Two taps close together are a run: the same few steps, taken at a run, and
+ * each tap after that keeps them running until they arrive somewhere. It is
+ * the only way to run for a visitor with no keys to hold.
+ *
  *   const stroll = createStroll({ where: () => [head.x, head.z], canStand, move: (dx, dz) => { rig.position.x += dx; rig.position.z += dz; } });
  *   // a tap on the floor, outside a headset:
  *   stroll.to(...reachOf(head.x, head.z, spot.x, spot.z));
@@ -17,6 +21,10 @@
  */
 /** Metres a second: the pace the keys walk at, and so the pace a tap walks at. */
 export declare const WALK_SPEED = 2.4;
+/** How much faster a run is than a walk, however it is asked for: Shift, two taps, or a stick pressed in. */
+export declare const RUN = 1.75;
+/** Two taps within this many milliseconds are a run. */
+export declare const DOUBLE_TAP = 400;
 /** How far one tap or click takes a visitor on a flat screen, in metres. A little over a second of walking. */
 export declare const TAP_REACH = 3;
 /** How far dragging turns a visitor on a flat screen, in radians a pixel. Dragging right brings what was on the left round. */
@@ -24,8 +32,13 @@ export declare const DRAG_LOOK = 0.005;
 /** The spot a tap leads to: the one tapped, or the point `reach` metres towards it when it is further off. */
 export declare function reachOf(fromX: number, fromZ: number, toX: number, toZ: number, reach?: number): [number, number];
 export interface Stroll {
-    /** Start walking to (x, z), from wherever the visitor is. */
-    to(x: number, z: number): void;
+    /**
+     * Start walking to (x, z), from wherever the visitor is. Asked twice close together, or while already
+     * running, or with `run` true, they run there.
+     */
+    to(x: number, z: number, run?: boolean): void;
+    /** Whether they are running to where they are headed. */
+    readonly running: boolean;
     /** Stop where they are. */
     stop(): void;
     /** Call every frame with the seconds since the last. */
@@ -44,4 +57,6 @@ export declare function createStroll(o: {
     speed?: number;
     /** Called when something in the way stopped the walk short. */
     onBlocked?: () => void;
+    /** The time now, in milliseconds. For tests. */
+    now?: () => number;
 }): Stroll;
