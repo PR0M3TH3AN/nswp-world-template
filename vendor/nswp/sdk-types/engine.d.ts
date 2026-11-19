@@ -2,7 +2,7 @@ export { bump, check, claim, door, events, headset, kit, menu, moved, open, play
 /** Bumped when what the functions take or give changes, so an engine's side can tell. */
 export declare const VERSION = 7;
 /** The kit this script was built from, as a world's manifest should say it (`"kit": NSWP.KIT`). */
-export declare const KIT = "0.30.1";
+export declare const KIT = "0.30.2";
 /**
  * How the visitor arrived, as JSON. Reading it takes it out of the page's
  * address, as it must be: an arrival is for this visit and not for whoever
