@@ -43,6 +43,7 @@ import {
   createStroll,
   createXrInput,
   dotsBetween,
+  figureAction,
   heldKey,
   identityAction,
   identityHost,
@@ -61,7 +62,7 @@ import {
   textSprite,
   turnVisitor,
   viewScale
-} from "./shared-R265GHOT.js";
+} from "./shared-BZG5EZMV.js";
 import {
   currentForm,
   deviceForms,
@@ -70,7 +71,7 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-FAYIK7KJ.js";
+} from "./shared-YQCANNNF.js";
 import "./shared-OQRXIQ2A.js";
 import {
   arriveWith,
@@ -142,6 +143,7 @@ export {
   currentSettings,
   deviceForms,
   dotsBetween,
+  figureAction,
   formFor,
   fullscreenWaiting,
   heldKey,

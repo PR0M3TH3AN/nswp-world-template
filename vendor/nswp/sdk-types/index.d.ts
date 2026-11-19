@@ -116,6 +116,17 @@ export declare const portal: {
      */
     signIn(opts?: GoOptions): Promise<boolean>;
     /**
+     * The visitor asked to change how they look. A look is theirs, kept by
+     * their own client, and a world never edits one or sends one back: a look
+     * a world could write would be a mark it could follow them by
+     * (protocol/05-looks.md). So, like signing in, this leaves for their own
+     * client with a door back here (`who=look`). Returns false, and does
+     * nothing, when they came through no client.
+     */
+    changeLook(opts?: GoOptions): Promise<boolean>;
+    /** To the visitor's own client for something that is theirs, and back here. */
+    ask(what: "identity" | "look", opts?: GoOptions): Promise<boolean>;
+    /**
      * Take the visitor to their doors: their client's own place for them. For
      * most visitors that is where home is too. It is a different place for one
      * whose home is a world of their own, and a world that can be a home

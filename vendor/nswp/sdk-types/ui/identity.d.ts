@@ -11,9 +11,20 @@ export declare function identityWords(): {
 export declare function identityHost(): string | null;
 /** What the section says: where they will be taken, and that the world never sees it. */
 export declare const identitySection: () => UiSection;
+/** The visitor's state as they go, so they come back as they left. A world may bring its crossing's room up first. */
+export type Leaving = (to: {
+    title: string;
+    address: string;
+}) => GoOptions | Promise<GoOptions>;
 /**
  * The control. `leaving` is the visitor's state as they go (in a room, with a
  * microphone on, moving the intense way, in a headset session), so they come
  * back as they left.
  */
-export declare function identityAction(controls: Controls, leaving?: () => GoOptions): UiAction;
+export declare function identityAction(controls: Controls, leaving?: Leaving): UiAction;
+/**
+ * The way to change how they look. Their look is kept by their own client and
+ * is the same in every world, so it is changed there: this leaves for it and
+ * comes back, as signing in does.
+ */
+export declare function figureAction(controls: Controls, leaving?: Leaving): UiAction;

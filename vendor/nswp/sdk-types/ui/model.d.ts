@@ -25,7 +25,8 @@ export interface UiAction {
      * "swatch" is a choice of colour, and needs `color`.
      */
     kind?: "button" | "swatch";
-    color?: string;
+    /** A function is read again as things change, for a swatch that shows a choice as it stands. */
+    color?: Text;
 }
 export interface UiSection {
     id: string;
@@ -146,5 +147,13 @@ export interface ControlsOptions {
     corner?: Corner;
     keys?: Partial<UiKeys>;
 }
+/**
+ * The order of the things every place has, wherever in a world's code they
+ * were added. So the taskbar reads the same in every world, and the same
+ * number key does the same thing: the way home is first, then the visitor's
+ * doors, the headset, the room, and jumping. A world's own things come after,
+ * in the order it added them.
+ */
+export declare const STANDARD_ORDER: readonly string[];
 export declare function createControls(opts: ControlsOptions): Controls;
 export { DEFAULT_THEME };

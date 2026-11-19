@@ -1,6 +1,6 @@
 export { bump, check, claim, door, events, headset, kit, menu, moved, open, play, presence, run, say, target, view } from "./engine-menu.js";
 /** Bumped when what the functions take or give changes, so an engine's side can tell. */
-export declare const VERSION = 5;
+export declare const VERSION = 6;
 /**
  * How the visitor arrived, as JSON. Reading it takes it out of the page's
  * address, as it must be: an arrival is for this visit and not for whoever
@@ -48,5 +48,12 @@ export declare function home(state?: string): boolean;
  * they came through no client.
  */
 export declare function signIn(state?: string): boolean;
+/**
+ * The visitor asked to change how they look. Their look is kept by their own
+ * client and is the same in every world, so this leaves for it and brings
+ * them back here wearing it. The menu offers it (a `figure` event); call this
+ * then, or from a button of your own. A world never edits a look itself.
+ */
+export declare function changeLook(state?: string): boolean;
 /** Take the visitor to their doors: for a world that is someone's home, which offers this where it offers the way home. */
 export declare function doors(state?: string): boolean;
