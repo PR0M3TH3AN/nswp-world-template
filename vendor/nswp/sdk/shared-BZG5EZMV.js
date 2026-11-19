@@ -4,7 +4,7 @@ import {
   portal,
   room,
   startingForm
-} from "./shared-FAYIK7KJ.js";
+} from "./shared-YQCANNNF.js";
 import {
   ICONS,
   createHeldButton,
@@ -1374,11 +1374,22 @@ var identitySection = () => ({
   icon: "you",
   note: () => {
     const host = identityHost();
-    return host ? `Who you are is asked and kept by ${host}, the place you set out from, and never by this world. Signing in takes you there and brings you back here.` : "";
+    return host ? `Who you are and how you look are kept by ${host}, the place you set out from, and are the same in every world. Changing either takes you there and brings you back here.` : "";
   }
 });
+var going = false;
+var leave = async (controls, what, leaving) => {
+  if (going) return;
+  going = true;
+  const host = identityHost() ?? "your own client";
+  controls.say(what === "look" ? `Taking you to ${host} to change how you look.` : `Taking you to ${host} to say who you are.`);
+  try {
+    if (await portal.ask(what, await leaving({ title: what === "look" ? "Your look" : "Who you are", address: host }))) return;
+  } catch {
+  }
+  going = false;
+};
 function identityAction(controls, leaving = () => ({})) {
-  let going = false;
   return {
     id: "identity",
     section: "you",
@@ -1386,12 +1397,18 @@ function identityAction(controls, leaving = () => ({})) {
     label: () => identityWords().label,
     short: () => identityWords().short,
     hidden: () => portal.airlockFor() === null,
-    act: async () => {
-      if (going) return;
-      going = true;
-      controls.say(`Taking you to ${identityHost() ?? "your own client"} to say who you are.`);
-      if (!await portal.signIn(leaving())) going = false;
-    }
+    act: () => leave(controls, "identity", leaving)
+  };
+}
+function figureAction(controls, leaving = () => ({})) {
+  return {
+    id: "figure",
+    section: "you",
+    icon: "look",
+    label: "Change how you look",
+    short: "Look",
+    hidden: () => portal.airlockFor() === null,
+    act: () => leave(controls, "look", leaving)
   };
 }
 
@@ -3432,9 +3449,9 @@ function createFloorMarks(accent, opts = {}) {
     update(o) {
       ring.visible = !!o.hover;
       if (o.hover) ring.position.set(o.hover[0], y, o.hover[1]);
-      const going = !!o.to;
-      dot.visible = going;
-      halo.visible = going;
+      const going2 = !!o.to;
+      dot.visible = going2;
+      halo.visible = going2;
       let dots = 0;
       if (o.to) {
         dot.position.set(o.to[0], y, o.to[1]);
@@ -5194,7 +5211,7 @@ function createPresence(d) {
     d.rig.position.x += ux * (ARRIVAL_GAP - dist);
     d.rig.position.z += uz * (ARRIVAL_GAP - dist);
   };
-  const leave = () => {
+  const leave2 = () => {
     if (sendTimer) clearInterval(sendTimer);
     sendTimer = void 0;
     session?.leave();
@@ -5208,7 +5225,7 @@ function createPresence(d) {
     changed();
   };
   const join = async (name) => {
-    leave();
+    leave2();
     roomName = name;
     void listener.context.resume();
     if (listener.context.state !== "running") {
@@ -5346,7 +5363,7 @@ function createPresence(d) {
       return screens.get(pubkey) ?? null;
     },
     join,
-    leave,
+    leave: leave2,
     async setMicrophone(track) {
       if (!track && micTrack) micTrack.stop();
       micTrack = track;
@@ -6169,8 +6186,9 @@ async function addViewControls(controls, d) {
     fullscreenAction(controls, presenting)
   );
   if (!controls.has("identity") && identityHost()) {
+    const leaving = async (to) => ({ ...await d.leaving?.(to), xrSession: d.renderer.xr.getSession() });
     controls.addSection(identitySection());
-    controls.add(identityAction(controls, () => ({ ...d.leaving?.(), xrSession: d.renderer.xr.getSession() })));
+    controls.add(figureAction(controls, leaving), identityAction(controls, leaving));
   }
   document.addEventListener("fullscreenchange", () => controls.setTarget(""));
   controls.addSection({
@@ -6194,6 +6212,7 @@ export {
   identityHost,
   identitySection,
   identityAction,
+  figureAction,
   WALK_SPEED,
   RUN,
   DOUBLE_TAP,

@@ -68,13 +68,15 @@ export interface AirlockUrlOptions {
     settings?: TravelSettings;
     /**
      * The visitor asked, from inside a world, to say who they are (`who=1`):
-     * to sign in, switch to another profile, or go on as a guest. Their own
-     * client shows them its own way of doing that before it takes them on. A
-     * request and nothing more: a link anyone can write never signs anyone in,
-     * and never sends anyone by name (protocol/10-identity.md, "Signing in
-     * from inside a world"). Only with a destination, never on the way home.
+     * to sign in, switch to another profile, or go on as a guest. Or to change
+     * how they look (`who=look`). Their own client shows them its own way of
+     * doing that before it takes them on. A request and nothing more: a link
+     * anyone can write never signs anyone in, never sends anyone by name, and
+     * never changes a look (protocol/10-identity.md, "Signing in from inside a
+     * world"; protocol/05-looks.md). Only with a destination, never on the way
+     * home.
      */
-    who?: boolean;
+    who?: boolean | "look";
 }
 /** How a visitor is using a flat screen: with their fingers, or with a mouse and keys. */
 export type Form = "touch" | "desk";
@@ -105,8 +107,11 @@ export interface AirlockRequest {
     form?: Form;
     /** The link says what their settings were (`set=`). Preferences, with everything unknown already left out. */
     settings?: TravelSettings;
-    /** The link says the visitor asked to say who they are first (`who=1`). A request: it shows them a choice and makes none. */
-    who?: true;
+    /**
+     * The link says the visitor asked for something of their own first: to say who they are (`who=1`), or to change
+     * how they look (`who=look`). A request: it shows them their own client's place for it, and decides nothing.
+     */
+    who?: "identity" | "look";
 }
 /** Whether a fragment says the visitor came from a headset session, with or without a destination: a way home carries it too. */
 export declare function fragmentSaysImmersive(hash: string): boolean;

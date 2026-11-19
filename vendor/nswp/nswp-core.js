@@ -5138,7 +5138,7 @@ function buildAirlockUrl(airlock, dest, opts = {}) {
   const parts = [`to=${encodeURIComponent(to)}`];
   if (dest.naddr && dest.url) parts.push(`url=${encodeURIComponent(dest.url)}`);
   if (dest.entryPoint) parts.push(`entry=${encodeURIComponent(dest.entryPoint)}`);
-  parts.push(...opts.who ? ["who=1"] : [], ...stateFlags(opts), ...isForm(opts.form) ? [`form=${opts.form}`] : [], ...settingsFlag(opts), ...blockedFlag(opts));
+  parts.push(...opts.who === "look" ? ["who=look"] : opts.who ? ["who=1"] : [], ...stateFlags(opts), ...isForm(opts.form) ? [`form=${opts.form}`] : [], ...settingsFlag(opts), ...blockedFlag(opts));
   u.hash = parts.join("&");
   return u.href;
 }
@@ -5193,7 +5193,8 @@ function parseAirlockFragment(hash) {
   const entry = params.get("entry");
   if (entry && ENTRY_POINT3.test(entry)) req.entryPoint = entry;
   if (params.get("xr") === "1") req.immersive = true;
-  if (params.get("who") === "1") req.who = true;
+  if (params.get("who") === "1") req.who = "identity";
+  else if (params.get("who") === "look") req.who = "look";
   if (params.get("joined") === "1") {
     req.joined = true;
     if (params.get("mic") === "1") req.mic = true;

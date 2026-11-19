@@ -302,7 +302,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     act: () => void goHome(),
   });
   // A world that says it can be someone's home owes them the way to their doors (NSWP-07): the place their own
-  // client keeps the worlds they saved. It is offered to every visitor; for most, it is where home is too.
+  // client keeps the worlds they saved. It stands where the way home stands in every other world, for the visitor
+  // whose home this is: for anyone else the way home leads there already, and one key does one thing everywhere.
   if (config.world.capabilities?.includes("home")) {
     controls.add({
       id: "doors",
@@ -311,7 +312,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       hotbar: true,
       label: "Your doors",
       short: "Doors",
-      hidden: () => !arrival.returnAirlock(),
+      hidden: () => !arrival.returnAirlock() || !arrival.atHome(),
       act: () => void goToDoors(),
     });
   }
@@ -737,8 +738,16 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     onState: (s) => (state.xr = s),
     ...(backToHeadset ? { arrived: { title: config.world.title } } : {}),
     onOffer: (showing) => (offered = showing),
-    // Signing in is their own client's to do. They leave as they are, and come back the same: in the room, moving as they were.
-    leaving: () => ({ ...travelling(), moving: movingNow() }),
+    // Who they are and how they look are their own client's to keep. They leave by the crossing's room, as through
+    // any door, and come back the same way: in the room they were in, moving as they were.
+    leaving: async (to) => {
+      state.leaving = true;
+      stopWalking();
+      sounds.play("cross");
+      await crossing.leave(to);
+      document.body.classList.add("leaving");
+      return { ...travelling(), moving: movingNow() };
+    },
   });
   if (!state.vrSupported) offered = false;
 

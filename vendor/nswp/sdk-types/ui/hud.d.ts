@@ -3,7 +3,8 @@ export interface Hud {
     /** The element on the page. */
     element: HTMLElement;
     readonly open: boolean;
-    setOpen(open: boolean): void;
+    /** Bring the menu up or put it away. `at` names the section to bring it up on. */
+    setOpen(open: boolean, at?: string): void;
     /** How much of the top and bottom of the window the HUD covers, in pixels. For placing a scene's picture clear of it. Nothing when it is quiet or hidden. */
     cover(): {
         top: number;

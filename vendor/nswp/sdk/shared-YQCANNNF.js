@@ -3186,6 +3186,21 @@ var portal = {
    * false, and does nothing, when they came through no client.
    */
   async signIn(opts = {}) {
+    return portal.ask("identity", opts);
+  },
+  /**
+   * The visitor asked to change how they look. A look is theirs, kept by
+   * their own client, and a world never edits one or sends one back: a look
+   * a world could write would be a mark it could follow them by
+   * (protocol/05-looks.md). So, like signing in, this leaves for their own
+   * client with a door back here (`who=look`). Returns false, and does
+   * nothing, when they came through no client.
+   */
+  async changeLook(opts = {}) {
+    return portal.ask("look", opts);
+  },
+  /** To the visitor's own client for something that is theirs, and back here. */
+  async ask(what, opts = {}) {
     const airlock = portal.airlockFor(opts);
     if (!airlock) return false;
     const immersive = opts.immersive ?? !!opts.xrSession;
@@ -3196,7 +3211,7 @@ var portal = {
       } catch {
       }
     }
-    location.assign(await toLocal(buildAirlockUrl(airlock, here, { ...carried(opts, immersive), who: true })));
+    location.assign(await toLocal(buildAirlockUrl(airlock, here, { ...carried(opts, immersive), who: what === "look" ? "look" : true })));
     return true;
   },
   /**
