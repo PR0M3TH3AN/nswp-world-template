@@ -29,6 +29,8 @@ export interface Manifest {
     }>;
     worlds: Record<string, ManifestWorld>;
     relays: string[];
+    /** The version of the kit the site was built with, when it says. Its own word, and only ever something to tell someone. */
+    kit?: string;
 }
 export declare function wellKnownUrl(urlOrOrigin: string): string;
 /** Validate a parsed manifest. Pass `byteLength` when you have the raw body. */

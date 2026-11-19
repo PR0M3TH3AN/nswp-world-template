@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildLayoutEvent, buildWorldEvent, decodeNpub, parseLayoutEvent, parseWorldEvent, verifyEvent } from "../vendor/nswp/nswp-core.js";
+import { buildLayoutEvent, buildWorldEvent, decodeNpub, KIT_VERSION, parseLayoutEvent, parseWorldEvent, verifyEvent } from "../vendor/nswp/nswp-core.js";
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const dist = join(root, "dist");
@@ -158,6 +158,8 @@ export function manifestFor(config, publisher) {
   const owner = ownerKey(config);
   return {
     schema: "nswp/manifest/0.3",
+    // Which kit this world was built with, so a visitor's client can tell how old its controls are (NSWP-01).
+    kit: KIT_VERSION,
     listing: "allow",
     // Who may announce this world: the key this folder signs with, and the owner's own key if they named it. The
     // second is what lets them show the world is theirs, for making it their home.

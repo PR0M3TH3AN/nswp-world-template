@@ -103,8 +103,35 @@ the same as in every other world built this way.
 A scene adds its own buttons with `ctx.controls.add({ id, label, icon, act })`
 and they appear in both. A scene with an interface of its own can turn the
 controls down to one small mark in a corner (`"quiet"`), as the example game
-does, or set that for the whole world in `world.json`. To take a newer version of the kit, run
-`npm run vendor` next to an up-to-date copy of the NSWP repository, then build.
+does, or set that for the whole world in `world.json`.
+
+### Keeping the kit up to date
+
+Your world carries its own copy of the kit, so nobody else can change what
+runs in it. To see whether a newer one is out:
+
+```bash
+npm run update -- --check
+```
+
+To take it in:
+
+```bash
+npm run update
+```
+
+It replaces what the template owns (`vendor/`, `src/plumbing/`, `scripts/`)
+and leaves everything of yours alone. Then `npm install`, `npm run check`,
+look at your world, and build and upload as usual.
+
+On GitHub, a job does this for you once a week and opens a pull request when
+there is something newer (`.github/workflows/update-kit.yml`). You read it
+and merge it, or don't. Turn on "Allow GitHub Actions to create and approve
+pull requests" in the repository's Actions settings to let it.
+
+A world on an older kit still works: it only misses what was added since.
+Signing in, a visitor's look and the Airlock are never in your world, so
+those are always current.
 
 ### Seeing it without a browser
 

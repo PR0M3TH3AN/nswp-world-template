@@ -1,0 +1,57 @@
+name: Update the NSWP kit
+
+# Once a week, and whenever you press "Run workflow": looks for a newer NSWP kit in the template this world was
+# made from, and opens a pull request with it for you to read and merge. Nothing is merged, built, uploaded or
+# announced for you.
+#
+# For it to open the pull request, the repository must let it: Settings, Actions, General, "Allow GitHub Actions
+# to create and approve pull requests". Without that, the job fails at its last step and says so.
+#
+# It uses GitHub's own two actions and nothing from anyone else.
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    # The template itself has nothing to update from.
+    if: github.repository != 'PR0M3TH3AN/nswp-world-template'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Take the newest kit
+        env:
+          NSWP_UPDATE_NOTES: ${{ runner.temp }}/nswp-update.md
+        run: node scripts/update.mjs
+      - name: Stop here if there was nothing newer
+        id: changed
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then echo "any=no" >> "$GITHUB_OUTPUT"; else echo "any=yes" >> "$GITHUB_OUTPUT"; fi
+      - name: Install what it needs
+        if: steps.changed.outputs.any == 'yes'
+        run: npm install --no-audit --no-fund
+      - name: Check the world still follows the protocol's rules
+        if: steps.changed.outputs.any == 'yes'
+        run: npm run check
+      - name: Open a pull request
+        if: steps.changed.outputs.any == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ runner.temp }}/nswp-update.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B update-nswp-kit
+          git add -A
+          git commit -m "Update the NSWP kit"
+          git push --force origin update-nswp-kit
+          gh pr create --title "Update the NSWP kit" --body-file "$NOTES" --head update-nswp-kit || gh pr edit update-nswp-kit --body-file "$NOTES"

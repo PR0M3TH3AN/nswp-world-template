@@ -16,6 +16,7 @@
     "announce": "node scripts/announce.mjs",
     "preview": "node scripts/preview.mjs",
     "look": "node scripts/look.mjs",
+    "update": "node scripts/update.mjs",
     "vendor": "node scripts/vendor.mjs",
     "vendor:check": "node scripts/vendor.mjs --check"
   },
