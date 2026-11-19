@@ -37,7 +37,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE13 from "three";
-import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS, encodeNpub as encodeNpub2, publishEvent, queryRelays, shortNpub as shortNpub3, spawnOffset, verifyEvent as verifyEvent2 } from "@nswp/core";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS, encodeNpub as encodeNpub2, publishEvent, queryRelays, readRelayList, RELAY_LIST_KIND, shortNpub as shortNpub3, spawnOffset, verifyEvent as verifyEvent2, writeRelaysFor } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -6830,20 +6830,32 @@ function addRoomControls(controls, presence, opts = {}) {
     pubkey: () => worldSigner().pubkey,
     who: () => hereAs()?.name || worldSigner().name
   };
-  const noteRelays = () => opts.noteRelays ?? DEFAULT_RELAYS;
+  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS;
+  let relaysKept = null;
+  const relaysFor = (key) => {
+    if (!key) return Promise.resolve(writeRelaysFor(null, usualRelays()));
+    if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
+    const found = queryRelays(usualRelays(), { kinds: [RELAY_LIST_KIND], authors: [key], limit: 4 }, 2500).then((got) => writeRelaysFor(readRelayList(got.events, key), usualRelays())).catch(() => writeRelaysFor(null, usualRelays()));
+    relaysKept = { key, at: Date.now(), found };
+    return found;
+  };
   let wantsFeed = false;
   const postNote = async (words) => {
     const signed = await notes.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
     const note = signed && verifyEvent2(signed) && signed.kind === 1 && signed.content === words ? signed : null;
     if (!note) return { ok: false, said: "That wasn't sent: your sign-in said no." };
-    const sent = await publishEvent(noteRelays(), note).catch(() => null);
+    const to = await relaysFor(note.pubkey);
+    const sent = await publishEvent(to.relays, note).catch(() => null);
     const kept2 = sent ? Object.values(sent.relays).filter((said) => said === "ok").length : 0;
-    return kept2 ? { ok: true, said: `Sent out, to ${kept2 === 1 ? "1 relay" : `${kept2} relays`}. Anyone can read it now.` } : { ok: false, said: "Signed, but no relay took it. It wasn't sent." };
+    const n = to.relays.length;
+    const where = to.own === n ? `${kept2} of your ${n} relays` : to.own ? `${kept2} of ${n} relays: yours, and the usual ones because your own list is short` : `${kept2} of the ${n} usual relays: you have published no relay list of your own`;
+    return kept2 ? { ok: true, said: `Sent out, to ${where}. Anyone can read it now.` } : { ok: false, said: "Signed, but no relay took it. It wasn't sent." };
   };
   const loadPosts = async () => {
     const key = notes.pubkey?.();
     if (!key) return [];
-    const got = await queryRelays(noteRelays(), { kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, 5e3);
+    const from = await relaysFor(key);
+    const got = await queryRelays(from.relays, { kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, 5e3);
     if (!got.events.length && !Object.values(got.relays).some((said) => said === "eose")) return null;
     return got.events.filter((e) => e.pubkey === key && e.kind === 1 && !e.tags.some((t) => t[0] === "e")).map((e) => ({ id: e.id, text: e.content, at: e.created_at }));
   };

@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.28.3";
+var KIT_VERSION = "0.29.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -5239,6 +5239,44 @@ function parseAirlockFragment(hash) {
 
 // packages/core/src/relay.ts
 var DEFAULT_RELAYS = ["wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://nostr.mom"];
+var RELAY_LIST_KIND = 10002;
+function cleanRelayUrl(url) {
+  if (typeof url !== "string" || url.length > 200) return "";
+  try {
+    const u = new URL(url.trim());
+    const host = u.hostname;
+    if (u.protocol !== "wss:" || u.username || u.password) return "";
+    if (!host.includes(".") || host.startsWith("[") || /^[0-9.]+$/.test(host) || /\.(local|localhost|internal|lan|home)$/i.test(host)) return "";
+    u.hash = "";
+    return u.href.replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+}
+function readRelayList(events, pubkey, max = 8) {
+  const latest = events.filter((e) => e.kind === RELAY_LIST_KIND && e.pubkey === pubkey).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0];
+  if (!latest) return null;
+  const write = [];
+  const read = [];
+  for (const t of latest.tags) {
+    if (t[0] !== "r") continue;
+    const url = cleanRelayUrl(t[1]);
+    if (!url) continue;
+    if ((t[2] === void 0 || t[2] === "" || t[2] === "write") && !write.includes(url) && write.length < max) write.push(url);
+    if ((t[2] === void 0 || t[2] === "" || t[2] === "read") && !read.includes(url) && read.length < max) read.push(url);
+  }
+  return { write, read };
+}
+function writeRelaysFor(list, fallback) {
+  const own = (list?.write ?? []).slice(0, 6);
+  if (own.length >= 2) return { relays: own, own: own.length };
+  const relays = [...own];
+  for (const url of fallback) {
+    if (relays.length >= 4) break;
+    if (!relays.includes(url)) relays.push(url);
+  }
+  return { relays, own: own.length };
+}
 async function queryRelays(relays, filter, timeoutMs = 4e3) {
   const byId = /* @__PURE__ */ new Map();
   const status = {};
@@ -6830,6 +6868,7 @@ export {
   POSE_BYTES,
   PREVIEW_LIMITS,
   PREVIEW_TYPES,
+  RELAY_LIST_KIND,
   ROOM_LIMITS,
   ROOM_PASS_KIND,
   ROOM_SIGNAL_KIND,
@@ -6879,6 +6918,7 @@ export {
   cleanName,
   cleanOrigin,
   cleanPicture,
+  cleanRelayUrl,
   cleanSettings,
   cleanSize,
   cleanSpeechText,
@@ -6959,6 +6999,7 @@ export {
   randomNonce,
   readBrought,
   readHandoffMessage,
+  readRelayList,
   readSignerReply,
   readSignerRequest,
   roomTopic,
@@ -6982,5 +7023,6 @@ export {
   verifyRoomPass,
   verifyWorldGrant,
   wayWithoutDestination,
-  wellKnownUrl
+  wellKnownUrl,
+  writeRelaysFor
 };

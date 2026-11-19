@@ -301,7 +301,11 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
     sounds?: Sounds | null;
     /** False where this world wants no shared music: a concert, a library. Its visitors' own music still plays for them. */
     sharedMusic?: boolean;
-    /** The relays a post the visitor sends out goes to, and their earlier posts are read from. Left out, the kit's own list. */
+    /**
+     * The usual relays: where the visitor's own relay list is looked for, and where a post goes when they have
+     * published none (or too thin a one). Left out, the kit's own list. A post goes to the relays the visitor
+     * says they write to (NIP-65), and their earlier posts are read from the same.
+     */
     noteRelays?: string[];
     /**
      * What signs a post when the visitor sends one out. Left out, the page's own signer: the hidden one
