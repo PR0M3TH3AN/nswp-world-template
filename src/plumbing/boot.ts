@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStroll, reachOf, RUN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -391,6 +391,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // in a headset, and it is the only way to move for a visitor with no keyboard.
   const stepping = handle.stepping !== false;
   const STEP_MAX = 5;
+  // A step in a headset lands at once, and the next waits as long as running there would have taken (the kit's
+  // pace): nobody covers ground faster than a run, whatever they hold or wear.
+  const pace = createStepPace();
   // On a flat screen a tap is a walk at the keys' pace, to a spot a few steps off at most (the kit's stroll).
   const stroll = createStroll({
     where: () => {
@@ -441,13 +444,14 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   hooks.marks = () => marks.info();
   const stepTo = (spot: THREE.Vector3) => {
     if (!floorIsClear()) return;
-    // In a headset a step is a jump, which is what sits well there. On a flat screen it is a walk, unless the
-    // visitor has asked for less motion: then it is the same short step, taken at once.
-    if (renderer.xr.isPresenting || !controls.theme.motion) moveTowards(spot.x, spot.z);
-    else {
-      camera.getWorldPosition(headAt);
-      stroll.to(...reachOf(headAt.x, headAt.z, spot.x, spot.z));
-    }
+    camera.getWorldPosition(headAt);
+    // In a headset a step is a jump, which is what sits well there, at the pace of someone running: a press that
+    // comes too soon does nothing, and the ring on the floor is dim until one would. On a flat screen it is
+    // always a walk, on a phone as at a desk, with motion on or off: the same walk the keys make.
+    if (renderer.xr.isPresenting) {
+      if (!pace.take(Math.hypot(spot.x - headAt.x, spot.z - headAt.z))) return;
+      moveTowards(spot.x, spot.z);
+    } else stroll.to(...reachOf(headAt.x, headAt.z, spot.x, spot.z));
     state.steps = ((state.steps as number | undefined) ?? 0) + 1;
   };
   const reticle = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.28, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthTest: false }));
@@ -514,8 +518,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       // A door too far off to choose: a press on it is a few steps towards it, like a press on the floor in front of it.
       any.group.getWorldPosition(gateAt);
       camera.getWorldPosition(headAt);
-      if (controls.theme.motion) stroll.to(...reachOf(headAt.x, headAt.z, gateAt.x, gateAt.z));
-      else moveTowards(...reachOf(headAt.x, headAt.z, gateAt.x, gateAt.z));
+      stroll.to(...reachOf(headAt.x, headAt.z, gateAt.x, gateAt.z));
     } else {
       const spot = floorUnder();
       if (spot) stepTo(spot);
@@ -585,6 +588,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     camera,
     canStand,
     controls,
+    pace,
     stepFrom: (i) => {
       aimFrom(controllers[i]!);
       const spot = floorUnder();
@@ -821,6 +825,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
         if (spot) {
           reticle.position.set(spot.x, 0.02, spot.z);
           reticle.visible = true;
+          // Dim while the last step is still being paid for: a press now would do nothing.
+          (reticle.material as THREE.MeshBasicMaterial).opacity = pace.ready ? 0.8 : 0.22;
         }
       }
       xrConsole.aim(button);
