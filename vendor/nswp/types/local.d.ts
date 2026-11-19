@@ -12,8 +12,16 @@
  * Nothing else changes. What a door says, what an Airlock checks and shows,
  * and what an announcement is signed over are all still the real address.
  * And a deployed site never asks for a map at all: only a page that is itself
- * on a local address, over plain http, does. So the same build that was tried
- * locally goes live with every link leading to the real place.
+ * on a local address does. So the same build that was tried locally goes live
+ * with every link leading to the real place.
+ *
+ * "Local" is about the host, not about http or https. A development server
+ * may serve its copies over https with a certificate made on that machine, so
+ * that a phone or a headset on the same network is given what a browser
+ * gives only to a secure page: its cryptography, a microphone, a headset
+ * session. What makes a page local is that its host is `localhost` or an
+ * address only this machine or this network can reach. No real site is ever
+ * at one.
  */
 /** Where a development server publishes its map. */
 export declare const LOCAL_MAP_PATH = "/.well-known/nswp-local.json";
@@ -29,16 +37,16 @@ export type LocalMap = ReadonlyMap<string, string>;
 export declare function isLocalHost(hostname: string): boolean;
 /**
  * A map as a server gave it, with everything doubtful left out: each real
- * address must be an https origin, and each local copy an http origin on a
- * host that is local. So a map can only ever lead to this machine or this
- * network, never out to some third place.
+ * address must be an https origin, and each local copy an http or https
+ * origin on a host that is local. So a map can only ever lead to this machine
+ * or this network, never out to some third place.
  */
 export declare function cleanLocalMap(input: unknown): LocalMap;
 /** The same address at its local copy, if the map has one for its origin. Anything else comes back as it was. */
 export declare function mapToLocal(url: string, map: LocalMap): string;
 /** The other way: a local copy's address as the real one. */
 export declare function mapFromLocal(url: string, map: LocalMap): string;
-/** Whether this page is one that may follow a map: on a local host, over plain http. */
+/** Whether this page is one that may follow a map: on a local host, over http or https. */
 export declare function onLocalHost(): boolean;
 /**
  * This page's map: empty anywhere but on a local host, and empty there too
