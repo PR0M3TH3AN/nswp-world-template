@@ -4685,6 +4685,8 @@ function assertManifest(input) {
 }
 
 // packages/core/src/settings.ts
+var LOOK_RANGE = [0.25, 3];
+var FOV_RANGE = [50, 110];
 var SETTINGS_LINK_LIMIT = 400;
 var level = (v) => typeof v === "number" && Number.isFinite(v) ? Math.round(Math.min(1, Math.max(0, v)) * 100) / 100 : void 0;
 function cleanSettings(input) {
@@ -4709,6 +4711,9 @@ function cleanSettings(input) {
   if (s.hand === "left" || s.hand === "right") out.hand = s.hand;
   if (typeof s.narrow === "boolean") out.narrow = s.narrow;
   if (typeof s.full === "boolean") out.full = s.full;
+  if (typeof s.intense === "boolean") out.intense = s.intense;
+  if (typeof s.look === "number" && Number.isFinite(s.look)) out.look = Math.round(Math.min(LOOK_RANGE[1], Math.max(LOOK_RANGE[0], s.look)) * 100) / 100;
+  if (typeof s.fov === "number" && Number.isFinite(s.fov)) out.fov = Math.round(Math.min(FOV_RANGE[1], Math.max(FOV_RANGE[0], s.fov)));
   return out;
 }
 var hasSettings = (s) => !!s && Object.keys(s).length > 0;
@@ -6517,6 +6522,7 @@ export {
   Collector,
   DEFAULT_RELAYS,
   ENTRY_ASSERTION_KIND,
+  FOV_RANGE,
   HOME_CAPABILITY,
   HOME_LAYOUT_KIND,
   INPUTS,
@@ -6531,6 +6537,7 @@ export {
   LOOK_COLORS,
   LOOK_LIMITS,
   LOOK_PARTS,
+  LOOK_RANGE,
   MODES,
   NswpError,
   PASS_LIMITS,

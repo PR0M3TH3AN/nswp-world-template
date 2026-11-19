@@ -1,5 +1,6 @@
 /**
- * The numbers every world shares, as JSON: how fast a visitor walks, how far
+ * The numbers every world shares, and the two a visitor sets for themselves
+ * (how fast the view turns, how wide they see), as JSON: how fast a visitor walks, how far
  * a tap takes them, how a drag and a mouse turn the view, and the size of the standard
  * doorway. An engine reads them here so that they are the kit's and not a
  * copy that drifts. Lengths are metres, angles radians, speeds per second.
