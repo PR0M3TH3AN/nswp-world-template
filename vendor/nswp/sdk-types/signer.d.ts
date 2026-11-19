@@ -27,6 +27,12 @@ export interface WorldSigner {
     /** The visitor's client, as a host to name in words, or null. */
     readonly host: string | null;
     /**
+     * True when a signer was named for this visitor (in the arrival, or
+     * outright) and has had time to answer, and hasn't: it couldn't be
+     * loaded, or the browser kept it out. Then there is something to say.
+     */
+    readonly unanswered: boolean;
+    /**
      * Open the client's window, where the visitor unlocks it for this world.
      * Call it from a press: a browser opens a window for nothing else. False
      * if there is no signer, or no window could be opened.

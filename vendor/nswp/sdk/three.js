@@ -75,7 +75,7 @@ import {
   visitorFov,
   watchFov,
   worldSigner
-} from "./shared-G4ABGO6Q.js";
+} from "./shared-BXNVGSEP.js";
 import {
   currentForm,
   deviceForms,
