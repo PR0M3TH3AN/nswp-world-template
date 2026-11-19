@@ -3051,6 +3051,7 @@ function dropBrought() {
 
 // packages/sdk/src/index.ts
 var RETURN_KEY = "nswp:return-airlock";
+var SIGNER_KEY = "nswp:signer";
 var LOOK_KEY = "nswp:look";
 var PASS_KEY = "nswp:pass";
 var HOME_KEY = "nswp:at-home";
@@ -3103,6 +3104,13 @@ var arrival = {
     if (cached.context?.airlock) {
       try {
         session()?.setItem(RETURN_KEY, cached.context.airlock);
+      } catch {
+      }
+    }
+    if (cached.context) {
+      try {
+        if (cached.context.signer) session()?.setItem(SIGNER_KEY, cached.context.signer);
+        else session()?.removeItem(SIGNER_KEY);
       } catch {
       }
     }
@@ -3162,6 +3170,17 @@ var arrival = {
       return session()?.getItem(HOME_KEY) === "1";
     } catch {
       return false;
+    }
+  },
+  /**
+   * Where the visitor's client said their signer is, or undefined: then it
+   * is beside the Airlock (protocol/10-identity.md, "Signing from a world").
+   */
+  signer() {
+    try {
+      return session()?.getItem(SIGNER_KEY) ?? void 0;
+    } catch {
+      return void 0;
     }
   },
   returnAirlock() {

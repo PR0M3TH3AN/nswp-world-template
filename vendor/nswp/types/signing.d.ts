@@ -84,6 +84,17 @@ export declare function signerAddresses(airlock: string | null | undefined): {
     signer: string;
     window: string;
 } | null;
+/**
+ * Where a signer and its sign-in window are, for a client that keeps them
+ * somewhere of their own and says where in the arrival (`signer`): at
+ * `signer/` and `connect/` under that address. Null for anything that isn't
+ * an https address.
+ */
+export declare function signerAt(base: string | null | undefined): {
+    origin: string;
+    signer: string;
+    window: string;
+} | null;
 /** From a world: "what state are you in?", "sign this", or "lock": the visitor's own way to end it from the world's menu. */
 export type SignerRequest = {
     t: "state";

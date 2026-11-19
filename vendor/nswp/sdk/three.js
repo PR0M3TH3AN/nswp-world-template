@@ -75,7 +75,7 @@ import {
   visitorFov,
   watchFov,
   worldSigner
-} from "./shared-FHILVY4Z.js";
+} from "./shared-G4ABGO6Q.js";
 import {
   currentForm,
   deviceForms,
@@ -85,7 +85,7 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-Y2OMJO4X.js";
+} from "./shared-ODNIMJUA.js";
 import {
   PICTURE_LIMITS,
   loadPicture,

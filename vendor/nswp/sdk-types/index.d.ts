@@ -55,6 +55,11 @@ export declare const arrival: {
      * still at home. From here the way home leads nowhere new.
      */
     atHome(): boolean;
+    /**
+     * Where the visitor's client said their signer is, or undefined: then it
+     * is beside the Airlock (protocol/10-identity.md, "Signing from a world").
+     */
+    signer(): string | undefined;
     returnAirlock(): string | undefined;
 };
 export interface GoOptions {

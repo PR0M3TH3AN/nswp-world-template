@@ -8,6 +8,13 @@ export interface Arrival {
     entry?: string;
     /** Return address for outbound portals (spec §6.3). */
     airlock?: string;
+    /**
+     * Where the visitor's signer is (protocol/10-identity.md, "Signing from a
+     * world"): the https address its `signer/` and `connect/` pages are
+     * under. Said by their own client, which may keep its signer somewhere
+     * other than beside its Airlock. Left out, it is beside the Airlock.
+     */
+    signer?: string;
     assertion?: NostrEvent;
     avatar?: string;
     /** The visitor's look, inline (spec §4.2): for someone who hasn't published an avatar. */

@@ -46,7 +46,22 @@ export interface WorldSigner {
 }
 export interface WorldSignerOptions {
     /** The visitor's Airlock: usually `portal.airlockFor()`. The signer is beside it. */
-    airlock: string | null | undefined;
+    airlock?: string | null | undefined;
+    /**
+     * Or where the visitor's client said their signer is: usually
+     * `arrival.signer()`. Its `signer/` and `connect/` pages are under that
+     * address. Given, it is used in place of the Airlock's.
+     */
+    under?: string | null | undefined;
+    /**
+     * Or the signer and its window, named outright: for a site that isn't a
+     * world, whose visitor arrived from no client. Both must be https
+     * addresses on one origin.
+     */
+    at?: {
+        signer: string;
+        window: string;
+    };
     /** This page's query string, for tests (`signer=test` asks the client's window for a throwaway identity). */
     search?: string;
 }

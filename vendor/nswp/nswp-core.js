@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.25.0";
+var KIT_VERSION = "0.26.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4923,6 +4923,10 @@ function decodeArrival(value) {
     if (isHttpsUrl(json.airlock)) out.airlock = json.airlock;
     else c.warn("url_not_https", "airlock", "Ignoring a non-https return Airlock.");
   }
+  if (json.signer !== void 0) {
+    if (isHttpsUrl(json.signer) && json.signer.length <= 300) out.signer = json.signer;
+    else c.warn("url_not_https", "signer", "Ignoring a signer address that isn't a usable https address.");
+  }
   if (json.assertion !== void 0) {
     if (hasEventShape(json.assertion)) out.assertion = json.assertion;
     else c.warn("invalid_assertion", "assertion", "Ignoring a malformed entry assertion.");
@@ -6032,6 +6036,19 @@ function signerAddresses(airlock) {
     return null;
   }
 }
+function signerAt(base) {
+  if (!base || base.length > 300) return null;
+  try {
+    const at = new URL(base);
+    if (at.protocol !== "https:" || at.username || at.password) return null;
+    if (!at.pathname.endsWith("/")) at.pathname += "/";
+    at.search = "";
+    at.hash = "";
+    return { origin: at.origin, signer: new URL("signer/", at).href, window: new URL("connect/", at).href };
+  } catch {
+    return null;
+  }
+}
 var ID = /^[0-9a-z-]{1,40}$/i;
 var wrapped = (data) => {
   if (!data || typeof data !== "object") return null;
@@ -6939,6 +6956,7 @@ export {
   shouldInitiate,
   signClass,
   signerAddresses,
+  signerAt,
   signerMessage,
   spawnOffset,
   stripArrivalParam,
