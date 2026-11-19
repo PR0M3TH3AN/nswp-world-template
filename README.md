@@ -187,10 +187,11 @@ it yourself. `npm run check:live` tells you if it is missing.
 
 ## Working on it from inside it
 
-**It moves the way people expect.** Click where you want to stand and drag
-to look round; or, for people who play games, turn on game controls in the
-menu: the mouse looks, W A S D walk, Shift runs, F uses, Escape is the menu.
-Fullscreen is in the menu too.
+**It moves the way people expect.** Casual, which a visitor gets: click
+where you want to stand and drag to look round. Or intense, chosen in the
+menu, for people who play games: the mouse looks, W A S D walk, Shift runs,
+F uses, Escape is the menu. A headset has the same two, as stepping and
+walking smoothly. Fullscreen is in the menu too.
 
 **It has sound.** Recorded steps, presses and doors, a room's hum, and a
 piece of music. Visitors set their own volumes and can play their own songs,

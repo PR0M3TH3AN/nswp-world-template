@@ -52,11 +52,13 @@ export interface Arrival {
      */
     blocked?: string[];
     /**
-     * The visitor was moving with game controls where they came from (the
-     * mouse looks, keys walk). A world that has such controls starts in them.
-     * A preference, and theirs to change the moment they arrive.
+     * How the visitor was moving where they came from, when it was the
+     * intense way: at a desk, the mouse looks and keys walk; in a headset,
+     * they walk and turn smoothly. A world that offers the two ways starts
+     * them in this one. A preference, and theirs to change the moment they
+     * arrive. Left out, the casual way.
      */
-    fps?: true;
+    moving?: "intense";
 }
 export declare function encodeArrival(a: Omit<Arrival, "v"> & {
     v?: string;

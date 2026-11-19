@@ -264,7 +264,7 @@ export declare function addViewControls(controls: Controls, d: {
 }): Promise<boolean>;
 export { createFigure, type Figure, type FigureFacts, type FigureStyle } from "./figure.js";
 export { createXrInput, type GrabOptions, type XrInput, type XrInputInfo, type XrInputOptions } from "./input.js";
-export { DEFAULT_COMFORT, readPad, type Comfort, type PadState } from "./actions.js";
+export { CASUAL_COMFORT, DEFAULT_COMFORT, INTENSE_COMFORT, isIntense, readPad, type Comfort, type PadState } from "./actions.js";
 export { addPanelControls, createPanels, type Panel, type PanelContent, type PanelInfo, type Panels, type PanelsOptions } from "./panels.js";
 export { LIBRARY_LIMITS, PANEL_LIMITS, PANEL_LOOKS, type LibraryItem, type PanelLook, type PanelPlace, type PanelRecord, type PanelSource } from "./panel-store.js";
 export { createStay, wasRefreshed, type Stay, type Stood } from "./stay.js";

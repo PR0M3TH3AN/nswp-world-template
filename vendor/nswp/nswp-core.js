@@ -4885,9 +4885,9 @@ function decodeArrival(value) {
     if (json.mic === true && out.joined) out.mic = true;
     else c.warn("invalid_mic", "mic", "Ignoring a microphone hint that isn't true, or that comes without joined.");
   }
-  if (json.fps !== void 0 && json.fps !== false) {
-    if (json.fps === true) out.fps = true;
-    else c.warn("invalid_fps", "fps", "Ignoring a game-controls hint that isn't true or false.");
+  if (json.moving !== void 0 && json.moving !== "casual") {
+    if (json.moving === "intense") out.moving = "intense";
+    else c.warn("invalid_moving", "moving", `Ignoring a way of moving that isn't "casual" or "intense".`);
   }
   if (json.blocked !== void 0) {
     const ok = Array.isArray(json.blocked) && json.blocked.length <= LIMITS.maxBlocked && json.blocked.every((k) => typeof k === "string" && isHex64(k));
@@ -5055,7 +5055,7 @@ var blockedFlag = (opts) => {
 };
 var blockedFrom = (value) => cleanKeys((value ?? "").split(","), LIMITS.maxBlockedOnLink);
 function stateFlags(opts) {
-  return [...opts.immersive ? ["xr=1"] : [], ...opts.fps ? ["fps=1"] : [], ...opts.joined ? ["joined=1"] : [], ...opts.joined && opts.mic ? ["mic=1"] : []];
+  return [...opts.immersive ? ["xr=1"] : [], ...opts.moving === "intense" ? ["moving=intense"] : [], ...opts.joined ? ["joined=1"] : [], ...opts.joined && opts.mic ? ["mic=1"] : []];
 }
 function buildAirlockUrl(airlock, dest, opts = {}) {
   const u = new URL(airlock);
@@ -5074,7 +5074,7 @@ function fragmentSaysImmersive(hash) {
 function wayWithoutDestination(hash) {
   const parts = hash.replace(/^#/, "").split("&").filter(Boolean);
   const reported = parts.find((p) => /^blocked=[0-9a-f,]+$/.test(p));
-  if (parts.some((p) => p !== "xr=1" && p !== "doors=1" && p !== "joined=1" && p !== "mic=1" && p !== "fps=1" && p !== reported)) return null;
+  if (parts.some((p) => p !== "xr=1" && p !== "doors=1" && p !== "joined=1" && p !== "mic=1" && p !== "moving=intense" && p !== reported)) return null;
   const joined = parts.includes("joined=1");
   const blocked = blockedFrom(reported?.slice(8));
   return {
@@ -5083,7 +5083,7 @@ function wayWithoutDestination(hash) {
     ...joined ? { joined: true } : {},
     ...joined && parts.includes("mic=1") ? { mic: true } : {},
     ...blocked.length ? { blocked } : {},
-    ...parts.includes("fps=1") ? { fps: true } : {}
+    ...parts.includes("moving=intense") ? { moving: "intense" } : {}
   };
 }
 function buildWayUrl(airlock, opts = {}) {
@@ -5122,7 +5122,7 @@ function parseAirlockFragment(hash) {
   }
   const blocked = blockedFrom(params.get("blocked"));
   if (blocked.length) req.blocked = blocked;
-  if (params.get("fps") === "1") req.fps = true;
+  if (params.get("moving") === "intense") req.moving = "intense";
   return req;
 }
 

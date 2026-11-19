@@ -44,6 +44,11 @@ export interface XrInputOptions {
     /** The object that moves the visitor around; the camera is inside it. */
     rig: THREE.Object3D;
     camera: THREE.Camera;
+    /**
+     * The visitor arrived from a headset moving the intense way (their own client says so): they move that way
+     * here too. A preference, and theirs to change.
+     */
+    arrivedIntense?: boolean;
     /** May the visitor's head be at (x, z)? Walking stops where this says no. Left out, anywhere. */
     canStand?: (x: number, z: number) => boolean;
     /**
@@ -80,6 +85,8 @@ export interface XrInputInfo {
 }
 export interface XrInput {
     readonly comfort: Comfort;
+    /** Whether the visitor moves the intense way in a headset: walking and turning smoothly. */
+    readonly intense: boolean;
     /** Change how the visitor moves. `keep` remembers it as their choice, for this site. */
     setComfort(patch: Partial<Comfort>, keep?: boolean): void;
     /** Call once per frame with the seconds since the last one. */

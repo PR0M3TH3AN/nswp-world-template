@@ -243,6 +243,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   };
   // Whether the visitor is in the room here, and heard: it goes with them, so the next place needn't ask again.
   let travelling = (): { joined: boolean; mic: boolean } => ({ joined: false, mic: false });
+  let movingNow = (): "intense" | "casual" => "casual";
   let stopWalking = () => {};
   const go = async (gate: PortalGate) => {
     if (state.leaving) return;
@@ -251,7 +252,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     sounds.play("cross");
     await crossing.leave({ title: String(gate.group.userData.label ?? "another place"), address: hostOf(gate.destination.url) });
     document.body.classList.add("leaving");
-    await portal.go(gate.destination, { xrSession: renderer.xr.getSession(), ...travelling(), fps: !!fps?.enabled });
+    await portal.go(gate.destination, { xrSession: renderer.xr.getSession(), ...travelling(), moving: movingNow() });
   };
   const goHome = async () => {
     const back = arrival.returnAirlock();
@@ -260,7 +261,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     sounds.play("cross");
     await crossing.leave({ title: "home", address: hostOf(back) });
     document.body.classList.add("leaving");
-    await portal.home({ xrSession: renderer.xr.getSession(), ...travelling(), fps: !!fps?.enabled });
+    await portal.home({ xrSession: renderer.xr.getSession(), ...travelling(), moving: movingNow() });
   };
   const goToDoors = async () => {
     const back = arrival.returnAirlock();
@@ -269,7 +270,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     sounds.play("cross");
     await crossing.leave({ title: "your doors", address: hostOf(back) });
     document.body.classList.add("leaving");
-    await portal.doors({ xrSession: renderer.xr.getSession(), ...travelling(), fps: !!fps?.enabled });
+    await portal.doors({ xrSession: renderer.xr.getSession(), ...travelling(), moving: movingNow() });
   };
   hooks.goThrough = async (i) => {
     const gate = gates[i];
@@ -426,6 +427,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // clicks and drags below stand down.
   let fps: Fps | null = null;
   const gameControls = () => !!fps?.enabled && !renderer.xr.isPresenting;
+  /** Which of the two ways the visitor is moving now, on the device they are using: it goes with them through a door. */
+  movingNow = () => ((renderer.xr.isPresenting ? input?.intense : fps?.enabled) ? "intense" : "casual");
   /** Use what the middle of the view points at: a panel, or a door. */
   const use = () => {
     pointer.set(0, 0);
@@ -435,7 +438,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     const gate = gateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
     if (gate) void go(gate);
   };
-  fps = createFps({ dom: renderer.domElement, camera, rig, controls, hud, canStand, presenting: () => renderer.xr.isPresenting, onUse: use, onBlocked: () => sounds.bump(), speed: 2, arrived: !!context?.fps });
+  fps = createFps({ dom: renderer.domElement, camera, rig, controls, hud, canStand, presenting: () => renderer.xr.isPresenting, onUse: use, onBlocked: () => sounds.bump(), speed: 2, arrived: context?.moving === "intense" && !context.immersive });
   hooks.fps = fps;
   renderer.domElement.addEventListener("pointerdown", (e) => {
     if (gameControls()) return;
@@ -524,6 +527,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     renderer,
     scene,
     rig,
+    // They left a headset moving the intense way: the same here.
+    arrivedIntense: context?.moving === "intense" && !!context.immersive,
     camera,
     canStand,
     controls,
