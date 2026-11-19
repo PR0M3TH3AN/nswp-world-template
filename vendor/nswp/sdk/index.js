@@ -5,6 +5,12 @@ import {
   room,
   startingForm
 } from "./shared-33TMTTY7.js";
+import {
+  arriveWith,
+  arrivedSettings,
+  currentSettings,
+  reportSettings
+} from "./shared-Q3D4OUDA.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/index.ts
@@ -122,6 +128,7 @@ var arrival = {
     const r = decodeArrival(raw);
     cached = r.ok ? { context: r.value, warnings: r.warnings } : { context: null, warnings: [...r.errors, ...r.warnings] };
     arriveAs(cached.context?.form);
+    arriveWith(cached.context?.settings);
     try {
       if (cached.context?.home) session()?.setItem(HOME_KEY, "1");
       else if (cached.context) session()?.removeItem(HOME_KEY);
@@ -204,7 +211,9 @@ var carried = (opts, immersive) => ({
   ...opts.joined ? { joined: true, ...opts.mic ? { mic: true } : {} } : {},
   ...opts.blocked?.length ? { blocked: opts.blocked } : {},
   ...opts.moving === "intense" ? { moving: "intense" } : {},
-  form: opts.form ?? currentForm()
+  form: opts.form ?? currentForm(),
+  // Their settings as they are now, so the next place needn't be set up again.
+  settings: currentSettings()
 });
 var portal = {
   /** Which Airlock `go()` would use right now, or null for the built-in screen. */
@@ -316,10 +325,14 @@ function showFallback(dest) {
 export {
   RoomSession,
   arrival,
+  arriveWith,
+  arrivedSettings,
   configure,
   currentForm,
+  currentSettings,
   dropBrought,
   portal,
+  reportSettings,
   room,
   somethingBrought,
   startingForm,

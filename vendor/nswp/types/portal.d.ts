@@ -1,5 +1,6 @@
 import { type AddressPointer } from "./nip19.js";
 import { type Result } from "./result.js";
+import { type TravelSettings } from "./settings.js";
 export interface PortalDestination {
     naddr?: string;
     url?: string;
@@ -56,6 +57,15 @@ export interface AirlockUrlOptions {
      * visitor's own client knows their device.
      */
     form?: Form;
+    /**
+     * The visitor's settings as they leave (`set=<settings>`): their volumes,
+     * the size of their text, whether things move, their hands in a headset,
+     * whether their screen was filled. The place they arrive starts from them,
+     * so nothing has to be set again. Preferences and nothing more
+     * (protocol/11-the-visitors-console.md, "Settings that travel"). Sent on
+     * the way home too: what they changed in a world comes home with them.
+     */
+    settings?: TravelSettings;
 }
 /** How a visitor is using a flat screen: with their fingers, or with a mouse and keys. */
 export type Form = "touch" | "desk";
@@ -84,6 +94,8 @@ export interface AirlockRequest {
     moving?: "intense";
     /** The link says what they were using a flat screen with (`form=touch` or `form=desk`). */
     form?: Form;
+    /** The link says what their settings were (`set=`). Preferences, with everything unknown already left out. */
+    settings?: TravelSettings;
 }
 /** Whether a fragment says the visitor came from a headset session, with or without a destination: a way home carries it too. */
 export declare function fragmentSaysImmersive(hash: string): boolean;
@@ -100,6 +112,7 @@ export declare function wayWithoutDestination(hash: string): {
     mic?: true;
     blocked?: string[];
     moving?: "intense";
+    settings?: TravelSettings;
 } | null;
 /** `<airlock>` opened as the way home, or with `doors` as the way to the visitor's doors (protocol/02-doors.md). */
 export declare function buildWayUrl(airlock: string, opts?: AirlockUrlOptions & {
