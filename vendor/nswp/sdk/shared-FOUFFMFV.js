@@ -22,7 +22,7 @@ import {
 } from "./shared-WWPRVQWW.js";
 
 // packages/sdk/src/three.ts
-import * as THREE12 from "three";
+import * as THREE13 from "three";
 import { decodeLook, encodeNpub, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
@@ -1400,7 +1400,7 @@ import * as THREE6 from "three";
 var WALK_SPEED = 2.4;
 var RUN = 1.75;
 var DOUBLE_TAP = 400;
-var TAP_REACH = 3;
+var TAP_REACH = 6;
 var DRAG_LOOK = 5e-3;
 function reachOf(fromX, fromZ, toX, toZ, reach = TAP_REACH) {
   const dx = toX - fromX;
@@ -1408,6 +1408,19 @@ function reachOf(fromX, fromZ, toX, toZ, reach = TAP_REACH) {
   const far = Math.hypot(dx, dz);
   if (!Number.isFinite(far) || far <= reach || far === 0) return [toX, toZ];
   return [fromX + dx / far * reach, fromZ + dz / far * reach];
+}
+function dotsBetween(fromX, fromZ, toX, toZ, opts = {}) {
+  const gap = opts.gap ?? 0.4;
+  const clear = opts.clear ?? 0.45;
+  const short = opts.short ?? 0.3;
+  const most = opts.most ?? 40;
+  const dx = toX - fromX;
+  const dz = toZ - fromZ;
+  const far = Math.hypot(dx, dz);
+  const out = [];
+  if (!Number.isFinite(far) || far <= clear + short || !(gap > 0)) return out;
+  for (let d = far - short; d >= clear && out.length < most; d -= gap) out.push([fromX + dx / far * d, fromZ + dz / far * d]);
+  return out;
 }
 function createStroll(o) {
   const speed = o.speed ?? WALK_SPEED;
@@ -1461,6 +1474,9 @@ function createStroll(o) {
     },
     get running() {
       return running;
+    },
+    get target() {
+      return target;
     }
   };
 }
@@ -3381,6 +3397,79 @@ function addPanelControls(controls, panels, o) {
   );
 }
 
+// packages/sdk/src/floor-mark.ts
+import * as THREE10 from "three";
+var MOST = 40;
+function createFloorMarks(accent, opts = {}) {
+  const y = opts.height ?? 0.02;
+  const group = new THREE10.Group();
+  group.name = "floor-marks";
+  const paint = (opacity) => new THREE10.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
+  const flat = (o) => {
+    o.rotation.x = -Math.PI / 2;
+    o.renderOrder = 5;
+    o.raycast = () => {
+    };
+    o.visible = false;
+    group.add(o);
+    return o;
+  };
+  const ring = flat(new THREE10.Mesh(new THREE10.RingGeometry(0.26, 0.34, 48), paint(0.85)));
+  const dot = flat(new THREE10.Mesh(new THREE10.CircleGeometry(0.14, 28), paint(0.95)));
+  const halo = flat(new THREE10.Mesh(new THREE10.RingGeometry(0.26, 0.3, 48), paint(0.7)));
+  const line = flat(new THREE10.InstancedMesh(new THREE10.CircleGeometry(0.07, 14), paint(0.8), MOST));
+  line.rotation.x = 0;
+  line.frustumCulled = false;
+  const place = new THREE10.Matrix4();
+  const lie = new THREE10.Quaternion().setFromEuler(new THREE10.Euler(-Math.PI / 2, 0, 0));
+  const at = new THREE10.Vector3();
+  const one = new THREE10.Vector3(1, 1, 1);
+  let shown = { ring: null, dot: null, dots: 0 };
+  return {
+    group,
+    update(o) {
+      ring.visible = !!o.hover;
+      if (o.hover) ring.position.set(o.hover[0], y, o.hover[1]);
+      const going = !!o.to;
+      dot.visible = going;
+      halo.visible = going;
+      let dots = 0;
+      if (o.to) {
+        dot.position.set(o.to[0], y, o.to[1]);
+        halo.position.copy(dot.position);
+        const pulse = o.t * 0.9 % 1;
+        halo.scale.setScalar(1 + pulse * 0.9);
+        halo.material.opacity = 0.7 * (1 - pulse);
+        const spots = dotsBetween(o.from[0], o.from[1], o.to[0], o.to[1], { most: MOST });
+        dots = spots.length;
+        spots.forEach(([x, z], i) => {
+          place.compose(at.set(x, y, z), lie, one);
+          line.setMatrixAt(i, place);
+        });
+        line.instanceMatrix.needsUpdate = true;
+      }
+      line.count = dots;
+      line.visible = dots > 0;
+      shown = { ring: o.hover ? [o.hover[0], o.hover[1]] : null, dot: o.to ? [o.to[0], o.to[1]] : null, dots };
+    },
+    info: () => shown,
+    dispose() {
+      for (const o of [ring, dot, halo, line]) {
+        o.geometry.dispose();
+        o.material.dispose();
+      }
+      group.removeFromParent();
+    }
+  };
+}
+
+// packages/sdk/src/gate-size.ts
+var PORTAL_WIDTH = 1.5;
+var PORTAL_HEIGHT = 2.1;
+var PORTAL_SPRING = PORTAL_HEIGHT - PORTAL_WIDTH / 2;
+var PORTAL_SIGN_HEIGHT = PORTAL_HEIGHT + 0.72;
+var DOOR_REACH = 3.05;
+
 // packages/sdk/src/fps.ts
 var LOOK_SPEED = 22e-4;
 var PITCH_LIMIT = 85 * Math.PI / 180;
@@ -4416,7 +4505,7 @@ function addSoundControls(controls, sounds) {
 }
 
 // packages/sdk/src/chamber.ts
-import * as THREE10 from "three";
+import * as THREE11 from "three";
 var R = 1.8;
 var H3 = 2.8;
 var BAYS = 10;
@@ -4440,16 +4529,16 @@ function signTexture(lines, color) {
     const y = rows.length === 1 ? 192 : rows.length === 2 ? 138 + i * 118 : 92 + i * 100;
     g.fillText(line, 512, y, 944);
   });
-  const texture = new THREE10.CanvasTexture(canvas);
-  texture.colorSpace = THREE10.SRGBColorSpace;
+  const texture = new THREE11.CanvasTexture(canvas);
+  texture.colorSpace = THREE11.SRGBColorSpace;
   return texture;
 }
 function createChamber(accent, opts = {}) {
-  const light = new THREE10.Color(accent);
+  const light = new THREE11.Color(accent);
   const metal = createAlloy(light, { gloss: 0.5, speed: 0.9 });
   const builder = () => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE10.Color(1317668);
+    b.tone = new THREE11.Color(1317668);
     b.light = light.clone();
     return b;
   };
@@ -4461,7 +4550,7 @@ function createChamber(accent, opts = {}) {
   const wallShape = builder();
   for (let i = 1; i < BAYS; i++) {
     const a = i * 2 * Math.PI / BAYS;
-    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE10.MathUtils.radToDeg(a));
+    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE11.MathUtils.radToDeg(a));
     wallShape.box([bay, H3, 0.12], [0, H3 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
     for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H3 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
   }
@@ -4481,16 +4570,16 @@ function createChamber(accent, opts = {}) {
     leaf.position.set(side * DOOR_W / 2, 0, -reach);
     return leaf;
   });
-  const sign = new THREE10.Mesh(new THREE10.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE10.MeshBasicMaterial({ transparent: true }));
+  const sign = new THREE11.Mesh(new THREE11.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE11.MeshBasicMaterial({ transparent: true }));
   sign.position.set(0, DOOR_H + (H3 - DOOR_H) / 2, -reach + 0.085);
-  const rising = new THREE10.Group();
+  const rising = new THREE11.Group();
   rising.add(walls, ...leaves, sign);
-  const clear = new THREE10.Mesh(new THREE10.BufferGeometry().setAttribute("position", new THREE10.BufferAttribute(new Float32Array(9), 3)), new THREE10.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
+  const clear = new THREE11.Mesh(new THREE11.BufferGeometry().setAttribute("position", new THREE11.BufferAttribute(new Float32Array(9), 3)), new THREE11.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
   clear.frustumCulled = false;
   clear.renderOrder = CHAMBER_ORDER;
   clear.onBeforeRender = (renderer) => renderer.clearDepth();
   for (const part of [floor, walls, lid, ...leaves, sign]) part.renderOrder = CHAMBER_ORDER + 1;
-  const group = new THREE10.Group();
+  const group = new THREE11.Group();
   group.add(clear, floor, rising, lid);
   let door = 0;
   let presence = 1;
@@ -4555,8 +4644,8 @@ function createCrossing(o) {
   let hold;
   let shut = null;
   const moves = () => o.motion?.() ?? true;
-  const at = new THREE10.Vector3();
-  const facing2 = new THREE10.Vector3();
+  const at = new THREE11.Vector3();
+  const facing2 = new THREE11.Vector3();
   const place = () => {
     chamber?.dispose();
     const made = createChamber(o.accent, o.textColor ? { textColor: o.textColor } : {});
@@ -4659,16 +4748,16 @@ function createCrossing(o) {
 }
 
 // packages/sdk/src/camera.ts
-import * as THREE11 from "three";
+import * as THREE12 from "three";
 async function takePicture(renderer, scene, camera, opts = {}) {
   const width = Math.round(opts.width ?? 1920);
   const height = Math.round(opts.height ?? 1080);
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
   const xrWasEnabled = renderer.xr.enabled;
   const previousTarget = renderer.getRenderTarget();
-  const target = new THREE11.WebGLRenderTarget(width, height, { samples: 4 });
-  target.texture.colorSpace = THREE11.SRGBColorSpace;
-  const eye = new THREE11.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
+  const target = new THREE12.WebGLRenderTarget(width, height, { samples: 4 });
+  target.texture.colorSpace = THREE12.SRGBColorSpace;
+  const eye = new THREE12.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
   camera.updateWorldMatrix(true, false);
   camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
   eye.updateMatrixWorld(true);
@@ -4699,17 +4788,17 @@ async function takePicture(renderer, scene, camera, opts = {}) {
 }
 async function takeSelfie(renderer, scene, head, look, opts = {}) {
   head.updateWorldMatrix(true, false);
-  const at = new THREE11.Vector3();
-  const facing2 = new THREE11.Quaternion();
-  head.matrixWorld.decompose(at, facing2, new THREE11.Vector3());
-  const ahead = new THREE11.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
+  const at = new THREE12.Vector3();
+  const facing2 = new THREE12.Quaternion();
+  head.matrixWorld.decompose(at, facing2, new THREE12.Vector3());
+  const ahead = new THREE12.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
   if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
   ahead.normalize();
   const figure = createFigure(look);
   figure.group.position.copy(at);
   figure.group.rotation.y = Math.atan2(-ahead.x, -ahead.z);
   scene.add(figure.group);
-  const eye = new THREE11.PerspectiveCamera(58, 1, 0.05, head.far);
+  const eye = new THREE12.PerspectiveCamera(58, 1, 0.05, head.far);
   eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
   eye.position.y = at.y + 0.08;
   eye.lookAt(at.x, at.y - 0.22, at.z);
@@ -4873,16 +4962,16 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE12.CanvasTexture(canvas);
-  tex.colorSpace = THREE12.SRGBColorSpace;
-  const sprite = new THREE12.Sprite(new THREE12.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE13.CanvasTexture(canvas);
+  tex.colorSpace = THREE13.SRGBColorSpace;
+  const sprite = new THREE13.Sprite(new THREE13.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
 function createPresence(d) {
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE12.AudioListener();
+  const listener = new THREE13.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -4904,9 +4993,9 @@ function createPresence(d) {
       fade.addColorStop(1, "rgba(255,255,255,0)");
       g.fillStyle = fade;
       g.fillRect(0, 0, 64, 64);
-      dot = new THREE12.CanvasTexture(canvas);
+      dot = new THREE13.CanvasTexture(canvas);
     }
-    return new THREE12.Sprite(new THREE12.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
+    return new THREE13.Sprite(new THREE13.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
   };
   const showRecording = (a, on) => {
     if (on && !a.light) {
@@ -4951,7 +5040,7 @@ function createPresence(d) {
     });
   };
   const makeAvatar = (member) => {
-    const root = new THREE12.Group();
+    const root = new THREE13.Group();
     root.visible = false;
     const label = textSprite(member.name, labelColor, 0.5);
     label.position.set(0, 0.42, 0);
@@ -4976,7 +5065,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE12.PositionalAudio(listener);
+    const pa = new THREE13.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(MUSIC_RANGE);
     pa.setVolume(0);
@@ -5004,8 +5093,8 @@ function createPresence(d) {
     return Math.sqrt(buf.reduce((sum, x) => sum + x * x, 0) / buf.length);
   };
   const levelBuf = new Float32Array(512);
-  const headAt = new THREE12.Vector3();
-  const theirs = new THREE12.Vector3();
+  const headAt = new THREE13.Vector3();
+  const theirs = new THREE13.Vector3();
   const tendMusic = (dt) => {
     if (!session) return;
     d.camera.getWorldPosition(headAt);
@@ -5053,7 +5142,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE12.PositionalAudio(listener);
+    const pa = new THREE13.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -5076,8 +5165,8 @@ function createPresence(d) {
     d.scene.remove(a.root);
     a.figure.dispose();
   };
-  const v = new THREE12.Vector3();
-  const q = new THREE12.Quaternion();
+  const v = new THREE13.Vector3();
+  const q = new THREE13.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -5202,9 +5291,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE12.Vector3();
-  const tq = new THREE12.Quaternion();
-  const euler = new THREE12.Euler();
+  const tp = new THREE13.Vector3();
+  const tq = new THREE13.Quaternion();
+  const euler = new THREE13.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -5377,7 +5466,7 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE12.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE13.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
         a.materials[0].material.tick?.(performance.now() / 1e3);
         if (a.beam?.visible && performance.now() > (a.beamUntil ?? 0)) a.beam.visible = false;
@@ -5447,11 +5536,11 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE12.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE12.HalfFloatType });
-  const flatTarget = new THREE12.WebGLRenderTarget(width, height);
-  flatTarget.texture.colorSpace = THREE12.SRGBColorSpace;
-  const material = new THREE12.ShaderMaterial({
-    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE12.Vector3() }, up: { value: new THREE12.Vector3() }, right: { value: new THREE12.Vector3() } },
+  const faceTarget = new THREE13.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE13.HalfFloatType });
+  const flatTarget = new THREE13.WebGLRenderTarget(width, height);
+  flatTarget.texture.colorSpace = THREE13.SRGBColorSpace;
+  const material = new THREE13.ShaderMaterial({
+    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE13.Vector3() }, up: { value: new THREE13.Vector3() }, right: { value: new THREE13.Vector3() } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
       void main(){
@@ -5468,19 +5557,19 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     depthTest: false,
     depthWrite: false
   });
-  const quad = new THREE12.Mesh(new THREE12.PlaneGeometry(2, 2), material);
-  const quadScene = new THREE12.Scene();
+  const quad = new THREE13.Mesh(new THREE13.PlaneGeometry(2, 2), material);
+  const quadScene = new THREE13.Scene();
   quadScene.add(quad);
-  const quadCamera = new THREE12.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const faceCamera = new THREE12.PerspectiveCamera(90, 1, 0.05, 700);
+  const quadCamera = new THREE13.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const faceCamera = new THREE13.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   const views = [
-    [new THREE12.Vector3(0, 0, -1), new THREE12.Vector3(0, 1, 0)],
-    [new THREE12.Vector3(1, 0, 0), new THREE12.Vector3(0, 1, 0)],
-    [new THREE12.Vector3(0, 0, 1), new THREE12.Vector3(0, 1, 0)],
-    [new THREE12.Vector3(-1, 0, 0), new THREE12.Vector3(0, 1, 0)],
-    [new THREE12.Vector3(0, 1, 0), new THREE12.Vector3(0, 0, 1)],
-    [new THREE12.Vector3(0, -1, 0), new THREE12.Vector3(0, 0, -1)]
+    [new THREE13.Vector3(0, 0, -1), new THREE13.Vector3(0, 1, 0)],
+    [new THREE13.Vector3(1, 0, 0), new THREE13.Vector3(0, 1, 0)],
+    [new THREE13.Vector3(0, 0, 1), new THREE13.Vector3(0, 1, 0)],
+    [new THREE13.Vector3(-1, 0, 0), new THREE13.Vector3(0, 1, 0)],
+    [new THREE13.Vector3(0, 1, 0), new THREE13.Vector3(0, 0, 1)],
+    [new THREE13.Vector3(0, -1, 0), new THREE13.Vector3(0, 0, -1)]
   ];
   try {
     for (const o of hidden) o.visible = false;
@@ -5527,24 +5616,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE12.Texture(image);
-  texture.colorSpace = THREE12.SRGBColorSpace;
-  texture.wrapS = THREE12.RepeatWrapping;
+  const texture = new THREE13.Texture(image);
+  texture.colorSpace = THREE13.SRGBColorSpace;
+  texture.wrapS = THREE13.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE12.LinearFilter;
-  texture.magFilter = THREE12.LinearFilter;
+  texture.minFilter = THREE13.LinearFilter;
+  texture.magFilter = THREE13.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE12.ShaderMaterial({
+  const material = new THREE13.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE12.Matrix3() },
-      center: { value: new THREE12.Vector3() },
+      toLocal: { value: new THREE13.Matrix3() },
+      center: { value: new THREE13.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -5564,10 +5653,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE12.DoubleSide
+    side: THREE13.DoubleSide
   });
-  const mesh = new THREE12.Mesh(geometry, material);
-  const rotation = new THREE12.Matrix4();
+  const mesh = new THREE13.Mesh(geometry, material);
+  const rotation = new THREE13.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();
@@ -5643,8 +5732,8 @@ function addRoomControls(controls, presence, opts = {}) {
     watching.set(m.pubkey, w);
     const show = () => {
       if (w.panel || watching.get(m.pubkey) !== w || !video.videoWidth || !video.videoHeight) return;
-      w.texture = new THREE12.VideoTexture(video);
-      w.texture.colorSpace = THREE12.SRGBColorSpace;
+      w.texture = new THREE13.VideoTexture(video);
+      w.texture.colorSpace = THREE13.SRGBColorSpace;
       w.panel = opts.panels.open(
         { kind: "custom", title: `${m.name}'s screen`, texture: w.texture, aspect: video.videoWidth / video.videoHeight, onClose: () => stopWatching(m.pubkey, true) },
         { keep: false }
@@ -6101,6 +6190,7 @@ export {
   TAP_REACH,
   DRAG_LOOK,
   reachOf,
+  dotsBetween,
   createStroll,
   readPad,
   DEFAULT_COMFORT,
@@ -6115,6 +6205,12 @@ export {
   createLibrary,
   createPanels,
   addPanelControls,
+  createFloorMarks,
+  PORTAL_WIDTH,
+  PORTAL_HEIGHT,
+  PORTAL_SPRING,
+  PORTAL_SIGN_HEIGHT,
+  DOOR_REACH,
   LOOK_SPEED,
   PITCH_LIMIT,
   SPRINT,
