@@ -13,7 +13,7 @@
  * visitor's "effects" volume always covers everything a world plays through
  * the kit.
  */
-export declare const CUES: readonly ["step", "land", "bump", "grab", "drop", "hover", "press", "menuOpen", "menuClose", "cross", "arrive", "join", "leave", "micOn", "micOff", "notice", "error"];
+export declare const CUES: readonly ["step", "land", "bump", "grab", "drop", "hover", "press", "menuOpen", "menuClose", "cross", "arrive", "join", "leave", "micOn", "micOff", "notice", "chat", "error"];
 export type Cue = (typeof CUES)[number];
 /** One piece of a default cue: a tone that may slide, or a breath of filtered noise. Times in seconds. */
 export type CuePart = {
@@ -115,6 +115,25 @@ export declare const STEP_LEVEL = 0.45;
  * the left foot and odd ones the right. The two feet differ a little and
  * steadily, and every step differs a little more by chance.
  */
+/** Where a sound made by somebody comes from: how far off they are, in metres, and how far to one side (-1 left, 1 right). */
+export interface SoundPlace {
+    distance: number;
+    pan?: number;
+}
+/** Within `near` metres a sound is as written. By `far` it is as dull as it gets. It is never quieter than `floor`. */
+export declare const HEARD: {
+    readonly near: 2;
+    readonly far: 25;
+    readonly floor: 0.14;
+    readonly fall: 6;
+};
+/**
+ * How a sound made by somebody is heard from where they stand: quieter and
+ * duller the further off, and to the side they are on. It never goes silent,
+ * because what it says (someone wrote something) is true however far they
+ * are; distance says where, not whether.
+ */
+export declare function heardFrom(place: SoundPlace): StepShape;
 export declare function stepShape(foot: number, random?: () => number): StepShape;
 /** Which of several to play next: any but the one just played, so nothing is heard twice running. */
 export declare function nextVariant(count: number, last: number, random?: () => number): number;

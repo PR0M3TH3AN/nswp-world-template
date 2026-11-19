@@ -5,7 +5,7 @@ import {
   portal,
   room,
   startingForm
-} from "./shared-MRCA6HGV.js";
+} from "./shared-Y2OMJO4X.js";
 import {
   ICONS,
   createHeldButton,
@@ -18,7 +18,7 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-ZBWTYCPB.js";
+} from "./shared-LLTXDLQH.js";
 import {
   arrivedSettings,
   reportSettings
@@ -35,7 +35,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE13 from "three";
-import { bubbleSeconds, CHAT_LIMITS, decodeLook, encodeNpub, spawnOffset } from "@nswp/core";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, encodeNpub, shortNpub as shortNpub3, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -658,6 +658,8 @@ var CUES = [
   "micOff",
   "notice",
   // the kit has something to say
+  "chat",
+  // someone in the room wrote something: heard from where they stand
   "error"
 ];
 var tone = (from, to, at, dur, gain, wave = "sine") => ({
@@ -687,6 +689,9 @@ var RECIPES = {
   micOn: [tone(600, 900, 0, 0.08, 0.14)],
   micOff: [tone(900, 600, 0, 0.08, 0.14)],
   notice: [tone(1046.5, void 0, 0, 0.08, 0.09), tone(1318.5, void 0, 0.08, 0.12, 0.08)],
+  // Two soft syllables, low and falling at the end, with a breath in front: somebody said something. It is two
+  // octaves under the kit's own notice, which is high, clean and rises, so the two are never taken for each other.
+  chat: [noise(1900, 0, 0.03, 0.06), tone(360, 440, 5e-3, 0.07, 0.15, "triangle"), tone(330, 262, 0.1, 0.11, 0.13, "triangle")],
   error: [tone(220, void 0, 0, 0.11, 0.13, "square"), tone(185, void 0, 0.14, 0.14, 0.13, "square")]
 };
 function cueRecipe(cue) {
@@ -791,6 +796,16 @@ function pieceName(address) {
   return name.slice(0, 60) || "a piece with no name";
 }
 var STEP_LEVEL = 0.45;
+var HEARD = { near: 2, far: 25, floor: 0.14, fall: 6 };
+function heardFrom(place) {
+  const d = Number.isFinite(place.distance) ? Math.max(0, place.distance) : HEARD.far;
+  const beyond = Math.max(0, d - HEARD.near);
+  const gain = Math.max(HEARD.floor, 1 / (1 + (beyond / HEARD.fall) ** 2));
+  const along = Math.min(1, beyond / (HEARD.far - HEARD.near));
+  const cutoff = Math.round(7e3 * (1100 / 7e3) ** along);
+  const side = Number.isFinite(place.pan) ? Math.max(-1, Math.min(1, place.pan)) : 0;
+  return { gain: Math.round(gain * 1e3) / 1e3, cutoff, pan: Math.round(side * 0.8 * 100) / 100, rate: 1 };
+}
 function stepShape(foot, random = Math.random) {
   const right = Math.abs(Math.trunc(foot)) % 2 === 1;
   const side = right ? 1 : -1;
@@ -1053,6 +1068,19 @@ function createConsole(controls, opts) {
     c.fillText("Menu", w / 2, 208);
     openerTexture.needsUpdate = true;
   };
+  const faces = /* @__PURE__ */ new Map();
+  const faceOf = (address) => {
+    if (!faces.has(address)) {
+      faces.set(address, null);
+      void loadPicture(address).then((drawn) => {
+        if (!drawn) return;
+        faces.set(address, drawn);
+        painted = "";
+        if (group.visible) paint();
+      });
+    }
+    return faces.get(address) ?? null;
+  };
   const paint = () => {
     const view = controls.view();
     const t = view.theme;
@@ -1142,13 +1170,74 @@ function createConsole(controls, opts) {
     const noteH = noteLines.length ? noteLines.length * 32 + 20 : 0;
     const left = 284;
     const areaW = W - left - 30;
+    const card = current?.card ?? null;
+    const cardH = card ? card.text ? 162 : 112 : 0;
+    if (card) {
+      const y = 138;
+      g.beginPath();
+      g.roundRect(left, y, areaW, cardH - 12, [22, 22, 8, 8]);
+      g.fillStyle = `rgba(${A}, 0.08)`;
+      g.fill();
+      g.lineWidth = 2;
+      g.strokeStyle = `rgba(${A}, 0.5)`;
+      g.stroke();
+      const face = card.picture ? faceOf(card.picture) : null;
+      const cx = left + 58;
+      const cy = y + 50;
+      g.save();
+      g.beginPath();
+      g.arc(cx, cy, 36, 0, Math.PI * 2);
+      g.closePath();
+      g.fillStyle = card.color || `rgba(${I}, 0.25)`;
+      g.fill();
+      if (face) {
+        g.clip();
+        g.drawImage(face, cx - 36, cy - 36, 72, 72);
+      } else {
+        g.fillStyle = t.glass;
+        g.font = `700 ${Math.round(40 * k)}px ${SANS}`;
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.fillText([...card.title][0]?.toUpperCase() ?? "", cx, cy + 2);
+        g.textAlign = "left";
+        g.textBaseline = "alphabetic";
+      }
+      g.restore();
+      const tx = left + 116;
+      g.font = `650 ${Math.round(32 * k)}px ${SANS}`;
+      g.fillStyle = t.ink;
+      const name = fit(g, card.title, areaW - 300);
+      g.fillText(name, tx, y + 43);
+      if (card.tag) {
+        const nameW = g.measureText(name).width;
+        g.font = `500 ${Math.round(21 * k)}px ${SANS}`;
+        const tagW = g.measureText(card.tag).width + 26;
+        g.beginPath();
+        g.roundRect(tx + nameW + 16, y + 17, tagW, 34, 17);
+        g.lineWidth = 2;
+        g.strokeStyle = card.proven ? `rgba(${A}, 0.9)` : `rgba(${I}, 0.35)`;
+        g.stroke();
+        g.fillStyle = card.proven ? t.accent : `rgba(${I}, 0.8)`;
+        g.fillText(card.tag, tx + nameW + 29, y + 41);
+      }
+      g.font = `400 ${Math.round(22 * k)}px ${card.copy ? MONO : SANS}`;
+      g.fillStyle = `rgba(${I}, 0.7)`;
+      g.fillText(fit(g, [card.sub, ...card.now].join("   "), areaW - 140), tx, y + 78);
+      if (card.text) {
+        g.fillStyle = `rgba(${A}, 0.7)`;
+        g.fillRect(left + 20, y + 96, 3, 48);
+        g.font = `400 ${Math.round(22 * k)}px ${SANS}`;
+        g.fillStyle = `rgba(${I}, 0.9)`;
+        wrap(g, card.text, areaW - 60, 2).forEach((line, i) => g.fillText(line, left + 34, y + 114 + i * 26));
+      }
+    }
     const cols = items.length > 8 ? 3 : 2;
     const rowsN = Math.max(1, Math.ceil(items.length / cols));
     const cellW = (areaW - (cols - 1) * 14) / cols;
-    const cellH = Math.min(96, (H - 150 - noteH - (rowsN - 1) * 12) / rowsN);
+    const cellH = Math.min(96, (H - 150 - noteH - cardH - (rowsN - 1) * 12) / rowsN);
     items.forEach((item, i) => {
       const x = left + i % cols * (cellW + 14);
-      const y = 138 + Math.floor(i / cols) * (cellH + 12);
+      const y = 138 + cardH + Math.floor(i / cols) * (cellH + 12);
       const tone2 = item.tone === "warn" ? rgb(t.warn) : A;
       button({ id: `act:${item.id}`, x, y, w: cellW, h: cellH, label: item.label }, (hot) => {
         g.beginPath();
@@ -1343,7 +1432,8 @@ function createConsole(controls, opts) {
         section: open ? current?.id ?? "" : "",
         sections: open ? view.sections.map((s) => s.label) : [],
         buttons: open ? current?.items.map((i) => i.label) ?? [] : opener.visible ? ["Menu"] : [],
-        note: open ? current?.note ?? "" : ""
+        note: open ? current?.note ?? "" : "",
+        card: open ? current?.card?.title ?? "" : ""
       };
     },
     pressLabelled(label) {
@@ -3943,7 +4033,7 @@ function viewScale(metres, opts) {
 }
 
 // packages/sdk/src/sound.ts
-var GAP2 = { step: 0.14, hover: 0.08, bump: 0.5, land: 0.2, notice: 0.25 };
+var GAP2 = { step: 0.14, hover: 0.08, bump: 0.5, land: 0.2, notice: 0.25, chat: 0.3 };
 var STRIDE = 0.75;
 var JUMP = 1.2;
 function createSounds(o = {}) {
@@ -4123,13 +4213,13 @@ function createSounds(o = {}) {
     } else level.connect(effects);
     return soft;
   };
-  const play = (cue) => {
+  const play = (cue, from) => {
     if (disposed || levels.off || levels.effects <= 0 || ctx.state !== "running") return;
     if (theme.cues[cue] === null) return;
     const now = ctx.currentTime;
     if (now - (last.get(cue) ?? -1) < (GAP2[cue] ?? 0.03)) return;
     last.set(cue, now);
-    const shape = cue === "step" ? stepShape(foot++) : null;
+    const shape = cue === "step" ? stepShape(foot++) : from ? heardFrom(from) : null;
     const out = shape ? shaped(shape) : effects;
     const files2 = own.get(cue) ?? fromKit.get(cue);
     if (files2?.length) {
@@ -5600,6 +5690,17 @@ function createPresence(d) {
       const hit = raycaster.intersectObjects(badges, false)[0];
       return hit ? String(hit.object.userData.person) : null;
     },
+    whereIs(pubkey) {
+      const a = avatars.get(pubkey);
+      if (!a?.target) return null;
+      d.camera.getWorldPosition(v);
+      const to = new THREE13.Vector3().fromArray(a.target.head.position).sub(v);
+      const distance = to.length();
+      if (distance < 1e-3) return { distance: 0, pan: 0 };
+      const right = new THREE13.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
+      const pan = THREE13.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
+      return { distance: Math.round(distance * 100) / 100, pan: Math.round(pan * 100) / 100 };
+    },
     pressAt(raycaster) {
       const who = this.personAt(raycaster);
       if (who) onPerson(who);
@@ -6072,7 +6173,29 @@ function addRoomControls(controls, presence, opts = {}) {
       id: "people",
       label: "People",
       icon: "people",
-      note: () => `${blockedNote()}${!presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one to see where they are, and to mute their voice or their music, or block them.`}`
+      note: () => `${blockedNote()}${!presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : here.some((m) => m.pubkey === chosen) ? "What they say about themselves is their own words. Muting and blocking are yours alone: nobody is told." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one, or press the picture over their head, to see who they are, and to mute their voice or their music, or block them.`}`,
+      // Whoever was chosen, at the head of the section: who they are here, and what they say of themselves.
+      card: () => {
+        const who2 = here.find((m) => m.pubkey === chosen);
+        if (!who2) return null;
+        return {
+          title: who2.name,
+          tag: who2.guest ? "Guest" : "By name",
+          proven: !who2.guest,
+          // A name is not unique and a picture can be copied: the key behind them is what tells two people apart.
+          sub: who2.identity ? shortNpub3(who2.identity) : "Nobody has vouched for who they are.",
+          copy: who2.identity ? encodeNpub(who2.identity) : "",
+          text: who2.guest ? "" : who2.about ?? "",
+          picture: !who2.guest && showsPictures() ? who2.picture ?? "" : "",
+          color: who2.look.light,
+          now: [
+            ...who2.recording ? ["Recording what they see"] : [],
+            ...who2.sharing ? ["Sharing their screen"] : [],
+            ...who2.music ? ["Sharing music"] : [],
+            ...presence.isMuted(who2.pubkey) ? ["You have muted their voice"] : []
+          ]
+        };
+      }
     });
     here.forEach(
       (m, i) => controls.add({
@@ -6317,7 +6440,10 @@ function addRoomControls(controls, presence, opts = {}) {
       s.on("said", (m, line) => {
         const mine = m.pubkey === s.self.pubkey;
         controls.chat.add({ id: line.id, who: m.name, text: line.text, mine, color: `#${m.color.toString(16).padStart(6, "0")}` });
-        if (!mine) controls.signal("heard");
+        if (mine || !showsChat()) return;
+        controls.signal("heard");
+        const where = presence.whereIs(m.pubkey);
+        opts.sounds?.play("chat", where ?? { distance: 3 });
       }),
       // Who comes and goes is said in the chat too. A moment is waited for a name: a pass is shown just after arriving.
       s.on("member", (m) => {
@@ -6350,7 +6476,7 @@ function addRoomControls(controls, presence, opts = {}) {
       hidden: () => !presence.session || !showsChat(),
       act: () => {
         if (presence.presenting && opts.panels) return chatPanel ? closeChatPanel() : openChatPanel();
-        controls.signal("chat");
+        controls.signal("toggle:chat");
       }
     },
     {

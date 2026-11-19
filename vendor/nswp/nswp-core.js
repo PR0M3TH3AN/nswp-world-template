@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.23.0";
+var KIT_VERSION = "0.24.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -5905,13 +5905,14 @@ var UNSEEN = [
   [65529, 65531]
 ];
 var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
-function cleanChat(text) {
+function cleanLine(text, chars) {
   if (typeof text !== "string") return "";
   let out = "";
-  for (const ch of text.slice(0, CHAT_LIMITS.chars * 8).normalize("NFC")) out += unseen(ch.codePointAt(0)) ? " " : ch;
+  for (const ch of text.slice(0, chars * 8).normalize("NFC")) out += unseen(ch.codePointAt(0)) ? " " : ch;
   out = out.replace(/\s+/g, " ").trim();
-  return [...out].slice(0, CHAT_LIMITS.chars).join("").trim();
+  return [...out].slice(0, chars).join("").trim();
 }
+var cleanChat = (text) => cleanLine(text, CHAT_LIMITS.chars);
 function chatId() {
   const bytes = new Uint8Array(4);
   globalThis.crypto.getRandomValues(bytes);
@@ -6155,6 +6156,8 @@ var PASS_LIMITS = {
   nameChars: 48,
   /** The longest address a picture may have. */
   pictureChars: 300,
+  /** The most a pass says about its holder, in their own words. */
+  aboutChars: 280,
   /** A pass as JSON, as it travels between the members of a room. */
   chars: 4e3
 };
@@ -6172,6 +6175,7 @@ function cleanPicture(url) {
     return "";
   }
 }
+var cleanAbout = (about) => cleanLine(about, PASS_LIMITS.aboutChars);
 function claimsKey(seed) {
   return /^[0-9a-f]{64}$/i.test(seed);
 }
@@ -6187,6 +6191,8 @@ function buildRoomPass(input) {
   if (name) tags.push(["name", name]);
   const picture = cleanPicture(input.picture);
   if (picture) tags.push(["picture", picture]);
+  const about = cleanAbout(input.about);
+  if (about) tags.push(["about", about]);
   return { kind: ROOM_PASS_KIND, created_at: created, tags, content: "" };
 }
 function verifyRoomPass(event, opts) {
@@ -6238,7 +6244,10 @@ function verifyRoomPass(event, opts) {
   const shown = getTags(event, "picture")[0]?.[1] ?? "";
   const picture = cleanPicture(shown);
   if (shown && !picture) c.warn("picture_ignored", "tags.picture", "The picture's address isn't one that can be fetched, so none is shown.");
-  return c.result({ pubkey: event.pubkey, session: session ?? "", name, picture, expiresAt, id: event.id });
+  const told = getTags(event, "about")[0]?.[1] ?? "";
+  const about = cleanAbout(told);
+  if (told !== about) c.warn("about_cleaned", "tags.about", "What they wrote about themselves was tidied or cut short before being shown.");
+  return c.result({ pubkey: event.pubkey, session: session ?? "", name, picture, about, expiresAt, id: event.id });
 }
 
 // packages/core/src/bridge.ts
@@ -6693,8 +6702,10 @@ export {
   checkPictureBytes,
   checkPreviewBytes,
   claimsKey,
+  cleanAbout,
   cleanChat,
   cleanKeys,
+  cleanLine,
   cleanLocalMap,
   cleanName,
   cleanPicture,

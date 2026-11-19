@@ -1,6 +1,6 @@
-import { type Cue, type Song, type SoundLevels, type SoundTheme } from "./sound-store.js";
+import { type SoundPlace, type Cue, type Song, type SoundLevels, type SoundTheme } from "./sound-store.js";
 import type { Controls } from "./ui/model.js";
-export { CUES, type Cue, type Song, type SoundLevels, type SoundTheme } from "./sound-store.js";
+export { CUES, type Cue, type Song, type SoundLevels, type SoundPlace, type SoundTheme } from "./sound-store.js";
 export interface SoundsOptions {
     /** The page's sound context, if it has one already (three.js keeps one: `THREE.AudioContext.getContext()`). */
     context?: AudioContext;
@@ -44,8 +44,11 @@ export interface Jukebox {
     output(): MediaStreamTrack;
 }
 export interface Sounds {
-    /** Play a cue: the world's, the default, or nothing if it is silenced or the visitor has effects off. */
-    play(cue: Cue): void;
+    /**
+     * Play a cue: the world's, the default, or nothing if it is silenced or the visitor has effects off. With
+     * `from`, it is heard from where somebody stands: quieter and duller the further off, and to their side.
+     */
+    play(cue: Cue, from?: SoundPlace): void;
     /**
      * Tell it how far the visitor was moved this frame, in metres: it makes
      * the steps. A long way at once is a jump, and lands. Give it what moved

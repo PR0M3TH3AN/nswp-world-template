@@ -23,7 +23,7 @@ import {
   setShowsPictures,
   showsChat,
   showsPictures
-} from "./shared-ZBWTYCPB.js";
+} from "./shared-LLTXDLQH.js";
 import {
   arrivedSettings,
   reportSettings
@@ -180,7 +180,7 @@ function createControls(opts) {
         address: opts.address ?? "",
         target,
         detail,
-        sections: [...sections, ...extra].map((s) => ({ id: s.id, label: s.label, icon: s.icon ?? null, note: read(s.note), items: showing.filter((a) => (a.section ?? "travel") === s.id).map(item) })).filter((s) => s.items.length > 0 || s.note),
+        sections: [...sections, ...extra].map((s) => ({ id: s.id, label: s.label, icon: s.icon ?? null, note: read(s.note), card: s.card?.() ?? null, items: showing.filter((a) => (a.section ?? "travel") === s.id).map(item) })).filter((s) => s.items.length > 0 || s.note || s.card),
         hotbar: bar.map(item),
         theme,
         presence,
@@ -370,6 +370,21 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .row[aria-pressed="true"] .state { color: rgb(var(--accent)); }
 .row.warn { color: rgb(var(--warn)); }
 .row.primary { background: rgba(var(--accent), .16); border-color: rgba(var(--accent), .75); }
+/* Who a section is about: a face, a name, how they are known, and what they say of themselves, set apart as theirs. */
+.card { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; align-items: center; padding: 12px; border-radius: 16px 16px 8px 8px;
+  border: 1px solid rgba(var(--accent), .45); background: rgba(var(--accent), .07); }
+.card .face { grid-row: span 2; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  background: var(--c, rgba(var(--ink), .2)); color: rgb(var(--glass)); font-weight: 700; font-size: 1.5em; }
+.card .face canvas { width: 100%; height: 100%; display: block; }
+.card h3 { margin: 0; font-size: 1.15em; font-weight: 650; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; overflow-wrap: anywhere; }
+.card .tag { font-size: .76em; font-weight: 500; padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(var(--ink), .3); color: rgba(var(--ink), .75); white-space: nowrap; }
+.card .tag.proven { border-color: rgba(var(--accent), .8); color: rgb(var(--accent)); }
+.card .keyline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: rgba(var(--ink), .7); font-size: .9em; }
+.card .keyline button { padding: 2px 10px; border-radius: 7px; border: 1px solid rgba(var(--ink), .25); color: rgb(var(--ink)); }
+.card .keyline button:hover { border-color: rgb(var(--accent)); color: rgb(var(--accent)); }
+.card blockquote { grid-column: 1 / -1; margin: 7px 0 0; padding: 1px 0 1px 10px; border-left: 2px solid rgba(var(--accent), .6); overflow-wrap: anywhere; }
+.card .now { grid-column: 1 / -1; margin: 5px 0 0; font-size: .9em; color: rgb(var(--accent)); }
+
 .note { margin: 0; padding: 4px 12px 0 12px; color: rgba(var(--ink), .78); border-left: 2px solid rgba(var(--accent), .6); margin-left: 12px; font-size: .95em; }
 .note:empty { display: none; }
 .foot { display: flex; justify-content: flex-end; padding: 0 12px 12px; }
@@ -479,6 +494,36 @@ function mountHud(controls, opts = {}) {
   let chose = false;
   let drawn = "";
   const press = (item) => controls.run(item.id);
+  const drawCard = (card) => {
+    const face = el("span", { class: "face", "aria-hidden": "true" }, [...card.title][0]?.toUpperCase() ?? "");
+    if (card.color) face.style.setProperty("--c", card.color);
+    if (card.picture) {
+      void loadPicture(card.picture).then((drawn2) => {
+        if (!drawn2 || !face.isConnected) return;
+        const copy = document.createElement("canvas");
+        copy.width = drawn2.width;
+        copy.height = drawn2.height;
+        copy.getContext("2d")?.drawImage(drawn2, 0, 0);
+        face.replaceChildren(copy);
+      });
+    }
+    const copyKey = card.copy ? el("button", { type: "button" }, "Copy key") : null;
+    copyKey?.addEventListener("click", () => {
+      void (navigator.clipboard?.writeText(card.copy) ?? Promise.reject(new Error("no clipboard"))).then(
+        () => controls.say("Their key is copied, in full."),
+        () => controls.say(`Their key: ${card.copy}`)
+      );
+    });
+    return el(
+      "div",
+      { class: "card", role: "group", "aria-label": `About ${card.title}` },
+      face,
+      el("h3", {}, card.title, card.tag && el("span", { class: card.proven ? "tag proven" : "tag" }, card.tag)),
+      el("div", { class: "keyline" }, el("span", { class: card.copy ? "mono" : "" }, card.sub), copyKey),
+      card.text && el("blockquote", {}, card.text),
+      card.now.length > 0 && el("p", { class: "now" }, card.now.join(", "))
+    );
+  };
   let chatState = "closed";
   let chatDrawn = "";
   let chatNewest = "";
@@ -641,6 +686,7 @@ function mountHud(controls, opts = {}) {
     };
     const swatches = (current?.items ?? []).filter((i) => i.kind === "swatch");
     rows.replaceChildren(
+      current?.card ? drawCard(current.card) : "",
       swatches.length ? el("div", { class: "swatches" }, ...swatches.map(drawSwatch)) : "",
       ...(current?.items ?? []).filter((i) => i.kind !== "swatch").map((item) => {
         const b = el(
@@ -655,7 +701,7 @@ function mountHud(controls, opts = {}) {
         return b;
       })
     );
-    rows.hidden = !current?.items.length;
+    rows.hidden = !current?.items.length && !current?.card;
     note.textContent = current?.note ?? "";
     sheet.hidden = !open;
     menu.setAttribute("aria-expanded", String(open));
@@ -739,7 +785,7 @@ function mountHud(controls, opts = {}) {
   const stop = controls.subscribe(draw);
   const stopAsking = controls.onSignal((name) => {
     if (name.startsWith("show:") && !host.hidden) setOpen(true, name.slice(5));
-    if (name === "chat" && !host.hidden) setChatOpen(chatState !== "open");
+    if (name === "toggle:chat" && !host.hidden) setChatOpen(chatState !== "open");
   });
   const tick = setInterval(draw, 400);
   host.classList.add("arriving");

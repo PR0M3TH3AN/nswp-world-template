@@ -246,7 +246,10 @@ write to the others in it: Enter or T on a keyboard, the Chat button
 anywhere. What is written shows over the writer's head for a few seconds and
 in a chat panel, goes straight to the people in the room, and is kept
 nowhere. A visitor who wants none of it turns "Written chat" off, and it
-stays off in every world. To draw the words your own way, see "What people
+stays off in every world. A soft sound says when someone has written,
+quieter the further off they stand. Choosing someone, from People or by the
+picture over their head, shows a card about them: who they are here, their
+key, and what they say about themselves. To draw the words your own way, see "What people
 write" in the
 [kit guide](https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/blob/main/docs/controls-kit.md).
 

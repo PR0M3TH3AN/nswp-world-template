@@ -48,6 +48,7 @@ export interface XrConsole {
         sections: string[];
         buttons: string[];
         note: string;
+        card: string;
     };
     /** Press the thing with these words: a button, a section, "Menu" or "Close". For tests. */
     pressLabelled(label: string): boolean;

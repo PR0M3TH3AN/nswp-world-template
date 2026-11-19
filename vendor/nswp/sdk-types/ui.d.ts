@@ -3,7 +3,7 @@
  * a HUD on a flat screen. The headset console that draws the same list is
  * `createConsole` in `nswp-sdk/three`.
  */
-export { createControls, type Controls, type ControlsOptions, type UiAction, type UiSection, type UiView, type UiItemView, type UiSectionView, type Presence, type Corner, type UiKeys } from "./ui/model.js";
+export { createControls, type Controls, type ControlsOptions, type UiAction, type UiCard, type UiSection, type UiView, type UiItemView, type UiSectionView, type Presence, type Corner, type UiKeys } from "./ui/model.js";
 export { mountHud, type Hud } from "./ui/hud.js";
 export { CHAT_KEY, onChatChange, setShowsChat, showsChat, type ChatLine, type ChatView, type UiChat } from "./ui/chat.js";
 export { DEFAULT_THEME, UI_PRESETS, cleanTheme, resolveTheme, type UiTheme } from "./ui/theme.js";
