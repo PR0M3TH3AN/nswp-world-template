@@ -371,7 +371,16 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .sheet[hidden] { display: none; }
 .sheet::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; pointer-events: none;
   background: linear-gradient(90deg, transparent, rgb(var(--accent)), transparent); box-shadow: 0 0 16px rgb(var(--accent)); }
-.tabs { display: flex; gap: 4px; padding: 12px 12px 0; overflow-x: auto; scrollbar-width: none; }
+.tabs { position: relative; display: flex; gap: 4px; padding: 12px 12px 0; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+/* There are more sections than fit: an arrow at the side they are on, over a fade, and it takes them there. */
+.tabbar { position: relative; }
+.tabbar .more { position: absolute; top: 2px; bottom: 0; width: 40px; display: grid; align-items: center; z-index: 1; font-size: 1.55em; line-height: 1;
+  color: rgb(var(--accent)); text-shadow: 0 0 10px rgb(var(--accent)); }
+.tabbar .more.left { left: 0; justify-items: start; padding-left: 9px; border-radius: 22px 0 0 0; background: linear-gradient(90deg, rgb(var(--glass)) 45%, rgba(var(--glass), 0)); }
+.tabbar .more.right { right: 0; justify-items: end; padding-right: 9px; border-radius: 0 22px 0 0; background: linear-gradient(270deg, rgb(var(--glass)) 45%, rgba(var(--glass), 0)); }
+.tabbar .more[hidden] { display: none; }
+.tabbar .more:hover { color: rgb(var(--ink)); }
 .tab { display: flex; align-items: center; gap: 7px; padding: 9px 13px 8px; border-radius: 14px 14px 0 0; color: rgba(var(--ink), .72); border-bottom: 2px solid transparent; white-space: nowrap; }
 .tab:hover { color: rgb(var(--ink)); }
 .tab[aria-selected="true"] { color: rgb(var(--accent)); background: rgba(var(--accent), .1); border-bottom-color: rgb(var(--accent)); }
@@ -500,10 +509,34 @@ function mountHud(controls, opts = {}) {
   const hotbar = el("nav", { class: "hotbar glass", "aria-label": "Controls" });
   const says = el("div", { class: "says", role: "status" });
   const tabs = el("div", { class: "tabs", role: "tablist" });
+  const tabsBack = el("button", { class: "more left", type: "button", "aria-label": "Earlier sections", hidden: "" }, "\u2039");
+  const tabsOn = el("button", { class: "more right", type: "button", "aria-label": "More sections", hidden: "" }, "\u203A");
+  const tabbar = el("div", { class: "tabbar" }, tabsBack, tabs, tabsOn);
+  let tabsShowing = "";
+  const tendTabs = () => {
+    const most = tabs.scrollWidth - tabs.clientWidth;
+    tabsBack.hidden = tabs.scrollLeft <= 6;
+    tabsOn.hidden = most <= 6 || tabs.scrollLeft >= most - 6;
+  };
+  const slideTabs = (by) => tabs.scrollBy({ left: by * Math.max(120, tabs.clientWidth * 0.6), behavior: controls.theme.motion ? "smooth" : "auto" });
+  tabsBack.addEventListener("click", () => slideTabs(-1));
+  tabsOn.addEventListener("click", () => slideTabs(1));
+  tabs.addEventListener("scroll", tendTabs, { passive: true });
+  const tabsWatch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => tendTabs());
+  tabsWatch?.observe(tabs);
+  tabs.addEventListener(
+    "wheel",
+    (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || tabs.scrollWidth <= tabs.clientWidth) return;
+      e.preventDefault();
+      tabs.scrollLeft += e.deltaY;
+    },
+    { passive: false }
+  );
   const rows = el("div", { class: "rows" });
   const note = el("p", { class: "note" });
   const close = el("button", { class: "close", type: "button" }, "Close");
-  const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabs, rows, note, el("div", { class: "foot" }, close));
+  const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabbar, rows, note, el("div", { class: "foot" }, close));
   const chatTitle = el("b");
   const tabRoom = el("button", { type: "button", class: "tab", role: "tab" }, "Room chat");
   const tabFeed = el("button", { type: "button", class: "tab", role: "tab" }, "My public feed");
@@ -753,6 +786,20 @@ function mountHud(controls, opts = {}) {
         return b;
       })
     );
+    const showing = open ? section : "";
+    const bring = showing !== tabsShowing;
+    tabsShowing = showing;
+    requestAnimationFrame(() => {
+      const chosen = tabs.querySelector('[aria-selected="true"]');
+      if (bring && open && chosen) {
+        const clear = 46;
+        const left = chosen.offsetLeft - clear;
+        const right = chosen.offsetLeft + chosen.offsetWidth + clear - tabs.clientWidth;
+        if (tabs.scrollLeft > left) tabs.scrollLeft = Math.max(0, left);
+        else if (tabs.scrollLeft < right) tabs.scrollLeft = right;
+      }
+      tendTabs();
+    });
     const current = view.sections.find((s) => s.id === section);
     const drawSwatch = (item) => {
       const b = el("button", { class: "swatch", type: "button", "aria-label": item.label, "aria-pressed": String(item.on === true) }, el("i"), el("u"), item.label);
@@ -900,6 +947,7 @@ function mountHud(controls, opts = {}) {
     },
     remove() {
       clearInterval(tick);
+      tabsWatch?.disconnect();
       clearTimeout(peekTimer);
       clearTimeout(goingTimer);
       vv?.removeEventListener("resize", onViewport);
