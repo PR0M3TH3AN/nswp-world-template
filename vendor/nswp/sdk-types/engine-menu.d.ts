@@ -52,6 +52,29 @@ export declare function target(name: string, detail?: string): void;
  */
 export declare function headset(state: string): void;
 /**
+ * Everything in the visitor's console, as JSON, for an engine that wants to
+ * draw some or all of it in an interface of its own: the home button on its
+ * own pause menu, the volumes in its own settings screen, wherever it likes.
+ *
+ * `sections` is the whole menu, in order, each with its `items`; `hotbar` is
+ * the few kept always at hand. An item has an `id` to press it by (`run`),
+ * the words on it as they stand now (`label`, and `short` for a small
+ * space), and `on` (true, false, or null for something that isn't on or
+ * off). The words change as things do: "Music: low", "Fullscreen: on". Ask
+ * again when a `changed` event comes.
+ */
+export declare function view(): string;
+/**
+ * Press something in the visitor's console by its id, as pressing it there
+ * would: "home", "fullscreen", "sound-music", "jump". It does exactly what
+ * the console's own does, with the visitor's own settings and their own
+ * home, which is the point: a button a world draws for itself is the same
+ * button. Returns false if there is no such thing just now.
+ */
+export declare function run(id: string): boolean;
+/** Bring the visitor's console up ("1" or true), or put it away: for a world's own button that opens it. */
+export declare function open(on: unknown): void;
+/**
  * How much of the screen the controls take: "full", "quiet" (one small mark
  * in a corner) or "hidden" (nothing at all). For a world with an interface
  * of its own, which leads. Whatever is chosen, the visitor can still bring

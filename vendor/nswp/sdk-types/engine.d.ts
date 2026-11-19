@@ -1,6 +1,6 @@
-export { bump, check, claim, door, events, headset, kit, menu, moved, play, presence, say, target } from "./engine-menu.js";
+export { bump, check, claim, door, events, headset, kit, menu, moved, open, play, presence, run, say, target, view } from "./engine-menu.js";
 /** Bumped when what the functions take or give changes, so an engine's side can tell. */
-export declare const VERSION = 3;
+export declare const VERSION = 4;
 /**
  * How the visitor arrived, as JSON. Reading it takes it out of the page's
  * address, as it must be: an arrival is for this visit and not for whoever

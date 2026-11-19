@@ -57,14 +57,16 @@ import {
   textSprite,
   turnVisitor,
   viewScale
-} from "./shared-FOUFFMFV.js";
+} from "./shared-PTNWVCET.js";
 import {
   currentForm,
   deviceForms,
   formFor,
+  fullscreenWaiting,
+  resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-33TMTTY7.js";
+} from "./shared-VSKXDUXV.js";
 import "./shared-FUYALROY.js";
 import {
   arriveWith,
@@ -137,6 +139,7 @@ export {
   deviceForms,
   dotsBetween,
   formFor,
+  fullscreenWaiting,
   heldKey,
   isIntense,
   lookAfter,
@@ -146,6 +149,7 @@ export {
   recordClip,
   recordVoice,
   reportSettings,
+  resumeFullscreen,
   saveFile,
   startingForm,
   strideOf,

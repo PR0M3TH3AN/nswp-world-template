@@ -1,3 +1,8 @@
+import {
+  arrivedSettings,
+  reportSettings
+} from "./shared-Q3D4OUDA.js";
+
 // packages/sdk/src/form.ts
 var matches = (query) => {
   try {
@@ -45,6 +50,57 @@ function watch() {
     },
     { capture: true, passive: true }
   );
+}
+
+// packages/sdk/src/ui/fullscreen.ts
+var resumed = false;
+var waiting = false;
+function resumeFullscreen(presenting = () => false) {
+  if (resumed || typeof document === "undefined") return;
+  resumed = true;
+  reportSettings("screen", () => ({ full: !!document.fullscreenElement || waiting }));
+  waiting = arrivedSettings().full === true && document.fullscreenEnabled && !document.fullscreenElement;
+  if (!waiting) return;
+  const presses = ["keydown", "pointerdown", "pointerup", "touchend"];
+  const stop = () => {
+    waiting = false;
+    for (const type of presses) removeEventListener(type, onPress, true);
+    document.removeEventListener("fullscreenchange", onChange);
+  };
+  const onChange = () => {
+    if (document.fullscreenElement) stop();
+  };
+  const onPress = (e) => {
+    if (e.code === "Escape" || presenting() || document.fullscreenElement) return;
+    void document.documentElement.requestFullscreen().then(stop, () => {
+    });
+  };
+  for (const type of presses) addEventListener(type, onPress, true);
+  document.addEventListener("fullscreenchange", onChange);
+}
+var fullscreenWaiting = () => waiting;
+function fullscreenAction(controls, presenting) {
+  resumeFullscreen(presenting);
+  setTimeout(() => {
+    if (waiting && !presenting()) controls.say("Press any key, or click, to fill the screen again.");
+  }, 600);
+  return {
+    id: "fullscreen",
+    section: "view",
+    icon: "size",
+    on: () => !!document.fullscreenElement,
+    // Not every browser lets a page fill the screen (a phone's often won't), and a headset already does.
+    hidden: () => !document.fullscreenEnabled || presenting(),
+    label: () => document.fullscreenElement ? "Fullscreen: on" : "Fullscreen: off",
+    act: async () => {
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await document.documentElement.requestFullscreen();
+      } catch {
+        controls.say("This browser wouldn't go fullscreen.");
+      }
+    }
+  };
 }
 
 // node_modules/@noble/hashes/_u64.js
@@ -2855,6 +2911,9 @@ export {
   startingForm,
   currentForm,
   usedForm,
+  resumeFullscreen,
+  fullscreenWaiting,
+  fullscreenAction,
   RoomSession,
   room
 };

@@ -1,7 +1,8 @@
 import {
+  fullscreenAction,
   room,
   startingForm
-} from "./shared-33TMTTY7.js";
+} from "./shared-VSKXDUXV.js";
 import {
   ICONS,
   createHeldButton,
@@ -1348,49 +1349,6 @@ function createConsole(controls, opts) {
     }
   };
   return con;
-}
-
-// packages/sdk/src/ui/fullscreen.ts
-var resumed = false;
-function resumeFullscreen(presenting) {
-  if (resumed || typeof document === "undefined") return;
-  resumed = true;
-  reportSettings("screen", () => ({ full: !!document.fullscreenElement || waiting }));
-  let waiting = arrivedSettings().full === true && document.fullscreenEnabled && !document.fullscreenElement;
-  if (!waiting) return;
-  const stop = () => {
-    waiting = false;
-    removeEventListener("keydown", onPress, true);
-    removeEventListener("pointerup", onPress, true);
-  };
-  const onPress = (e) => {
-    if (e.code === "Escape" || presenting()) return;
-    stop();
-    if (!document.fullscreenElement) void document.documentElement.requestFullscreen().catch(() => {
-    });
-  };
-  addEventListener("keydown", onPress, true);
-  addEventListener("pointerup", onPress, true);
-}
-function fullscreenAction(controls, presenting) {
-  resumeFullscreen(presenting);
-  return {
-    id: "fullscreen",
-    section: "view",
-    icon: "size",
-    on: () => !!document.fullscreenElement,
-    // Not every browser lets a page fill the screen (a phone's often won't), and a headset already does.
-    hidden: () => !document.fullscreenEnabled || presenting(),
-    label: () => document.fullscreenElement ? "Fullscreen: on" : "Fullscreen: off",
-    act: async () => {
-      try {
-        if (document.fullscreenElement) await document.exitFullscreen();
-        else await document.documentElement.requestFullscreen();
-      } catch {
-        controls.say("This browser wouldn't go fullscreen.");
-      }
-    }
-  };
 }
 
 // packages/sdk/src/input.ts
