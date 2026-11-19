@@ -28,6 +28,7 @@ import {
   addRoomControls,
   addSoundControls,
   addViewControls,
+  byName,
   canRecord,
   capturePanorama,
   createChamber,
@@ -49,6 +50,7 @@ import {
   dotsBetween,
   figureAction,
   heldKey,
+  hereAs,
   identityAction,
   identityHost,
   identitySection,
@@ -65,6 +67,7 @@ import {
   setLookScale,
   setVisitorFov,
   signerAction,
+  signerNamed,
   speechSprite,
   strideOf,
   takePicture,
@@ -74,8 +77,9 @@ import {
   viewScale,
   visitorFov,
   watchFov,
-  worldSigner
-} from "./shared-CE7D3UBD.js";
+  worldSigner,
+  youCard
+} from "./shared-VGIGLSSF.js";
 import {
   currentForm,
   deviceForms,
@@ -85,14 +89,14 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-ODNIMJUA.js";
+} from "./shared-WKZ2V4AP.js";
 import {
   PICTURE_LIMITS,
   loadPicture,
   onPicturesChange,
   setShowsPictures,
   showsPictures
-} from "./shared-Q23R6KOF.js";
+} from "./shared-QXOZJ5GS.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -143,6 +147,7 @@ export {
   arriveWith,
   arrivedSettings,
   browserVoice,
+  byName,
   canRecord,
   capturePanorama,
   computerVoice,
@@ -172,6 +177,7 @@ export {
   formFor,
   fullscreenWaiting,
   heldKey,
+  hereAs,
   identityAction,
   identityHost,
   identitySection,
@@ -196,6 +202,7 @@ export {
   setVisitorFov,
   showsPictures,
   signerAction,
+  signerNamed,
   speechSprite,
   startingForm,
   strideOf,
@@ -209,5 +216,6 @@ export {
   visitorFov,
   wasRefreshed,
   watchFov,
-  worldSigner
+  worldSigner,
+  youCard
 };

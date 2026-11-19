@@ -253,13 +253,15 @@ key, and what they say about themselves. To draw the words your own way, see "Wh
 write" in the
 [kit guide](https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/blob/main/docs/controls-kit.md).
 
-**A visitor can sign as themselves, and you never hold their key.** Under
-You in the menu is "Sign in to sign notes", with the address it leads to.
-It opens a window at the visitor's own signer (for someone who came through
+**A visitor signs in once in your world, and you never hold their key.**
+Under You in the menu is "Sign in", with the address it leads to. It opens a
+window at the visitor's own sign-in address (for someone who came through
 BitPortal, BitLogin's own site), where they say yes; nothing is typed in
-your world, and they aren't asked again on their next visit.
-Then what they write in the room's chat can also be posted as a Nostr note,
-if they turn that on. Never ask a visitor for a password or a key: there is
+your world, and they aren't asked again on their next visit. Until they have
+signed in, people in a room see a guest. Signed in, the menu shows their
+picture, name and key, and "Send out a post" under Room opens "My public
+feed": their own Nostr posts, and the place to write another, which anyone
+can read. What is said to the room is never posted. Never ask a visitor for a password or a key: there is
 nothing you could do with one, and asking is how people are robbed.
 
 You can stand in your world while you change it.

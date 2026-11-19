@@ -1,6 +1,41 @@
-import { type GoOptions } from "../index.js";
+/**
+ * Who the visitor is here, and the way to change it: sign in, switch to
+ * another profile, or go on as a guest.
+ *
+ * A world never shows a sign-in and never holds a key
+ * (protocol/09-what-a-world-owes.md). So this control does one thing: it
+ * leaves for the visitor's own client, which asks them in its own way and
+ * brings them back through its Airlock, with a pass if they chose to come by
+ * name (protocol/10-identity.md, "Signing in from inside a world"). What it
+ * says is what the world was told on arrival, and nothing else.
+ *
+ * It is there only for a visitor who came through a client: with no Airlock
+ * to go back to, there is nobody to ask.
+ */
+import { type NostrEvent } from "@nswp/core";
+import { arrival, type GoOptions } from "../index.js";
 import { type WorldSigner } from "../signer.js";
-import type { Controls, UiAction, UiSection } from "./model.js";
+import type { Controls, UiAction, UiCard, UiSection } from "./model.js";
+/**
+ * Whether signing in here means unlocking a signer: the visitor's client named one
+ * (protocol/10-identity.md, "One sign-in"). Then there is one sign-in in this world and it is that one. A
+ * client's own pages are not a world it sent someone to: there they are signed in already, its own way.
+ */
+export declare function signerNamed(): boolean;
+/**
+ * Who the visitor is here, now. With no signer named, what their pass says. With one, their pass counts only
+ * while that signer is unlocked for this world and holds the pass's own key: signed out, they are a guest,
+ * whatever they arrived with. So nothing here says "you are here as" someone who isn't signed in.
+ */
+export declare function hereAs(): ReturnType<typeof arrival.identity>;
+/**
+ * The same question for a room about to be joined, with a moment's wait for a signer that hasn't spoken yet:
+ * one that remembers this world says so just after the page loads, and a room joined before that would be
+ * joined as a guest.
+ */
+export declare function byName<T extends {
+    pass: NostrEvent;
+}>(identity: T | undefined): Promise<T | undefined>;
 /** The words for who a visitor is here, for a world that draws this itself. */
 export declare function identityWords(): {
     signedIn: boolean;
@@ -8,6 +43,8 @@ export declare function identityWords(): {
     label: string;
     short: string;
 };
+/** Who they are signed in as, as a card at the head of You: their picture, their name, their key. Null for a guest. */
+export declare function youCard(): UiCard | null;
 /** Where signing in happens: the host of the visitor's own client. Null when they came through none. */
 export declare function identityHost(): string | null;
 /** What the section says: where they will be taken, and that the world never sees it. */

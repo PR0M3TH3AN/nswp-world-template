@@ -45,6 +45,8 @@ export declare const arrival: {
     identity(): {
         pubkey: string;
         name: string;
+        picture?: string;
+        about?: string;
         pass: NostrEvent;
         sessionKey: string;
     } | undefined;

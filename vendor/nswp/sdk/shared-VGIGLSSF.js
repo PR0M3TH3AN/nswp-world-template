@@ -5,9 +5,11 @@ import {
   portal,
   room,
   startingForm
-} from "./shared-ODNIMJUA.js";
+} from "./shared-WKZ2V4AP.js";
 import {
+  FEED_LIMITS,
   ICONS,
+  ago,
   createHeldButton,
   loadPicture,
   onChatChange,
@@ -18,7 +20,7 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-Q23R6KOF.js";
+} from "./shared-QXOZJ5GS.js";
 import {
   arrivedSettings,
   reportSettings
@@ -35,7 +37,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE13 from "three";
-import { bubbleSeconds, CHAT_LIMITS, cleanChat, decodeLook, DEFAULT_RELAYS, encodeNpub, publishEvent, shortNpub as shortNpub3, spawnOffset, verifyEvent as verifyEvent2 } from "@nswp/core";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS, encodeNpub as encodeNpub2, publishEvent, queryRelays, shortNpub as shortNpub3, spawnOffset, verifyEvent as verifyEvent2 } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -1555,7 +1557,7 @@ function watchFov(camera, o = {}) {
 }
 
 // packages/sdk/src/ui/identity.ts
-import { shortNpub as shortNpub2 } from "@nswp/core";
+import { encodeNpub, shortNpub as shortNpub2, signerAt as signerAt2 } from "@nswp/core";
 
 // packages/sdk/src/signer.ts
 import { cleanOrigin, isWhatWasAsked, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent, WORLD_TAG } from "@nswp/core";
@@ -1571,6 +1573,8 @@ var NONE = {
   },
   sign: async () => null,
   onChange: () => () => {
+  },
+  whenAnswered: async () => {
   },
   dispose() {
   }
@@ -1605,6 +1609,7 @@ function createWorldSigner(opts) {
     if (state === "none") changed();
   }, 7e3);
   let answered = false;
+  const firstAnswer = /* @__PURE__ */ new Set();
   let n = 0;
   const changed = () => {
     for (const fn of watchers2) fn();
@@ -1624,6 +1629,7 @@ function createWorldSigner(opts) {
       state = reply.unlocked ? "unlocked" : "locked";
       pubkey = reply.unlocked ? reply.pubkey ?? null : null;
       name = reply.unlocked ? reply.name ?? null : null;
+      for (const go of [...firstAnswer]) go();
       return changed();
     }
     const waiting = pending.get(reply.id);
@@ -1715,8 +1721,21 @@ function createWorldSigner(opts) {
       watchers2.add(fn);
       return () => void watchers2.delete(fn);
     },
+    whenAnswered(ms) {
+      if (answered || disposed) return Promise.resolve();
+      return new Promise((done) => {
+        const go = () => {
+          clearTimeout(timer);
+          firstAnswer.delete(go);
+          done();
+        };
+        const timer = setTimeout(go, ms);
+        firstAnswer.add(go);
+      });
+    },
     dispose() {
       disposed = true;
+      for (const go of [...firstAnswer]) go();
       removeEventListener("message", onMessage);
       frame?.remove();
       frame = null;
@@ -1731,10 +1750,43 @@ function createWorldSigner(opts) {
 }
 
 // packages/sdk/src/ui/identity.ts
-function identityWords() {
+function signerNamed() {
+  if (!signerAt2(arrival.signer())) return false;
+  try {
+    const airlock = portal.airlockFor();
+    if (airlock && new URL(airlock).origin === location.origin) return false;
+  } catch {
+  }
+  return true;
+}
+function hereAs() {
   const who = arrival.identity();
+  if (!who || !signerNamed()) return who;
+  const signer = worldSigner();
+  return signer.state === "unlocked" && signer.pubkey === who.pubkey ? who : void 0;
+}
+async function byName(identity) {
+  if (!identity || !signerNamed()) return identity;
+  const signer = worldSigner();
+  await signer.whenAnswered(2500);
+  return signer.state === "unlocked" && signer.pubkey === identity.pass.pubkey ? identity : void 0;
+}
+function identityWords() {
+  const who = hereAs();
   const name = who ? who.name || shortNpub2(who.pubkey) : "";
   return who ? { signedIn: true, name, label: `Here as ${name}. Switch profile, or go as a guest`, short: "You" } : { signedIn: false, name: "", label: "You are a guest here. Sign in", short: "Sign in" };
+}
+function youCard() {
+  const who = hereAs();
+  const signer = signerNamed() ? worldSigner() : null;
+  if (who) {
+    const npub = encodeNpub(who.pubkey);
+    return { title: who.name || shortNpub2(who.pubkey), tag: "Signed in", proven: true, sub: shortNpub2(who.pubkey), copy: npub, text: who.about ?? "", picture: who.picture ?? "", color: "", now: [] };
+  }
+  if (signer?.state === "unlocked" && signer.pubkey) {
+    return { title: signer.name ?? shortNpub2(signer.pubkey), tag: "Signed in to post", proven: false, sub: shortNpub2(signer.pubkey), copy: encodeNpub(signer.pubkey), text: "", picture: "", color: "", now: [] };
+  }
+  return null;
 }
 function identityHost() {
   const airlock = portal.airlockFor();
@@ -1748,9 +1800,15 @@ var identitySection = () => ({
   id: "you",
   label: "You",
   icon: "you",
+  card: youCard,
   note: () => {
     const host = identityHost();
-    return host ? `Who you are and how you look are kept by ${host}, the place you set out from, and are the same in every world. Changing either takes you there and brings you back here.` : "";
+    if (!host) return "";
+    if (!signerNamed()) return `Who you are and how you look are kept by ${host}, the place you set out from, and are the same in every world. Changing either takes you there and brings you back here.`;
+    const at = worldSigner().host ?? "your sign-in address";
+    const look = `How you look is kept by ${host}, the place you set out from: changing it takes you there and brings you back.`;
+    if (worldSigner().state === "unlocked") return `You are signed in here by ${at}. Signing out here makes you a guest in this world, and nowhere else. ${look}`;
+    return `Signing in is done at ${at}, in a window of its own: nothing is typed in this world. Until you sign in here, everyone sees a guest. ${look}`;
   }
 });
 var going = false;
@@ -1772,14 +1830,15 @@ function identityAction(controls, leaving = () => ({})) {
     icon: "you",
     label: () => identityWords().label,
     short: () => identityWords().short,
-    hidden: () => portal.airlockFor() === null,
+    // Where a signer was named there is one sign-in, and it is that one (signerAction): this row would be a second.
+    hidden: () => portal.airlockFor() === null || signerNamed(),
     act: () => leave(controls, "identity", leaving)
   };
 }
 function unansweredWords(signer) {
   const host = signer.host ?? "your signer";
   const copy = signer.copy ? ` On this development server its copy is at ${signer.copy}: open that address once in a tab, so your browser accepts its certificate, then reload this page.` : " Reloading the page tries again.";
-  return `This world asked ${host} for your signer and got no answer. It may be unreachable from here, or your browser may have kept it out.${copy} Nothing is wrong with your sign-in.`;
+  return `This world asked ${host} for your sign-in and got no answer. It may be unreachable from here, or your browser may have kept it out.${copy} Nothing is wrong with your sign-in.`;
 }
 var shared = null;
 function worldSigner() {
@@ -1789,9 +1848,15 @@ function worldSigner() {
 function signerAction(controls, opts = {}) {
   const signer = worldSigner();
   let was = signer.state;
+  const short = () => shortNpub2(signer.pubkey ?? "");
   signer.onChange(() => {
-    if (signer.state === "unlocked" && was !== "unlocked") controls.say(`You can sign notes here as ${signer.name ?? shortNpub2(signer.pubkey ?? "")}. It ends when you leave this world, or when you turn it off under You.`);
-    if (signer.state === "locked" && was === "unlocked") controls.say("Nothing more can be signed as you here.");
+    if (signer.state === "unlocked" && was !== "unlocked") {
+      const who = hereAs();
+      controls.say(
+        who ? `You are signed in here as ${who.name || short()}. People in a room see your name and picture, and you can send out posts. Signing out is under You.` : `You are signed in here as ${signer.name ?? short()}, and can send out posts. In a room you are still a guest: your name comes with you from ${identityHost() ?? "your own client"}, when you are signed in there as the same person.`
+      );
+    }
+    if (signer.state === "locked" && was === "unlocked") controls.say("You are signed out here. Everyone sees a guest, and nothing more can be signed as you.");
     was = signer.state;
     controls.signal("signer");
   });
@@ -1799,9 +1864,9 @@ function signerAction(controls, opts = {}) {
     id: "signer",
     section: "you",
     icon: "key",
-    // Locked, it says whose window will open, before anything is pressed: an address to recognise.
-    label: () => signer.state === "unlocked" ? `Signing as ${signer.name ?? shortNpub2(signer.pubkey ?? "")}: on` : signer.unanswered ? `Signing isn't available: ${signer.host ?? "your signer"} didn't answer` : `Sign in to sign notes${signer.host ? `, at ${signer.host}` : ""}`,
-    short: () => signer.state === "unlocked" ? "Signing" : "Sign",
+    // Signed out, it says whose window will open, before anything is pressed: an address to recognise.
+    label: () => signer.state === "unlocked" ? `Signed in as ${hereAs()?.name || signer.name || short()}. Sign out here` : signer.unanswered ? `Signing in isn't available: ${signer.host ?? "your signer"} didn't answer` : `Sign in${signer.host ? `, at ${signer.host}` : ""}`,
+    short: () => signer.state === "unlocked" ? "Sign out" : "Sign in",
     on: () => signer.state === "unlocked",
     // Nothing to offer where no signer was named. One that was named and doesn't answer is said so, not hidden:
     // a row that isn't there can't be asked about.
@@ -1812,8 +1877,8 @@ function signerAction(controls, opts = {}) {
       if (signer.unanswered) {
         return controls.say(unansweredWords(signer));
       }
-      if (opts.presenting?.()) return controls.say(`A window from ${host} is needed for this, and none can open in a headset. Leave the headset view for a moment, sign in to sign, and come back in.`);
-      if (signer.unlock()) controls.say(`A window from ${host} has opened. Say yes there, and you can sign notes here.`);
+      if (opts.presenting?.()) return controls.say(`A window from ${host} is needed for this, and none can open in a headset. Leave the headset view for a moment, sign in, and come back in.`);
+      if (signer.unlock()) controls.say(`A window from ${host} has opened. Say yes there, and you are signed in here.`);
       else controls.say(`Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`);
     }
   };
@@ -5754,7 +5819,7 @@ function createPresence(d) {
       addEventListener("keydown", wake, true);
     }
     const look = typeof d.look === "function" ? d.look() : d.look;
-    const identity = typeof d.identity === "function" ? d.identity() : d.identity;
+    const identity = await byName(typeof d.identity === "function" ? d.identity() : d.identity);
     const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {}, blocked: blockedKeys() });
     session = s;
     if (!offsetApplied) {
@@ -6267,6 +6332,7 @@ function addRoomControls(controls, presence, opts = {}) {
     );
     controls.addSection({ id: "room", label: "Room", icon: "room", note: status });
     tendChat();
+    tendFeed();
     people();
     remember();
   };
@@ -6358,7 +6424,7 @@ function addRoomControls(controls, presence, opts = {}) {
     chosen = m.pubkey;
     people();
     presence.pointOut(m.pubkey);
-    controls.say(m.identity ? `${m.name} is under the column of light. Their key: ${encodeNpub(m.identity)}` : `${m.name} is under the column of light. A guest: nobody has vouched for who they are.`);
+    controls.say(m.identity ? `${m.name} is under the column of light. Their key: ${encodeNpub2(m.identity)}` : `${m.name} is under the column of light. A guest: nobody has vouched for who they are.`);
   };
   presence.onPerson((pubkey) => {
     const m = presence.people().find((x) => x.pubkey === pubkey);
@@ -6401,7 +6467,7 @@ function addRoomControls(controls, presence, opts = {}) {
           proven: !who2.guest,
           // A name is not unique and a picture can be copied: the key behind them is what tells two people apart.
           sub: who2.identity ? shortNpub3(who2.identity) : "Nobody has vouched for who they are.",
-          copy: who2.identity ? encodeNpub(who2.identity) : "",
+          copy: who2.identity ? encodeNpub2(who2.identity) : "",
           text: who2.guest ? "" : who2.about ?? "",
           picture: !who2.guest && showsPictures() ? who2.picture ?? "" : "",
           color: who2.look.light,
@@ -6648,8 +6714,7 @@ function addRoomControls(controls, presence, opts = {}) {
       (text) => {
         const how = s.say(text);
         if (how === "slow") return "That is a lot at once. Wait a moment, then send it again.";
-        if (how === "said" && postsNotes && notes.ready()) void postNote(text);
-        else if (how === "said" && s.members.length === 0) controls.chat.add({ note: true, text: "Nobody else is in the room yet, so nobody read that." });
+        if (how === "said" && s.members.length === 0) controls.chat.add({ note: true, text: "Nobody else is in the room yet, so nobody read that." });
         return null;
       },
       { title: presence.roomName ? "Private room chat" : "Room chat" }
@@ -6676,7 +6741,6 @@ function addRoomControls(controls, presence, opts = {}) {
     if (!showsChat()) closeChatPanel();
     refresh();
   });
-  let postsNotes = false;
   const notes = opts.notes ?? {
     ready: () => worldSigner().state === "unlocked",
     sign: (n) => worldSigner().sign(n),
@@ -6684,28 +6748,181 @@ function addRoomControls(controls, presence, opts = {}) {
     locked: () => worldSigner().state === "locked",
     unlock: () => worldSigner().unlock(),
     host: () => worldSigner().host,
-    unanswered: () => worldSigner().unanswered ? unansweredWords(worldSigner()) : null
+    unanswered: () => worldSigner().unanswered ? unansweredWords(worldSigner()) : null,
+    pubkey: () => worldSigner().pubkey,
+    who: () => hereAs()?.name || worldSigner().name
   };
-  let wantsNotes = false;
-  const POSTING_ON = "Each line you write here is now also posted to Nostr as a public note, signed as you. Anyone can read it, anywhere, and it can't be taken back.";
-  const postNote = async (text) => {
-    const words = cleanChat(text);
+  const noteRelays = () => opts.noteRelays ?? DEFAULT_RELAYS;
+  let wantsFeed = false;
+  const postNote = async (words) => {
     const signed = await notes.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
     const note = signed && verifyEvent2(signed) && signed.kind === 1 && signed.content === words ? signed : null;
-    if (!note) return void controls.chat.add({ note: true, text: "That wasn't posted as a note: your signer said no." });
-    const sent = await publishEvent(opts.noteRelays ?? DEFAULT_RELAYS, note).catch(() => null);
+    if (!note) return { ok: false, said: "That wasn't sent: your sign-in said no." };
+    const sent = await publishEvent(noteRelays(), note).catch(() => null);
     const kept2 = sent ? Object.values(sent.relays).filter((said) => said === "ok").length : 0;
-    controls.chat.add({ note: true, text: kept2 ? `Posted as a note, to ${kept2 === 1 ? "1 relay" : `${kept2} relays`}.` : "Signed, but no relay took it. It wasn't posted." });
+    return kept2 ? { ok: true, said: `Sent out, to ${kept2 === 1 ? "1 relay" : `${kept2} relays`}. Anyone can read it now.` } : { ok: false, said: "Signed, but no relay took it. It wasn't sent." };
+  };
+  const loadPosts = async () => {
+    const key = notes.pubkey?.();
+    if (!key) return [];
+    const got = await queryRelays(noteRelays(), { kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, 5e3);
+    if (!got.events.length && !Object.values(got.relays).some((said) => said === "eose")) return null;
+    return got.events.filter((e) => e.pubkey === key && e.kind === 1 && !e.tags.some((t) => t[0] === "e")).map((e) => ({ id: e.id, text: e.content, at: e.created_at }));
+  };
+  let feedFor = null;
+  const FEED_LEAD = 150;
+  let feedPanel = null;
+  const closeFeedPanel = () => {
+    const was = feedPanel;
+    feedPanel = null;
+    was?.texture.dispose();
+    was?.panel.close();
+  };
+  const tendFeed = () => {
+    const key = notes.ready() ? notes.pubkey?.() ?? "" : null;
+    if (key === feedFor) return;
+    feedFor = key;
+    if (key === null) {
+      controls.feed.detach();
+      return closeFeedPanel();
+    }
+    controls.feed.attach({ who: notes.who?.() || (key ? shortNpub3(key) : "you"), send: postNote, load: loadPosts });
+  };
+  const drawFeedPanel = () => {
+    if (!feedPanel) return;
+    const view = controls.feed.view();
+    const stamp2 = `${view.version}:${Math.floor(Date.now() / 6e4)}`;
+    if (stamp2 === feedPanel.drawn) return;
+    feedPanel.drawn = stamp2;
+    const t = controls.theme;
+    const g = feedPanel.canvas.getContext("2d");
+    g.fillStyle = t.glass;
+    g.fillRect(0, 0, CHAT_W, CHAT_H);
+    g.textBaseline = "middle";
+    g.textAlign = "left";
+    const ROW = 44;
+    const measure = (text) => g.measureText(text).width;
+    g.font = "30px system-ui, sans-serif";
+    g.fillStyle = t.ink;
+    g.globalAlpha = 0.72;
+    wrapWords(`Public, like a tweet: anyone can read what you send out here, as ${view.who}, and it can't be taken back.`, measure, CHAT_W - 56, 3).forEach((row, r) => g.fillText(row, 28, 34 + r * 38));
+    g.globalAlpha = 1;
+    g.strokeStyle = t.accent;
+    g.lineWidth = 3;
+    g.fillStyle = `rgba(${rgb(t.accent)}, 0.16)`;
+    g.beginPath();
+    g.roundRect(20, FEED_LEAD, CHAT_W - 40, WRITE_H - 32, 22);
+    g.fill();
+    g.stroke();
+    g.font = "600 36px system-ui, sans-serif";
+    g.fillStyle = t.ink;
+    g.textAlign = "center";
+    g.fillText("Send out a post", CHAT_W / 2, FEED_LEAD + (WRITE_H - 32) / 2);
+    g.textAlign = "left";
+    let y = FEED_LEAD + WRITE_H;
+    const say = (text) => {
+      g.font = "italic 30px system-ui, sans-serif";
+      g.globalAlpha = 0.7;
+      wrapWords(text, measure, CHAT_W - 56, 3).forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 0.5)));
+      g.globalAlpha = 1;
+      y += ROW * 2;
+    };
+    if (view.said) say(view.said);
+    if (!view.posts.length) say(view.loading ? "Fetching your posts\u2026" : "Nothing here yet. What you send out appears here, and on Nostr for anyone to read.");
+    const nowSec = Math.floor(Date.now() / 1e3);
+    for (const post of view.posts) {
+      g.font = "33px system-ui, sans-serif";
+      const rows = wrapWords(post.text, measure, CHAT_W - 56, 5);
+      if (y + (rows.length + 1) * ROW > CHAT_H - 10) break;
+      g.fillStyle = t.ink;
+      g.globalAlpha = post.state === "sending" ? 0.6 : 1;
+      rows.forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 0.5)));
+      y += rows.length * ROW;
+      g.font = "26px system-ui, sans-serif";
+      g.fillStyle = post.state === "failed" ? t.warn : t.ink;
+      g.globalAlpha = post.state === "failed" ? 1 : 0.55;
+      g.fillText(post.state === "sending" ? "Sending\u2026" : post.state === "failed" ? "Not sent" : ago(post.at, nowSec), 28, y + 20);
+      g.globalAlpha = 0.14;
+      g.fillStyle = t.ink;
+      g.fillRect(28, y + ROW + 4, CHAT_W - 56, 2);
+      g.globalAlpha = 1;
+      y += ROW + 16;
+    }
+    feedPanel.texture.needsUpdate = true;
+  };
+  const openFeedPanel = () => {
+    if (!opts.panels || feedPanel || !controls.feed.view().ready) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = CHAT_W;
+    canvas.height = CHAT_H;
+    const texture = new THREE13.CanvasTexture(canvas);
+    texture.colorSpace = THREE13.SRGBColorSpace;
+    try {
+      const panel = opts.panels.open(
+        {
+          kind: "custom",
+          title: controls.feed.view().title,
+          texture,
+          aspect: CHAT_W / CHAT_H,
+          onPress: (_x, y) => {
+            if (y < FEED_LEAD / CHAT_H || y > (FEED_LEAD + WRITE_H) / CHAT_H || !opts.panels) return;
+            void opts.panels.keyboard.ask({ title: "Write a post. Done sends it out, for anyone to read.", maxLength: CHAT_LIMITS.chars }).then((text) => {
+              const trouble = text ? controls.feed.send(text) : null;
+              if (trouble) tell(trouble);
+            });
+          },
+          onClose: () => {
+            if (feedPanel?.texture === texture) feedPanel = null;
+            texture.dispose();
+          }
+        },
+        // On the other side from the room's chat, so both can be up.
+        { id: "my-feed", keep: false, place: { width: 0.46 }, pin: [0.46, -0.04, -0.8] }
+      );
+      feedPanel = { panel, canvas, texture, drawn: "" };
+      controls.feed.opened();
+      drawFeedPanel();
+    } catch (err) {
+      texture.dispose();
+      tell(err instanceof Error ? err.message.replace(/^nswp-sdk: /, "") : "Your feed couldn't be opened.");
+    }
+  };
+  controls.subscribe(drawFeedPanel);
+  const openFeed = () => {
+    if (presence.presenting && opts.panels) return feedPanel ? closeFeedPanel() : openFeedPanel();
+    controls.signal("toggle:feed");
   };
   notes.onChange?.(() => {
-    if (!notes.ready()) postsNotes = false;
-    else if (wantsNotes) {
-      wantsNotes = false;
-      postsNotes = true;
-      tell(POSTING_ON);
+    tendFeed();
+    if (notes.ready() && wantsFeed) {
+      wantsFeed = false;
+      openFeed();
     }
     refresh();
   });
+  let turning = false;
+  const asWhoTheyAre = async () => {
+    const s = presence.session;
+    if (!s || busy || turning) return;
+    const who = hereAs();
+    if (!!who === !s.self.guest) return;
+    turning = busy = true;
+    const mic = presence.micOn;
+    const name = presence.roomName;
+    for (const key of [...watching.keys()]) stopWatching(key);
+    presence.leave();
+    try {
+      await presence.join(name);
+      if (mic) await microphone();
+      tell(presence.session?.self.guest ? "The room sees a guest now." : `The room sees you as ${presence.session?.self.name} now.`);
+    } catch {
+      tell("You left the room, and joining it again didn't work. Join it again from here.");
+    } finally {
+      turning = busy = false;
+      refresh();
+    }
+  };
+  if (signerNamed()) worldSigner().onChange(() => void asWhoTheyAre());
   controls.add(
     {
       id: "room-chat",
@@ -6728,31 +6945,27 @@ function addRoomControls(controls, presence, opts = {}) {
       }
     },
     {
-      id: "room-chat-notes",
+      id: "feed",
       section: "room",
-      icon: "key",
-      // It is here whenever there is a signer to post with, unlocked or not: a row that isn't there can't be
-      // found. Locked, it says what comes first, and pressing it starts that.
+      icon: "note",
+      // It is here whenever there is something to post with, signed in or not: a row that isn't there can't be
+      // found. Signed out, it says what comes first, and pressing it starts that.
       label: () => {
-        if (notes.ready()) return postsNotes ? "Post what I write as Nostr notes: on" : "Post what I write as Nostr notes: off";
-        const host = notes.host?.() ?? "your signer";
-        return notes.unanswered?.() ? `Posting as Nostr notes isn't available: ${host} didn't answer` : `Post what I write as Nostr notes: sign in at ${host} first`;
+        if (notes.ready()) return "Send out a post";
+        const host = notes.host?.() ?? "your sign-in address";
+        return notes.unanswered?.() ? `Sending out a post isn't available: ${host} didn't answer` : `Send out a post: sign in at ${host} first`;
       },
-      on: () => notes.ready() && postsNotes,
-      // In a room, with chat on, and with a signer that is ready, or could be, or was named and didn't answer.
-      hidden: () => !presence.session || !showsChat() || !(notes.ready() || notes.locked?.() || notes.unanswered?.()),
+      short: "Post",
+      hidden: () => !(notes.ready() || notes.locked?.() || notes.unanswered?.()),
       act: () => {
-        if (notes.ready()) {
-          postsNotes = !postsNotes;
-          return tell(postsNotes ? POSTING_ON : "What you write stays in the room again.");
-        }
+        if (notes.ready()) return openFeed();
         const why = notes.unanswered?.();
         if (why) return tell(why);
-        const host = notes.host?.() ?? "your signer";
+        const host = notes.host?.() ?? "your sign-in address";
         if (presence.presenting) return tell(`A window from ${host} is needed first, and none can open in a headset. Leave the headset view for a moment, press this again, and come back in.`);
-        wantsNotes = !!notes.unlock?.();
+        wantsFeed = !!notes.unlock?.();
         tell(
-          wantsNotes ? `A window from ${host} has opened. Sign in there if it asks, and say yes. Then what you write here is posted as notes.` : `Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`
+          wantsFeed ? `A window from ${host} has opened. Sign in there if it asks, and say yes. Then your public feed opens here.` : `Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`
         );
       }
     },
@@ -7063,7 +7276,11 @@ export {
   addDeskControls,
   watchFov,
   createWorldSigner,
+  signerNamed,
+  hereAs,
+  byName,
   identityWords,
+  youCard,
   identityHost,
   identitySection,
   identityAction,

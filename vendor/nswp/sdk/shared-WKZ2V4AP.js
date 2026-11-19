@@ -3154,7 +3154,8 @@ var arrival = {
         session()?.removeItem(PASS_KEY);
         return void 0;
       }
-      return { pubkey: checked.value.pubkey, name: checked.value.name, pass: kept.pass, sessionKey: kept.sessionKey };
+      const { pubkey, name, picture, about } = checked.value;
+      return { pubkey, name, ...picture ? { picture } : {}, ...about ? { about } : {}, pass: kept.pass, sessionKey: kept.sessionKey };
     } catch {
       return void 0;
     }

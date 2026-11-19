@@ -1,6 +1,7 @@
 import {
   CHAT_KEY,
   DEFAULT_THEME,
+  FEED_LIMITS,
   ICONS,
   PICTURES_KEY,
   PICTURE_LIMITS,
@@ -8,10 +9,12 @@ import {
   SUMMON_KEY,
   SUMMON_SLOP,
   UI_PRESETS,
+  ago,
   cleanTheme,
   createHeldButton,
   createHoldWatch,
   createUiChat,
+  createUiFeed,
   loadPicture,
   loadVisitorTheme,
   onChatChange,
@@ -23,7 +26,7 @@ import {
   setShowsPictures,
   showsChat,
   showsPictures
-} from "./shared-Q23R6KOF.js";
+} from "./shared-QXOZJ5GS.js";
 import {
   arrivedSettings,
   reportSettings
@@ -91,6 +94,7 @@ function createControls(opts) {
     for (const fn of listeners) fn();
   };
   const chat = createUiChat(changed);
+  const feed = createUiFeed(changed);
   function addSection(s) {
     const i = sections.findIndex((x) => x.id === s.id);
     if (i === -1) sections.push({ ...s });
@@ -186,7 +190,8 @@ function createControls(opts) {
         presence,
         corner,
         keys: claimed ? { menu: null, hotbar: false, chat: null } : keys,
-        chat: chat.view()
+        chat: chat.view(),
+        feed: feed.view()
       };
     },
     subscribe(fn) {
@@ -209,7 +214,8 @@ function createControls(opts) {
       sayers.add(fn);
       return () => sayers.delete(fn);
     },
-    chat
+    chat,
+    feed
   };
   const keep = (patch) => controls.setTheme(patch, true);
   controls.add(
@@ -308,6 +314,7 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
   bottom: calc(max(10px, env(safe-area-inset-bottom)) + 128px * var(--s)); width: min(340px, calc(100vw - 24px));
   display: flex; flex-direction: column; justify-content: flex-end; pointer-events: none; }
 .chat[data-state="closed"] { display: none; }
+.chat [hidden] { display: none !important; }
 .chat .frame { display: flex; flex-direction: column; min-height: 0; max-height: 100%; }
 .chat[data-state="open"] .frame { pointer-events: auto; border-radius: 14px 6px 6px 14px; border-right: 2px solid rgb(var(--accent)); overflow: hidden; }
 .chat[data-state="peek"] .frame { background: none; border: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -331,7 +338,25 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .chat form button:hover { background: rgb(var(--accent)); color: rgb(var(--glass)); }
 .chat .hint { margin: 0; padding: 0 12px 8px; font-size: .9em; color: rgb(var(--warn)); }
 .chat .hint:empty { display: none; }
-.chat[data-state="peek"] :is(header, form, .hint, .empty) { display: none; }
+.chat header .tabs2 { flex: 1; display: flex; gap: 4px; min-width: 0; }
+.chat header .tab { width: auto; height: 30px; padding: 0 10px; font-weight: 650; white-space: nowrap; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; }
+.chat header .tab[aria-selected="true"] { color: rgb(var(--ink)); border-bottom-color: rgb(var(--accent)); }
+.chat .lead, .chat .said { margin: 0; padding: 8px 14px 0; font-size: .9em; color: rgba(var(--ink), .7); }
+.chat .said { padding: 0 12px 8px; }
+.chat .said:empty { display: none; }
+/* The feed reads the other way up from the chat: where to write is at the top, and the newest post under it. */
+.chat[data-tab="feed"] form { order: 1; border-top: 0; flex-wrap: wrap; }
+.chat[data-tab="feed"] form input { flex: 1 1 100%; min-height: 38px; }
+.chat[data-tab="feed"] form button { margin-left: auto; min-height: 34px; font-weight: 650; }
+.chat[data-tab="feed"] :is(.hint, .said) { order: 2; }
+.chat[data-tab="feed"] :is(ol, .empty) { order: 3; border-top: 1px solid rgba(var(--accent), .22); }
+.chat[data-tab="feed"] ol { align-content: start; gap: 0; padding: 0 14px; }
+.chat li.post { padding: 10px 0; border-bottom: 1px solid rgba(var(--ink), .12); overflow-wrap: anywhere; }
+.chat li.post:last-child { border-bottom: 0; }
+.chat li.post small { display: block; margin-top: 3px; font-size: .86em; color: rgba(var(--ink), .55); }
+.chat li.post.failed small { color: rgb(var(--warn)); }
+.chat li.post.sending { opacity: .7; }
+.chat[data-state="peek"] :is(header, form, .hint, .empty, .lead, .said) { display: none; }
 .chat[data-state="peek"] ol { padding: 0; overflow: hidden; justify-items: end; }
 .chat[data-state="peek"] li { padding: 7px 12px; border-radius: 12px 4px 4px 12px; border-right: 2px solid rgb(var(--accent)); max-width: 100%;
   background: rgba(var(--glass), .7); -webkit-backdrop-filter: blur(12px) saturate(1.25); backdrop-filter: blur(12px) saturate(1.25); animation: chat-in .22s ease-out both; }
@@ -480,13 +505,20 @@ function mountHud(controls, opts = {}) {
   const close = el("button", { class: "close", type: "button" }, "Close");
   const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabs, rows, note, el("div", { class: "foot" }, close));
   const chatTitle = el("b");
-  const chatClose = el("button", { type: "button", "aria-label": "Put the chat away" }, icon("close"));
+  const tabRoom = el("button", { type: "button", class: "tab", role: "tab" }, "Room chat");
+  const tabFeed = el("button", { type: "button", class: "tab", role: "tab" }, "My public feed");
+  const chatTabs = el("div", { class: "tabs2", role: "tablist" }, tabRoom, tabFeed);
+  const feedLead = el("p", { class: "lead" });
+  const feedSaid = el("p", { class: "said", role: "status" });
+  const chatClose = el("button", { type: "button", "aria-label": "Put this away" }, icon("close"));
   const chatLines = el("ol", { "aria-live": "polite" });
-  const chatEmpty = el("p", { class: "empty" }, "Nobody has written anything yet. What is written here goes to the people in this room, and is kept nowhere.");
+  const ROOM_EMPTY = "Nobody has written anything yet. What is written here goes to the people in this room, and is kept nowhere.";
+  const chatEmpty = el("p", { class: "empty" }, ROOM_EMPTY);
   const chatField = el("input", { type: "text", autocomplete: "off", enterkeyhint: "send", "aria-label": "Write to the room", placeholder: "Write to the room" });
   const chatHint = el("p", { class: "hint", role: "status" });
-  const chatForm = el("form", {}, chatField, el("button", { type: "submit" }, "Send"));
-  const chat = el("section", { class: "chat", "aria-label": "Room chat", "data-state": "closed" }, el("div", { class: "frame glass" }, el("header", {}, chatTitle, chatClose), chatEmpty, chatLines, chatHint, chatForm));
+  const chatSend = el("button", { type: "submit" }, "Send");
+  const chatForm = el("form", {}, chatField, chatSend);
+  const chat = el("section", { class: "chat", "aria-label": "Room chat", "data-state": "closed", "data-tab": "room" }, el("div", { class: "frame glass" }, el("header", {}, chatTitle, chatTabs, chatClose), feedLead, chatEmpty, chatLines, chatHint, feedSaid, chatForm));
   root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, says, chat, sheet, el("div", { class: "low" }, target, hotbar));
   (opts.parent ?? document.body).append(host);
   let open = false;
@@ -510,8 +542,8 @@ function mountHud(controls, opts = {}) {
     const copyKey = card.copy ? el("button", { type: "button" }, "Copy key") : null;
     copyKey?.addEventListener("click", () => {
       void (navigator.clipboard?.writeText(card.copy) ?? Promise.reject(new Error("no clipboard"))).then(
-        () => controls.say("Their key is copied, in full."),
-        () => controls.say(`Their key: ${card.copy}`)
+        () => controls.say("The key is copied, in full."),
+        () => controls.say(`The key: ${card.copy}`)
       );
     });
     return el(
@@ -525,6 +557,7 @@ function mountHud(controls, opts = {}) {
     );
   };
   let chatState = "closed";
+  let dockTab = "room";
   let chatDrawn = "";
   let chatNewest = "";
   let peekTimer;
@@ -546,16 +579,46 @@ function mountHud(controls, opts = {}) {
   };
   const drawChat = (view) => {
     const c = view.chat;
-    if (!c.ready && chatState !== "closed") setChatState("closed");
+    const f = view.feed;
+    if (chatState === "open" && !(dockTab === "feed" ? f.ready : c.ready)) {
+      if (dockTab === "feed" ? c.ready : f.ready) dockTab = dockTab === "feed" ? "room" : "feed";
+      else setChatState("closed");
+    }
+    if (chatState === "peek" && !c.ready) setChatState("closed");
     const newest = c.lines[c.lines.length - 1]?.key ?? "";
     if (c.ready && newest && newest !== chatNewest && chatState !== "open" && !c.lines[c.lines.length - 1].mine) setChatState("peek");
     chatNewest = newest;
-    const now = JSON.stringify([chatState, c.version, c.ready]);
+    const showing = chatState === "open" ? dockTab : "room";
+    const now = JSON.stringify([chatState, showing, c.version, c.ready, f.version, f.ready, showing === "feed" ? Math.floor(Date.now() / 6e4) : 0]);
     if (now === chatDrawn) return;
     chatDrawn = now;
     chat.dataset.state = chatState;
-    chatTitle.textContent = c.title;
-    chatField.maxLength = c.limit;
+    chat.dataset.tab = showing;
+    chat.setAttribute("aria-label", showing === "feed" ? f.title : "Room chat");
+    const both = c.ready && f.ready;
+    chatTabs.hidden = !both;
+    chatTitle.hidden = both;
+    chatTitle.textContent = showing === "feed" ? f.title : c.title;
+    tabRoom.textContent = c.unread && showing !== "room" ? `Room chat: ${c.unread} new` : "Room chat";
+    tabRoom.setAttribute("aria-selected", String(showing === "room"));
+    tabFeed.setAttribute("aria-selected", String(showing === "feed"));
+    feedLead.hidden = showing !== "feed";
+    feedSaid.hidden = showing !== "feed";
+    chatField.maxLength = showing === "feed" ? f.limit : c.limit;
+    const words = showing === "feed" ? "Write a post" : "Write to the room";
+    chatField.placeholder = words;
+    chatField.setAttribute("aria-label", words);
+    chatSend.textContent = showing === "feed" ? "Send out a post" : "Send";
+    if (showing === "feed") {
+      feedLead.textContent = `Public, like a tweet: anyone can read what you send out here, as ${f.who}, and it can't be taken back.`;
+      feedSaid.textContent = f.said;
+      const nowSec = Math.floor(Date.now() / 1e3);
+      chatLines.replaceChildren(...f.posts.map((p) => el("li", { class: `post ${p.state}` }, p.text, el("small", {}, p.state === "sending" ? "Sending\u2026" : p.state === "failed" ? "Not sent" : ago(p.at, nowSec)))));
+      chatEmpty.textContent = f.loading ? "Fetching your posts\u2026" : "Nothing here yet. What you send out appears here, and on Nostr for anyone to read.";
+      chatEmpty.hidden = f.posts.length > 0;
+      chatLines.hidden = f.posts.length === 0;
+      return;
+    }
     const lines = chatState === "peek" ? c.lines.slice(-PEEK_LINES) : c.lines;
     const atEnd = chatLines.scrollHeight - chatLines.scrollTop - chatLines.clientHeight < 40;
     chatLines.replaceChildren(
@@ -565,25 +628,35 @@ function mountHud(controls, opts = {}) {
         return li;
       })
     );
+    chatEmpty.textContent = ROOM_EMPTY;
     chatEmpty.hidden = lines.length > 0;
     chatLines.hidden = lines.length === 0;
     if (chatState === "open" && (atEnd || lines[lines.length - 1]?.mine)) chatLines.scrollTop = chatLines.scrollHeight;
     if (chatState === "open") controls.chat.seen();
   };
-  const setChatOpen = (next) => {
-    if (next === (chatState === "open")) return;
+  const setChatOpen = (next, tab) => {
     if (next) {
-      if (!controls.chat.view().ready || host.hidden || controls.view().presence === "hidden") return;
-      if (open) setOpen(false);
-      chatCameFrom = focused();
-      setChatState("open");
+      const c = controls.chat.view();
+      const f = controls.feed.view();
+      const want = tab ?? (chatState === "open" ? dockTab : c.ready ? "room" : "feed");
+      if (!(want === "feed" ? f.ready : c.ready) || host.hidden || controls.view().presence === "hidden") return;
+      const was = chatState === "open";
+      if (was && want === dockTab) return;
+      dockTab = want;
+      if (want === "feed") controls.feed.opened();
       chatHint.textContent = "";
+      if (!was) {
+        if (open) setOpen(false);
+        chatCameFrom = focused();
+        setChatState("open");
+      }
       draw();
-      chatLines.scrollTop = chatLines.scrollHeight;
+      chatLines.scrollTop = want === "feed" ? 0 : chatLines.scrollHeight;
       chatField.focus({ preventScroll: true });
-      controls.signal("chatOpen");
+      controls.signal(want === "feed" ? "feedOpen" : "chatOpen");
       return;
     }
+    if (chatState !== "open") return;
     setChatState("closed");
     draw();
     controls.signal("chatClose");
@@ -594,13 +667,16 @@ function mountHud(controls, opts = {}) {
   };
   let chatCameFrom = null;
   chatClose.addEventListener("click", () => setChatOpen(false));
+  tabRoom.addEventListener("click", () => setChatOpen(true, "room"));
+  tabFeed.addEventListener("click", () => setChatOpen(true, "feed"));
   chatForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = chatField.value;
     if (!text.trim()) return setChatOpen(false);
-    const trouble = controls.chat.send(text);
+    const trouble = dockTab === "feed" ? controls.feed.send(text) : controls.chat.send(text);
     chatHint.textContent = trouble ?? "";
     if (!trouble) chatField.value = "";
+    if (!trouble && dockTab === "feed") chatLines.scrollTop = 0;
     chatField.focus({ preventScroll: true });
   });
   chatField.addEventListener("keydown", (e) => {
@@ -785,7 +861,8 @@ function mountHud(controls, opts = {}) {
   const stop = controls.subscribe(draw);
   const stopAsking = controls.onSignal((name) => {
     if (name.startsWith("show:") && !host.hidden) setOpen(true, name.slice(5));
-    if (name === "toggle:chat" && !host.hidden) setChatOpen(chatState !== "open");
+    if (name === "toggle:chat" && !host.hidden) setChatOpen(!(chatState === "open" && dockTab === "room"), "room");
+    if (name === "toggle:feed" && !host.hidden) setChatOpen(!(chatState === "open" && dockTab === "feed"), "feed");
   });
   const tick = setInterval(draw, 400);
   host.classList.add("arriving");
@@ -799,6 +876,9 @@ function mountHud(controls, opts = {}) {
     setOpen,
     get chatOpen() {
       return chatState === "open";
+    },
+    get chatTab() {
+      return dockTab;
     },
     setChatOpen,
     bounds() {
@@ -839,6 +919,7 @@ function mountHud(controls, opts = {}) {
 export {
   CHAT_KEY,
   DEFAULT_THEME,
+  FEED_LIMITS,
   ICONS,
   PICTURES_KEY,
   PICTURE_LIMITS,
@@ -846,6 +927,7 @@ export {
   SUMMON_KEY,
   SUMMON_SLOP,
   UI_PRESETS,
+  ago,
   cleanTheme,
   createControls,
   createHeldButton,
