@@ -12,7 +12,9 @@ import {
   buildWayUrl,
   checkDestination,
   decodeArrival,
+  localMap,
   stripArrivalParam,
+  toLocal,
   verifyRoomPass
 } from "@nswp/core";
 
@@ -106,6 +108,7 @@ var arrival = {
    */
   read() {
     if (cached) return cached;
+    void localMap();
     const raw = arrivalParam(location.hash);
     if (!raw) {
       cached = { context: null, warnings: [] };
@@ -221,7 +224,7 @@ var portal = {
     }
     const airlock = portal.airlockFor(opts);
     if (airlock) {
-      location.assign(buildAirlockUrl(airlock, dest, carried(opts, immersive)));
+      location.assign(await toLocal(buildAirlockUrl(airlock, dest, carried(opts, immersive))));
       return;
     }
     showFallback(dest);
@@ -241,7 +244,7 @@ var portal = {
       } catch {
       }
     }
-    location.assign(buildWayUrl(airlock, carried(opts, immersive)));
+    location.assign(await toLocal(buildWayUrl(airlock, carried(opts, immersive))));
     return true;
   },
   /**
@@ -260,7 +263,7 @@ var portal = {
       } catch {
       }
     }
-    location.assign(buildWayUrl(airlock, { ...carried(opts, immersive), doors: true }));
+    location.assign(await toLocal(buildWayUrl(airlock, { ...carried(opts, immersive), doors: true })));
     return true;
   }
 };
@@ -296,7 +299,7 @@ function showFallback(dest) {
   go.disabled = !chk?.ok;
   cancel.onclick = () => host.remove();
   go.onclick = () => {
-    if (chk?.ok) location.assign(buildArrivalUrl(chk.value.url, dest.entryPoint ? { entry: dest.entryPoint } : {}));
+    if (chk?.ok) void toLocal(buildArrivalUrl(chk.value.url, dest.entryPoint ? { entry: dest.entryPoint } : {})).then((to) => location.assign(to));
   };
   row.append(cancel, go);
   card.append(h, where, row);

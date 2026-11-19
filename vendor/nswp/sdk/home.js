@@ -4,7 +4,7 @@ import {
   createAlloy,
   createPortalWindow,
   textSprite
-} from "./shared-DVZNGWMJ.js";
+} from "./shared-N27DE2OT.js";
 import "./shared-7X4E2NOK.js";
 import "./shared-SJAWET5K.js";
 import "./shared-WWPRVQWW.js";
@@ -19,9 +19,14 @@ import * as THREE2 from "three";
 
 // packages/sdk/src/models.ts
 import * as THREE from "three";
+
+// packages/sdk/src/gate-size.ts
 var PORTAL_WIDTH = 1.5;
 var PORTAL_HEIGHT = 2.1;
-var SPRING = PORTAL_HEIGHT - PORTAL_WIDTH / 2;
+var PORTAL_SPRING = PORTAL_HEIGHT - PORTAL_WIDTH / 2;
+var PORTAL_SIGN_HEIGHT = PORTAL_HEIGHT + 0.72;
+
+// packages/sdk/src/models.ts
 function mouldingProfile(hw, hd, bev, c, cd) {
   return [
     [-hw, -hd + bev],
@@ -66,7 +71,7 @@ function addArchFrame(b) {
   const STEPS = 30;
   for (let i = 0; i <= STEPS; i++) {
     const a = Math.PI - i / STEPS * Math.PI;
-    add([Math.cos(a) * R, SPRING + Math.sin(a) * R, 0], [Math.cos(a), Math.sin(a), 0]);
+    add([Math.cos(a) * R, PORTAL_SPRING + Math.sin(a) * R, 0], [Math.cos(a), Math.sin(a), 0]);
   }
   add([R, foot, 0], [1, 0, 0]);
   b.sweep(profile, frames, mouldingPaint);
@@ -77,8 +82,8 @@ function addArchFrame(b) {
   b.box([PORTAL_WIDTH + 0.02, 0.05, 0.42], [0, 0.025, 0], { bevel: 0.015 });
   b.line([-PORTAL_WIDTH / 2, 0.051, 0.17], [PORTAL_WIDTH / 2, 0.051, 0.17], 0.03, [0, 1, 0]);
   b.line([-PORTAL_WIDTH / 2, 0.051, -0.17], [PORTAL_WIDTH / 2, 0.051, -0.17], 0.03, [0, 1, 0]);
-  for (const x of [-R, R]) b.box([0.24, 0.1, 0.28], [x, SPRING, 0], { bevel: 0.02, shade: 1.2 });
-  const top = SPRING + R;
+  for (const x of [-R, R]) b.box([0.24, 0.1, 0.28], [x, PORTAL_SPRING, 0], { bevel: 0.02, shade: 1.2 });
+  const top = PORTAL_SPRING + R;
   b.box([0.24, 0.26, 0.28], [0, top + 0.02, 0], { bevel: 0.03, shade: 1.15 });
   for (const z of [0.141, -0.141])
     b.quad([0, top + 0.09, z], [0.05, top + 0.02, z], [0, top - 0.05, z], [-0.05, top + 0.02, z], { glow: 1 }, [0, 0, z > 0 ? 1 : -1]);
@@ -812,7 +817,6 @@ function addressLine(dest) {
   const chk = checkDestination(dest.url);
   return chk.ok ? chk.value.registrableDomain ?? chk.value.hostname : "invalid address";
 }
-var SPRING2 = PORTAL_HEIGHT - PORTAL_WIDTH / 2;
 var archMask = null;
 function archMaskTexture() {
   if (archMask) return archMask;
@@ -823,8 +827,8 @@ function archMaskTexture() {
   const k = canvas.height / PORTAL_HEIGHT;
   g.beginPath();
   g.moveTo(0, canvas.height);
-  g.lineTo(0, canvas.height - SPRING2 * k);
-  g.arc(canvas.width / 2, canvas.height - SPRING2 * k, canvas.width / 2, Math.PI, 0);
+  g.lineTo(0, canvas.height - PORTAL_SPRING * k);
+  g.arc(canvas.width / 2, canvas.height - PORTAL_SPRING * k, canvas.width / 2, Math.PI, 0);
   g.lineTo(canvas.width, canvas.height);
   g.closePath();
   g.fillStyle = "#ffffff";
@@ -844,7 +848,7 @@ function archFrameGeometry() {
 function veilMaterial(color) {
   return new THREE3.ShaderMaterial({
     side: THREE3.DoubleSide,
-    uniforms: { uTime: { value: 0 }, uColor: { value: color }, uAim: { value: 0 }, uSize: { value: new THREE3.Vector2(PORTAL_WIDTH, PORTAL_HEIGHT) }, uSpring: { value: SPRING2 } },
+    uniforms: { uTime: { value: 0 }, uColor: { value: color }, uAim: { value: 0 }, uSize: { value: new THREE3.Vector2(PORTAL_WIDTH, PORTAL_HEIGHT) }, uSpring: { value: PORTAL_SPRING } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
     fragmentShader: `uniform float uTime; uniform vec3 uColor; uniform float uAim; uniform vec2 uSize; uniform float uSpring; varying vec2 vUv;
       float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -888,7 +892,7 @@ function gateGlow(color) {
     depthWrite: false,
     blending: THREE3.AdditiveBlending,
     side: THREE3.DoubleSide,
-    uniforms: { uColor: { value: color }, uAim: { value: 0 }, uSpring: { value: SPRING2 }, uRadius: { value: PORTAL_WIDTH / 2 + 0.09 } },
+    uniforms: { uColor: { value: color }, uAim: { value: 0 }, uSpring: { value: PORTAL_SPRING }, uRadius: { value: PORTAL_WIDTH / 2 + 0.09 } },
     vertexShader: "attribute float floor; varying vec2 vAt; varying float vFloor; void main(){ vAt = position.xy; vFloor = floor; vec3 p = floor > 0.5 ? vec3(position.x, 0.014, position.y) : position; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }",
     fragmentShader: `uniform vec3 uColor; uniform float uAim; uniform float uSpring; uniform float uRadius; varying vec2 vAt; varying float vFloor;
       void main(){
@@ -942,7 +946,7 @@ function createPortalGate(destination, opts = {}) {
     }
     sign = textSprite(`${label}
 ${addressLine(destination)}`, textColor, 2.2);
-    sign.position.set(0, PORTAL_HEIGHT + 0.72, 0);
+    sign.position.set(0, PORTAL_SIGN_HEIGHT, 0);
     group.add(sign);
   };
   setLabel(opts.label ?? "Portal");

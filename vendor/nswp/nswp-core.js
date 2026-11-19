@@ -6332,6 +6332,92 @@ function parseSpeechControl(text) {
   return null;
 }
 
+// packages/core/src/local.ts
+var LOCAL_MAP_PATH = "/.well-known/nswp-local.json";
+var LOCAL_MAP_WAIT = 2e3;
+var LOCAL_MAP_LIMIT = 64;
+function isLocalHost(hostname) {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h.endsWith(".localhost") || h === "::1") return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  if ([a, b, Number(m[3]), Number(m[4])].some((n) => n > 255)) return false;
+  return a === 127 || a === 10 || a === 172 && b >= 16 && b <= 31 || a === 192 && b === 168 || a === 169 && b === 254;
+}
+function originOf(text) {
+  if (typeof text !== "string" || text.length > 300) return null;
+  try {
+    const u = new URL(text);
+    return u.username || u.password ? null : u;
+  } catch {
+    return null;
+  }
+}
+function cleanLocalMap(input) {
+  const out = /* @__PURE__ */ new Map();
+  if (!input || typeof input !== "object" || Array.isArray(input)) return out;
+  for (const [real, local] of Object.entries(input)) {
+    if (out.size >= LOCAL_MAP_LIMIT) break;
+    const from = originOf(real);
+    const to = originOf(local);
+    if (!from || !to) continue;
+    if (from.protocol !== "https:" || isLocalHost(from.hostname)) continue;
+    if (to.protocol !== "http:" || !isLocalHost(to.hostname)) continue;
+    out.set(from.origin, to.origin);
+  }
+  return out;
+}
+function mapToLocal(url, map) {
+  if (!map.size) return url;
+  const u = originOf(url);
+  const to = u && map.get(u.origin);
+  return to ? `${to}${url.slice(u.origin.length)}` : url;
+}
+function mapFromLocal(url, map) {
+  if (!map.size) return url;
+  const u = originOf(url);
+  if (!u) return url;
+  for (const [real, local] of map) if (local === u.origin) return `${real}${url.slice(u.origin.length)}`;
+  return url;
+}
+var NONE = /* @__PURE__ */ new Map();
+var loading;
+function onLocalHost() {
+  try {
+    return typeof location !== "undefined" && location.protocol === "http:" && isLocalHost(location.hostname);
+  } catch {
+    return false;
+  }
+}
+function localMap() {
+  if (loading) return loading;
+  if (!onLocalHost() || typeof fetch !== "function") return loading = Promise.resolve(NONE);
+  loading = (async () => {
+    try {
+      const res = await fetch(LOCAL_MAP_PATH, { cache: "no-store", credentials: "omit" });
+      return res.ok ? cleanLocalMap(await res.json()) : NONE;
+    } catch {
+      return NONE;
+    }
+  })();
+  return loading;
+}
+function mapSoon() {
+  const asked = localMap();
+  if (!onLocalHost()) return asked;
+  return Promise.race([asked, new Promise((done) => setTimeout(() => done(NONE), LOCAL_MAP_WAIT))]);
+}
+async function toLocal(url) {
+  return mapToLocal(url, await mapSoon());
+}
+async function fromLocal(url) {
+  return mapFromLocal(url, await mapSoon());
+}
+function setLocalMap(map) {
+  loading = map ? Promise.resolve(map) : void 0;
+}
+
 // packages/core/src/index.ts
 var VERSION = "0.1.0";
 export {
@@ -6355,6 +6441,9 @@ export {
   LAYOUT_LIMITS,
   LIMITS,
   LIST_LIMITS,
+  LOCAL_MAP_LIMIT,
+  LOCAL_MAP_PATH,
+  LOCAL_MAP_WAIT,
   LOOK_COLORS,
   LOOK_LIMITS,
   LOOK_PARTS,
@@ -6399,6 +6488,7 @@ export {
   checkPreviewBytes,
   claimsKey,
   cleanKeys,
+  cleanLocalMap,
   cleanName,
   cleanSize,
   cleanSpeechText,
@@ -6415,6 +6505,7 @@ export {
   fetchManifest,
   finalizeEvent,
   fragmentSaysImmersive,
+  fromLocal,
   generatedLook,
   getConversationKey,
   getEventHash,
@@ -6427,18 +6518,23 @@ export {
   hasEventShape,
   isHex64,
   isHttpsUrl,
+  isLocalHost,
   isPlainObject,
   isPublicKey,
   isWssUrl,
   latestAddressable,
+  localMap,
   lookFromTags,
   lookToTags,
+  mapFromLocal,
+  mapToLocal,
   markFor,
   markGrid,
   nip44Decrypt,
   nip44Encrypt,
   normalizeUrl,
   nowSeconds,
+  onLocalHost,
   openBridgeSignal,
   openSignal,
   packBrought,
@@ -6461,11 +6557,13 @@ export {
   readBrought,
   roomTopic,
   serializeEvent,
+  setLocalMap,
   shortNpub,
   shouldInitiate,
   spawnOffset,
   stripArrivalParam,
   toHex,
+  toLocal,
   unpackPose,
   verifyBridgeGrant,
   verifyEntryAssertion,

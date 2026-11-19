@@ -50,6 +50,22 @@ export interface Held {
 export declare function strideOf(held: Held, yaw: number, speed: number, dt: number, sprint?: number): [number, number];
 /** Which held thing a key is, or null for a key this doesn't move with. */
 export declare function heldKey(code: string): keyof Held | null;
+/** Where the choice is kept, for this site, unless a world names another place. */
+export declare const DESK_KEY = "nswp:fps";
+/** What the control says, and what is said when it is pressed. One wording, whatever draws the world. */
+export declare const DESK_WORDS: {
+    readonly intense: "Desk controls: intense";
+    readonly casual: "Desk controls: casual";
+    readonly nowIntense: "Intense: click the view to look round with the mouse. W, A, S, D walk, Shift runs, F uses what is in front of you, and Escape brings up this menu.";
+    readonly nowCasual: "Casual: click where you want to stand, and drag to look round.";
+    readonly click: "Click the view to look round. Escape brings up the menu.";
+};
+/** A way of moving that needs a mouse is not offered where there isn't one. */
+export declare const hasMouse: () => boolean;
+/** Whether a visitor starts out moving the intense way at a desk: they arrived so, or chose it here before. */
+export declare function startsIntense(arrived: boolean, key?: string): boolean;
+/** Keep the choice, or forget it. */
+export declare function keepIntense(on: boolean, key?: string): void;
 export interface FpsOptions {
     /** What is clicked to look round: the canvas. */
     dom: HTMLElement;
