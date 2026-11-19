@@ -1567,6 +1567,7 @@ var NONE = {
   name: null,
   picture: null,
   about: null,
+  remembered: null,
   host: null,
   unanswered: false,
   copy: null,
@@ -1603,6 +1604,7 @@ function createWorldSigner(opts) {
   let name = null;
   let picture = null;
   let about = null;
+  let remembered = null;
   let origin = "";
   let windowAt = "";
   let frame = null;
@@ -1636,6 +1638,7 @@ function createWorldSigner(opts) {
       name = reply.unlocked ? reply.name ?? null : null;
       picture = reply.unlocked ? reply.picture ?? null : null;
       about = reply.unlocked ? reply.about ?? null : null;
+      remembered = reply.unlocked ? reply.remembered ?? null : null;
       for (const go of [...firstAnswer]) go();
       return changed();
     }
@@ -1695,6 +1698,9 @@ function createWorldSigner(opts) {
     },
     get about() {
       return about;
+    },
+    get remembered() {
+      return remembered;
     },
     get unanswered() {
       return named && waited && state === "none" && !disposed;
@@ -1868,7 +1874,8 @@ var identitySection = () => ({
     if (!signerNamed()) return `Who you are and how you look are kept by ${host}, the place you set out from, and are the same in every world. Changing either takes you there and brings you back here.`;
     const at = worldSigner().host ?? "your sign-in address";
     const look = `How you look is kept by ${host}, the place you set out from: changing it takes you there and brings you back.`;
-    if (worldSigner().state === "unlocked") return `You are signed in here by ${at}. Signing out here makes you a guest in this world, and nowhere else. ${look}`;
+    const visit = worldSigner().remembered === false ? ` It lasts for this visit: next time, ${at} asks again. Whether it remembers this world is yours to choose in its window.` : "";
+    if (worldSigner().state === "unlocked") return `You are signed in here by ${at}.${visit} Signing out here makes you a guest in this world, and nowhere else. ${look}`;
     return `Signing in is done at ${at}, in a window of its own: nothing is typed in this world. Until you sign in here, everyone sees a guest. ${look}`;
   }
 });
@@ -1922,7 +1929,7 @@ function signerAction(controls, opts = {}) {
         if (signer.state !== "unlocked") return;
         const who = hereAs();
         controls.say(
-          who ? `You are signed in here as ${who.name || short()}. People in a room see your name and picture, and you can send out posts. Signing out is under You.` : `You are signed in here as ${signer.name ?? short()}, and can send out posts. In a room you are still a guest: ${signer.host ?? "your sign-in address"} gave no pass with your name on it.`
+          who ? `You are signed in here as ${who.name || short()}${signer.remembered === false ? ", for this visit" : ""}. People in a room see your name and picture, and you can send out posts. Signing out is under You.` : `You are signed in here as ${signer.name ?? short()}, and can send out posts. In a room you are still a guest: ${signer.host ?? "your sign-in address"} gave no pass with your name on it.`
         );
       });
     }

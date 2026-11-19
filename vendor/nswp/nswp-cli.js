@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.28.1";
+var KIT_VERSION = "0.28.3";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4286,7 +4286,13 @@ var SIGN_LIMITS = {
   burst: 3,
   perMs: 6e4,
   /** And no more than this many in an hour. */
-  hourly: 20
+  hourly: 20,
+  /**
+   * A pass is counted apart from notes, so signing in doesn't use up a post: no more than this many passes for
+   * one world in `perMs`, and in an hour. A reader asks once per sign-in and once when a pass runs out.
+   */
+  passBurst: 2,
+  passHourly: 10
 };
 
 // packages/core/dist/layout.js
