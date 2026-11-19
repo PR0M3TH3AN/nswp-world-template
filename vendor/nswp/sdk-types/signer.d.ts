@@ -33,6 +33,12 @@ export interface WorldSigner {
      */
     readonly unanswered: boolean;
     /**
+     * Where the signer is being asked for on this page, when that is a
+     * development server's copy and not the real address: something to name
+     * when it didn't answer. Null on a real site.
+     */
+    readonly copy: string | null;
+    /**
      * Open the client's window, where the visitor unlocks it for this world.
      * Call it from a press: a browser opens a window for nothing else. False
      * if there is no signer, or no window could be opened.

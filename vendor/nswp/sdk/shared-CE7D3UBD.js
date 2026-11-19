@@ -1565,6 +1565,7 @@ var NONE = {
   name: null,
   host: null,
   unanswered: false,
+  copy: null,
   unlock: () => false,
   lock() {
   },
@@ -1674,6 +1675,9 @@ function createWorldSigner(opts) {
     get unanswered() {
       return named && waited && state === "none" && !disposed;
     },
+    get copy() {
+      return origin && origin !== real.origin ? origin : null;
+    },
     // The signer's real address, never a development server's copy of it: it is what the visitor should recognise.
     get host() {
       try {
@@ -1772,6 +1776,11 @@ function identityAction(controls, leaving = () => ({})) {
     act: () => leave(controls, "identity", leaving)
   };
 }
+function unansweredWords(signer) {
+  const host = signer.host ?? "your signer";
+  const copy = signer.copy ? ` On this development server its copy is at ${signer.copy}: open that address once in a tab, so your browser accepts its certificate, then reload this page.` : " Reloading the page tries again.";
+  return `This world asked ${host} for your signer and got no answer. It may be unreachable from here, or your browser may have kept it out.${copy} Nothing is wrong with your sign-in.`;
+}
 var shared = null;
 function worldSigner() {
   shared ??= createWorldSigner({ under: arrival.signer(), airlock: portal.airlockFor() });
@@ -1801,7 +1810,7 @@ function signerAction(controls, opts = {}) {
       if (signer.state === "unlocked") return signer.lock();
       const host = signer.host ?? "your own client";
       if (signer.unanswered) {
-        return controls.say(`This world asked ${host} for your signer and got no answer. It may be unreachable from here, or your browser may have kept it out. Reloading the page tries again. Nothing is wrong with your sign-in.`);
+        return controls.say(unansweredWords(signer));
       }
       if (opts.presenting?.()) return controls.say(`A window from ${host} is needed for this, and none can open in a headset. Leave the headset view for a moment, sign in to sign, and come back in.`);
       if (signer.unlock()) controls.say(`A window from ${host} has opened. Say yes there, and you can sign notes here.`);
@@ -6668,7 +6677,17 @@ function addRoomControls(controls, presence, opts = {}) {
     refresh();
   });
   let postsNotes = false;
-  const notes = opts.notes ?? { ready: () => worldSigner().state === "unlocked", sign: (n) => worldSigner().sign(n), onChange: (fn) => worldSigner().onChange(fn) };
+  const notes = opts.notes ?? {
+    ready: () => worldSigner().state === "unlocked",
+    sign: (n) => worldSigner().sign(n),
+    onChange: (fn) => worldSigner().onChange(fn),
+    locked: () => worldSigner().state === "locked",
+    unlock: () => worldSigner().unlock(),
+    host: () => worldSigner().host,
+    unanswered: () => worldSigner().unanswered ? unansweredWords(worldSigner()) : null
+  };
+  let wantsNotes = false;
+  const POSTING_ON = "Each line you write here is now also posted to Nostr as a public note, signed as you. Anyone can read it, anywhere, and it can't be taken back.";
   const postNote = async (text) => {
     const words = cleanChat(text);
     const signed = await notes.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
@@ -6680,6 +6699,11 @@ function addRoomControls(controls, presence, opts = {}) {
   };
   notes.onChange?.(() => {
     if (!notes.ready()) postsNotes = false;
+    else if (wantsNotes) {
+      wantsNotes = false;
+      postsNotes = true;
+      tell(POSTING_ON);
+    }
     refresh();
   });
   controls.add(
@@ -6707,14 +6731,28 @@ function addRoomControls(controls, presence, opts = {}) {
       id: "room-chat-notes",
       section: "room",
       icon: "key",
-      label: () => postsNotes ? "Post what I write as Nostr notes: on" : "Post what I write as Nostr notes: off",
-      on: () => postsNotes,
-      // Only for someone who has unlocked their signer for this world, in a room, with chat on.
-      hidden: () => !presence.session || !showsChat() || !notes.ready(),
+      // It is here whenever there is a signer to post with, unlocked or not: a row that isn't there can't be
+      // found. Locked, it says what comes first, and pressing it starts that.
+      label: () => {
+        if (notes.ready()) return postsNotes ? "Post what I write as Nostr notes: on" : "Post what I write as Nostr notes: off";
+        const host = notes.host?.() ?? "your signer";
+        return notes.unanswered?.() ? `Posting as Nostr notes isn't available: ${host} didn't answer` : `Post what I write as Nostr notes: sign in at ${host} first`;
+      },
+      on: () => notes.ready() && postsNotes,
+      // In a room, with chat on, and with a signer that is ready, or could be, or was named and didn't answer.
+      hidden: () => !presence.session || !showsChat() || !(notes.ready() || notes.locked?.() || notes.unanswered?.()),
       act: () => {
-        postsNotes = !postsNotes;
+        if (notes.ready()) {
+          postsNotes = !postsNotes;
+          return tell(postsNotes ? POSTING_ON : "What you write stays in the room again.");
+        }
+        const why = notes.unanswered?.();
+        if (why) return tell(why);
+        const host = notes.host?.() ?? "your signer";
+        if (presence.presenting) return tell(`A window from ${host} is needed first, and none can open in a headset. Leave the headset view for a moment, press this again, and come back in.`);
+        wantsNotes = !!notes.unlock?.();
         tell(
-          postsNotes ? "Each line you write here is now also posted to Nostr as a public note, signed as you. Anyone can read it, anywhere, and it can't be taken back." : "What you write stays in the room again."
+          wantsNotes ? `A window from ${host} has opened. Sign in there if it asks, and say yes. Then what you write here is posted as notes.` : `Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`
         );
       }
     },
