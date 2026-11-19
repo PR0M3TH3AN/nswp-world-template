@@ -1,17 +1,3 @@
-/**
- * What a visitor means by what their hands are doing.
- *
- * A world shouldn't know whether someone holds Quest, Pico, Index or Vive
- * controllers. WebXR already gives every tracked controller the same layout
- * (the "xr-standard" gamepad mapping), so this file reads that layout into a
- * few plain facts, and turns those facts into intent: turn, walk, step, open
- * the menu. Nothing here touches a headset or draws anything, so it is tested
- * like arithmetic.
- *
- * None of it is required to get around. Everything a visitor must be able to
- * do is done by pointing and selecting (protocol/09-what-a-world-owes.md).
- * Sticks, grips and buttons are a faster way for people who have them.
- */
 export interface PadButton {
     pressed: boolean;
     touched?: boolean;
@@ -36,6 +22,8 @@ export interface PadState {
     primary: boolean;
     /** The upper one: B or Y. */
     secondary: boolean;
+    /** The stick itself, pressed in. */
+    press: boolean;
 }
 export declare const NO_PAD: PadState;
 /** A stick near its middle reads as still, and the rest of its travel is stretched to fill the range. */
@@ -98,11 +86,17 @@ export interface Intent {
     aiming: number[];
     /** The menu button went down. */
     menu: boolean;
+    /** The jump button (A or X) went down. */
+    jump: boolean;
+    /** They are running: walking smoothly, having pressed the moving stick in. */
+    running: boolean;
     /** 0 to 1: how much of the view's edge to darken. */
     narrow: number;
 }
 /** Metres a second, walking smoothly. A brisk walk: faster reads as sliding. */
 export declare const WALK_SPEED = 1.8;
+/** How much faster a run is, in a headset as anywhere (stroll.ts). Asked for by pressing the moving stick in. */
+export declare const RUN_FACTOR = 1.75;
 /** Degrees a second, turning smoothly. */
 export declare const TURN_SPEED = 110;
 /** One stick pulled back, in step mode: a step backwards of this many metres. */
@@ -119,5 +113,8 @@ export declare class Locomotion {
     private readonly forward;
     private readonly backward;
     private menuDown;
+    private jumpDown;
+    /** Running, once the moving stick is pressed in, until that stick comes back to rest. */
+    private running;
     frame(dt: number, pads: HeldPad[], comfort: Comfort): Intent;
 }

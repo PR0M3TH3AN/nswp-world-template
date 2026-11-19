@@ -56,8 +56,8 @@ export declare const DESK_KEY = "nswp:fps";
 export declare const DESK_WORDS: {
     readonly intense: "Desk controls: intense";
     readonly casual: "Desk controls: casual";
-    readonly nowIntense: "Intense: click the view to look round with the mouse. W, A, S, D walk, Shift runs, F uses what is in front of you, and Escape brings up this menu.";
-    readonly nowCasual: "Casual: click where you want to stand, and drag to look round.";
+    readonly nowIntense: "Intense: click the view to look round with the mouse. W, A, S, D walk, Shift runs, Space jumps, F uses what is in front of you, and Escape brings up this menu.";
+    readonly nowCasual: "Casual: click where you want to stand, twice to run there, and drag to look round. W, A, S, D walk, Shift runs and Space jumps.";
     readonly click: "Click the view to look round. Escape brings up the menu.";
 };
 /** A way of moving that needs a mouse is not offered where there isn't one. */

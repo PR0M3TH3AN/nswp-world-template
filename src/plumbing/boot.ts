@@ -18,13 +18,14 @@ import * as THREE from "three";
 import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addCameraControls, addPanelControls, addRoomControls, createFps, type Fps, addSoundControls, createSounds, createStroll, reachOf, TAP_REACH, addViewControls, capturePanorama, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addCameraControls, addPanelControls, addRoomControls, createFps, type Fps, addSoundControls, createSounds, addJump, createStroll, reachOf, RUN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
 import type { BuildScene, PortalOptions, SceneContext, WorldConfig } from "./types.js";
 
 interface TestHooks {
+  jump?: { jump(): boolean; readonly height: number; readonly airborne: boolean };
   state: Record<string, unknown>;
   /** What this place sounds like: cues, its music, and the visitor's own. */
   sounds?: unknown;
@@ -312,7 +313,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     id: "help",
     label: "Help",
     icon: "help",
-    note: "Drag to look around. Walk with W, A, S, D, or point at the floor and select to step there. Select a doorway to see where it leads before you go. These controls are this world's own: your headset's or browser's own controls always get you out.",
+    note: "Drag to look around. Walk with W, A, S, D, or point at the floor and select to step there: twice to run. Shift runs and Space jumps. Select a doorway to see where it leads before you go. These controls are this world's own: your headset's or browser's own controls always get you out.",
   });
 
   // In a headset the page can't be seen, so the same controls go on a console in the scene.
@@ -542,6 +543,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       if (spot) stepTo(spot);
     },
     onMenu: () => xrConsole.setOpen(!xrConsole.open),
+    onJump: () => void jump.jump(),
   });
   for (const [object, options] of toHold) input.grabbable(object, options);
   hooks.input = () => input!.info();
@@ -604,7 +606,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     const strafe = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
     if (!forward && !strafe) return;
     stroll.stop(); // the keys take over from a walk a tap began
-    step.set(strafe, 0, -forward).normalize().multiplyScalar(2 * dt).applyAxisAngle(THREE.Object3D.DEFAULT_UP, rig.rotation.y);
+    // The kit's own walking pace, and Shift runs, moving the casual way as it does the intense way.
+    const pace = WALK_SPEED * (keys.has("ShiftLeft") || keys.has("ShiftRight") ? RUN : 1);
+    step.set(strafe, 0, -forward).normalize().multiplyScalar(pace * dt).applyAxisAngle(THREE.Object3D.DEFAULT_UP, rig.rotation.y);
     camera.getWorldPosition(headAt);
     // Try the whole step, then each direction alone, so a visitor slides along a wall instead of sticking to it.
     if (canStand(headAt.x + step.x, headAt.z + step.z)) rig.position.add(step);
@@ -705,13 +709,18 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   let last = 0;
   let wasBusy = false;
   const movedFrom = rig.position.clone();
+  // A jump, the same however they are moving: Space, the Jump control where there is no keyboard, A or X in a headset.
+  const floorY = rig.position.y;
+  const jump = addJump(controls, { presenting: () => renderer.xr.isPresenting, sounds, hud, busy: () => !!panels?.keyboard.open });
+  hooks.jump = jump;
   renderer.setAnimationLoop(() => {
     const t = (performance.now() - startedAt) / 1000;
     const dt = Math.min(t - last, 0.1);
     last = t;
-    // Steps are made from how far the visitor was moved, not from how their head sways.
-    if (state.ready) sounds.moved(Math.hypot(rig.position.x - movedFrom.x, rig.position.z - movedFrom.z));
+    // Steps are made from how far the visitor was moved, not from how their head sways, and not while they are in the air.
+    if (state.ready && !jump.airborne) sounds.moved(Math.hypot(rig.position.x - movedFrom.x, rig.position.z - movedFrom.z));
     movedFrom.copy(rig.position);
+    rig.position.y = floorY + jump.update(dt);
     let aimed: PortalGate | null = null;
     reticle.visible = false;
     input!.update(dt);
