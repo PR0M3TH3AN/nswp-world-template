@@ -10,6 +10,7 @@ export * from "./portal.js";
 export * from "./relay.js";
 export * from "./nip44.js";
 export * from "./room.js";
+export * from "./chat.js";
 export * from "./layout.js";
 export * from "./avatar.js";
 export * from "./list.js";

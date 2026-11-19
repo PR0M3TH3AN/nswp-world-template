@@ -56,6 +56,11 @@ export interface TravelSettings {
      * that place the visitor's address, so this is theirs to turn off. Left out, pictures are shown.
      */
     pictures?: boolean;
+    /**
+     * Whether they see what other people write in a room, and may write there themselves. Left out, they do.
+     * Turned off, nothing anyone writes is shown to them, and nobody is told.
+     */
+    chat?: boolean;
 }
 /** The slowest and fastest the view may be set to turn, and the narrowest and widest it may be set to see. */
 export declare const LOOK_RANGE: readonly [0.25, 3];

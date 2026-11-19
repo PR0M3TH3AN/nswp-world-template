@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.22.0";
+var KIT_VERSION = "0.23.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4732,6 +4732,7 @@ function cleanSettings(input) {
   if (typeof s.look === "number" && Number.isFinite(s.look)) out.look = Math.round(Math.min(LOOK_RANGE[1], Math.max(LOOK_RANGE[0], s.look)) * 100) / 100;
   if (typeof s.fov === "number" && Number.isFinite(s.fov)) out.fov = Math.round(Math.min(FOV_RANGE[1], Math.max(FOV_RANGE[0], s.fov)));
   if (typeof s.pictures === "boolean") out.pictures = s.pictures;
+  if (typeof s.chat === "boolean") out.chat = s.chat;
   return out;
 }
 var hasSettings = (s) => !!s && Object.keys(s).length > 0;
@@ -5877,6 +5878,79 @@ function unpackPose(data) {
   return pose;
 }
 
+// packages/core/src/chat.ts
+var CHAT_LIMITS = {
+  /** The most characters in one thing said. Longer is cut, by the one saying it and again by the one reading. */
+  chars: 240,
+  /** A line is sent this many times, because the channel doesn't try again; a reader takes the first. */
+  repeats: 3,
+  repeatGapMs: 180,
+  /** No more than `burst` lines from one member in `perMs`. The rest are dropped, unseen. */
+  burst: 5,
+  perMs: 1e4,
+  /** How many lines a reader keeps for the visit. */
+  kept: 100,
+  /** How many ids are remembered for each member, to know a repeat from a new line. */
+  remembered: 32
+};
+var UNSEEN = [
+  [0, 31],
+  [127, 159],
+  [8203, 8204],
+  // 0x200d joins the parts of one emoji, and stays.
+  [8206, 8207],
+  [8232, 8239],
+  [8288, 8303],
+  [65279, 65279],
+  [65529, 65531]
+];
+var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
+function cleanChat(text) {
+  if (typeof text !== "string") return "";
+  let out = "";
+  for (const ch of text.slice(0, CHAT_LIMITS.chars * 8).normalize("NFC")) out += unseen(ch.codePointAt(0)) ? " " : ch;
+  out = out.replace(/\s+/g, " ").trim();
+  return [...out].slice(0, CHAT_LIMITS.chars).join("").trim();
+}
+function chatId() {
+  const bytes = new Uint8Array(4);
+  globalThis.crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function buildSay(text, id = chatId()) {
+  const cleaned = cleanChat(text);
+  if (!cleaned || !/^[0-9a-f]{8}$/.test(id)) return null;
+  return `say:${id}:${cleaned}`;
+}
+function parseSay(data) {
+  if (typeof data !== "string" || !data.startsWith("say:") || data[12] !== ":") return null;
+  const id = data.slice(4, 12);
+  if (!/^[0-9a-f]{8}$/.test(id)) return null;
+  const text = cleanChat(data.slice(13));
+  return text ? { id, text } : null;
+}
+function createChatGate(limits = CHAT_LIMITS) {
+  const ids = [];
+  let times = [];
+  const recent = (now) => times = times.filter((t) => now - t < limits.perMs);
+  return {
+    take(id, now) {
+      if (ids.includes(id)) return false;
+      ids.push(id);
+      if (ids.length > limits.remembered) ids.shift();
+      if (recent(now).length >= limits.burst) return false;
+      times.push(now);
+      return true;
+    },
+    room(now) {
+      return recent(now).length < limits.burst;
+    }
+  };
+}
+function bubbleSeconds(text) {
+  return Math.min(12, 4 + [...text].length * 0.06);
+}
+
 // packages/core/src/layout.ts
 var HOME_LAYOUT_KIND = 37302;
 var ITEM_KIND = 37303;
@@ -6552,6 +6626,7 @@ export {
   BRIDGE_WORLD_GRANT_KIND,
   BUILTIN_ITEMS,
   CAPABILITIES,
+  CHAT_LIMITS,
   COMFORT,
   CURATION_SET_KIND,
   Collector,
@@ -6597,6 +6672,7 @@ export {
   assertManifest,
   audienceOf,
   bridgeTopic,
+  bubbleSeconds,
   buildAirlockUrl,
   buildArrivalUrl,
   buildAvatarEvent,
@@ -6607,14 +6683,17 @@ export {
   buildLayoutEvent,
   buildListEvent,
   buildRoomPass,
+  buildSay,
   buildSignal,
   buildWayUrl,
   buildWorldEvent,
   buildWorldGrant,
+  chatId,
   checkDestination,
   checkPictureBytes,
   checkPreviewBytes,
   claimsKey,
+  cleanChat,
   cleanKeys,
   cleanLocalMap,
   cleanName,
@@ -6624,6 +6703,7 @@ export {
   cleanSpeechText,
   cleanWorldOrigin,
   coordinate,
+  createChatGate,
   decodeArrival,
   decodeLook,
   decodeNaddr,
@@ -6684,6 +6764,7 @@ export {
   parseListEvent,
   parseManifest,
   parsePortal,
+  parseSay,
   parseSpeechControl,
   parseWorldEvent,
   portalTarget,

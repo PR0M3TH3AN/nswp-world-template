@@ -2214,7 +2214,11 @@ var schnorr = /* @__PURE__ */ (() => {
 // packages/sdk/src/room.ts
 import {
   buildHello,
+  buildSay,
   buildSignal,
+  CHAT_LIMITS,
+  createChatGate,
+  parseSay,
   DEFAULT_RELAYS,
   getPublicKey,
   guestColor,
@@ -2277,6 +2281,7 @@ var RoomSession = class {
     tune: /* @__PURE__ */ new Set(),
     music: /* @__PURE__ */ new Set(),
     audio: /* @__PURE__ */ new Set(),
+    said: /* @__PURE__ */ new Set(),
     status: /* @__PURE__ */ new Set()
   };
   look;
@@ -2299,6 +2304,8 @@ var RoomSession = class {
   watched = /* @__PURE__ */ new Set();
   watchTimer;
   mic = null;
+  /** This visitor's own words, counted as everyone's are. */
+  words = createChatGate();
   timers = [];
   closed = false;
   constructor(opts = {}) {
@@ -2484,6 +2491,7 @@ var RoomSession = class {
       member: { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: generatedLook(pubkey), recording: false },
       pc,
       refused: 0,
+      words: createChatGate(),
       open: false,
       lastSeen: Date.now(),
       startedAt: Date.now()
@@ -2543,6 +2551,11 @@ var RoomSession = class {
             this.redraw(peer);
           }
         } else if (e.data.startsWith("id:")) this.checkPass(peer, e.data.slice(3));
+        else if (e.data.startsWith("say:")) {
+          const line = parseSay(e.data);
+          const now = Date.now();
+          if (line && peer.words.take(line.id, now)) this.emit("said", peer.member, { ...line, at: now });
+        }
         return;
       }
       if (!(e.data instanceof ArrayBuffer)) return;
@@ -2893,6 +2906,23 @@ var RoomSession = class {
     this.expire(Math.floor(now / 1e3));
   }
   /** Send your pose to everyone. Call 10–20 times a second, from a timer rather than the render loop. */
+  /**
+   * Write a few words to the room. They go straight to each member, as poses do: no relay sees them and nothing
+   * keeps them. They are sent a few times over, because the channel doesn't try again, and each reader takes the
+   * first. Returns "said" (and `said` fires here too, with `self`), "nothing" if there was nothing to say, or
+   * "slow" if this visitor has said too much in a short while: nothing is sent then.
+   */
+  say(text) {
+    const word = buildSay(text);
+    const line = word ? parseSay(word) : null;
+    if (!word || !line || this.closed) return "nothing";
+    const now = Date.now();
+    if (!this.words.take(line.id, now)) return "slow";
+    this.tellAll(word);
+    for (let i = 1; i < CHAT_LIMITS.repeats; i++) setTimeout(() => !this.closed && this.tellAll(word), i * CHAT_LIMITS.repeatGapMs);
+    this.emit("said", this.self, { ...line, at: now });
+    return "said";
+  }
   sendPose(pose) {
     if (this.closed) return;
     let packet;

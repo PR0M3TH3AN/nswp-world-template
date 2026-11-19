@@ -35,6 +35,8 @@ var ICONS = {
   sound: "M4 9.500v5h3.500L13 19V5L7.500 9.500ZM16.500 9a4.500 4.500 0 0 1 0 6M19 6.500a8 8 0 0 1 0 11",
   soundOff: "M4 9.500v5h3.500L13 19V5L7.500 9.500ZM16.500 9.500l4.500 5M21 9.500l-4.500 5",
   you: "M12 11.5a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5ZM5 20.5a7 7 0 0 1 14 0",
+  close: "M6 6l12 12M18 6 6 18",
+  chat: "M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2ZM8 10h8M8 13h5",
   people: "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3 20a6 6 0 0 1 12 0M16 11a2.5 2.5 0 1 0 0-5M21 20a5 5 0 0 0-4-4.9"
 };
 
@@ -185,6 +187,131 @@ function loadPicture(address) {
   return asked;
 }
 
+// packages/sdk/src/ui/chat.ts
+import { CHAT_LIMITS, cleanChat } from "@nswp/core";
+var CHAT_KEY = "nswp:chat";
+var shown2 = null;
+var watchers2 = /* @__PURE__ */ new Set();
+function showsChat() {
+  if (shown2 !== null) return shown2;
+  const came = arrivedSettings().chat;
+  let kept = null;
+  try {
+    kept = localStorage.getItem(CHAT_KEY);
+  } catch {
+  }
+  shown2 = came ?? kept !== "0";
+  if (came !== void 0) keep2(shown2);
+  reportSettings("chat", () => ({ chat: showsChat() }));
+  return shown2;
+}
+var keep2 = (on) => {
+  try {
+    if (on) localStorage.removeItem(CHAT_KEY);
+    else localStorage.setItem(CHAT_KEY, "0");
+  } catch {
+  }
+};
+function setShowsChat(on) {
+  showsChat();
+  shown2 = on;
+  keep2(on);
+  for (const w of watchers2) w();
+}
+function onChatChange(cb) {
+  watchers2.add(cb);
+  return () => void watchers2.delete(cb);
+}
+function createUiChat(changed) {
+  let send = null;
+  let title = "Room chat";
+  let lines = [];
+  let unread = 0;
+  let version = 0;
+  let count = 0;
+  const bump = () => {
+    version++;
+    changed();
+  };
+  onChatChange(() => {
+    if (!showsChat()) {
+      lines = [];
+      unread = 0;
+    }
+    bump();
+  });
+  return {
+    attach(fn, opts = {}) {
+      send = fn;
+      title = opts.title ?? "Room chat";
+      lines = [];
+      unread = 0;
+      bump();
+    },
+    detach() {
+      if (!send && !lines.length) return;
+      send = null;
+      lines = [];
+      unread = 0;
+      bump();
+    },
+    add(line) {
+      if (!send || !showsChat()) return;
+      const text = cleanChat(line.text);
+      if (!text) return;
+      lines.push({ key: `${line.id ?? "n"}-${++count}`, who: line.note ? "" : cleanChat(line.who ?? "").slice(0, 48), text, mine: !!line.mine, note: !!line.note, color: line.color ?? "", at: Date.now() });
+      if (lines.length > CHAT_LIMITS.kept) lines = lines.slice(-CHAT_LIMITS.kept);
+      if (!line.mine && !line.note) unread++;
+      bump();
+    },
+    send(text) {
+      if (!send || !showsChat()) return "There is nobody to write to: join the room first.";
+      if (!cleanChat(text)) return null;
+      return send(text) ?? null;
+    },
+    seen() {
+      if (!unread) return;
+      unread = 0;
+      bump();
+    },
+    view() {
+      return { ready: !!send && showsChat(), title, lines, unread, limit: CHAT_LIMITS.chars, version };
+    }
+  };
+}
+function wrapWords(text, measure, width, rows) {
+  const out = [];
+  let row = "";
+  const push = (word) => {
+    let rest = [...word];
+    while (rest.length) {
+      let n = rest.length;
+      while (n > 1 && measure(rest.slice(0, n).join("")) > width) n--;
+      const piece = rest.slice(0, n).join("");
+      rest = rest.slice(n);
+      if (rest.length) out.push(piece);
+      else row = piece;
+    }
+  };
+  for (const word of text.split(" ").filter(Boolean)) {
+    const tried = row ? `${row} ${word}` : word;
+    if (measure(tried) <= width) row = tried;
+    else {
+      if (row) out.push(row);
+      row = "";
+      if (measure(word) <= width) row = word;
+      else push(word);
+    }
+  }
+  if (row) out.push(row);
+  if (out.length <= rows) return out;
+  const kept = out.slice(0, rows);
+  let last = [...kept[rows - 1]];
+  while (last.length > 1 && measure(`${last.join("")}\u2026`) > width) last.pop();
+  kept[rows - 1] = `${last.join("").trimEnd()}\u2026`;
+  return kept;
+}
+
 // packages/sdk/src/ui/summon.ts
 var SUMMON_KEY = "Backquote";
 var SUMMON_HOLD = 600;
@@ -246,6 +373,12 @@ export {
   setShowsPictures,
   onPicturesChange,
   loadPicture,
+  CHAT_KEY,
+  showsChat,
+  setShowsChat,
+  onChatChange,
+  createUiChat,
+  wrapWords,
   SUMMON_KEY,
   SUMMON_HOLD,
   SUMMON_SLOP,

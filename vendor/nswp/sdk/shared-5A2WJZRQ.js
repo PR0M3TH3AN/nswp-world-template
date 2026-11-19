@@ -5,16 +5,20 @@ import {
   portal,
   room,
   startingForm
-} from "./shared-YZGO47AG.js";
+} from "./shared-MRCA6HGV.js";
 import {
   ICONS,
   createHeldButton,
   loadPicture,
+  onChatChange,
   onPicturesChange,
   rgb,
+  setShowsChat,
   setShowsPictures,
-  showsPictures
-} from "./shared-7WVSA4YM.js";
+  showsChat,
+  showsPictures,
+  wrapWords
+} from "./shared-ZBWTYCPB.js";
 import {
   arrivedSettings,
   reportSettings
@@ -31,7 +35,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE13 from "three";
-import { decodeLook, encodeNpub, spawnOffset } from "@nswp/core";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, encodeNpub, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -5100,6 +5104,39 @@ function textSprite(text, color, width) {
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
+function speechSprite(text, width = 0.8) {
+  const FULL = 768;
+  const PAD = 30;
+  const LINE = 54;
+  const TAIL = 22;
+  const canvas = document.createElement("canvas");
+  const g = canvas.getContext("2d");
+  const font = "500 42px system-ui, sans-serif";
+  g.font = font;
+  const rows = wrapWords(text, (t) => g.measureText(t).width, FULL - PAD * 2, 5);
+  const wide = Math.ceil(Math.max(80, ...rows.map((r) => g.measureText(r).width))) + PAD * 2;
+  canvas.width = Math.min(FULL, wide);
+  canvas.height = rows.length * LINE + PAD * 1.4 + TAIL;
+  const h = canvas.height - TAIL;
+  g.fillStyle = "rgba(246,248,251,0.95)";
+  g.beginPath();
+  g.roundRect(0, 0, canvas.width, h, 26);
+  g.moveTo(canvas.width / 2 - 18, h - 1);
+  g.lineTo(canvas.width / 2, canvas.height);
+  g.lineTo(canvas.width / 2 + 18, h - 1);
+  g.fill();
+  g.fillStyle = "#141a22";
+  g.font = font;
+  g.textBaseline = "middle";
+  rows.forEach((row, i) => g.fillText(row, PAD, PAD * 0.7 + LINE * (i + 0.5), canvas.width - PAD * 2));
+  const tex = new THREE13.CanvasTexture(canvas);
+  tex.colorSpace = THREE13.SRGBColorSpace;
+  const sprite = new THREE13.Sprite(new THREE13.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
+  const metres = width / FULL;
+  sprite.scale.set(canvas.width * metres, canvas.height * metres, 1);
+  sprite.center.set(0.5, 0);
+  return sprite;
+}
 function createPresence(d) {
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
@@ -5161,6 +5198,7 @@ function createPresence(d) {
     }
     if (a.light) figure.head.add(a.light);
     if (a.beam) figure.head.add(a.beam);
+    if (a.bubble) figure.head.add(a.bubble);
     a.root.add(figure.group);
     a.figure = figure;
     a.head = figure.head;
@@ -5172,6 +5210,27 @@ function createPresence(d) {
       return { material, opacity };
     });
   };
+  const dropBubble = (a) => {
+    if (!a.bubble) return;
+    a.bubble.removeFromParent();
+    a.bubble.material.map?.dispose();
+    a.bubble.material.dispose();
+    delete a.bubble;
+    delete a.bubbleText;
+  };
+  const showBubble = (a, text, seconds) => {
+    dropBubble(a);
+    if (d.bubbles === false || !showsChat()) return;
+    a.bubble = speechSprite(text);
+    a.bubbleText = text;
+    a.bubbleFrom = performance.now();
+    a.bubbleUntil = a.bubbleFrom + seconds * 1e3;
+    a.bubble.material.opacity = 0;
+    a.head.add(a.bubble);
+  };
+  onChatChange(() => {
+    if (!showsChat()) for (const a of avatars.values()) dropBubble(a);
+  });
   const dropPicture = (a) => {
     if (!a.picture) return;
     a.picture.removeFromParent();
@@ -5329,6 +5388,7 @@ function createPresence(d) {
     if (a.element) a.element.srcObject = null;
     d.scene.remove(a.root);
     dropPicture(a);
+    dropBubble(a);
     a.figure.dispose();
   };
   const v = new THREE13.Vector3();
@@ -5435,6 +5495,10 @@ function createPresence(d) {
       pendingStreams.delete(m.pubkey);
       changed();
     });
+    s.on("said", (m, line) => {
+      const a = avatars.get(m.pubkey);
+      if (a) showBubble(a, line.text, bubbleSeconds(line.text));
+    });
     s.on("pose", (m, pose) => {
       const a = avatars.get(m.pubkey);
       if (!a) return;
@@ -5468,6 +5532,9 @@ function createPresence(d) {
   return {
     get session() {
       return session;
+    },
+    get presenting() {
+      return d.renderer.xr.isPresenting;
     },
     get roomName() {
       return roomName;
@@ -5651,6 +5718,14 @@ function createPresence(d) {
         for (const m of a.materials) m.material.opacity = m.opacity * near;
         a.materials[0].material.tick?.(performance.now() / 1e3);
         if (a.beam?.visible && performance.now() > (a.beamUntil ?? 0)) a.beam.visible = false;
+        if (a.bubble) {
+          const t = performance.now();
+          if (t > (a.bubbleUntil ?? 0)) dropBubble(a);
+          else {
+            a.bubble.material.opacity = near * Math.min(1, (t - (a.bubbleFrom ?? t)) / 160, ((a.bubbleUntil ?? t) - t) / 600);
+            a.bubble.position.y = a.picture ? 0.78 : 0.5;
+          }
+        }
         const snap = a.placed ? k : 1;
         apply(a.head, a.target.head, snap);
         a.placed = true;
@@ -5684,6 +5759,7 @@ function createPresence(d) {
           head: a.target?.head.position.map((n) => Math.round(n * 100) / 100) ?? null,
           hands: [!!a.target?.left, !!a.target?.right],
           audioLevel: Math.round(level * 1e3) / 1e3,
+          saying: a.bubbleText ?? "",
           muted: mutedKeys.has(a.member.pubkey),
           music: !!a.member.music,
           hearing: !!a.tune,
@@ -5872,6 +5948,7 @@ function addRoomControls(controls, presence, opts = {}) {
       s ? { name: s.name, private: !!presence.roomName, status: s.status, self: s.self.pubkey, members: s.members.map((m) => m.pubkey), relays: s.relayCount, mic: presence.micOn, screen: presence.screenOn, music: presence.musicOn, musicListeners: presence.musicListeners, sharing: s.members.filter((m) => m.sharing).map((m) => m.pubkey), watching: [...watching.keys()] } : null
     );
     controls.addSection({ id: "room", label: "Room", icon: "room", note: status });
+    tendChat();
     people();
     remember();
   };
@@ -6104,7 +6181,189 @@ function addRoomControls(controls, presence, opts = {}) {
       else recorders.delete(m.pubkey);
     }
   };
+  let chatFor = null;
+  let chatStops = [];
+  const CHAT_W = 768;
+  const CHAT_H = 900;
+  const WRITE_H = 132;
+  let chatPanel = null;
+  const drawChatPanel = () => {
+    if (!chatPanel) return;
+    const view = controls.chat.view();
+    if (view.version === chatPanel.drawn) return;
+    chatPanel.drawn = view.version;
+    const t = controls.theme;
+    const g = chatPanel.canvas.getContext("2d");
+    g.fillStyle = t.glass;
+    g.fillRect(0, 0, CHAT_W, CHAT_H);
+    g.textBaseline = "middle";
+    const ROW = 46;
+    const measure = (text) => g.measureText(text).width;
+    let y = CHAT_H - WRITE_H - 18;
+    for (let i = view.lines.length - 1; i >= 0; i--) {
+      const line = view.lines[i];
+      const lead = line.note ? "" : `${line.mine ? "You" : line.who}:`;
+      g.font = line.note ? "italic 32px system-ui, sans-serif" : "34px system-ui, sans-serif";
+      const rows = wrapWords(lead ? `${lead} ${line.text}` : line.text, measure, CHAT_W - 56, 6);
+      y -= rows.length * ROW;
+      if (y < 12) break;
+      rows.forEach((row, r) => {
+        const at = y + ROW * (r + 0.5);
+        let x = 28;
+        let rest = row;
+        if (r === 0 && lead && row.startsWith(lead)) {
+          g.font = "600 34px system-ui, sans-serif";
+          g.fillStyle = line.mine ? t.ink : line.color || t.accent;
+          g.globalAlpha = line.mine ? 0.62 : 1;
+          g.fillText(lead, x, at);
+          x += measure(lead);
+          rest = row.slice(lead.length);
+          g.font = "34px system-ui, sans-serif";
+        }
+        g.globalAlpha = line.note ? 0.62 : 1;
+        g.fillStyle = t.ink;
+        g.fillText(rest, x, at);
+      });
+      g.globalAlpha = 1;
+      y -= 10;
+    }
+    if (!view.lines.length) {
+      g.font = "32px system-ui, sans-serif";
+      g.fillStyle = t.ink;
+      g.globalAlpha = 0.7;
+      wrapWords("Nobody has written anything yet. What is written here goes to the people in this room, and is kept nowhere.", measure, CHAT_W - 80, 6).forEach((row, r) => g.fillText(row, 40, 200 + r * ROW));
+      g.globalAlpha = 1;
+    }
+    g.strokeStyle = t.accent;
+    g.lineWidth = 3;
+    g.fillStyle = `rgba(${rgb(t.accent)}, 0.16)`;
+    g.beginPath();
+    g.roundRect(20, CHAT_H - WRITE_H + 12, CHAT_W - 40, WRITE_H - 32, 22);
+    g.fill();
+    g.stroke();
+    g.font = "600 36px system-ui, sans-serif";
+    g.fillStyle = t.ink;
+    g.textAlign = "center";
+    g.fillText("Write to the room", CHAT_W / 2, CHAT_H - WRITE_H / 2 - 4);
+    g.textAlign = "left";
+    chatPanel.texture.needsUpdate = true;
+    controls.chat.seen();
+  };
+  const closeChatPanel = () => {
+    const was = chatPanel;
+    chatPanel = null;
+    was?.texture.dispose();
+    was?.panel.close();
+  };
+  const writeInHeadset = () => {
+    if (!opts.panels || !controls.chat.view().ready) return;
+    void opts.panels.keyboard.ask({ title: "Write to the room. Done sends it.", maxLength: CHAT_LIMITS.chars }).then((text) => {
+      const trouble = text ? controls.chat.send(text) : null;
+      if (trouble) tell(trouble);
+    });
+  };
+  const openChatPanel = () => {
+    if (!opts.panels || chatPanel || !controls.chat.view().ready) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = CHAT_W;
+    canvas.height = CHAT_H;
+    const texture = new THREE13.CanvasTexture(canvas);
+    texture.colorSpace = THREE13.SRGBColorSpace;
+    try {
+      const panel = opts.panels.open(
+        {
+          kind: "custom",
+          title: controls.chat.view().title,
+          texture,
+          aspect: CHAT_W / CHAT_H,
+          onPress: (_x, y) => {
+            if (y > 1 - WRITE_H / CHAT_H) writeInHeadset();
+          },
+          onClose: () => {
+            if (chatPanel?.texture === texture) chatPanel = null;
+            texture.dispose();
+          }
+        },
+        // To one side of where they are looking, an arm's reach away, and pinned: it comes with them until they unpin it.
+        { id: "room-chat", keep: false, place: { width: 0.46 }, pin: [-0.46, -0.04, -0.8] }
+      );
+      chatPanel = { panel, canvas, texture, drawn: -1 };
+      drawChatPanel();
+    } catch (err) {
+      texture.dispose();
+      tell(err instanceof Error ? err.message.replace(/^nswp-sdk: /, "") : "The chat panel couldn't be opened.");
+    }
+  };
+  controls.subscribe(drawChatPanel);
+  const tendChat = () => {
+    const s = presence.session;
+    if (s === chatFor) return;
+    for (const stop of chatStops) stop();
+    chatStops = [];
+    chatFor = s;
+    controls.chat.detach();
+    closeChatPanel();
+    if (!s) return;
+    controls.chat.attach(
+      (text) => {
+        const how = s.say(text);
+        if (how === "slow") return "That is a lot at once. Wait a moment, then send it again.";
+        if (how === "said" && s.members.length === 0) controls.chat.add({ note: true, text: "Nobody else is in the room yet, so nobody read that." });
+        return null;
+      },
+      { title: presence.roomName ? "Private room chat" : "Room chat" }
+    );
+    chatStops.push(
+      s.on("said", (m, line) => {
+        const mine = m.pubkey === s.self.pubkey;
+        controls.chat.add({ id: line.id, who: m.name, text: line.text, mine, color: `#${m.color.toString(16).padStart(6, "0")}` });
+        if (!mine) controls.signal("heard");
+      }),
+      // Who comes and goes is said in the chat too. A moment is waited for a name: a pass is shown just after arriving.
+      s.on("member", (m) => {
+        setTimeout(() => {
+          if (chatFor === s && s.members.includes(m)) controls.chat.add({ note: true, text: `${m.name} is here.` });
+        }, 1500);
+      }),
+      s.on("leave", (m) => controls.chat.add({ note: true, text: `${m.name} left.` }))
+    );
+  };
+  onChatChange(() => {
+    if (!showsChat()) closeChatPanel();
+    refresh();
+  });
   controls.add(
+    {
+      id: "room-chat",
+      section: "room",
+      hotbar: true,
+      icon: "chat",
+      label: () => {
+        const n = controls.chat.view().unread;
+        return n ? `Chat: ${n} new` : "Chat";
+      },
+      short: () => {
+        const n = controls.chat.view().unread;
+        return n ? `Chat ${n}` : "Chat";
+      },
+      on: () => controls.chat.view().unread > 0,
+      hidden: () => !presence.session || !showsChat(),
+      act: () => {
+        if (presence.presenting && opts.panels) return chatPanel ? closeChatPanel() : openChatPanel();
+        controls.signal("chat");
+      }
+    },
+    {
+      id: "room-chat-show",
+      section: "room",
+      icon: "chat",
+      label: () => showsChat() ? "Written chat: on" : "Written chat: off",
+      on: () => showsChat(),
+      act: () => {
+        setShowsChat(!showsChat());
+        tell(showsChat() ? "What people write in a room is shown to you, and you can write. It goes only to the people in the room, and is kept nowhere." : "Nothing anyone writes is shown to you, here or in the next world, and nobody is told.");
+      }
+    },
     {
       id: "room-join",
       section: "room",
@@ -6457,6 +6716,7 @@ export {
   saveFile,
   addCameraControls,
   textSprite,
+  speechSprite,
   createPresence,
   capturePanorama,
   panoramaTexture,

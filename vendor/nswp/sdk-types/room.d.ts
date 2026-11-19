@@ -69,7 +69,20 @@ interface Events {
     music: (member: Member, stream: MediaStream) => void;
     /** The line a member's screen arrives on. It carries pictures only while they share and this visitor watches. */
     video: (member: Member, stream: MediaStream) => void;
+    /**
+     * Someone wrote a few words to the room (protocol/06-rooms.md, "Words"): another member, or this visitor
+     * themselves (`member` is then `self`). The words are tidied and safe to show as text. Nothing keeps them.
+     */
+    said: (member: Member, line: SaidLine) => void;
     status: (status: RoomStatus) => void;
+}
+/** A few words someone wrote to the room. */
+export interface SaidLine {
+    /** Tells this line from any other of theirs. */
+    id: string;
+    text: string;
+    /** When it was read here, in milliseconds. A line carries no time of its own. */
+    at: number;
 }
 export declare class RoomSession {
     readonly self: Member;
@@ -106,6 +119,8 @@ export declare class RoomSession {
     private readonly watched;
     private watchTimer;
     private mic;
+    /** This visitor's own words, counted as everyone's are. */
+    private readonly words;
     private timers;
     private closed;
     constructor(opts?: JoinOptions);
@@ -207,6 +222,13 @@ export declare class RoomSession {
     private drop;
     private sweep;
     /** Send your pose to everyone. Call 10–20 times a second, from a timer rather than the render loop. */
+    /**
+     * Write a few words to the room. They go straight to each member, as poses do: no relay sees them and nothing
+     * keeps them. They are sent a few times over, because the channel doesn't try again, and each reader takes the
+     * first. Returns "said" (and `said` fires here too, with `self`), "nothing" if there was nothing to say, or
+     * "slow" if this visitor has said too much in a short while: nothing is sent then.
+     */
+    say(text: string): "said" | "nothing" | "slow";
     sendPose(pose: Pose): void;
     /** Start or stop sending a microphone track to everyone. */
     setMicrophone(track: MediaStreamTrack | null): Promise<void>;
