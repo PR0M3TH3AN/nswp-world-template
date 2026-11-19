@@ -232,7 +232,10 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // address and waits for the visitor to agree (spec §6.2).
   // Leaving and arriving happen in the kit's chamber: the same small room at both ends of every trip. It is
   // scenery, and has nothing in it to press: the visitor's Airlock is what checks where a door really leads.
-  const crossing = createCrossing({ scene, camera, accent: controls.theme.accent, motion: () => controls.theme.motion });
+  // The crossing's room is drawn over everything where it stands. The visitor's own hands and console are drawn
+  // over it: they are added to this as they are made.
+  const keptInSight: THREE.Object3D[] = [rig];
+  const crossing = createCrossing({ scene, camera, accent: controls.theme.accent, motion: () => controls.theme.motion, keep: keptInSight });
   hooks.crossing = () => crossing.state;
   const hostOf = (url: string | undefined) => {
     try {
@@ -314,6 +317,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
 
   // In a headset the page can't be seen, so the same controls go on a console in the scene.
   const xrConsole = createConsole(controls, { renderer, rig });
+  keptInSight.push(xrConsole.group);
   scene.add(xrConsole.group);
   hooks.console = xrConsole;
 
@@ -632,7 +636,11 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => refresh() });
     // A visitor who was in the room where they came from stays joined here: their own client says so (NSWP-03).
     ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context, panels, sounds, ...(config.sharedMusic === false ? { sharedMusic: false } : {}) }));
-    presenceUpdate = (dt) => presence.update(dt);
+    // Shut in the crossing's room, nobody else is in it with the visitor, wherever they happen to be standing.
+    presenceUpdate = (dt) => {
+      presence.setHidden(crossing.state !== "none");
+      presence.update(dt);
+    };
     // How loud other people are is the visitor's to set, with the rest of their volumes.
     sounds.onChange((levels) => presence.setVolume(levels.off ? 0 : levels.voices));
     hooks.roomInfo = () => presence.info();
