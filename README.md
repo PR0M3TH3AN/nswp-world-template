@@ -253,6 +253,13 @@ key, and what they say about themselves. To draw the words your own way, see "Wh
 write" in the
 [kit guide](https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/blob/main/docs/controls-kit.md).
 
+**A visitor can sign as themselves, and you never hold their key.** Under
+You in the menu is "Sign in to sign notes". It opens a window of the
+visitor's own client, where they say yes; nothing is typed in your world.
+Then what they write in the room's chat can also be posted as a Nostr note,
+if they turn that on. Never ask a visitor for a password or a key: there is
+nothing you could do with one, and asking is how people are robbed.
+
 You can stand in your world while you change it.
 
 - **A refresh puts you back where you stood,** facing the way you faced. If

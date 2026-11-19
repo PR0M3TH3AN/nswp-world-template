@@ -236,7 +236,9 @@ function writeStatic({ config, signed, pictures }) {
     writeFileSync(join(dist, ".well-known", "nswp.json"), `${JSON.stringify(manifestFor(config, signed.world.pubkey), null, 2)}\n`);
   }
   // Response headers, in the two forms static hosts read. Other hosts: see the README.
-  const csp = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "media-src 'self' blob:", "connect-src 'self' https: wss:", "base-uri 'none'", "form-action 'none'"].join("; ");
+  // `frame-src https:` is for one thing: the visitor's own client's hidden signer, which this world can't read
+  // (NSWP-10, "Signing from a world"). Which client that is, is the visitor's choice.
+  const csp = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "media-src 'self' blob:", "connect-src 'self' https: wss:", "frame-src 'self' https:", "base-uri 'none'", "form-action 'none'"].join("; ");
   const all = [
     ["Content-Security-Policy", csp],
     ["Referrer-Policy", "no-referrer"],

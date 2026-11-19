@@ -44,6 +44,7 @@ import {
   createPresence,
   createSounds,
   createStroll,
+  createWorldSigner,
   createXrInput,
   dotsBetween,
   figureAction,
@@ -63,6 +64,7 @@ import {
   saveFile,
   setLookScale,
   setVisitorFov,
+  signerAction,
   speechSprite,
   strideOf,
   takePicture,
@@ -71,8 +73,9 @@ import {
   turnVisitor,
   viewScale,
   visitorFov,
-  watchFov
-} from "./shared-EBRFN7HV.js";
+  watchFov,
+  worldSigner
+} from "./shared-FHILVY4Z.js";
 import {
   currentForm,
   deviceForms,
@@ -89,7 +92,7 @@ import {
   onPicturesChange,
   setShowsPictures,
   showsPictures
-} from "./shared-LLTXDLQH.js";
+} from "./shared-Q23R6KOF.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -159,6 +162,7 @@ export {
   createStay,
   createStroll,
   createVoice,
+  createWorldSigner,
   createXrInput,
   currentForm,
   currentSettings,
@@ -191,6 +195,7 @@ export {
   setShowsPictures,
   setVisitorFov,
   showsPictures,
+  signerAction,
   speechSprite,
   startingForm,
   strideOf,
@@ -203,5 +208,6 @@ export {
   viewScale,
   visitorFov,
   wasRefreshed,
-  watchFov
+  watchFov,
+  worldSigner
 };
