@@ -313,7 +313,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     id: "help",
     label: "Help",
     icon: "help",
-    note: "Drag to look around. Walk with W, A, S, D, or point at the floor and select to step there: twice to run. Shift runs and Space jumps. Select a doorway to see where it leads before you go. These controls are this world's own: your headset's or browser's own controls always get you out.",
+    note: "Drag to look around. Walk with W, A, S, D, or point at the floor and select to step there: twice to run. Shift runs and Space jumps. The key left of 1 brings these controls up in any world, whatever is on screen; on a touch screen, hold two fingers still. Select a doorway to see where it leads before you go. These controls are this world's own: your headset's or browser's own controls always get you out.",
   });
 
   // In a headset the page can't be seen, so the same controls go on a console in the scene.
@@ -544,6 +544,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     },
     onMenu: () => xrConsole.setOpen(!xrConsole.open),
     onJump: () => void jump.jump(),
+    // The visitor's own way to their controls, whatever this world is showing: the menu button held (NSWP-11).
+    onSummon: () => xrConsole.setOpen(true),
   });
   for (const [object, options] of toHold) input.grabbable(object, options);
   hooks.input = () => input!.info();

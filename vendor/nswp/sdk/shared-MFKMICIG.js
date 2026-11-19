@@ -1,10 +1,12 @@
 import {
-  room
-} from "./shared-7X4E2NOK.js";
+  room,
+  startingForm
+} from "./shared-33TMTTY7.js";
 import {
   ICONS,
+  createHeldButton,
   rgb
-} from "./shared-SJAWET5K.js";
+} from "./shared-FUYALROY.js";
 import {
   LiveKeys,
   TextEntry,
@@ -1516,10 +1518,11 @@ var Locomotion = class {
   backward = /* @__PURE__ */ new Set();
   menuDown = false;
   jumpDown = false;
+  heldMenu = createHeldButton();
   /** Running, once the moving stick is pressed in, until that stick comes back to rest. */
   running = false;
   frame(dt, pads, comfort) {
-    const intent = { turn: 0, walk: [0, 0], stepFrom: [], aiming: [], menu: false, jump: false, running: false, narrow: 0 };
+    const intent = { turn: 0, walk: [0, 0], stepFrom: [], aiming: [], menu: false, jump: false, summon: false, running: false, narrow: 0 };
     let pushed = false;
     const roles = stickRoles(pads, comfort.moveHand);
     const seen = /* @__PURE__ */ new Set();
@@ -1570,6 +1573,7 @@ var Locomotion = class {
     const menu = pads.some((p) => p.pad.secondary);
     intent.menu = menu && !this.menuDown;
     this.menuDown = menu;
+    intent.summon = this.heldMenu(menu, dt);
     const jump = pads.some((p) => p.pad.primary);
     intent.jump = jump && !this.jumpDown;
     this.jumpDown = jump;
@@ -1859,6 +1863,7 @@ function createXrInput(opts) {
       }
       if (intent.menu) opts.onMenu?.();
       if (intent.jump) opts.onJump?.();
+      if (intent.summon) opts.onSummon?.();
       aiming = intent.aiming;
       narrow += (intent.narrow - narrow) * Math.min(1, dt * (intent.narrow > narrow ? 12 : 3));
       vignette.material.uniforms.uAmount.value = narrow * 0.85;
@@ -3383,7 +3388,7 @@ var DESK_WORDS = {
   nowCasual: "Casual: click where you want to stand, twice to run there, and drag to look round. W, A, S, D walk, Shift runs and Space jumps.",
   click: "Click the view to look round. Escape brings up the menu."
 };
-var hasMouse = () => typeof matchMedia === "function" && matchMedia("(pointer: fine)").matches;
+var hasMouse = () => startingForm() === "desk";
 function startsIntense(arrived, key = DESK_KEY) {
   if (!hasMouse()) return false;
   try {

@@ -1,3 +1,52 @@
+// packages/sdk/src/form.ts
+var matches = (query) => {
+  try {
+    return typeof matchMedia === "function" && matchMedia(query).matches;
+  } catch {
+    return false;
+  }
+};
+function deviceForms() {
+  const touch = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0 || matches("(any-pointer: coarse)");
+  const mouse = matches("(any-pointer: fine)");
+  return { touch, mouse, main: matches("(pointer: fine)") ? "desk" : "touch" };
+}
+function formFor(said, device) {
+  if (said === "touch" && device.touch) return "touch";
+  if (said === "desk" && device.mouse) return "desk";
+  return device.main;
+}
+var arrived;
+var used;
+var watching = false;
+function arriveAs(form) {
+  arrived = form;
+  watch();
+}
+function startingForm() {
+  return formFor(arrived, deviceForms());
+}
+function currentForm() {
+  watch();
+  return used ?? startingForm();
+}
+function usedForm() {
+  watch();
+  return used;
+}
+function watch() {
+  if (watching || typeof addEventListener !== "function") return;
+  watching = true;
+  addEventListener(
+    "pointerdown",
+    (e) => {
+      if (e.pointerType === "touch") used = "touch";
+      else if (e.pointerType === "mouse") used = "desk";
+    },
+    { capture: true, passive: true }
+  );
+}
+
 // node_modules/@noble/hashes/_u64.js
 var fromNumH = (n) => n / 2 ** 32 | 0;
 var fromNumL = (n) => n >>> 0;
@@ -2800,6 +2849,12 @@ var room = {
 };
 
 export {
+  deviceForms,
+  formFor,
+  arriveAs,
+  startingForm,
+  currentForm,
+  usedForm,
   RoomSession,
   room
 };

@@ -60,7 +60,10 @@ export declare const DESK_WORDS: {
     readonly nowCasual: "Casual: click where you want to stand, twice to run there, and drag to look round. W, A, S, D walk, Shift runs and Space jumps.";
     readonly click: "Click the view to look round. Escape brings up the menu.";
 };
-/** A way of moving that needs a mouse is not offered where there isn't one. */
+/**
+ * A way of moving that needs a mouse is not offered where there isn't one, or to a visitor who arrived using
+ * their fingers on a device that has both (form.ts).
+ */
 export declare const hasMouse: () => boolean;
 /** Whether a visitor starts out moving the intense way at a desk: they arrived so, or chose it here before. */
 export declare function startsIntense(arrived: boolean, key?: string): boolean;

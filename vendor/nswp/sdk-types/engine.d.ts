@@ -1,10 +1,14 @@
-export { bump, check, door, events, headset, kit, menu, moved, play, say, target } from "./engine-menu.js";
+export { bump, check, claim, door, events, headset, kit, menu, moved, play, presence, say, target } from "./engine-menu.js";
 /** Bumped when what the functions take or give changes, so an engine's side can tell. */
-export declare const VERSION = 2;
+export declare const VERSION = 3;
 /**
  * How the visitor arrived, as JSON. Reading it takes it out of the page's
  * address, as it must be: an arrival is for this visit and not for whoever
  * the address is shared with next.
+ *
+ * `form` is how to lay things out for them on a flat screen: "touch" or
+ * "desk". It is how they were in the place they came from, where this device
+ * can do the same, and otherwise what the device is.
  *
  * `arrived` is false for someone who came by an ordinary link, and every
  * other field then has its plain value. `name` and `pubkey` are filled only

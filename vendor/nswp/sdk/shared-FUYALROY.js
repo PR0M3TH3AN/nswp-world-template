@@ -81,6 +81,52 @@ function rgb(hex) {
   return `${n >> 16 & 255}, ${n >> 8 & 255}, ${n & 255}`;
 }
 
+// packages/sdk/src/ui/summon.ts
+var SUMMON_KEY = "Backquote";
+var SUMMON_HOLD = 600;
+var SUMMON_SLOP = 18;
+function createHoldWatch(o) {
+  const hold = o.hold ?? SUMMON_HOLD;
+  const slop = o.slop ?? SUMMON_SLOP;
+  let from = null;
+  let timer = null;
+  const cancel = () => {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    from = null;
+  };
+  return {
+    touches(points) {
+      if (points.length !== 2) return cancel();
+      if (!from) {
+        from = points.map((p) => ({ x: p.x, y: p.y }));
+        timer = setTimeout(() => {
+          cancel();
+          o.onHeld();
+        }, hold);
+        return;
+      }
+      if (points.some((p, i) => Math.hypot(p.x - from[i].x, p.y - from[i].y) > slop)) cancel();
+    },
+    cancel
+  };
+}
+function createHeldButton(hold = SUMMON_HOLD) {
+  let held = 0;
+  let fired = false;
+  return (down, dt) => {
+    if (!down) {
+      held = 0;
+      fired = false;
+      return false;
+    }
+    held += Math.max(0, dt) * 1e3;
+    if (fired || held < hold) return false;
+    fired = true;
+    return true;
+  };
+}
+
 export {
   ICONS,
   DEFAULT_THEME,
@@ -89,5 +135,10 @@ export {
   loadVisitorTheme,
   saveVisitorTheme,
   resolveTheme,
-  rgb
+  rgb,
+  SUMMON_KEY,
+  SUMMON_HOLD,
+  SUMMON_SLOP,
+  createHoldWatch,
+  createHeldButton
 };

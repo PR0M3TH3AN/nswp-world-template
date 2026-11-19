@@ -1,7 +1,10 @@
 import {
   RoomSession,
-  room
-} from "./shared-7X4E2NOK.js";
+  arriveAs,
+  currentForm,
+  room,
+  startingForm
+} from "./shared-33TMTTY7.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/index.ts
@@ -112,11 +115,13 @@ var arrival = {
     const raw = arrivalParam(location.hash);
     if (!raw) {
       cached = { context: null, warnings: [] };
+      arriveAs(void 0);
       return cached;
     }
     history.replaceState(history.state, "", `${location.pathname}${location.search}${stripArrivalParam(location.hash)}`);
     const r = decodeArrival(raw);
     cached = r.ok ? { context: r.value, warnings: r.warnings } : { context: null, warnings: [...r.errors, ...r.warnings] };
+    arriveAs(cached.context?.form);
     try {
       if (cached.context?.home) session()?.setItem(HOME_KEY, "1");
       else if (cached.context) session()?.removeItem(HOME_KEY);
@@ -198,7 +203,8 @@ var carried = (opts, immersive) => ({
   immersive,
   ...opts.joined ? { joined: true, ...opts.mic ? { mic: true } : {} } : {},
   ...opts.blocked?.length ? { blocked: opts.blocked } : {},
-  ...opts.moving === "intense" ? { moving: "intense" } : {}
+  ...opts.moving === "intense" ? { moving: "intense" } : {},
+  form: opts.form ?? currentForm()
 });
 var portal = {
   /** Which Airlock `go()` would use right now, or null for the built-in screen. */
@@ -311,10 +317,12 @@ export {
   RoomSession,
   arrival,
   configure,
+  currentForm,
   dropBrought,
   portal,
   room,
   somethingBrought,
+  startingForm,
   takeBrought,
   watchBrought
 };

@@ -4889,6 +4889,10 @@ function decodeArrival(value) {
     if (json.moving === "intense") out.moving = "intense";
     else c.warn("invalid_moving", "moving", `Ignoring a way of moving that isn't "casual" or "intense".`);
   }
+  if (json.form !== void 0) {
+    if (json.form === "touch" || json.form === "desk") out.form = json.form;
+    else c.warn("invalid_form", "form", `Ignoring a form that isn't "touch" or "desk".`);
+  }
   if (json.blocked !== void 0) {
     const ok = Array.isArray(json.blocked) && json.blocked.length <= LIMITS.maxBlocked && json.blocked.every((k) => typeof k === "string" && isHex64(k));
     if (ok) {
@@ -5039,6 +5043,7 @@ function parsePortal(input) {
   }
   return c.result(portal);
 }
+var isForm = (v) => v === "touch" || v === "desk";
 function cleanKeys(input, limit) {
   if (!Array.isArray(input)) return [];
   const out = [];
@@ -5064,7 +5069,7 @@ function buildAirlockUrl(airlock, dest, opts = {}) {
   const parts = [`to=${encodeURIComponent(to)}`];
   if (dest.naddr && dest.url) parts.push(`url=${encodeURIComponent(dest.url)}`);
   if (dest.entryPoint) parts.push(`entry=${encodeURIComponent(dest.entryPoint)}`);
-  parts.push(...stateFlags(opts), ...blockedFlag(opts));
+  parts.push(...stateFlags(opts), ...isForm(opts.form) ? [`form=${opts.form}`] : [], ...blockedFlag(opts));
   u.hash = parts.join("&");
   return u.href;
 }
@@ -5123,6 +5128,8 @@ function parseAirlockFragment(hash) {
   const blocked = blockedFrom(params.get("blocked"));
   if (blocked.length) req.blocked = blocked;
   if (params.get("moving") === "intense") req.moving = "intense";
+  const form = params.get("form");
+  if (isForm(form)) req.form = form;
   return req;
 }
 
@@ -6516,6 +6523,7 @@ export {
   guestColor,
   guestName,
   hasEventShape,
+  isForm,
   isHex64,
   isHttpsUrl,
   isLocalHost,

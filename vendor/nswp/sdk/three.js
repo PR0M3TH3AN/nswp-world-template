@@ -54,9 +54,15 @@ import {
   textSprite,
   turnVisitor,
   viewScale
-} from "./shared-723N75AC.js";
-import "./shared-7X4E2NOK.js";
-import "./shared-SJAWET5K.js";
+} from "./shared-MFKMICIG.js";
+import {
+  currentForm,
+  deviceForms,
+  formFor,
+  startingForm,
+  usedForm
+} from "./shared-33TMTTY7.js";
+import "./shared-FUYALROY.js";
 import {
   browserVoice,
   computerVoice,
@@ -113,6 +119,9 @@ export {
   createStroll,
   createVoice,
   createXrInput,
+  currentForm,
+  deviceForms,
+  formFor,
   heldKey,
   isIntense,
   lookAfter,
@@ -122,12 +131,14 @@ export {
   recordClip,
   recordVoice,
   saveFile,
+  startingForm,
   strideOf,
   takePicture,
   takeSelfie,
   textSprite,
   toPcm16,
   turnVisitor,
+  usedForm,
   viewScale,
   wasRefreshed
 };
