@@ -77,6 +77,8 @@ export interface GoOptions {
      * client asks whether to block them everywhere (protocol/02-doors.md, "Blocks that travel").
      */
     blocked?: string[];
+    /** The visitor is moving with game controls here (`fps.enabled`), and would go on doing so where they arrive. */
+    fps?: boolean;
 }
 export declare const portal: {
     /** Which Airlock `go()` would use right now, or null for the built-in screen. */

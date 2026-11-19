@@ -3243,6 +3243,227 @@ function createStroll(o) {
   };
 }
 
+// packages/sdk/src/fps.ts
+var LOOK_SPEED = 22e-4;
+var PITCH_LIMIT = 85 * Math.PI / 180;
+var SPRINT = 1.75;
+function lookAfter(yaw, pitch, dx, dy, speed = LOOK_SPEED) {
+  const clean = (n) => Number.isFinite(n) ? n : 0;
+  return { yaw: yaw - clean(dx) * speed, pitch: Math.min(PITCH_LIMIT, Math.max(-PITCH_LIMIT, pitch - clean(dy) * speed)) };
+}
+function strideOf(held, yaw, speed, dt, sprint = SPRINT) {
+  const f = (held.forward ? 1 : 0) - (held.back ? 1 : 0);
+  const s = (held.right ? 1 : 0) - (held.left ? 1 : 0);
+  if (!f && !s) return [0, 0];
+  const pace = speed * (held.sprint ? sprint : 1) * Math.max(0, dt) / Math.hypot(f, s);
+  const sin = Math.sin(yaw);
+  const cos = Math.cos(yaw);
+  return [(s * cos - f * sin) * pace, (-s * sin - f * cos) * pace];
+}
+function heldKey(code) {
+  switch (code) {
+    case "KeyW":
+    case "ArrowUp":
+      return "forward";
+    case "KeyS":
+    case "ArrowDown":
+      return "back";
+    case "KeyA":
+    case "ArrowLeft":
+      return "left";
+    case "KeyD":
+    case "ArrowRight":
+      return "right";
+    case "ShiftLeft":
+    case "ShiftRight":
+      return "sprint";
+    default:
+      return null;
+  }
+}
+function createFps(o) {
+  const key = o.keep ?? "nswp:fps";
+  const hasMouse = typeof matchMedia === "function" && matchMedia("(pointer: fine)").matches;
+  let enabled = false;
+  try {
+    enabled = hasMouse && (o.arrived === true || localStorage.getItem(key) === "1");
+  } catch {
+    enabled = hasMouse && o.arrived === true;
+  }
+  const held = {};
+  let pitch = 0;
+  let weLetGo = false;
+  let closedAt = -1;
+  let told = false;
+  const looking = () => document.pointerLockElement === o.dom;
+  const active = () => enabled && !o.presenting();
+  const dot = document.createElement("div");
+  dot.setAttribute("aria-hidden", "true");
+  dot.style.cssText = "position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#fff;opacity:.75;box-shadow:0 0 0 1px rgba(0,0,0,.55);pointer-events:none;z-index:5;display:none";
+  document.body.append(dot);
+  const look = () => {
+    if (!active() || o.hud?.open || looking()) return;
+    try {
+      const asked = o.dom.requestPointerLock();
+      asked?.catch?.(() => {
+      });
+    } catch {
+    }
+  };
+  const letGo = () => {
+    if (!looking()) return;
+    weLetGo = true;
+    document.exitPointerLock();
+  };
+  const onMove = (e) => {
+    if (!active() || !looking()) return;
+    const next = lookAfter(o.rig.rotation.y, pitch, e.movementX, e.movementY);
+    o.rig.rotation.y = next.yaw;
+    pitch = next.pitch;
+    o.camera.rotation.x = pitch;
+  };
+  const onDown = (e) => {
+    if (!active() || e.button !== 0) return;
+    if (looking()) o.onUse();
+    else look();
+  };
+  const onLock = () => {
+    dot.style.display = looking() ? "block" : "none";
+    if (looking()) return;
+    for (const k of Object.keys(held)) held[k] = false;
+    if (active() && !weLetGo && o.hud && !o.hud.open) o.hud.setOpen(true);
+    weLetGo = false;
+  };
+  const typing = (e) => {
+    const t = e.target;
+    return !!t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+  };
+  const onKey = (e) => {
+    if (!active() || typing(e)) return;
+    if (e.code === "Escape") {
+      if (looking()) {
+        letGo();
+        o.hud?.setOpen(true);
+      } else if (o.hud && !o.hud.open && performance.now() - closedAt > 80) o.hud.setOpen(true);
+      return;
+    }
+    if (o.hud?.open) return;
+    const which = heldKey(e.code);
+    if (which) {
+      held[which] = true;
+      if (e.code.startsWith("Arrow")) e.preventDefault();
+      return;
+    }
+    if (e.code === "KeyF" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) o.onUse();
+  };
+  const onKeyUp = (e) => {
+    const which = heldKey(e.code);
+    if (which) held[which] = false;
+  };
+  const onBlur = () => {
+    for (const k of Object.keys(held)) held[k] = false;
+  };
+  const onFullscreen = () => {
+    const keyboard = navigator.keyboard;
+    try {
+      if (document.fullscreenElement && active()) void keyboard?.lock?.(["Escape"])?.catch?.(() => {
+      });
+      else keyboard?.unlock?.();
+    } catch {
+    }
+  };
+  o.dom.addEventListener("mousedown", onDown);
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("pointerlockchange", onLock);
+  document.addEventListener("fullscreenchange", onFullscreen);
+  addEventListener("keydown", onKey);
+  addEventListener("keyup", onKeyUp);
+  addEventListener("blur", onBlur);
+  const stopSignals = o.controls.onSignal((name) => {
+    if (name === "menuOpen") letGo();
+    if (name === "menuClose") {
+      closedAt = performance.now();
+      setTimeout(look, 0);
+    }
+  });
+  const setEnabled = (on) => {
+    const next = on && hasMouse;
+    if (next === enabled) return;
+    enabled = next;
+    try {
+      if (enabled) localStorage.setItem(key, "1");
+      else localStorage.removeItem(key);
+    } catch {
+    }
+    if (!enabled) {
+      letGo();
+      pitch = 0;
+      o.camera.rotation.x = 0;
+      onBlur();
+    }
+    onFullscreen();
+  };
+  o.controls.add({
+    id: "fps",
+    section: "moving",
+    icon: "step",
+    on: () => enabled,
+    // No mouse, no mouse look. And not in a headset, where it has no meaning.
+    hidden: () => !hasMouse || o.presenting(),
+    label: () => enabled ? "Game controls (FPS): on" : "Game controls (FPS): off",
+    act: () => {
+      setEnabled(!enabled);
+      o.controls.say(
+        enabled ? "Game controls are on. Click the view to look round with the mouse. W, A, S, D walk, Shift runs, F uses what is in front of you, and Escape brings up this menu." : "Game controls are off. Click where you want to stand, and drag to look round."
+      );
+    }
+  });
+  const at = o.camera.position.clone();
+  return {
+    get enabled() {
+      return enabled;
+    },
+    setEnabled,
+    get looking() {
+      return looking();
+    },
+    update(dt) {
+      if (!active()) {
+        if (looking()) letGo();
+        return false;
+      }
+      if (!told && !looking() && !o.hud?.open) {
+        told = true;
+        o.controls.say("Click the view to look round. Escape brings up the menu.");
+      }
+      if (o.hud?.open) return true;
+      const [dx, dz] = strideOf(held, o.rig.rotation.y, o.speed ?? 2.4, dt);
+      if (!dx && !dz) return true;
+      o.camera.getWorldPosition(at);
+      if (o.canStand(at.x + dx, at.z + dz)) {
+        o.rig.position.x += dx;
+        o.rig.position.z += dz;
+      } else if (o.canStand(at.x + dx, at.z)) o.rig.position.x += dx;
+      else if (o.canStand(at.x, at.z + dz)) o.rig.position.z += dz;
+      else o.onBlocked?.();
+      return true;
+    },
+    dispose() {
+      letGo();
+      dot.remove();
+      stopSignals();
+      o.controls.remove("fps");
+      o.dom.removeEventListener("mousedown", onDown);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("pointerlockchange", onLock);
+      document.removeEventListener("fullscreenchange", onFullscreen);
+      removeEventListener("keydown", onKey);
+      removeEventListener("keyup", onKeyUp);
+      removeEventListener("blur", onBlur);
+    }
+  };
+}
+
 // packages/sdk/src/sound.ts
 var GAP2 = { step: 0.14, hover: 0.08, bump: 0.5, land: 0.2, notice: 0.25 };
 var STRIDE = 0.75;
@@ -5500,8 +5721,26 @@ async function addViewControls(controls, d) {
         await enter();
       }
     },
-    { id: "turn", section: "view", icon: "turn", label: "Turn around", act: () => turnVisitor(d.rig, d.camera, 180) }
+    { id: "turn", section: "view", icon: "turn", label: "Turn around", act: () => turnVisitor(d.rig, d.camera, 180) },
+    {
+      id: "fullscreen",
+      section: "view",
+      icon: "size",
+      on: () => !!document.fullscreenElement,
+      // Not every browser lets a page fill the screen (a phone's often won't), and a headset already does.
+      hidden: () => !document.fullscreenEnabled || presenting(),
+      label: () => document.fullscreenElement ? "Fullscreen: on" : "Fullscreen: off",
+      act: async () => {
+        try {
+          if (document.fullscreenElement) await document.exitFullscreen();
+          else await document.documentElement.requestFullscreen();
+        } catch {
+          controls.say("This browser wouldn't go fullscreen.");
+        }
+      }
+    }
   );
+  document.addEventListener("fullscreenchange", () => controls.setTarget(""));
   controls.addSection({
     id: "view",
     label: "View",
@@ -5533,6 +5772,13 @@ export {
   TAP_REACH,
   reachOf,
   createStroll,
+  LOOK_SPEED,
+  PITCH_LIMIT,
+  SPRINT,
+  lookAfter,
+  strideOf,
+  heldKey,
+  createFps,
   createSounds,
   addSoundControls,
   createChamber,
