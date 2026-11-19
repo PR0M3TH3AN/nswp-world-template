@@ -47,6 +47,8 @@ export interface PresenceOptions {
     figureStyle?: FigureStyle;
     /** Called whenever membership, status or the microphone changes. */
     onChange?: () => void;
+    /** False where this world draws what people write in a way of its own: no line is drawn over anyone's head. */
+    bubbles?: boolean;
 }
 export interface AvatarInfo {
     pubkey: string;
@@ -62,6 +64,8 @@ export interface AvatarInfo {
     guest: boolean;
     /** The identity key behind them, if proven. */
     identity: string | null;
+    /** What is written over their head now, or "". */
+    saying: string;
     /** This visitor has stopped hearing them. */
     muted: boolean;
     /** They are offering their music to people nearby. */
@@ -75,6 +79,8 @@ export interface AvatarInfo {
 }
 export interface Presence {
     readonly session: RoomSession | null;
+    /** Whether the visitor is in a headset now. */
+    readonly presenting: boolean;
     /** The private room's name, or null in a world's open room. */
     readonly roomName: string | null;
     readonly micOn: boolean;
@@ -175,6 +181,12 @@ export interface Presence {
 }
 /** A text panel that always faces the viewer. `width` is in metres. */
 export declare function textSprite(text: string, color: string, width: number): THREE.Sprite;
+/**
+ * A few written words in a speech bubble, facing the viewer: light paper, dark ink, a small tail underneath. It is
+ * as wide as its words need, up to `width` metres, and stands on its own bottom edge. The words are drawn as text
+ * and as nothing else.
+ */
+export declare function speechSprite(text: string, width?: number): THREE.Sprite;
 export declare function createPresence(d: PresenceOptions): Presence;
 export interface CaptureOptions {
     /** Width of the panorama in pixels; the height is half of it. Default 2048, at most 4096. */

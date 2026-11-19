@@ -5,6 +5,10 @@ export interface Hud {
     readonly open: boolean;
     /** Bring the menu up or put it away. `at` names the section to bring it up on. */
     setOpen(open: boolean, at?: string): void;
+    /** Whether the chat panel is open to write in. */
+    readonly chatOpen: boolean;
+    /** Open the chat panel to write in, or put it away. It opens only where there is a room to write to. */
+    setChatOpen(open: boolean): void;
     /** How much of the top and bottom of the window the HUD covers, in pixels. For placing a scene's picture clear of it. Nothing when it is quiet or hidden. */
     cover(): {
         top: number;

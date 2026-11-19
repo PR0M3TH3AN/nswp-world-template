@@ -1,3 +1,4 @@
+import { type ChatView, type UiChat } from "./chat.js";
 import type { IconName } from "./icons.js";
 import { DEFAULT_THEME, type UiTheme } from "./theme.js";
 type Text = string | (() => string);
@@ -73,6 +74,8 @@ export interface UiKeys {
     menu: string | null;
     /** Whether 1 to 6 press the hotbar. */
     hotbar: boolean;
+    /** The key that opens the chat panel to write in, or null for none. Enter does too, while this is a key. */
+    chat: string | null;
 }
 export interface UiView {
     title: string;
@@ -86,6 +89,8 @@ export interface UiView {
     sections: UiSectionView[];
     hotbar: UiItemView[];
     theme: UiTheme;
+    /** What the people in the room have written (ui/chat.ts). */
+    chat: ChatView;
 }
 export interface Controls {
     readonly theme: UiTheme;
@@ -132,6 +137,8 @@ export interface Controls {
      */
     signal(name: string): void;
     onSignal(fn: (name: string) => void): () => void;
+    /** What the people in the room write to each other (ui/chat.ts). The room fills it; every renderer draws it. */
+    readonly chat: UiChat;
 }
 export interface ControlsOptions {
     /** The world's name. */
@@ -151,7 +158,7 @@ export interface ControlsOptions {
  * The order of the things every place has, wherever in a world's code they
  * were added. So the taskbar reads the same in every world, and the same
  * number key does the same thing: the way home is first, then the visitor's
- * doors, the headset, the room, and jumping. A world's own things come after,
+ * doors, the headset, the room and its chat, and jumping. A world's own things come after,
  * in the order it added them.
  */
 export declare const STANDARD_ORDER: readonly string[];

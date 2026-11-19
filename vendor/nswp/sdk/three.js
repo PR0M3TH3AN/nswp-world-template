@@ -63,6 +63,7 @@ import {
   saveFile,
   setLookScale,
   setVisitorFov,
+  speechSprite,
   strideOf,
   takePicture,
   takeSelfie,
@@ -71,7 +72,7 @@ import {
   viewScale,
   visitorFov,
   watchFov
-} from "./shared-F76S4HIJ.js";
+} from "./shared-5A2WJZRQ.js";
 import {
   currentForm,
   deviceForms,
@@ -81,14 +82,14 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-YZGO47AG.js";
+} from "./shared-MRCA6HGV.js";
 import {
   PICTURE_LIMITS,
   loadPicture,
   onPicturesChange,
   setShowsPictures,
   showsPictures
-} from "./shared-7WVSA4YM.js";
+} from "./shared-ZBWTYCPB.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -190,6 +191,7 @@ export {
   setShowsPictures,
   setVisitorFov,
   showsPictures,
+  speechSprite,
   startingForm,
   strideOf,
   takePicture,
