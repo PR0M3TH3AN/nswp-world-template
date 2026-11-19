@@ -8,6 +8,8 @@ export interface Member {
     identity?: string;
     /** A proven member's own name, or the short form of their key. A guest is "Guest" and four digits. */
     name: string;
+    /** Where a proven member's picture is, as their pass says. Never there for a guest. */
+    picture?: string;
     color: number;
     /** How they look (spec §4.2). What their session key generates, until they say otherwise. */
     look: Look;

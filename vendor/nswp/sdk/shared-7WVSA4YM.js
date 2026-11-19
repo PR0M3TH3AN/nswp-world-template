@@ -1,3 +1,8 @@
+import {
+  arrivedSettings,
+  reportSettings
+} from "./shared-Q3D4OUDA.js";
+
 // packages/sdk/src/ui/icons.ts
 var ICONS = {
   home: "M4 11.5 12 4l8 7.5M6 10v10h12V10M10 20v-5h4v5",
@@ -82,6 +87,104 @@ function rgb(hex) {
   return `${n >> 16 & 255}, ${n >> 8 & 255}, ${n & 255}`;
 }
 
+// packages/sdk/src/picture.ts
+import { cleanPicture } from "@nswp/core";
+var PICTURES_KEY = "nswp:pictures";
+var PICTURE_LIMITS = { bytes: 3e6, size: 128, waitMs: 9e3 };
+var shown = null;
+var watchers = /* @__PURE__ */ new Set();
+function showsPictures() {
+  if (shown !== null) return shown;
+  const came = arrivedSettings().pictures;
+  let kept = null;
+  try {
+    kept = localStorage.getItem(PICTURES_KEY);
+  } catch {
+  }
+  shown = came ?? kept !== "0";
+  if (came !== void 0) keep(shown);
+  reportSettings("pictures", () => ({ pictures: showsPictures() }));
+  return shown;
+}
+var keep = (on) => {
+  try {
+    if (on) localStorage.removeItem(PICTURES_KEY);
+    else localStorage.setItem(PICTURES_KEY, "0");
+  } catch {
+  }
+};
+function setShowsPictures(on) {
+  showsPictures();
+  shown = on;
+  keep(on);
+  for (const w of watchers) w();
+}
+function onPicturesChange(cb) {
+  watchers.add(cb);
+  return () => void watchers.delete(cb);
+}
+function badge(image, width, height) {
+  const size = PICTURE_LIMITS.size;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const g = canvas.getContext("2d");
+  g.beginPath();
+  g.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
+  g.closePath();
+  g.clip();
+  const side = Math.min(width, height);
+  g.drawImage(image, (width - side) / 2, (height - side) / 2, side, side, 0, 0, size, size);
+  return canvas;
+}
+async function byFetch(url) {
+  const res = await fetch(url, { mode: "cors", credentials: "omit", referrerPolicy: "no-referrer", redirect: "follow", signal: AbortSignal.timeout(PICTURE_LIMITS.waitMs) });
+  if (!res.ok) return null;
+  const type = res.headers.get("content-type") ?? "";
+  if (!/^image\/(png|jpeg|webp|gif|avif)\b/i.test(type)) return null;
+  if (Number(res.headers.get("content-length") ?? 0) > PICTURE_LIMITS.bytes) return null;
+  const blob = await res.blob();
+  if (blob.size > PICTURE_LIMITS.bytes) return null;
+  const bitmap = await createImageBitmap(blob);
+  try {
+    return badge(bitmap, bitmap.width, bitmap.height);
+  } finally {
+    bitmap.close();
+  }
+}
+function byImage(url) {
+  return new Promise((done) => {
+    const img = new Image();
+    const timer = setTimeout(() => done(null), PICTURE_LIMITS.waitMs);
+    img.crossOrigin = "anonymous";
+    img.referrerPolicy = "no-referrer";
+    img.decoding = "async";
+    img.onload = () => {
+      clearTimeout(timer);
+      try {
+        done(img.naturalWidth > 0 && img.naturalWidth <= 8192 && img.naturalHeight <= 8192 ? badge(img, img.naturalWidth, img.naturalHeight) : null);
+      } catch {
+        done(null);
+      }
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      done(null);
+    };
+    img.src = url;
+  });
+}
+var loaded = /* @__PURE__ */ new Map();
+function loadPicture(address) {
+  const url = cleanPicture(address);
+  if (!url || !showsPictures() || typeof document === "undefined") return Promise.resolve(null);
+  let asked = loaded.get(url);
+  if (!asked) {
+    asked = byFetch(url).catch(() => null).then((got) => got ?? byImage(url)).catch(() => null);
+    loaded.set(url, asked);
+  }
+  return asked;
+}
+
 // packages/sdk/src/ui/summon.ts
 var SUMMON_KEY = "Backquote";
 var SUMMON_HOLD = 600;
@@ -137,6 +240,12 @@ export {
   saveVisitorTheme,
   resolveTheme,
   rgb,
+  PICTURES_KEY,
+  PICTURE_LIMITS,
+  showsPictures,
+  setShowsPictures,
+  onPicturesChange,
+  loadPicture,
   SUMMON_KEY,
   SUMMON_HOLD,
   SUMMON_SLOP,

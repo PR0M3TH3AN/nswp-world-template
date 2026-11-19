@@ -2325,7 +2325,7 @@ var RoomSession = class {
     const mine = opts.look ? decodeLook(opts.look) : null;
     this.look = mine?.ok ? opts.look : null;
     this.self = { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: generatedLook(pubkey), recording: false };
-    if (proven) Object.assign(this.self, { guest: false, identity: proven.pubkey, name: proven.name || shortNpub(proven.pubkey) });
+    if (proven) Object.assign(this.self, { guest: false, identity: proven.pubkey, name: proven.name || shortNpub(proven.pubkey), ...proven.picture ? { picture: proven.picture } : {} });
     this.self.look = seenLook(this.self, mine?.ok ? mine.value : void 0);
     this.name = (opts.name ?? "lobby").slice(0, ROOM_LIMITS.maxNameChars);
     this.topic = roomTopic(world, this.name);
@@ -2593,6 +2593,8 @@ var RoomSession = class {
     }
     peer.passUntil = checked.value.expiresAt;
     Object.assign(peer.member, { guest: false, identity: checked.value.pubkey, name: checked.value.name || shortNpub(checked.value.pubkey) });
+    if (checked.value.picture) peer.member.picture = checked.value.picture;
+    else delete peer.member.picture;
     this.emit("identity", peer.member);
     this.redraw(peer);
   }
@@ -2603,6 +2605,7 @@ var RoomSession = class {
       delete peer.passUntil;
       delete peer.shown;
       delete peer.member.identity;
+      delete peer.member.picture;
       Object.assign(peer.member, { guest: true, name: guestName(peer.member.pubkey) });
       this.emit("identity", peer.member);
       this.redraw(peer);
@@ -2610,6 +2613,7 @@ var RoomSession = class {
     if (this.pass && now >= this.passUntil) {
       this.pass = null;
       delete this.self.identity;
+      delete this.self.picture;
       Object.assign(this.self, { guest: true, name: guestName(this.self.pubkey) });
       const mine = this.look ? decodeLook(this.look) : null;
       this.self.look = seenLook(this.self, mine?.ok ? mine.value : void 0);

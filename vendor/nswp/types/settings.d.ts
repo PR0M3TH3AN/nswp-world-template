@@ -51,6 +51,11 @@ export interface TravelSettings {
     look?: number;
     /** How wide they see at a desk, top to bottom, in degrees: from 50 to 110. Left out, each world's own. */
     fov?: number;
+    /**
+     * Whether they see other people's pictures. A picture is fetched from wherever its owner keeps it, which tells
+     * that place the visitor's address, so this is theirs to turn off. Left out, pictures are shown.
+     */
+    pictures?: boolean;
 }
 /** The slowest and fastest the view may be set to turn, and the narrowest and widest it may be set to see. */
 export declare const LOOK_RANGE: readonly [0.25, 3];

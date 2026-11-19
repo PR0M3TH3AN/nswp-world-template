@@ -462,6 +462,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   const setPointer = (e: PointerEvent) => pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   // The visitor's own panels, set up further down. One taken by its bar is dragged, and the view stays still.
   let panels: Panels | null = null;
+  // The room, once there is one: someone's picture over their head is pressed like anything else pointed at.
+  let roomPresence: Presence | null = null;
   let panelDrag = false;
   // Game controls, for a visitor who turned them on: the mouse looks, keys walk, F uses. While they are on, the
   // clicks and drags below stand down.
@@ -475,6 +477,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     raycaster.setFromCamera(pointer, camera);
     const onPanel = panels?.pick(raycaster);
     if (onPanel) return void panels!.press(onPanel);
+    // Someone's picture, over their head: pressing it chooses them.
+    if (roomPresence?.pressAt(raycaster)) return;
     // Moving the intense way, a door is gone through by walking into it and no other way.
   };
   fps = createFps({ dom: renderer.domElement, camera, rig, controls, hud, canStand, presenting: () => renderer.xr.isPresenting, onUse: use, onBlocked: () => sounds.bump(), arrived: context?.moving === "intense" && !context.immersive });
@@ -503,6 +507,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // A panel is in front of whatever is behind it.
     const onPanel = panels?.pick(raycaster);
     if (onPanel) return void panels!.press(onPanel);
+    if (roomPresence?.pressAt(raycaster)) return;
     const any = anyGateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
     if (any && gateFar(any) <= DOOR_REACH) void go(any);
     else if (any) {
@@ -555,9 +560,11 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       const key = panels?.keyboard.pick(raycaster) ?? null;
       const button = key ? null : xrConsole.pick(raycaster);
       const onPanel = key ?? (button ? null : (panels?.pick(raycaster) ?? null));
-      if (button || gate || onPanel) input?.pulse(i, 0.5, 30);
+      const person = button || onPanel ? null : (roomPresence?.personAt(raycaster) ?? null);
+      if (button || gate || onPanel || person) input?.pulse(i, 0.5, 30);
       if (button) xrConsole.press(button);
       else if (onPanel) panels!.press(onPanel);
+      else if (person) roomPresence?.pressAt(raycaster);
       else if (gate) void go(gate);
       else {
         const spot = floorUnder();
@@ -681,6 +688,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // a pass for this site (NSWP-10); this world never sees their key. A scene
     // can dress everyone its own way with `figureStyle`.
     const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => refresh() });
+    roomPresence = presence;
     // A visitor who was in the room where they came from stays joined here: their own client says so (NSWP-03).
     ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context, panels, sounds, ...(config.sharedMusic === false ? { sharedMusic: false } : {}) }));
     // Shut in the crossing's room, nobody else is in it with the visitor, wherever they happen to be standing.

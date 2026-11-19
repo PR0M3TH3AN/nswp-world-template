@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.21.1";
+var KIT_VERSION = "0.22.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4731,6 +4731,7 @@ function cleanSettings(input) {
   if (typeof s.intense === "boolean") out.intense = s.intense;
   if (typeof s.look === "number" && Number.isFinite(s.look)) out.look = Math.round(Math.min(LOOK_RANGE[1], Math.max(LOOK_RANGE[0], s.look)) * 100) / 100;
   if (typeof s.fov === "number" && Number.isFinite(s.fov)) out.fov = Math.round(Math.min(FOV_RANGE[1], Math.max(FOV_RANGE[0], s.fov)));
+  if (typeof s.pictures === "boolean") out.pictures = s.pictures;
   return out;
 }
 var hasSettings = (s) => !!s && Object.keys(s).length > 0;
@@ -6078,12 +6079,24 @@ var PASS_LIMITS = {
   /** How far a reader's clock and a signer's may disagree. */
   skewSec: 120,
   nameChars: 48,
+  /** The longest address a picture may have. */
+  pictureChars: 300,
   /** A pass as JSON, as it travels between the members of a room. */
   chars: 4e3
 };
 function cleanName(name) {
   const cleaned = name.normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/\s+/g, " ").trim();
   return [...cleaned].slice(0, PASS_LIMITS.nameChars).join("").trim();
+}
+function cleanPicture(url) {
+  if (typeof url !== "string" || url.length > PASS_LIMITS.pictureChars) return "";
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" || u.username || u.password || !u.hostname.includes(".")) return "";
+    return u.href.length <= PASS_LIMITS.pictureChars ? u.href : "";
+  } catch {
+    return "";
+  }
 }
 function claimsKey(seed) {
   return /^[0-9a-f]{64}$/i.test(seed);
@@ -6098,6 +6111,8 @@ function buildRoomPass(input) {
   ];
   const name = input.name ? cleanName(input.name) : "";
   if (name) tags.push(["name", name]);
+  const picture = cleanPicture(input.picture);
+  if (picture) tags.push(["picture", picture]);
   return { kind: ROOM_PASS_KIND, created_at: created, tags, content: "" };
 }
 function verifyRoomPass(event, opts) {
@@ -6146,7 +6161,10 @@ function verifyRoomPass(event, opts) {
   const raw = names[0]?.[1] ?? "";
   const name = cleanName(raw);
   if (raw !== name) c.warn("name_cleaned", "tags.name", "The name was tidied before being shown.");
-  return c.result({ pubkey: event.pubkey, session: session ?? "", name, expiresAt, id: event.id });
+  const shown = getTags(event, "picture")[0]?.[1] ?? "";
+  const picture = cleanPicture(shown);
+  if (shown && !picture) c.warn("picture_ignored", "tags.picture", "The picture's address isn't one that can be fetched, so none is shown.");
+  return c.result({ pubkey: event.pubkey, session: session ?? "", name, picture, expiresAt, id: event.id });
 }
 
 // packages/core/src/bridge.ts
@@ -6600,6 +6618,7 @@ export {
   cleanKeys,
   cleanLocalMap,
   cleanName,
+  cleanPicture,
   cleanSettings,
   cleanSize,
   cleanSpeechText,
