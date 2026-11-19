@@ -247,6 +247,13 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   ordinary materials does: `new THREE.HemisphereLight(0xbfd0ff, 0x1b2a24,
   1.6)` or about that. Give dark scenes things that glow (`glow` faces,
   halos) to steer by. Then look.
+- **Signs.** A sign made to be read from across a room is a wall of letters
+  to someone standing next to it. Two rules. On a flat screen, say what
+  something is beside the controls, not in the world: `ctx.controls.setTarget(
+  name, [a line or two about it, how to use it])` while it is pointed at. In
+  the world, keep a sign the same size in the visitor's view with
+  `viewScale(distance, { at })` from `nswp-sdk/three`, every frame. Names over
+  doors, which the plumbing draws, are already right.
 - **Portals.** `ctx.addPortal({ url }, { label, position, rotation, color })`,
   or `ctx.addPortal({ coordinate: "37300:<key>:<name>" }, …)` for a world named
   the way `home.json` names one.

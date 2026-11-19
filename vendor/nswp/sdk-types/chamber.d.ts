@@ -20,6 +20,15 @@
  *   // each frame: crossing.update(t, dt)
  */
 import * as THREE from "three";
+/**
+ * Where the room is drawn in a frame: after everything else. It stands round
+ * the visitor wherever they happen to be, which may be half inside a bench,
+ * a wall or another person. Drawn in its turn it would have those poking
+ * through its walls and standing in its floor. So it is drawn last, on a
+ * cleared depth: whatever is inside its walls, or behind them, is painted
+ * over, and its own parts still hide each other as they should.
+ */
+export declare const CHAMBER_ORDER = 10000;
 export interface Chamber {
     group: THREE.Group;
     /** How far the doors are open: 0 shut, 1 open. */
@@ -42,6 +51,11 @@ export interface CrossingOptions {
     textColor?: string;
     /** Whether things may move. Someone who asked for less motion gets the room without its rising and sinking. */
     motion?: () => boolean;
+    /**
+     * What is the visitor's own and stays in sight inside the room: their hands and controllers (the camera's
+     * parent), a console. The room is drawn over everything else; these are drawn after it.
+     */
+    keep?: THREE.Object3D[];
 }
 export interface ArriveOptions {
     /** This world's name, for the sign. */

@@ -91,6 +91,8 @@ export interface UiView {
     title: string;
     address: string;
     target: string;
+    /** A few more lines about what is pointed at. */
+    detail: string[];
     presence: Presence;
     corner: Corner;
     keys: UiKeys;
@@ -103,8 +105,13 @@ export interface Controls {
     add(...actions: UiAction[]): void;
     remove(id: string): void;
     addSection(section: UiSection): void;
-    /** Say what the visitor is pointing at, or "" for nothing. */
-    setTarget(text: string): void;
+    /**
+     * Say what the visitor is pointing at, or "" for nothing. `detail` is a
+     * few more lines about it: what it is, why it is here, how to use it. On a
+     * flat screen they are shown beside the controls, the same size wherever
+     * the thing is, so that a world needn't hang a sign in front of it.
+     */
+    setTarget(text: string, detail?: string[]): void;
     /** A few words shown for a moment. */
     say(text: string): void;
     /** Do an action by its id, as pressing it would. Returns false if it isn't there or isn't showing. */
