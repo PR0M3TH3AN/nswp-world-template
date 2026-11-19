@@ -38,6 +38,13 @@ export interface AirlockUrlOptions {
      * (protocol/02-doors.md, "Blocks that travel").
      */
     blocked?: string[];
+    /**
+     * The visitor is moving with game controls (the mouse looks, keys walk)
+     * and would go on doing so (`fps=1`). A preference and nothing more: a
+     * world with such controls starts in them (protocol/02-doors.md, "How a
+     * visitor moves").
+     */
+    fps?: boolean;
 }
 /** Keys from a list that are keys, once each, up to a limit. */
 export declare function cleanKeys(input: unknown, limit: number): string[];
@@ -59,6 +66,8 @@ export interface AirlockRequest {
     mic?: boolean;
     /** The link says they blocked these people where they came from. A claim: shown and asked about, never applied unseen. */
     blocked?: string[];
+    /** The link says they were moving with game controls (`fps=1`). */
+    fps?: boolean;
 }
 /** Whether a fragment says the visitor came from a headset session, with or without a destination: a way home carries it too. */
 export declare function fragmentSaysImmersive(hash: string): boolean;
@@ -74,6 +83,7 @@ export declare function wayWithoutDestination(hash: string): {
     joined?: true;
     mic?: true;
     blocked?: string[];
+    fps?: true;
 } | null;
 /** `<airlock>` opened as the way home, or with `doors` as the way to the visitor's doors (protocol/02-doors.md). */
 export declare function buildWayUrl(airlock: string, opts?: AirlockUrlOptions & {

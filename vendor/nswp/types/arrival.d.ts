@@ -51,6 +51,12 @@ export interface Arrival {
      * (protocol/03-arrival.md, "Blocks that travel").
      */
     blocked?: string[];
+    /**
+     * The visitor was moving with game controls where they came from (the
+     * mouse looks, keys walk). A world that has such controls starts in them.
+     * A preference, and theirs to change the moment they arrive.
+     */
+    fps?: true;
 }
 export declare function encodeArrival(a: Omit<Arrival, "v"> & {
     v?: string;

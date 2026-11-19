@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addCameraControls, addPanelControls, addRoomControls, addSoundControls, createSounds, createStroll, reachOf, TAP_REACH, addViewControls, capturePanorama, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addCameraControls, addPanelControls, addRoomControls, createFps, type Fps, addSoundControls, createSounds, createStroll, reachOf, TAP_REACH, addViewControls, capturePanorama, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -28,6 +28,10 @@ interface TestHooks {
   state: Record<string, unknown>;
   /** What this place sounds like: cues, its music, and the visitor's own. */
   sounds?: unknown;
+  /** Game controls on a desk: the mouse looks, keys walk. */
+  fps?: Fps;
+  /** The menu on a flat screen. */
+  hud?: { readonly open: boolean; setOpen(open: boolean): void };
   /** The visitor's camera: what it has taken. */
   camera?: Camera;
   /** What the visitor's hands are doing in a headset, as the input layer reads them. */
@@ -164,6 +168,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   const controls = createControls({ title: config.world.title, address: new URL(config.world.url).host, theme: { accent: layout.room.accent }, ...config.controls });
   const hud = mountHud(controls);
   hooks.controls = controls;
+  hooks.hud = hud;
   // Sound: the kit's cues unless world.json names this world's own, the place's music, and the visitor's own
   // songs. The volumes are the visitor's, kept for this site.
   const sounds = createSounds({ context: THREE.AudioContext.getContext() as unknown as AudioContext, seed: config.world.title, kit: "sounds/kit/", theme: config.sounds ?? null });
@@ -246,7 +251,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     sounds.play("cross");
     await crossing.leave({ title: String(gate.group.userData.label ?? "another place"), address: hostOf(gate.destination.url) });
     document.body.classList.add("leaving");
-    await portal.go(gate.destination, { xrSession: renderer.xr.getSession(), ...travelling() });
+    await portal.go(gate.destination, { xrSession: renderer.xr.getSession(), ...travelling(), fps: !!fps?.enabled });
   };
   const goHome = async () => {
     const back = arrival.returnAirlock();
@@ -255,7 +260,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     sounds.play("cross");
     await crossing.leave({ title: "home", address: hostOf(back) });
     document.body.classList.add("leaving");
-    await portal.home({ xrSession: renderer.xr.getSession(), ...travelling() });
+    await portal.home({ xrSession: renderer.xr.getSession(), ...travelling(), fps: !!fps?.enabled });
   };
   const goToDoors = async () => {
     const back = arrival.returnAirlock();
@@ -264,7 +269,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     sounds.play("cross");
     await crossing.leave({ title: "your doors", address: hostOf(back) });
     document.body.classList.add("leaving");
-    await portal.doors({ xrSession: renderer.xr.getSession(), ...travelling() });
+    await portal.doors({ xrSession: renderer.xr.getSession(), ...travelling(), fps: !!fps?.enabled });
   };
   hooks.goThrough = async (i) => {
     const gate = gates[i];
@@ -417,7 +422,23 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // The visitor's own panels, set up further down. One taken by its bar is dragged, and the view stays still.
   let panels: Panels | null = null;
   let panelDrag = false;
+  // Game controls, for a visitor who turned them on: the mouse looks, keys walk, F uses. While they are on, the
+  // clicks and drags below stand down.
+  let fps: Fps | null = null;
+  const gameControls = () => !!fps?.enabled && !renderer.xr.isPresenting;
+  /** Use what the middle of the view points at: a panel, or a door. */
+  const use = () => {
+    pointer.set(0, 0);
+    raycaster.setFromCamera(pointer, camera);
+    const onPanel = panels?.pick(raycaster);
+    if (onPanel) return void panels!.press(onPanel);
+    const gate = gateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
+    if (gate) void go(gate);
+  };
+  fps = createFps({ dom: renderer.domElement, camera, rig, controls, hud, canStand, presenting: () => renderer.xr.isPresenting, onUse: use, onBlocked: () => sounds.bump(), speed: 2, arrived: !!context?.fps });
+  hooks.fps = fps;
   renderer.domElement.addEventListener("pointerdown", (e) => {
+    if (gameControls()) return;
     setPointer(e);
     raycaster.setFromCamera(pointer, camera);
     panelDrag = !renderer.xr.isPresenting && !!panels?.pointer("down", raycaster);
@@ -434,7 +455,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       panels?.pointer("up", raycaster);
       return;
     }
-    if (moved > 6 || renderer.xr.isPresenting || e.target !== renderer.domElement) return;
+    if (moved > 6 || renderer.xr.isPresenting || gameControls() || e.target !== renderer.domElement) return;
     setPointer(e);
     raycaster.setFromCamera(pointer, camera);
     // A panel is in front of whatever is behind it.
@@ -453,7 +474,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       moved += Math.abs(e.clientX - lastX);
       lastX = e.clientX;
     }
-    setPointer(e);
+    if (!gameControls()) setPointer(e);
     if (panelDrag) {
       raycaster.setFromCamera(pointer, camera);
       panels?.pointer("move", raycaster);
@@ -719,8 +740,12 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       const through = walkedInto();
       if (through) void go(through);
     } else {
-      walk(dt);
-      stroll.update(dt);
+      // Game controls have the visitor's movement when they are on, and aim from the middle of the view.
+      if (fps!.update(dt)) pointer.set(0, 0);
+      else {
+        walk(dt);
+        stroll.update(dt);
+      }
       raycaster.setFromCamera(pointer, camera);
       panelAimed = panels!.pick(raycaster);
       aimed = panelAimed ? null : gateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
