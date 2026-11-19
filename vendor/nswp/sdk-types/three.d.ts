@@ -275,6 +275,8 @@ export declare function addViewControls(controls: Controls, d: {
         title: string;
         address: string;
     }) => GoOptions | Promise<GoOptions>;
+    /** False for a world that sets its camera's width itself, and so applies the visitor's own (`watchFov`, `visitorFov`). */
+    fov?: boolean;
 }): Promise<boolean>;
 export { createFigure, type Figure, type FigureFacts, type FigureStyle } from "./figure.js";
 export { createXrInput, type GrabOptions, type XrInput, type XrInputInfo, type XrInputOptions } from "./input.js";
@@ -288,7 +290,8 @@ export { DOOR_REACH } from "./gate-size.js";
 export { addJump, createJump, JUMP_GRAVITY, JUMP_HEIGHT, JUMP_SPEED, type AddJumpOptions, type Jump } from "./jump.js";
 export { viewScale } from "./sign.js";
 export { arrivedSettings, arriveWith, currentSettings, reportSettings, type TravelSettings } from "./settings.js";
-export { fullscreenWaiting, resumeFullscreen } from "./ui/fullscreen.js";
+export { fullscreenWaiting, prefersFullscreen, resumeFullscreen } from "./ui/fullscreen.js";
+export { addDeskControls, FOV_STEPS, LOOK_STEPS, lookScale, onDeskChange, setLookScale, setVisitorFov, visitorFov, watchFov } from "./desk.js";
 export { figureAction, identityAction, identityHost, identitySection, identityWords, type Leaving } from "./ui/identity.js";
 export { currentForm, deviceForms, formFor, startingForm, usedForm, type DeviceForms, type Form } from "./form.js";
 export { createFps, heldKey, lookAfter, strideOf, LOOK_SPEED, PITCH_LIMIT, SPRINT, type Fps, type FpsOptions, type Held } from "./fps.js";

@@ -75,11 +75,30 @@ function watch() {
 // packages/sdk/src/ui/fullscreen.ts
 var resumed = false;
 var waiting = false;
+var FULL_KEY = "nswp:full";
+var prefers = false;
+var keepFull = (on) => {
+  prefers = on;
+  try {
+    if (on) localStorage.setItem(FULL_KEY, "1");
+    else localStorage.removeItem(FULL_KEY);
+  } catch {
+  }
+};
+var prefersFullscreen = () => prefers;
 function resumeFullscreen(presenting = () => false) {
   if (resumed || typeof document === "undefined") return;
   resumed = true;
-  reportSettings("screen", () => ({ full: !!document.fullscreenElement || waiting }));
-  waiting = arrivedSettings().full === true && document.fullscreenEnabled && !document.fullscreenElement;
+  const came = arrivedSettings().full;
+  let kept = false;
+  try {
+    kept = localStorage.getItem(FULL_KEY) === "1";
+  } catch {
+  }
+  if (came === void 0) prefers = kept;
+  else keepFull(came);
+  reportSettings("screen", () => ({ full: prefers }));
+  waiting = prefers && document.fullscreenEnabled && !document.fullscreenElement;
   if (!waiting) return;
   const presses = ["keydown", "pointerdown", "pointerup", "touchend"];
   const stop = () => {
@@ -108,17 +127,23 @@ function fullscreenAction(controls, presenting) {
     id: "fullscreen",
     section: "view",
     icon: "size",
-    on: () => !!document.fullscreenElement,
+    on: () => prefers,
     // Not every browser lets a page fill the screen (a phone's often won't), and a headset already does.
     hidden: () => !document.fullscreenEnabled || presenting(),
-    label: () => document.fullscreenElement ? "Fullscreen: on" : "Fullscreen: off",
+    // It says what they prefer, in every world, and whether the screen is filled just now.
+    label: () => !prefers ? "Fullscreen: off" : document.fullscreenElement ? "Fullscreen: on, in every world" : "Fullscreen: on, in every world. Press to fill the screen again",
     act: async () => {
+      const fill = !document.fullscreenElement;
+      if (!fill) keepFull(false);
       try {
-        if (document.fullscreenElement) await document.exitFullscreen();
-        else await document.documentElement.requestFullscreen();
+        if (fill) {
+          await document.documentElement.requestFullscreen();
+          keepFull(true);
+        } else await document.exitFullscreen();
       } catch {
         controls.say("This browser wouldn't go fullscreen.");
       }
+      controls.setTarget("");
     }
   };
 }
@@ -3281,6 +3306,7 @@ export {
   startingForm,
   currentForm,
   usedForm,
+  prefersFullscreen,
   resumeFullscreen,
   fullscreenWaiting,
   fullscreenAction,
