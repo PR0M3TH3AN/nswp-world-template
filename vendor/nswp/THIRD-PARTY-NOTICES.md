@@ -53,4 +53,6 @@ The Public Suffix List is used unmodified, as tldts ships it. Its source is at
 The sound files in `packages/sdk/sounds/` were made for this project and are
 not third-party works. Some were generated with MOSS-SoundEffect v2.0
 (OpenMOSS, Apache License 2.0), a model whose licence places no terms on its
-output. That folder's README lists every file and how it was made.
+output. Some of the music was generated with YuE2; the owner settled that its output
+is clear for this project to use, and the README records that. That folder's
+README lists every file and how it was made.

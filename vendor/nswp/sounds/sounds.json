@@ -117,6 +117,7 @@
     "mp3": "hum.mp3"
   },
   "music": [
-    "music/default.ogg"
+    "music/default.ogg",
+    "music/default-2.ogg"
   ]
 }

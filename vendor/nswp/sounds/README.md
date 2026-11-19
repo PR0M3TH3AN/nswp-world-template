@@ -37,6 +37,16 @@ this project. None is taken from a recording, a library or another work.
 | `cues/error` | 0.9 s | MOSS-SoundEffect v2.0 (OpenMOSS, Apache-2.0) |
 | `hum` | 48 s, loops | made in code (filtered noise), no model or samples |
 | `music/default.ogg` | 96 s, loops | made in code (a synthesizer written for this), no model or samples |
+| `music/default-2.ogg` | 80 s, loops | YuE2, a music model, run on the owner's own machine |
+
+The two pieces of music play in turn.
+
+**About YuE2.** The agent that made these files could not find a licence
+file for YuE2 and reported its terms for redistributing output as unclear.
+The owner settled it on 2026-11-18: "YuE2 is clear for us to use. Ship
+them". That decision is theirs, and it is recorded here so that anyone who
+takes these files knows what it rests on. The same applies to each reference
+world's `sounds/music-2.ogg` and to four of the pieces in BitPortal's room.
 
 MOSS-SoundEffect v2.0 is published by OpenMOSS under the Apache License 2.0.
 Its card places no terms on what it generates. The files made in code are
