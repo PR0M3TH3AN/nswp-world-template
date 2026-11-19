@@ -2,9 +2,10 @@ import {
   RoomSession,
   arriveAs,
   currentForm,
+  resumeFullscreen,
   room,
   startingForm
-} from "./shared-33TMTTY7.js";
+} from "./shared-VSKXDUXV.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -129,6 +130,7 @@ var arrival = {
     cached = r.ok ? { context: r.value, warnings: r.warnings } : { context: null, warnings: [...r.errors, ...r.warnings] };
     arriveAs(cached.context?.form);
     arriveWith(cached.context?.settings);
+    resumeFullscreen();
     try {
       if (cached.context?.home) session()?.setItem(HOME_KEY, "1");
       else if (cached.context) session()?.removeItem(HOME_KEY);
