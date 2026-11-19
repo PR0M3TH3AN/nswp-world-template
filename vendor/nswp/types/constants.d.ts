@@ -11,6 +11,25 @@ export declare const SCHEMAS: {
     readonly arrival: "nswp/arrival/0.3";
 };
 export declare const WELL_KNOWN_PATH = "/.well-known/nswp.json";
+/**
+ * The version of the kit this code is: the library, the SDK, the engine
+ * script and the Godot addon are built together and share it. It is the
+ * spec's version, the newest heading in CHANGELOG.md, and a test keeps the
+ * two the same. A world says it in its manifest (`kit`), so a visitor's
+ * client can tell how old a world's controls are without loading the world
+ * (protocol/01-worlds.md, "Which kit a world was built with").
+ */
+export declare const KIT_VERSION = "0.21.0";
+/** A version as three numbers, or null for anything that isn't one. */
+export declare function parseKitVersion(v: unknown): [number, number, number] | null;
+/**
+ * How a world's kit stands beside the one a reader has: "same" (the same
+ * release, give or take a fix), "older", "newer", or "unknown" when the world
+ * doesn't say or what it says isn't a version. Only ever something to tell a
+ * visitor or a world's owner. An older kit still works: a reader ignores what
+ * it doesn't know, and that is what keeps old worlds open.
+ */
+export declare function kitAge(theirs: unknown, mine?: string): "same" | "older" | "newer" | "unknown";
 export declare const MODES: readonly ["2d", "inline-3d", "immersive-vr", "immersive-ar"];
 export declare const CAPABILITIES: readonly ["webxr", "rooms", "multiplayer", "voice", "spatial-portals", "avatars", "entry-assertion", "payments", "home"];
 /**

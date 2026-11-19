@@ -9,6 +9,18 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
+var KIT_VERSION = "0.21.0";
+function parseKitVersion(v) {
+  const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+function kitAge(theirs, mine = KIT_VERSION) {
+  const a = parseKitVersion(theirs);
+  const b = parseKitVersion(mine);
+  if (!a || !b) return "unknown";
+  const d = a[0] - b[0] || a[1] - b[1];
+  return d === 0 ? "same" : d < 0 ? "older" : "newer";
+}
 var MODES = ["2d", "inline-3d", "immersive-vr", "immersive-ar"];
 var CAPABILITIES = [
   "webxr",
@@ -4580,7 +4592,12 @@ function parseManifest(input, opts = {}) {
     if (!stringArray(input.relays)) c.warn("invalid_field", "relays", "relays must be an array of wss URLs.");
     else for (const r of input.relays) isWssUrl(r) ? relays.push(r) : c.warn("invalid_relay", "relays", `Ignoring relay "${r}" (not wss).`);
   }
-  return c.result({ schema: typeof schema === "string" ? schema : SCHEMAS.manifest, listing, publishers, worlds, relays });
+  let kit;
+  if (input.kit !== void 0) {
+    if (parseKitVersion(input.kit)) kit = input.kit;
+    else c.warn("invalid_field", "kit", 'kit must be a version such as "0.21.0"; ignoring it.');
+  }
+  return c.result({ schema: typeof schema === "string" ? schema : SCHEMAS.manifest, listing, publishers, worlds, relays, ...kit ? { kit } : {} });
 }
 function verifyOrigin(world, manifest, manifestUrl) {
   const checks = [];
@@ -6527,6 +6544,7 @@ export {
   HOME_LAYOUT_KIND,
   INPUTS,
   ITEM_KIND,
+  KIT_VERSION,
   LAYOUT_ACCESS,
   LAYOUT_LIMITS,
   LIMITS,
@@ -6620,6 +6638,7 @@ export {
   isPlainObject,
   isPublicKey,
   isWssUrl,
+  kitAge,
   latestAddressable,
   localMap,
   lookFromTags,
@@ -6641,6 +6660,7 @@ export {
   parseAvatarEvent,
   parseBridgeControl,
   parseCoordinate,
+  parseKitVersion,
   parseLayoutEvent,
   parseListEvent,
   parseManifest,

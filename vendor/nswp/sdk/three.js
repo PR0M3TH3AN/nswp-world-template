@@ -71,7 +71,7 @@ import {
   viewScale,
   visitorFov,
   watchFov
-} from "./shared-IKB4UZ63.js";
+} from "./shared-HHHP6SKA.js";
 import {
   currentForm,
   deviceForms,
@@ -81,7 +81,7 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-OQQK7VLW.js";
+} from "./shared-RXYHMQRB.js";
 import "./shared-OQRXIQ2A.js";
 import {
   arriveWith,

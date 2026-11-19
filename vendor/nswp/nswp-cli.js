@@ -2974,6 +2974,19 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
+var KIT_VERSION = "0.21.0";
+function parseKitVersion(v) {
+  const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+function kitAge(theirs, mine = KIT_VERSION) {
+  const a = parseKitVersion(theirs);
+  const b = parseKitVersion(mine);
+  if (!a || !b)
+    return "unknown";
+  const d = a[0] - b[0] || a[1] - b[1];
+  return d === 0 ? "same" : d < 0 ? "older" : "newer";
+}
 var MODES = ["2d", "inline-3d", "immersive-vr", "immersive-ar"];
 var CAPABILITIES = [
   "webxr",
@@ -3989,7 +4002,14 @@ function parseManifest(input, opts = {}) {
       for (const r of input.relays)
         isWssUrl(r) ? relays.push(r) : c.warn("invalid_relay", "relays", `Ignoring relay "${r}" (not wss).`);
   }
-  return c.result({ schema: typeof schema === "string" ? schema : SCHEMAS.manifest, listing, publishers, worlds: worlds2, relays });
+  let kit;
+  if (input.kit !== void 0) {
+    if (parseKitVersion(input.kit))
+      kit = input.kit;
+    else
+      c.warn("invalid_field", "kit", 'kit must be a version such as "0.21.0"; ignoring it.');
+  }
+  return c.result({ schema: typeof schema === "string" ? schema : SCHEMAS.manifest, listing, publishers, worlds: worlds2, relays, ...kit ? { kit } : {} });
 }
 function verifyOrigin(world, manifest, manifestUrl) {
   const checks = [];
@@ -4411,6 +4431,11 @@ async function check(url) {
       failed = true;
     }
     if (m.manifest.listing === "deny") out(`  ${WARN} listing: deny \u2014 this origin opts out of third-party listings.`);
+    const age = kitAge(m.manifest.kit);
+    report.kit = { site: m.manifest.kit ?? null, tool: KIT_VERSION, age };
+    if (age === "unknown") out(`  ${WARN} The manifest doesn't say which kit the site was built with ("kit"). A visitor's client can't tell how old its controls are.`);
+    else if (age === "older") out(`  ${WARN} Built with kit ${m.manifest.kit}; this tool is ${KIT_VERSION}. It still works. Update it to get what has been added since.`);
+    else out(`  ${OK} Built with kit ${m.manifest.kit}.`);
   }
   const noManifest = !m.manifest && m.issues.length > 0 && m.issues.every((i) => i.code === "manifest_not_found");
   if (noManifest) out(`  ${WARN} No manifest at the well-known path, so nothing here can be verified.`);

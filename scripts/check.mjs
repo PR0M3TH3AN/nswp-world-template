@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { parseManifest, parseWorldEvent, verifyOrigin } from "../vendor/nswp/nswp-core.js";
+import { KIT_VERSION, parseManifest, parseWorldEvent, verifyOrigin } from "../vendor/nswp/nswp-core.js";
 import { dist, readConfig, readSigned, root, templates, upToDate, validate } from "./lib.mjs";
 
 let failed = 0;
@@ -90,7 +90,7 @@ if (existsSync(LOCK)) {
 // 4. The vendored protocol library is untouched.
 try {
   execFileSync(process.execPath, [join(root, "scripts", "vendor.mjs"), "--check"], { stdio: "pipe" });
-  ok("vendor/nswp/ matches its integrity record");
+  ok(`vendor/nswp/ matches its integrity record (kit ${KIT_VERSION}; npm run update -- --check says whether a newer one is out)`);
 } catch (e) {
   bad(`vendor/nswp/ has been changed by hand. Restore it; fixes belong in the NSWP repository.\n${e.stderr?.toString().trim() ?? ""}`);
 }
