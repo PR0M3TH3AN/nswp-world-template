@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.28.1";
+var KIT_VERSION = "0.28.3";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6074,7 +6074,13 @@ var SIGN_LIMITS = {
   burst: 3,
   perMs: 6e4,
   /** And no more than this many in an hour. */
-  hourly: 20
+  hourly: 20,
+  /**
+   * A pass is counted apart from notes, so signing in doesn't use up a post: no more than this many passes for
+   * one world in `perMs`, and in an hour. A reader asks once per sign-in and once when a pass runs out.
+   */
+  passBurst: 2,
+  passHourly: 10
 };
 var ORDINARY_KINDS = [1, 7];
 var NEVER_KINDS = [4, 13, 14, 15, 1059, 1060, 13194, 22242, 23194, 23195, 24133, 27235, 27300, 27301, 30078];
@@ -6183,7 +6189,9 @@ function readSignerReply(data) {
       // Their own picture and words, as their sign-in address read them from their profile: cleaned as a pass's are.
       ...pubkey && cleanPicture(d.picture) ? { picture: cleanPicture(d.picture) } : {},
       ...pubkey && cleanAbout(d.about) ? { about: cleanAbout(d.about) } : {},
-      ...typeof d.until === "number" && Number.isFinite(d.until) ? { until: d.until } : {}
+      ...typeof d.until === "number" && Number.isFinite(d.until) ? { until: d.until } : {},
+      // Whether the signer will still be unlocked for this world on their next visit, where it says.
+      ...pubkey && d.unlocked && typeof d.remembered === "boolean" ? { remembered: d.remembered } : {}
     };
   }
   if (typeof d.id !== "string" || !ID.test(d.id)) return null;

@@ -28,6 +28,11 @@ export interface WorldSigner {
     readonly picture: string | null;
     /** What they wrote about themselves there, or null. Their own words. */
     readonly about: string | null;
+    /**
+     * Whether the signer will still be unlocked for this world the next time its page is loaded: true, false, or
+     * null where it is locked or doesn't say. False means this visit only: the visitor is asked again next time.
+     */
+    readonly remembered: boolean | null;
     /** The visitor's client, as a host to name in words, or null. */
     readonly host: string | null;
     /**

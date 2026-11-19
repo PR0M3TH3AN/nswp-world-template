@@ -28,6 +28,12 @@ export declare const SIGN_LIMITS: {
     readonly perMs: 60000;
     /** And no more than this many in an hour. */
     readonly hourly: 20;
+    /**
+     * A pass is counted apart from notes, so signing in doesn't use up a post: no more than this many passes for
+     * one world in `perMs`, and in an hour. A reader asks once per sign-in and once when a pass runs out.
+     */
+    readonly passBurst: 2;
+    readonly passHourly: 10;
 };
 /**
  * How a kind of note is treated when a world asks for it.
@@ -136,6 +142,7 @@ export type SignerReply = {
     picture?: string;
     about?: string;
     until?: number;
+    remembered?: boolean;
 } | {
     t: "signed";
     id: string;
