@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.27.0";
+var KIT_VERSION = "0.28.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4258,6 +4258,21 @@ var decoder3 = new TextDecoder("utf-8", { fatal: true });
 var POSE_FLOATS = 22;
 var POSE_BYTES = POSE_FLOATS * 4;
 
+// packages/core/dist/pass.js
+var PASS_LIMITS = {
+  defaultTtlSec: 4 * 3600,
+  maxTtlSec: 12 * 3600,
+  /** How far a reader's clock and a signer's may disagree. */
+  skewSec: 120,
+  nameChars: 48,
+  /** The longest address a picture may have. */
+  pictureChars: 300,
+  /** The most a pass says about its holder, in their own words. */
+  aboutChars: 280,
+  /** A pass as JSON, as it travels between the members of a room. */
+  chars: 4e3
+};
+
 // packages/core/dist/signing.js
 var SIGN_LIMITS = {
   /** The longest a note's content may be, in characters. */
@@ -4267,11 +4282,11 @@ var SIGN_LIMITS = {
   tagChars: 400,
   /** How long an unlocked signer stays unlocked for a world, at most. Closing the world's page ends it sooner. */
   grantSec: 4 * 3600,
-  /** No more than this many notes for one world in `perMs`. */
-  burst: 6,
+  /** No more than this many notes for one world in `perMs`: the pace of a person, not of a script. */
+  burst: 3,
   perMs: 6e4,
   /** And no more than this many in an hour. */
-  hourly: 60
+  hourly: 20
 };
 
 // packages/core/dist/layout.js
@@ -4357,21 +4372,6 @@ function parseListEvent(input, opts = {}) {
   }
   return c.result(list);
 }
-
-// packages/core/dist/pass.js
-var PASS_LIMITS = {
-  defaultTtlSec: 4 * 3600,
-  maxTtlSec: 12 * 3600,
-  /** How far a reader's clock and a signer's may disagree. */
-  skewSec: 120,
-  nameChars: 48,
-  /** The longest address a picture may have. */
-  pictureChars: 300,
-  /** The most a pass says about its holder, in their own words. */
-  aboutChars: 280,
-  /** A pass as JSON, as it travels between the members of a room. */
-  chars: 4e3
-};
 
 // packages/core/dist/bridge.js
 var WORLD_GRANT_LIMITS = {

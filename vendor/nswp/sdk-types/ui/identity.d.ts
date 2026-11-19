@@ -28,14 +28,27 @@ export declare function signerNamed(): boolean;
  * whatever they arrived with. So nothing here says "you are here as" someone who isn't signed in.
  */
 export declare function hereAs(): ReturnType<typeof arrival.identity>;
+/** Be told when who the visitor is here may have changed: a pass arrived from their signer. Returns how to stop. */
+export declare function onHereAs(fn: () => void): () => void;
+/**
+ * A pass from the signer (protocol/10-identity.md, "A pass from the signer"). Signed in here with no pass for
+ * that key (their client sent none, or one for someone else, or it ran out), the signer is asked for one: for a
+ * session key made here, for this site. What comes back is checked and kept as an arrival's pass is. A signer
+ * that makes none never answers, and the visitor stays a guest.
+ */
+export declare function seekPass(): Promise<void>;
 /**
  * The same question for a room about to be joined, with a moment's wait for a signer that hasn't spoken yet:
  * one that remembers this world says so just after the page loads, and a room joined before that would be
- * joined as a guest.
+ * joined as a guest. Signed in with no pass for that key, the signer is asked for one, and waited on briefly.
  */
-export declare function byName<T extends {
+export declare function byName(identity: {
     pass: NostrEvent;
-}>(identity: T | undefined): Promise<T | undefined>;
+    sessionKey: string;
+} | undefined): Promise<{
+    pass: NostrEvent;
+    sessionKey: string;
+} | undefined>;
 /** The words for who a visitor is here, for a world that draws this itself. */
 export declare function identityWords(): {
     signedIn: boolean;

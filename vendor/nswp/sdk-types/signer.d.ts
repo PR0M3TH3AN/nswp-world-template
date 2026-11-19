@@ -24,6 +24,10 @@ export interface WorldSigner {
     readonly pubkey: string | null;
     /** What the client calls them, once unlocked, or null. Their own choice of name, not a fact. */
     readonly name: string | null;
+    /** Where their picture is, as their sign-in address read it from their own profile, or null. For their own card. */
+    readonly picture: string | null;
+    /** What they wrote about themselves there, or null. Their own words. */
+    readonly about: string | null;
     /** The visitor's client, as a host to name in words, or null. */
     readonly host: string | null;
     /**
@@ -52,6 +56,12 @@ export interface WorldSigner {
         content: string;
         tags?: string[][];
     }): Promise<NostrEvent | null>;
+    /**
+     * Ask for a room pass for this world, for the session key whose public key is given
+     * (protocol/10-identity.md, "A pass from the signer"). Null if it is locked, or it refused, or it is a signer
+     * that makes none, or what came back isn't a pass by the key it holds, for this site and that session.
+     */
+    pass(session: string): Promise<NostrEvent | null>;
     /** Be told when its state changes. Returns how to stop. */
     onChange(fn: () => void): () => void;
     /**

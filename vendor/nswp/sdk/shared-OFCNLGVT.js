@@ -391,7 +391,9 @@ function createUiFeed(changed, now = () => Date.now()) {
       return null;
     },
     view() {
-      return { ready: !!opts, title: "My public feed", who: opts?.who ?? "", posts, loading, said, limit: CHAT_LIMITS2.chars, version };
+      const who = typeof opts?.who === "function" ? opts.who() : opts?.who ?? "";
+      const lead = `Public, like a tweet: anyone can read what you send out here, as ${who}, and it can't be taken back.${opts?.marked ? ` Each post is marked as sent from ${opts.marked}.` : ""}`;
+      return { ready: !!opts, title: "My public feed", who, posts, loading, said, lead, limit: CHAT_LIMITS2.chars, version };
     }
   };
 }
