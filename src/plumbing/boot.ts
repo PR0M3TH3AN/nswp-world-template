@@ -249,12 +249,18 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   let travelling = (): { joined: boolean; mic: boolean } => ({ joined: false, mic: false });
   let movingNow = (): "intense" | "casual" => "casual";
   let stopWalking = () => {};
-  const go = async (gate: PortalGate) => {
+  /**
+   * Through a door. Chosen from where they stand (a click, a trigger, the menu), the crossing's room comes up round
+   * them first, naming where the door says it leads. Walked into, there is nothing to bring up: they are already
+   * going through it, so they go. Either way their Airlock shows the real address next.
+   */
+  const go = async (gate: PortalGate, how: "chosen" | "walked" = "chosen") => {
     if (state.leaving) return;
     state.leaving = true;
+    state.left = how;
     stopWalking();
     sounds.play("cross");
-    await crossing.leave({ title: String(gate.group.userData.label ?? "another place"), address: hostOf(gate.destination.url) });
+    if (how === "chosen") await crossing.leave({ title: String(gate.group.userData.label ?? "another place"), address: hostOf(gate.destination.url) });
     document.body.classList.add("leaving");
     await portal.go(gate.destination, { xrSession: renderer.xr.getSession(), ...travelling(), moving: movingNow() });
   };
@@ -761,8 +767,6 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
         }
       }
       xrConsole.aim(button);
-      const through = walkedInto();
-      if (through) void go(through);
     } else {
       // Game controls have the visitor's movement when they are on, and aim from the middle of the view.
       if (fps!.update(dt)) pointer.set(0, 0);
@@ -773,8 +777,12 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       raycaster.setFromCamera(pointer, camera);
       panelAimed = panels!.pick(raycaster);
       aimed = panelAimed ? null : gateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
-      renderer.domElement.style.cursor = aimed || panelAimed ? "pointer" : "grab";
+      // Moving the intense way, the pointer's picture is the kit's to hide: the middle of the view is what points.
+      if (!fps!.enabled) renderer.domElement.style.cursor = aimed || panelAimed ? "pointer" : "grab";
     }
+    // Walking into a doorway goes through it, on foot or in a headset, with nothing brought up first.
+    const through = state.ready ? walkedInto() : null;
+    if (through) void go(through, "walked");
     panels!.aim(panelAimed);
     for (const g of gates) g.aimed = g === aimed ? 1 : 0;
     for (const g of ownGates) g.update(t, dt);

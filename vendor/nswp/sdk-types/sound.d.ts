@@ -62,6 +62,16 @@ export interface Sounds {
     onChange(fn: (levels: SoundLevels) => void): () => void;
     /** What the place's music is: the world's own, the kit's recorded default, the one made in the browser, or none. */
     readonly music: "world" | "kit" | "made" | "none";
+    /**
+     * The piece of the place's music that is playing now, by name (its file's name), and how many pieces the place
+     * has. Null when the place has none, when it is made in the browser, and before any has begun.
+     */
+    readonly piece: {
+        name: string;
+        of: number;
+    } | null;
+    /** Go on to the place's next piece now. Returns false when there is only one, or none. */
+    nextPiece(): boolean;
     /** Whether this place has a hum to hear. */
     readonly hasHum: boolean;
     /** How loud everything going out is right now, from 0. For tests. */

@@ -54,7 +54,7 @@ import {
   textSprite,
   turnVisitor,
   viewScale
-} from "./shared-MFKMICIG.js";
+} from "./shared-JAM2DHFR.js";
 import {
   currentForm,
   deviceForms,

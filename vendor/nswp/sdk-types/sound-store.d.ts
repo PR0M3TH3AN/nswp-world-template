@@ -87,6 +87,12 @@ export interface KitSounds {
 /** Read the kit's `sounds.json`, choosing for each sound the form this browser plays. Addresses are relative to the folder. */
 export declare function cleanKit(input: unknown, folder: string, playsOgg: boolean): KitSounds;
 /**
+ * What a piece of music is called, from where it is kept: the file's own name, without what kind of file it is.
+ * It is what a visitor reads in the menu, and what they can tell whoever runs the place if they'd rather not
+ * hear it.
+ */
+export declare function pieceName(address: string): string;
+/**
  * How one footstep differs from the last. No two real steps sound alike: the
  * weight on each foot differs, and so does what is under it. And a step is a
  * quiet thing, heard a thousand times a visit, so it sits well under every
