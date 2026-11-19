@@ -5,7 +5,7 @@ import {
   portal,
   room,
   startingForm
-} from "./shared-Y2OMJO4X.js";
+} from "./shared-ODNIMJUA.js";
 import {
   ICONS,
   createHeldButton,
@@ -1558,7 +1558,7 @@ function watchFov(camera, o = {}) {
 import { shortNpub as shortNpub2 } from "@nswp/core";
 
 // packages/sdk/src/signer.ts
-import { cleanOrigin, isWhatWasAsked, readSignerReply, signerAddresses, signerMessage, toLocal, verifyEvent, WORLD_TAG } from "@nswp/core";
+import { cleanOrigin, isWhatWasAsked, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -1573,8 +1573,18 @@ var NONE = {
   dispose() {
   }
 };
+function namedAddresses(at) {
+  try {
+    const signer = new URL(at.signer);
+    const win = new URL(at.window);
+    if (signer.protocol !== "https:" || win.origin !== signer.origin) return null;
+    return { origin: signer.origin, signer: signer.href, window: win.href };
+  } catch {
+    return null;
+  }
+}
 function createWorldSigner(opts) {
-  const real = signerAddresses(opts.airlock);
+  const real = opts.at ? namedAddresses(opts.at) : signerAt(opts.under) ?? signerAddresses(opts.airlock);
   if (!real || typeof document === "undefined") return NONE;
   const test = new URLSearchParams(opts.search ?? location.search).get("signer") === "test";
   const watchers2 = /* @__PURE__ */ new Set();
@@ -1586,6 +1596,7 @@ function createWorldSigner(opts) {
   let windowAt = "";
   let frame = null;
   let disposed = false;
+  let answered = false;
   let n = 0;
   const changed = () => {
     for (const fn of watchers2) fn();
@@ -1601,6 +1612,7 @@ function createWorldSigner(opts) {
       return changed();
     }
     if (reply.t === "state") {
+      answered = true;
       state = reply.unlocked ? "unlocked" : "locked";
       pubkey = reply.unlocked ? reply.pubkey ?? null : null;
       name = reply.unlocked ? reply.name ?? null : null;
@@ -1617,9 +1629,10 @@ function createWorldSigner(opts) {
   };
   void (async () => {
     try {
-      const signerAt = await toLocal(real.signer);
-      windowAt = await toLocal(real.window);
-      origin = new URL(signerAt).origin;
+      const there = opts.at ? async (address) => address : toLocal;
+      const signerUrl = await there(real.signer);
+      windowAt = await there(real.window);
+      origin = new URL(signerUrl).origin;
       if (disposed) return;
       frame = document.createElement("iframe");
       frame.title = "Signer";
@@ -1629,7 +1642,14 @@ function createWorldSigner(opts) {
       frame.referrerPolicy = "no-referrer";
       frame.style.cssText = "position:fixed;left:-10px;top:-10px;width:1px;height:1px;border:0;visibility:hidden;pointer-events:none";
       addEventListener("message", onMessage);
-      frame.src = signerAt;
+      frame.addEventListener("load", () => {
+        for (const after2 of [0, 400, 1200, 3e3]) {
+          setTimeout(() => {
+            if (!answered && !disposed) tell({ t: "state", id: `s${++n}` });
+          }, after2);
+        }
+      });
+      frame.src = signerUrl;
       document.body.append(frame);
     } catch {
     }
@@ -1644,6 +1664,7 @@ function createWorldSigner(opts) {
     get name() {
       return name;
     },
+    // The signer's real address, never a development server's copy of it: it is what the visitor should recognise.
     get host() {
       try {
         return new URL(real.origin).host;
@@ -1743,7 +1764,7 @@ function identityAction(controls, leaving = () => ({})) {
 }
 var shared = null;
 function worldSigner() {
-  shared ??= createWorldSigner({ airlock: portal.airlockFor() });
+  shared ??= createWorldSigner({ under: arrival.signer(), airlock: portal.airlockFor() });
   return shared;
 }
 function signerAction(controls, opts = {}) {
@@ -1759,7 +1780,8 @@ function signerAction(controls, opts = {}) {
     id: "signer",
     section: "you",
     icon: "key",
-    label: () => signer.state === "unlocked" ? `Signing as ${signer.name ?? shortNpub2(signer.pubkey ?? "")}: on` : "Sign in to sign notes",
+    // Locked, it says whose window will open, before anything is pressed: an address to recognise.
+    label: () => signer.state === "unlocked" ? `Signing as ${signer.name ?? shortNpub2(signer.pubkey ?? "")}: on` : `Sign in to sign notes${signer.host ? `, at ${signer.host}` : ""}`,
     short: () => signer.state === "unlocked" ? "Signing" : "Sign",
     on: () => signer.state === "unlocked",
     hidden: () => signer.state === "none",
