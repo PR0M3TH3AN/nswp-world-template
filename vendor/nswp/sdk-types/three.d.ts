@@ -275,6 +275,8 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
     sounds?: Sounds | null;
     /** False where this world wants no shared music: a concert, a library. Its visitors' own music still plays for them. */
     sharedMusic?: boolean;
+    /** The relays a note the visitor posts from the chat goes to. Left out, the kit's own list. */
+    noteRelays?: string[];
 }): {
     refresh(): void;
     travelling(): Travelling;
@@ -322,7 +324,8 @@ export { arrivedSettings, arriveWith, currentSettings, reportSettings, type Trav
 export { fullscreenWaiting, prefersFullscreen, resumeFullscreen } from "./ui/fullscreen.js";
 export { loadPicture, onPicturesChange, PICTURE_LIMITS, setShowsPictures, showsPictures } from "./picture.js";
 export { addDeskControls, FOV_STEPS, LOOK_STEPS, lookScale, onDeskChange, setLookScale, setVisitorFov, visitorFov, watchFov } from "./desk.js";
-export { figureAction, identityAction, identityHost, identitySection, identityWords, type Leaving } from "./ui/identity.js";
+export { figureAction, identityAction, identityHost, identitySection, identityWords, signerAction, worldSigner, type Leaving } from "./ui/identity.js";
+export { createWorldSigner, type SignerState, type WorldSigner } from "./signer.js";
 export { currentForm, deviceForms, formFor, startingForm, usedForm, type DeviceForms, type Form } from "./form.js";
 export { createFps, heldKey, lookAfter, strideOf, LOOK_SPEED, PITCH_LIMIT, SPRINT, type Fps, type FpsOptions, type Held } from "./fps.js";
 export { addSoundControls, createSounds, CUES, type Cue, type Jukebox, type Song, type SoundLevels, type Sounds, type SoundsOptions, type SoundTheme } from "./sound.js";
