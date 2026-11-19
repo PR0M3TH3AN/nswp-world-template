@@ -3,6 +3,7 @@ import {
   CHAMBER_ORDER,
   CUES,
   DEFAULT_COMFORT,
+  DRAG_LOOK,
   INTENSE_COMFORT,
   LIBRARY_LIMITS,
   LOOK_SPEED,
@@ -46,7 +47,7 @@ import {
   textSprite,
   turnVisitor,
   viewScale
-} from "./shared-DVZNGWMJ.js";
+} from "./shared-N27DE2OT.js";
 import "./shared-7X4E2NOK.js";
 import "./shared-SJAWET5K.js";
 import {
@@ -64,6 +65,7 @@ export {
   CHAMBER_ORDER,
   CUES,
   DEFAULT_COMFORT,
+  DRAG_LOOK,
   INTENSE_COMFORT,
   LIBRARY_LIMITS,
   LOOK_SPEED,

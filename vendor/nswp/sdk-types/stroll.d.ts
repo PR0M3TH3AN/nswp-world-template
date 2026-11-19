@@ -19,6 +19,8 @@
 export declare const WALK_SPEED = 2.4;
 /** How far one tap or click takes a visitor on a flat screen, in metres. A little over a second of walking. */
 export declare const TAP_REACH = 3;
+/** How far dragging turns a visitor on a flat screen, in radians a pixel. Dragging right brings what was on the left round. */
+export declare const DRAG_LOOK = 0.005;
 /** The spot a tap leads to: the one tapped, or the point `reach` metres towards it when it is further off. */
 export declare function reachOf(fromX: number, fromZ: number, toX: number, toZ: number, reach?: number): [number, number];
 export interface Stroll {

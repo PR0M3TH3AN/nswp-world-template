@@ -8,9 +8,9 @@
  */
 import * as THREE from "three";
 import type { Frame, MeshBuilder, P2, V3 } from "./mesh.js";
+import { PORTAL_HEIGHT, PORTAL_WIDTH } from "./gate-size.js";
 /** The doorway's opening, in metres. */
-export declare const PORTAL_WIDTH = 1.5;
-export declare const PORTAL_HEIGHT = 2.1;
+export { PORTAL_HEIGHT, PORTAL_WIDTH };
 /**
  * The outline of the doorway's moulding, to sweep along a path: `hw` half its
  * width across the opening, `hd` half its depth, its corners cut by `bev`, and
