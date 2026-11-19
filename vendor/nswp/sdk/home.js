@@ -1,10 +1,14 @@
 import {
   MeshBuilder,
+  PORTAL_HEIGHT,
+  PORTAL_SIGN_HEIGHT,
+  PORTAL_SPRING,
+  PORTAL_WIDTH,
   SKY_GLSL,
   createAlloy,
   createPortalWindow,
   textSprite
-} from "./shared-JU5C4IEA.js";
+} from "./shared-FOUFFMFV.js";
 import "./shared-33TMTTY7.js";
 import "./shared-FUYALROY.js";
 import "./shared-Q3D4OUDA.js";
@@ -20,14 +24,6 @@ import * as THREE2 from "three";
 
 // packages/sdk/src/models.ts
 import * as THREE from "three";
-
-// packages/sdk/src/gate-size.ts
-var PORTAL_WIDTH = 1.5;
-var PORTAL_HEIGHT = 2.1;
-var PORTAL_SPRING = PORTAL_HEIGHT - PORTAL_WIDTH / 2;
-var PORTAL_SIGN_HEIGHT = PORTAL_HEIGHT + 0.72;
-
-// packages/sdk/src/models.ts
 function mouldingProfile(hw, hd, bev, c, cd) {
   return [
     [-hw, -hd + bev],

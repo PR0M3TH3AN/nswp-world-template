@@ -3,6 +3,7 @@ import {
   CHAMBER_ORDER,
   CUES,
   DEFAULT_COMFORT,
+  DOOR_REACH,
   DOUBLE_TAP,
   DRAG_LOOK,
   INTENSE_COMFORT,
@@ -30,6 +31,7 @@ import {
   createConsole,
   createCrossing,
   createFigure,
+  createFloorMarks,
   createFps,
   createJump,
   createKeyboard,
@@ -40,6 +42,7 @@ import {
   createSounds,
   createStroll,
   createXrInput,
+  dotsBetween,
   heldKey,
   isIntense,
   lookAfter,
@@ -54,7 +57,7 @@ import {
   textSprite,
   turnVisitor,
   viewScale
-} from "./shared-JU5C4IEA.js";
+} from "./shared-FOUFFMFV.js";
 import {
   currentForm,
   deviceForms,
@@ -84,6 +87,7 @@ export {
   CHAMBER_ORDER,
   CUES,
   DEFAULT_COMFORT,
+  DOOR_REACH,
   DOUBLE_TAP,
   DRAG_LOOK,
   INTENSE_COMFORT,
@@ -115,6 +119,7 @@ export {
   createConsole,
   createCrossing,
   createFigure,
+  createFloorMarks,
   createFps,
   createJump,
   createKeyboard,
@@ -130,6 +135,7 @@ export {
   currentForm,
   currentSettings,
   deviceForms,
+  dotsBetween,
   formFor,
   heldKey,
   isIntense,
