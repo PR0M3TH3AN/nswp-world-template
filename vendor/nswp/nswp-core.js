@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.38.0";
+var KIT_VERSION = "0.39.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6457,6 +6457,152 @@ function tallyWords(tally) {
   return tally.count ? `${tally.average.toFixed(1)} of ${RATING_LIMITS.most}, from ${tally.count}` : "";
 }
 
+// packages/core/src/people.ts
+var FOLLOWS_KIND = 3;
+function followsIn(event) {
+  if (!event || !Array.isArray(event.tags)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const t of event.tags) {
+    if (!Array.isArray(t) || t[0] !== "p" || typeof t[1] !== "string") continue;
+    const key = t[1].toLowerCase();
+    if (isHex64(key)) seen.add(key);
+  }
+  return [...seen];
+}
+function newestFollows(events, pubkey) {
+  return events.filter((e) => e.kind === FOLLOWS_KIND && e.pubkey === pubkey && Array.isArray(e.tags)).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0] ?? null;
+}
+function changeFollows(newest, change) {
+  if (newest && (newest.kind !== FOLLOWS_KIND || !Array.isArray(newest.tags))) return null;
+  if (!newest && !change.fromNothing) return null;
+  const add = typeof change.add === "string" ? change.add.toLowerCase() : "";
+  const remove = typeof change.remove === "string" ? change.remove.toLowerCase() : "";
+  if (add === "" === (remove === "")) return null;
+  const who = add || remove;
+  if (!isHex64(who) || add && newest?.pubkey === add) return null;
+  const had = newest ? newest.tags.filter((t) => Array.isArray(t) && t.every((item) => typeof item === "string")) : [];
+  const names = (t) => t[0] === "p" && typeof t[1] === "string" && t[1].toLowerCase() === who;
+  const follows = had.some(names);
+  if (add ? follows : !follows) return null;
+  const tags = add ? [...had.map((t) => [...t]), ["p", add, ...change.relay ? [change.relay] : []]] : had.filter((t) => !names(t)).map((t) => [...t]);
+  const created_at = Math.max(Math.floor(change.now), newest ? newest.created_at + 1 : 0);
+  return { kind: FOLLOWS_KIND, created_at, tags, content: typeof newest?.content === "string" ? newest.content : "" };
+}
+
+// packages/core/src/message.ts
+var MESSAGE_KIND = 14;
+var SEAL_KIND = 13;
+var WRAP_KIND = 1059;
+var MESSAGE_RELAYS_KIND = 10050;
+var MESSAGE_LIMITS = {
+  /** The most characters in one message as this library writes and shows it. */
+  chars: 2e3,
+  /** How far back a wrap's time may be moved, in seconds, so that a relay can't tell when it was sent. */
+  backdateSec: 2 * 24 * 3600,
+  /** No more than this many relays are taken from someone's list. */
+  relays: 4
+};
+var UNSEEN2 = [
+  [0, 9],
+  [11, 31],
+  [127, 159],
+  [8203, 8204],
+  [8206, 8207],
+  [8232, 8239],
+  [8288, 8303],
+  [65279, 65279],
+  [65529, 65531]
+];
+function cleanMessage(text) {
+  if (typeof text !== "string") return "";
+  let out = "";
+  for (const ch of text.slice(0, MESSAGE_LIMITS.chars * 8).normalize("NFC")) {
+    const code = ch.codePointAt(0);
+    out += UNSEEN2.some(([from, to]) => code >= from && code <= to) ? " " : ch;
+  }
+  out = out.replace(/[^\S\n]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return [...out].slice(0, MESSAGE_LIMITS.chars).join("").trim();
+}
+function buildMessage(o) {
+  const text = cleanMessage(o.text);
+  if (!isHex64(o.from) || !isHex64(o.to) || o.from === o.to || !text) return null;
+  const written = { kind: MESSAGE_KIND, pubkey: o.from, created_at: Math.floor(o.now), tags: [["p", o.to, ...o.relay ? [o.relay] : []]], content: text };
+  return { ...written, id: getEventHash(written) };
+}
+function sealTemplate(sealed, now) {
+  return { kind: SEAL_KIND, created_at: Math.floor(now), tags: [], content: sealed };
+}
+function wrapSeal(seal, to, o) {
+  if (!isHex64(to) || !seal || seal.kind !== SEAL_KIND || seal.tags.length !== 0 || !verifyEvent(seal)) return null;
+  const once = o.secretKey ?? randomBytes(32);
+  const back = Math.floor((o.random ?? Math.random()) * MESSAGE_LIMITS.backdateSec);
+  try {
+    const content = nip44Encrypt(JSON.stringify(seal), getConversationKey(once, to), o.nonce);
+    return finalizeEvent({ kind: WRAP_KIND, created_at: Math.floor(o.now) - back, tags: [["p", to]], content }, once, o.auxRand);
+  } catch {
+    return null;
+  }
+}
+function looksLikeWrap(event, reader) {
+  return !!event && event.kind === WRAP_KIND && typeof event.content === "string" && event.tags.some((t) => t[0] === "p" && t[1] === reader) && verifyEvent(event);
+}
+function readSeal(opened) {
+  let seal;
+  try {
+    seal = JSON.parse(opened);
+  } catch {
+    return null;
+  }
+  if (!verifyEvent(seal) || seal.kind !== SEAL_KIND || seal.tags.length !== 0) return null;
+  return seal;
+}
+function readMessage(opened, seal, reader) {
+  let m;
+  try {
+    m = JSON.parse(opened);
+  } catch {
+    return null;
+  }
+  if (!m || typeof m !== "object" || m.kind !== MESSAGE_KIND || m.pubkey !== seal.pubkey || !isHex64(m.pubkey)) return null;
+  if (typeof m.content !== "string" || typeof m.created_at !== "number" || !Number.isInteger(m.created_at) || !Array.isArray(m.tags)) return null;
+  if (!m.tags.every((t) => Array.isArray(t) && t.every((item) => typeof item === "string"))) return null;
+  const to = [...new Set(m.tags.filter((t) => t[0] === "p" && isHex64(t[1])).map((t) => t[1]))];
+  const text = cleanMessage(m.content);
+  if (to.length === 0 || !text || m.pubkey !== reader && !to.includes(reader)) return null;
+  const id = getEventHash({ kind: MESSAGE_KIND, pubkey: m.pubkey, created_at: m.created_at, tags: m.tags, content: m.content });
+  return { id, from: m.pubkey, to, text, at: m.created_at };
+}
+function writtenWith(message, reader) {
+  const others = [.../* @__PURE__ */ new Set([message.from, ...message.to])].filter((k) => k !== reader);
+  return others.length === 1 ? others[0] : "";
+}
+function openWrap(wrap, secretKey) {
+  const reader = getPublicKey(secretKey);
+  if (!looksLikeWrap(wrap, reader)) return null;
+  try {
+    const seal = readSeal(nip44Decrypt(wrap.content, getConversationKey(secretKey, wrap.pubkey)));
+    if (!seal) return null;
+    return readMessage(nip44Decrypt(seal.content, getConversationKey(secretKey, seal.pubkey)), seal, reader);
+  } catch {
+    return null;
+  }
+}
+function readMessageRelays(events, pubkey) {
+  const latest = events.filter((e) => e.kind === MESSAGE_RELAYS_KIND && e.pubkey === pubkey).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0];
+  const out = [];
+  for (const t of latest?.tags ?? []) {
+    if (t[0] !== "relay") continue;
+    const url = cleanRelayUrl(t[1]);
+    if (url && !out.includes(url) && out.length < MESSAGE_LIMITS.relays) out.push(url);
+  }
+  return out;
+}
+function buildMessageRelays(relays, now) {
+  const clean3 = [...new Set(relays.map(cleanRelayUrl).filter(Boolean))].slice(0, MESSAGE_LIMITS.relays);
+  if (clean3.length === 0) return null;
+  return { kind: MESSAGE_RELAYS_KIND, created_at: Math.floor(now), tags: clean3.map((url) => ["relay", url]), content: "" };
+}
+
 // packages/core/src/layout.ts
 var HOME_LAYOUT_KIND = 37302;
 var ITEM_KIND = 37303;
@@ -7058,6 +7204,7 @@ export {
   Collector,
   DEFAULT_RELAYS,
   ENTRY_ASSERTION_KIND,
+  FOLLOWS_KIND,
   FOV_RANGE,
   FRESH_HEADER,
   HANDOFF_PROTOCOL,
@@ -7077,6 +7224,9 @@ export {
   LOOK_LIMITS,
   LOOK_PARTS,
   LOOK_RANGE,
+  MESSAGE_KIND,
+  MESSAGE_LIMITS,
+  MESSAGE_RELAYS_KIND,
   MODES,
   NEVER_KINDS,
   NswpError,
@@ -7099,6 +7249,7 @@ export {
   SAVE_LIMITS,
   SAVE_SLOT,
   SCHEMAS,
+  SEAL_KIND,
   SETTINGS_LINK_LIMIT,
   SIGNER_PROTOCOL,
   SIGNER_VERSION,
@@ -7110,6 +7261,7 @@ export {
   WORLD_GRANT_LIMITS,
   WORLD_KIND,
   WORLD_TAG,
+  WRAP_KIND,
   applyChoices,
   arrivalParam,
   assertManifest,
@@ -7125,6 +7277,8 @@ export {
   buildHello,
   buildLayoutEvent,
   buildListEvent,
+  buildMessage,
+  buildMessageRelays,
   buildRating,
   buildRoomPass,
   buildSay,
@@ -7133,6 +7287,7 @@ export {
   buildWorldEvent,
   buildWorldGrant,
   categoryWords,
+  changeFollows,
   chatId,
   checkDestination,
   checkPictureBytes,
@@ -7143,6 +7298,7 @@ export {
   cleanKeys,
   cleanLine,
   cleanLocalMap,
+  cleanMessage,
   cleanName,
   cleanOrigin,
   cleanPicture,
@@ -7170,6 +7326,7 @@ export {
   fetchManifest,
   finalizeEvent,
   fitsInSave,
+  followsIn,
   fragmentSaysImmersive,
   fromLocal,
   generatedLook,
@@ -7199,10 +7356,12 @@ export {
   lookFromTags,
   lookToTags,
   looksLikeSave,
+  looksLikeWrap,
   mapFromLocal,
   mapToLocal,
   markFor,
   markGrid,
+  newestFollows,
   nip44Decrypt,
   nip44Encrypt,
   normalizeUrl,
@@ -7211,6 +7370,7 @@ export {
   openBridgeSignal,
   openSave,
   openSignal,
+  openWrap,
   packBrought,
   packPose,
   parseAirlockFragment,
@@ -7235,13 +7395,17 @@ export {
   randomNonce,
   readBrought,
   readHandoffMessage,
+  readMessage,
+  readMessageRelays,
   readRelayList,
+  readSeal,
   readSignerReply,
   readSignerRequest,
   relayScore,
   roomTopic,
   saveAddress,
   sealSave,
+  sealTemplate,
   serializeEvent,
   servedFresh,
   setLocalMap,
@@ -7266,5 +7430,7 @@ export {
   verifyWorldGrant,
   wayWithoutDestination,
   wellKnownUrl,
-  writeRelaysFor
+  wrapSeal,
+  writeRelaysFor,
+  writtenWith
 };
