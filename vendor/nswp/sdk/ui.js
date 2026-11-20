@@ -26,7 +26,7 @@ import {
   setShowsPictures,
   showsChat,
   showsPictures
-} from "./shared-OFCNLGVT.js";
+} from "./shared-7H776IPK.js";
 import {
   arrivedSettings,
   reportSettings
@@ -34,6 +34,7 @@ import {
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/ui/model.ts
+import { cleanSettings, PINS_MOST } from "@nswp/core";
 var PRESENCES = ["full", "quiet", "hidden"];
 var CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"];
 function cleanKeys(now, k) {
@@ -68,6 +69,21 @@ var rank = (id) => {
   return i === -1 ? STANDARD_ORDER.length : i;
 };
 var inOrder = (list) => list.map((a, i) => [a, i]).sort((x, y) => rank(x[0].id) - rank(y[0].id) || x[1] - y[1]).map((x) => x[0]);
+var PINS_KEY = "nswp:ui:pins";
+function loadPins() {
+  try {
+    const kept = globalThis.localStorage?.getItem(PINS_KEY);
+    return kept === null || kept === void 0 ? null : cleanSettings({ pins: JSON.parse(kept) }).pins ?? null;
+  } catch {
+    return null;
+  }
+}
+function savePins(pins) {
+  try {
+    globalThis.localStorage?.setItem(PINS_KEY, JSON.stringify(pins));
+  } catch {
+  }
+}
 function createControls(opts) {
   const sections = STANDARD.map((s) => ({ ...s }));
   for (const s of opts.sections ?? []) addSection(s);
@@ -83,6 +99,12 @@ function createControls(opts) {
     saveVisitorTheme(visitor);
   }
   reportSettings("look", () => ({ ...visitor.scale !== void 0 ? { text: visitor.scale } : {}, ...visitor.motion !== void 0 ? { motion: visitor.motion } : {}, ...visitor.wrist !== void 0 ? { wrist: visitor.wrist } : {} }));
+  let pins = loadPins();
+  if (came.pins !== void 0) {
+    pins = [...came.pins];
+    savePins(pins);
+  }
+  reportSettings("pins", () => pins ? { pins } : {});
   let theme = resolveTheme(opts.theme, visitor);
   let target = "";
   let detail = [];
@@ -170,6 +192,18 @@ function createControls(opts) {
       theme = resolveTheme({ ...opts.theme, ...keep2 ? {} : patch }, visitor);
       changed();
     },
+    get pins() {
+      return pins ?? [];
+    },
+    setPinned(section, pinned) {
+      const now = pins ?? [];
+      if (pinned === now.includes(section)) return true;
+      if (pinned && (now.length >= PINS_MOST || cleanSettings({ pins: [section] }).pins?.length !== 1)) return false;
+      pins = pinned ? [...now, section] : now.filter((id) => id !== section);
+      savePins(pins);
+      changed();
+      return true;
+    },
     view() {
       const showing = inOrder(actions.filter((a) => !a.hidden?.()));
       const bar = showing.filter((a) => a.hotbar).slice(0, 6);
@@ -179,13 +213,21 @@ function createControls(opts) {
       };
       const known = new Set(sections.map((s) => s.id));
       const extra = [...new Set(showing.map((a) => a.section ?? "travel").filter((id) => !known.has(id)))].map((id) => ({ id, label: id }));
+      const shown = [...sections, ...extra].map((s) => ({ id: s.id, label: s.label, icon: s.icon ?? null, note: read(s.note), card: s.card?.() ?? null, items: showing.filter((a) => (a.section ?? "travel") === s.id).map(item), pinned: (pins ?? []).includes(s.id) })).filter((s) => s.items.length > 0 || s.note || s.card);
       return {
         title: opts.title,
         address: opts.address ?? "",
         target,
         detail,
-        sections: [...sections, ...extra].map((s) => ({ id: s.id, label: s.label, icon: s.icon ?? null, note: read(s.note), card: s.card?.() ?? null, items: showing.filter((a) => (a.section ?? "travel") === s.id).map(item) })).filter((s) => s.items.length > 0 || s.note || s.card),
+        sections: shown,
         hotbar: bar.map(item),
+        // Only tabs this place has: a tab pinned in another world that isn't here is kept, and not shown.
+        pins: (pins ?? []).flatMap((id, i) => {
+          const tab = shown.find((x) => x.id === id);
+          const n = bar.length + i + 1;
+          return tab ? [{ id, label: tab.label, icon: tab.icon, key: n <= 9 ? String(n) : "" }] : [];
+        }),
+        pinsFull: (pins ?? []).length >= PINS_MOST,
         theme,
         presence,
         corner,
@@ -289,8 +331,14 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .target.card b { font-weight: 650; }
 .target.card span { opacity: 0.86; font-size: 0.93em; line-height: 1.35; }
 .target.card span:last-child { opacity: 1; color: rgb(var(--accent)); }
-.hotbar { pointer-events: auto; display: flex; align-items: flex-start; justify-content: center; gap: 10px; padding: 12px 14px 8px; border-radius: 20px 20px 10px 10px; }
-.key { position: relative; width: 62px; display: grid; justify-items: center; gap: 7px; text-align: center; }
+.hotbar { pointer-events: auto; display: flex; align-items: flex-start; justify-content: flex-start; gap: 10px; padding: 12px 14px 8px; border-radius: 20px 20px 10px 10px;
+  /* As wide as its keys, and no wider than the screen: with tabs pinned to it on a phone, it is slid along. */
+  max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.hotbar::-webkit-scrollbar { display: none; }
+.key { position: relative; flex: none; width: 62px; display: grid; justify-items: center; gap: 7px; text-align: center; }
+/* Between the place's own keys and the tabs the visitor pinned: a line, so it is plain which are theirs. */
+.hotbar .theirs { flex: none; align-self: stretch; width: 1px; margin: 2px 2px 8px; background: rgba(var(--ink), .2); }
+.key.pin .arch { border-style: dashed; }
 /* A key is a small doorway: an arch, standing on a sill that lights when it is on. */
 .key .arch { width: 52px; height: 54px; display: grid; place-items: center; border-radius: 26px 26px 7px 7px;
   background: rgba(var(--accent), .08); border: 1px solid rgba(var(--accent), .42); transition: background .15s, border-color .15s, transform .15s; }
@@ -422,7 +470,13 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 
 .note { margin: 0; padding: 4px 12px 0 12px; color: rgba(var(--ink), .78); border-left: 2px solid rgba(var(--accent), .6); margin-left: 12px; font-size: .95em; }
 .note:empty { display: none; }
-.foot { display: flex; justify-content: flex-end; padding: 0 12px 12px; }
+.foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 0 12px 12px; }
+/* Keeping this tab on the bar: a quiet button, opposite Close. */
+.pin-it { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 10px; border: 1px solid rgba(var(--ink), .22); color: rgba(var(--ink), .82); font-size: .93em; }
+.pin-it svg { width: 16px; height: 16px; }
+.pin-it:hover:not(:disabled), .pin-it:focus-visible { border-color: rgb(var(--accent)); color: rgb(var(--accent)); }
+.pin-it[aria-pressed="true"] { border-color: rgba(var(--accent), .8); color: rgb(var(--accent)); background: rgba(var(--accent), .12); }
+.pin-it:disabled { opacity: .5; cursor: default; }
 .close { min-height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid rgba(var(--ink), .22); }
 .close:hover { border-color: rgb(var(--ink)); }
 
@@ -564,7 +618,9 @@ function mountHud(controls, opts = {}) {
   const rows = el("div", { class: "rows" });
   const note = el("p", { class: "note" });
   const close = el("button", { class: "close", type: "button" }, "Close");
-  const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabbar, rows, note, el("div", { class: "foot" }, close));
+  const pinWords = el("span");
+  const pinIt = el("button", { class: "pin-it", type: "button", "aria-pressed": "false" }, icon("pin"), pinWords);
+  const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabbar, rows, note, el("div", { class: "foot" }, pinIt, close));
   const chatTitle = el("b");
   const tabRoom = el("button", { type: "button", class: "tab", role: "tab" }, "Room chat");
   const tabFeed = el("button", { type: "button", class: "tab", role: "tab" }, "My public feed");
@@ -587,6 +643,11 @@ function mountHud(controls, opts = {}) {
   let chose = false;
   let drawn = "";
   const press = (item) => controls.run(item.id);
+  const openPin = (id2) => {
+    controls.signal("press");
+    if (open && section === id2) setOpen(false);
+    else setOpen(true, id2);
+  };
   const drawCard = (card) => {
     const face = el("span", { class: "face", "aria-hidden": "true" }, [...card.title][0]?.toUpperCase() ?? "");
     if (card.color) face.style.setProperty("--c", card.color);
@@ -827,9 +888,15 @@ function mountHud(controls, opts = {}) {
     }
     drawChat(view);
     if (!view.sections.some((s) => s.id === section)) section = view.sections[0]?.id ?? "";
-    const now = JSON.stringify([view.hotbar, view.sections, section, open, view.presence]);
+    const now = JSON.stringify([view.hotbar, view.pins, view.pinsFull, view.sections, section, open, view.presence]);
     if (now === drawn) return;
     drawn = now;
+    const here = view.sections.find((s) => s.id === section);
+    pinIt.hidden = !here;
+    pinIt.setAttribute("aria-pressed", String(!!here?.pinned));
+    pinIt.disabled = !here?.pinned && view.pinsFull;
+    pinWords.textContent = here?.pinned ? "On your bar. Take it off" : view.pinsFull ? "Your bar is full" : "Keep this tab on your bar";
+    pinIt.title = here?.pinned ? "" : view.pinsFull ? "Take a tab off your bar to keep another on it." : "It stays on your bar in every world that has this tab.";
     hotbar.replaceChildren(
       ...view.hotbar.map((item, i) => {
         const b = el(
@@ -843,9 +910,23 @@ function mountHud(controls, opts = {}) {
         b.style.setProperty("--i", String(i));
         b.addEventListener("click", () => press(item));
         return b;
+      }),
+      ...view.pins.length && view.hotbar.length ? [el("i", { class: "theirs", "aria-hidden": "true" })] : [],
+      ...view.pins.map((pin, i) => {
+        const b = el(
+          "button",
+          { class: "key pin normal", type: "button", "aria-label": `${pin.label}: a tab you keep on your bar`, "aria-pressed": String(open && section === pin.id) },
+          el("span", { class: "arch" }, icon(pin.icon ?? "menu")),
+          el("span", { class: "sill" }),
+          el("span", { class: "name" }, pin.label),
+          el("kbd", { class: "num mono" }, pin.key)
+        );
+        b.style.setProperty("--i", String(view.hotbar.length + i));
+        b.addEventListener("click", () => openPin(pin.id));
+        return b;
       })
     );
-    hotbar.hidden = view.hotbar.length === 0;
+    hotbar.hidden = view.hotbar.length === 0 && view.pins.length === 0;
     tabs.replaceChildren(
       ...view.sections.map((s) => {
         const b = el("button", { class: "tab", type: "button", role: "tab", "aria-selected": String(s.id === section) }, icon(s.icon), s.label);
@@ -932,6 +1013,12 @@ function mountHud(controls, opts = {}) {
   menu.addEventListener("click", () => setOpen(!open));
   quiet.addEventListener("click", () => setOpen(!open));
   close.addEventListener("click", () => setOpen(false));
+  pinIt.addEventListener("click", () => {
+    const here = controls.view().sections.find((s) => s.id === section);
+    if (!here) return;
+    if (!controls.setPinned(here.id, !here.pinned)) return controls.say("Your bar is full. Take a tab off it to keep another on it.");
+    controls.say(here.pinned ? `${here.label} is off your bar.` : `${here.label} is on your bar, here and in every world that has it.`);
+  });
   const onKey = (e) => {
     if (host.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     const at = e.composedPath()[0];
@@ -945,7 +1032,9 @@ function mountHud(controls, opts = {}) {
     }
     if (!view.keys.hotbar || view.presence !== "full") return;
     const item = view.hotbar.find((i) => i.key === e.key);
-    if (item) press(item);
+    if (item) return press(item);
+    const pin = view.pins.find((p) => p.key && p.key === e.key);
+    if (pin) openPin(pin.id);
   };
   addEventListener("keydown", onKey);
   const onSummonKey = (e) => {

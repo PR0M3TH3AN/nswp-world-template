@@ -83,6 +83,17 @@ export interface UiSectionView {
     note: string;
     card: UiCard | null;
     items: UiItemView[];
+    /** The visitor keeps this tab on their bar. */
+    pinned: boolean;
+}
+/** A tab of the menu the visitor keeps on their bar: pressing it brings the menu up on that tab. */
+export interface UiPinView {
+    /** The tab's id. */
+    id: string;
+    label: string;
+    icon: IconName | null;
+    /** The number key that presses it, or "". */
+    key: string;
 }
 /** Everything a renderer needs to draw, with every word already worked out. */
 /**
@@ -117,6 +128,10 @@ export interface UiView {
     keys: UiKeys;
     sections: UiSectionView[];
     hotbar: UiItemView[];
+    /** The tabs they keep on the bar, after its own keys, in the order they pinned them. Only tabs this place has. */
+    pins: UiPinView[];
+    /** They have pinned as many as may be: another can't be until one is taken off. */
+    pinsFull: boolean;
     theme: UiTheme;
     /** What the people in the room have written (ui/chat.ts). */
     chat: ChatView;
@@ -150,6 +165,13 @@ export interface Controls {
     setCorner(corner: Corner): void;
     /** Which keys the HUD answers to. */
     setKeys(keys: Partial<UiKeys>): void;
+    /** The tabs the visitor keeps on their bar, by id, in order. They go with them to the next world (settings.ts). */
+    readonly pins: readonly string[];
+    /**
+     * Pin a tab of the menu to the bar, or take it off. It is the visitor's own doing, from the menu: a world
+     * doesn't pin for them. False if it couldn't be: the bar holds `PINS_MOST`, or there is no such tab.
+     */
+    setPinned(section: string, pinned: boolean): boolean;
     /**
      * Take every key for the world, or give them back. While claimed, the HUD
      * answers to no key at all; its mark can still be clicked. For play that

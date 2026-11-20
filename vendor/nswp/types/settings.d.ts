@@ -61,7 +61,15 @@ export interface TravelSettings {
      * Turned off, nothing anyone writes is shown to them, and nobody is told.
      */
     chat?: boolean;
+    /**
+     * Which tabs of the menu they keep on their bar, by name, in the order they pinned them: `PINS_MOST` at most.
+     * An empty list is a choice too: they took them all off. A name a world has no tab for is simply not shown
+     * there. Only they pin: a world never does it for them.
+     */
+    pins?: string[];
 }
+/** The most tabs of the menu a visitor may keep on their bar. */
+export declare const PINS_MOST = 4;
 /** The slowest and fastest the view may be set to turn, and the narrowest and widest it may be set to see. */
 export declare const LOOK_RANGE: readonly [0.25, 3];
 export declare const FOV_RANGE: readonly [50, 110];
