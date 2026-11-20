@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.41.0";
+var KIT_VERSION = "0.42.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6237,6 +6237,151 @@ function looksLikeSave(event, pubkey) {
   return !!event && event.kind === SAVE_KIND && !!pubkey && event.pubkey === pubkey && typeof event.content === "string" && isHex64(getTags(event, "d")[0]?.[1]);
 }
 
+// packages/core/src/message.ts
+var MESSAGE_KIND = 14;
+var SEAL_KIND = 13;
+var WRAP_KIND = 1059;
+var MESSAGE_RELAYS_KIND = 10050;
+var MESSAGE_LIMITS = {
+  /** The most characters in one message as this library writes and shows it. */
+  chars: 2e3,
+  /** How far back a wrap's time may be moved, in seconds, so that a relay can't tell when it was sent. */
+  backdateSec: 2 * 24 * 3600,
+  /** No more than this many relays are taken from someone's list. */
+  relays: 4
+};
+var UNSEEN2 = [
+  [0, 9],
+  [11, 31],
+  [127, 159],
+  [8203, 8204],
+  [8206, 8207],
+  [8232, 8239],
+  [8288, 8303],
+  [65279, 65279],
+  [65529, 65531]
+];
+function cleanMessage(text) {
+  if (typeof text !== "string") return "";
+  let out = "";
+  for (const ch of text.slice(0, MESSAGE_LIMITS.chars * 8).normalize("NFC")) {
+    const code = ch.codePointAt(0);
+    out += UNSEEN2.some(([from, to]) => code >= from && code <= to) ? " " : ch;
+  }
+  out = out.replace(/[^\S\n]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return [...out].slice(0, MESSAGE_LIMITS.chars).join("").trim();
+}
+function buildMessage(o) {
+  const text = cleanMessage(o.text);
+  if (!isHex64(o.from) || !isHex64(o.to) || o.from === o.to || !text) return null;
+  const written = { kind: MESSAGE_KIND, pubkey: o.from, created_at: Math.floor(o.now), tags: [["p", o.to, ...o.relay ? [o.relay] : []]], content: text };
+  return { ...written, id: getEventHash(written) };
+}
+function sealTemplate(sealed, now) {
+  return { kind: SEAL_KIND, created_at: Math.floor(now), tags: [], content: sealed };
+}
+function wrapSeal(seal, to, o) {
+  if (!isHex64(to) || !seal || seal.kind !== SEAL_KIND || seal.tags.length !== 0 || !verifyEvent(seal)) return null;
+  const once = o.secretKey ?? randomBytes(32);
+  const back = Math.floor((o.random ?? Math.random()) * MESSAGE_LIMITS.backdateSec);
+  try {
+    const content = nip44Encrypt(JSON.stringify(seal), getConversationKey(once, to), o.nonce);
+    return finalizeEvent({ kind: WRAP_KIND, created_at: Math.floor(o.now) - back, tags: [["p", to]], content }, once, o.auxRand);
+  } catch {
+    return null;
+  }
+}
+function looksLikeWrap(event, reader) {
+  return !!event && event.kind === WRAP_KIND && typeof event.content === "string" && event.tags.some((t) => t[0] === "p" && t[1] === reader) && verifyEvent(event);
+}
+function readSeal(opened) {
+  let seal;
+  try {
+    seal = JSON.parse(opened);
+  } catch {
+    return null;
+  }
+  if (!verifyEvent(seal) || seal.kind !== SEAL_KIND || seal.tags.length !== 0) return null;
+  return seal;
+}
+function readMessage(opened, seal, reader) {
+  let m;
+  try {
+    m = JSON.parse(opened);
+  } catch {
+    return null;
+  }
+  if (!m || typeof m !== "object" || m.kind !== MESSAGE_KIND || m.pubkey !== seal.pubkey || !isHex64(m.pubkey)) return null;
+  if (typeof m.content !== "string" || typeof m.created_at !== "number" || !Number.isInteger(m.created_at) || !Array.isArray(m.tags)) return null;
+  if (!m.tags.every((t) => Array.isArray(t) && t.every((item) => typeof item === "string"))) return null;
+  const to = [...new Set(m.tags.filter((t) => t[0] === "p" && isHex64(t[1])).map((t) => t[1]))];
+  const text = cleanMessage(m.content);
+  if (to.length === 0 || !text || m.pubkey !== reader && !to.includes(reader)) return null;
+  const id = getEventHash({ kind: MESSAGE_KIND, pubkey: m.pubkey, created_at: m.created_at, tags: m.tags, content: m.content });
+  return { id, from: m.pubkey, to, text, at: m.created_at };
+}
+function writtenWith(message, reader) {
+  const others = [.../* @__PURE__ */ new Set([message.from, ...message.to])].filter((k) => k !== reader);
+  return others.length === 1 ? others[0] : "";
+}
+function openWrap(wrap, secretKey) {
+  const reader = getPublicKey(secretKey);
+  if (!looksLikeWrap(wrap, reader)) return null;
+  try {
+    const seal = readSeal(nip44Decrypt(wrap.content, getConversationKey(secretKey, wrap.pubkey)));
+    if (!seal) return null;
+    return readMessage(nip44Decrypt(seal.content, getConversationKey(secretKey, seal.pubkey)), seal, reader);
+  } catch {
+    return null;
+  }
+}
+function readMessageRelays(events, pubkey) {
+  const latest = events.filter((e) => e.kind === MESSAGE_RELAYS_KIND && e.pubkey === pubkey).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0];
+  const out = [];
+  for (const t of latest?.tags ?? []) {
+    if (t[0] !== "relay") continue;
+    const url = cleanRelayUrl(t[1]);
+    if (url && !out.includes(url) && out.length < MESSAGE_LIMITS.relays) out.push(url);
+  }
+  return out;
+}
+var MESSAGE_WORLD_LIMITS = { burst: 10, perMs: 6e4, hourly: 200 };
+function sealMessage(o) {
+  const from = getPublicKey(o.secretKey);
+  if (typeof o.to !== "string" || typeof o.text !== "string") return null;
+  const message = buildMessage({ from, to: o.to, text: o.text, now: o.now });
+  if (!message) return null;
+  const inside = JSON.stringify(message);
+  const seal = (reader, nonce) => finalizeEvent(sealTemplate(nip44Encrypt(inside, getConversationKey(o.secretKey, reader), nonce), o.now), o.secretKey, o.auxRand);
+  return { message, seals: [seal(o.to, o.nonces?.[0]), seal(from, o.nonces?.[1])] };
+}
+function isSealAsked(sealed, o) {
+  const s = sealed;
+  if (!o.pubkey || !s || typeof s !== "object" || !Array.isArray(s.seals) || s.seals.length !== 2) return false;
+  const m = s.message;
+  if (!m || typeof m !== "object" || m.kind !== MESSAGE_KIND || m.pubkey !== o.pubkey || m.content !== cleanMessage(o.text) || !m.content) return false;
+  if (!Array.isArray(m.tags) || m.tags.length !== 1 || m.tags[0]?.[0] !== "p" || m.tags[0]?.[1] !== o.to || typeof m.created_at !== "number") return false;
+  if (m.id !== getEventHash({ kind: MESSAGE_KIND, pubkey: o.pubkey, created_at: m.created_at, tags: m.tags, content: m.content })) return false;
+  return s.seals.every((seal) => verifyEvent(seal) && seal.kind === SEAL_KIND && seal.pubkey === o.pubkey && seal.tags.length === 0);
+}
+function isReachAsked(signed, o) {
+  const want = buildMessageRelays(o.relays, 0);
+  if (!o.pubkey || !want || !verifyEvent(signed) || signed.kind !== MESSAGE_RELAYS_KIND || signed.pubkey !== o.pubkey) return false;
+  return JSON.stringify(signed.tags.filter((t) => t[0] === "relay")) === JSON.stringify(want.tags);
+}
+function cleanRead(input) {
+  const m = input;
+  if (!m || typeof m !== "object" || !isHex64(m.id) || !isHex64(m.from) || !Array.isArray(m.to) || typeof m.at !== "number" || !Number.isFinite(m.at)) return null;
+  const to = [...new Set(m.to.filter((k) => isHex64(k)))];
+  const text = cleanMessage(m.text);
+  return to.length && text ? { id: m.id, from: m.from, to, text, at: m.at } : null;
+}
+function buildMessageRelays(relays, now) {
+  const clean3 = [...new Set(relays.map(cleanRelayUrl).filter(Boolean))].slice(0, MESSAGE_LIMITS.relays);
+  if (clean3.length === 0) return null;
+  return { kind: MESSAGE_RELAYS_KIND, created_at: Math.floor(now), tags: clean3.map((url) => ["relay", url]), content: "" };
+}
+
 // packages/core/src/signing.ts
 var SIGNER_PROTOCOL = "nswp-signer";
 var SIGNER_VERSION = 1;
@@ -6327,7 +6472,7 @@ function signerAt(base) {
     return null;
   }
 }
-var SIGNER_MORE = ["follows"];
+var SIGNER_MORE = ["follows", "messages"];
 function cleanMore(input) {
   if (!Array.isArray(input)) return [];
   return SIGNER_MORE.filter((name) => input.includes(name));
@@ -6350,6 +6495,9 @@ function readSignerRequest(data) {
   if (d.t === "find" && cleanSlot(d.slot)) return { t: "find", id: d.id, slot: cleanSlot(d.slot) };
   if (d.t === "open" && d.event && typeof d.event === "object") return { t: "open", id: d.id, event: d.event };
   if (d.t === "want" && Array.isArray(d.more)) return { t: "want", id: d.id, more: cleanMore(d.more) };
+  if (d.t === "seal" && isHex64(d.to) && cleanMessage(d.text)) return { t: "seal", id: d.id, to: d.to, text: cleanMessage(d.text) };
+  if (d.t === "unwrap" && d.event && typeof d.event === "object") return { t: "unwrap", id: d.id, event: d.event };
+  if (d.t === "reach" && Array.isArray(d.relays) && d.relays.length <= 8 && d.relays.every((r) => typeof r === "string" && r.length <= 200)) return { t: "reach", id: d.id, relays: d.relays };
   if (d.t === "follow" && (d.list === null || d.list && typeof d.list === "object") && isHex64(d.add) !== isHex64(d.remove)) {
     return { t: "follow", id: d.id, list: d.list, ...isHex64(d.add) ? { add: d.add } : { remove: d.remove } };
   }
@@ -6381,6 +6529,8 @@ function readSignerReply(data) {
   if (d.t === "refused") return { t: "refused", id: d.id };
   if (d.t === "signed" && d.event && typeof d.event === "object") return { t: "signed", id: d.id, event: d.event };
   if (d.t === "found" && isHex64(d.d)) return { t: "found", id: d.id, d: d.d };
+  if (d.t === "sealed" && d.message && typeof d.message === "object" && Array.isArray(d.seals) && d.seals.length === 2) return { t: "sealed", id: d.id, message: d.message, seals: d.seals };
+  if (d.t === "message" && cleanRead(d.message)) return { t: "message", id: d.id, message: cleanRead(d.message) };
   if (d.t === "opened" && cleanSlot(d.slot) && fitsInSave(d.data) && typeof d.at === "number" && Number.isFinite(d.at)) return { t: "opened", id: d.id, slot: cleanSlot(d.slot), data: d.data, at: d.at };
   return null;
 }
@@ -6512,120 +6662,6 @@ function isFollowAsked(signed, o) {
   const want = changeFollows(o.list, { ...o.add ? { add: o.add } : {}, ...o.remove ? { remove: o.remove } : {}, now: signed.created_at, fromNothing: o.list === null });
   if (!want || signed.content !== want.content || o.list && signed.created_at <= o.list.created_at) return false;
   return JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(want.tags);
-}
-
-// packages/core/src/message.ts
-var MESSAGE_KIND = 14;
-var SEAL_KIND = 13;
-var WRAP_KIND = 1059;
-var MESSAGE_RELAYS_KIND = 10050;
-var MESSAGE_LIMITS = {
-  /** The most characters in one message as this library writes and shows it. */
-  chars: 2e3,
-  /** How far back a wrap's time may be moved, in seconds, so that a relay can't tell when it was sent. */
-  backdateSec: 2 * 24 * 3600,
-  /** No more than this many relays are taken from someone's list. */
-  relays: 4
-};
-var UNSEEN2 = [
-  [0, 9],
-  [11, 31],
-  [127, 159],
-  [8203, 8204],
-  [8206, 8207],
-  [8232, 8239],
-  [8288, 8303],
-  [65279, 65279],
-  [65529, 65531]
-];
-function cleanMessage(text) {
-  if (typeof text !== "string") return "";
-  let out = "";
-  for (const ch of text.slice(0, MESSAGE_LIMITS.chars * 8).normalize("NFC")) {
-    const code = ch.codePointAt(0);
-    out += UNSEEN2.some(([from, to]) => code >= from && code <= to) ? " " : ch;
-  }
-  out = out.replace(/[^\S\n]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  return [...out].slice(0, MESSAGE_LIMITS.chars).join("").trim();
-}
-function buildMessage(o) {
-  const text = cleanMessage(o.text);
-  if (!isHex64(o.from) || !isHex64(o.to) || o.from === o.to || !text) return null;
-  const written = { kind: MESSAGE_KIND, pubkey: o.from, created_at: Math.floor(o.now), tags: [["p", o.to, ...o.relay ? [o.relay] : []]], content: text };
-  return { ...written, id: getEventHash(written) };
-}
-function sealTemplate(sealed, now) {
-  return { kind: SEAL_KIND, created_at: Math.floor(now), tags: [], content: sealed };
-}
-function wrapSeal(seal, to, o) {
-  if (!isHex64(to) || !seal || seal.kind !== SEAL_KIND || seal.tags.length !== 0 || !verifyEvent(seal)) return null;
-  const once = o.secretKey ?? randomBytes(32);
-  const back = Math.floor((o.random ?? Math.random()) * MESSAGE_LIMITS.backdateSec);
-  try {
-    const content = nip44Encrypt(JSON.stringify(seal), getConversationKey(once, to), o.nonce);
-    return finalizeEvent({ kind: WRAP_KIND, created_at: Math.floor(o.now) - back, tags: [["p", to]], content }, once, o.auxRand);
-  } catch {
-    return null;
-  }
-}
-function looksLikeWrap(event, reader) {
-  return !!event && event.kind === WRAP_KIND && typeof event.content === "string" && event.tags.some((t) => t[0] === "p" && t[1] === reader) && verifyEvent(event);
-}
-function readSeal(opened) {
-  let seal;
-  try {
-    seal = JSON.parse(opened);
-  } catch {
-    return null;
-  }
-  if (!verifyEvent(seal) || seal.kind !== SEAL_KIND || seal.tags.length !== 0) return null;
-  return seal;
-}
-function readMessage(opened, seal, reader) {
-  let m;
-  try {
-    m = JSON.parse(opened);
-  } catch {
-    return null;
-  }
-  if (!m || typeof m !== "object" || m.kind !== MESSAGE_KIND || m.pubkey !== seal.pubkey || !isHex64(m.pubkey)) return null;
-  if (typeof m.content !== "string" || typeof m.created_at !== "number" || !Number.isInteger(m.created_at) || !Array.isArray(m.tags)) return null;
-  if (!m.tags.every((t) => Array.isArray(t) && t.every((item) => typeof item === "string"))) return null;
-  const to = [...new Set(m.tags.filter((t) => t[0] === "p" && isHex64(t[1])).map((t) => t[1]))];
-  const text = cleanMessage(m.content);
-  if (to.length === 0 || !text || m.pubkey !== reader && !to.includes(reader)) return null;
-  const id = getEventHash({ kind: MESSAGE_KIND, pubkey: m.pubkey, created_at: m.created_at, tags: m.tags, content: m.content });
-  return { id, from: m.pubkey, to, text, at: m.created_at };
-}
-function writtenWith(message, reader) {
-  const others = [.../* @__PURE__ */ new Set([message.from, ...message.to])].filter((k) => k !== reader);
-  return others.length === 1 ? others[0] : "";
-}
-function openWrap(wrap, secretKey) {
-  const reader = getPublicKey(secretKey);
-  if (!looksLikeWrap(wrap, reader)) return null;
-  try {
-    const seal = readSeal(nip44Decrypt(wrap.content, getConversationKey(secretKey, wrap.pubkey)));
-    if (!seal) return null;
-    return readMessage(nip44Decrypt(seal.content, getConversationKey(secretKey, seal.pubkey)), seal, reader);
-  } catch {
-    return null;
-  }
-}
-function readMessageRelays(events, pubkey) {
-  const latest = events.filter((e) => e.kind === MESSAGE_RELAYS_KIND && e.pubkey === pubkey).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0];
-  const out = [];
-  for (const t of latest?.tags ?? []) {
-    if (t[0] !== "relay") continue;
-    const url = cleanRelayUrl(t[1]);
-    if (url && !out.includes(url) && out.length < MESSAGE_LIMITS.relays) out.push(url);
-  }
-  return out;
-}
-function buildMessageRelays(relays, now) {
-  const clean3 = [...new Set(relays.map(cleanRelayUrl).filter(Boolean))].slice(0, MESSAGE_LIMITS.relays);
-  if (clean3.length === 0) return null;
-  return { kind: MESSAGE_RELAYS_KIND, created_at: Math.floor(now), tags: clean3.map((url) => ["relay", url]), content: "" };
 }
 
 // packages/core/src/layout.ts
@@ -7253,6 +7289,7 @@ export {
   MESSAGE_KIND,
   MESSAGE_LIMITS,
   MESSAGE_RELAYS_KIND,
+  MESSAGE_WORLD_LIMITS,
   MODES,
   NEVER_KINDS,
   NswpError,
@@ -7330,6 +7367,7 @@ export {
   cleanName,
   cleanOrigin,
   cleanPicture,
+  cleanRead,
   cleanRelayUrl,
   cleanSettings,
   cleanSize,
@@ -7377,6 +7415,8 @@ export {
   isLocalHost,
   isPlainObject,
   isPublicKey,
+  isReachAsked,
+  isSealAsked,
   isWhatWasAsked,
   isWssUrl,
   kitAge,
@@ -7434,6 +7474,7 @@ export {
   relayScore,
   roomTopic,
   saveAddress,
+  sealMessage,
   sealSave,
   sealTemplate,
   serializeEvent,

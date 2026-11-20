@@ -36,8 +36,8 @@ import {
 } from "./shared-WWPRVQWW.js";
 
 // packages/sdk/src/three.ts
-import * as THREE13 from "three";
-import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS4, encodeNpub as encodeNpub3, readRelayList as readRelayList3, RELAY_LIST_KIND as RELAY_LIST_KIND3, shortNpub as shortNpub4, spawnOffset, verifyEvent as verifyEvent5 } from "@nswp/core";
+import * as THREE14 from "three";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS5, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub5, spawnOffset, verifyEvent as verifyEvent5 } from "@nswp/core";
 
 // packages/sdk/src/relay-book.ts
 import { learnRelays, pickRelays, publishEvent, queryRelays } from "@nswp/core";
@@ -1982,19 +1982,476 @@ function addFollowingControls(controls, opts) {
   };
 }
 
-// packages/sdk/src/ui/identity.ts
-import { encodeNpub as encodeNpub2, getPublicKey, shortNpub as shortNpub3, signerAt as signerAt2 } from "@nswp/core";
-
-// packages/sdk/src/people.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS2, FOLLOWS_KIND, followsIn, isFollowAsked, isHex64 as isHex642, newestFollows, publishEvent as publishEvent2, queryRelays as queryRelays3, readRelayList, RELAY_LIST_KIND, verifyEvent as verifyEvent2 } from "@nswp/core";
-var KEPT_MOST = 4e5;
-var FRESH_MS2 = 6e4;
-function createPeople(opts) {
+// packages/sdk/src/messages.ts
+import { DEFAULT_RELAYS as DEFAULT_RELAYS2, isHex64 as isHex642, looksLikeWrap, MESSAGE_RELAYS_KIND, publishEvent as publishEvent2, queryRelays as queryRelays3, readMessageRelays, readRelayList, RELAY_LIST_KIND, WRAP_KIND, wrapSeal, writtenWith } from "@nswp/core";
+var MOST2 = 300;
+var FRESH_MS2 = 45e3;
+function createMessages(opts) {
   const { hand } = opts;
   const now = opts.now ?? (() => Date.now());
   const query = opts.query ?? queryRelays3;
   const publish = opts.publish ?? publishEvent2;
   const usual = () => opts.relays ?? DEFAULT_RELAYS2;
+  const store = (() => {
+    if (opts.storage !== void 0) return opts.storage;
+    try {
+      return globalThis.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const watchers2 = /* @__PURE__ */ new Set();
+  const newcomers = /* @__PURE__ */ new Set();
+  const changed = () => {
+    for (const fn of watchers2) fn();
+  };
+  let who = null;
+  let state = "off";
+  let inbox = [];
+  let own = { read: [], write: [] };
+  const read2 = /* @__PURE__ */ new Map();
+  const tried = /* @__PURE__ */ new Set();
+  let looked = 0;
+  let looking = null;
+  let first = true;
+  const seenKey = (me) => `nswp:messages:seen:${me}`;
+  let marks = null;
+  const seenAt = () => {
+    if (marks) return marks;
+    marks = {};
+    try {
+      const kept2 = JSON.parse(who && store?.getItem(seenKey(who)) || "{}");
+      if (kept2 && typeof kept2 === "object" && !Array.isArray(kept2)) {
+        for (const [k, v] of Object.entries(kept2)) if (isHex642(k) && typeof v === "number") marks[k] = v;
+      }
+    } catch {
+    }
+    return marks;
+  };
+  const reset = (me) => {
+    who = me;
+    state = me && hand.ready() ? "looking" : "off";
+    inbox = [];
+    own = { read: [], write: [] };
+    read2.clear();
+    tried.clear();
+    marks = null;
+    looked = 0;
+    first = true;
+  };
+  const threads = () => {
+    const by = /* @__PURE__ */ new Map();
+    if (!who) return by;
+    for (const m of read2.values()) {
+      const peer = writtenWith(m, who);
+      if (!peer) continue;
+      by.set(peer, [...by.get(peer) ?? [], m]);
+    }
+    for (const list of by.values()) list.sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1));
+    return by;
+  };
+  const unreadIn = (peer, list) => list.filter((m) => m.from === peer && m.at > (seenAt()[peer] ?? 0)).length;
+  const knownTo = (peer, list) => !!opts.known?.(peer) || list.some((m) => m.from === who);
+  const look = async (me) => {
+    const lists = await askWell({ kinds: [RELAY_LIST_KIND, MESSAGE_RELAYS_KIND], authors: [me], limit: 8 }, { own: [], usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
+    if (hand.pubkey() !== me) return;
+    const answered = !!lists && Object.values(lists.relays).some((said) => said === "eose");
+    const relayList = readRelayList(lists?.events ?? [], me);
+    own = { read: relayList?.read ?? [], write: relayList?.write ?? [] };
+    const found = readMessageRelays(lists?.events ?? [], me);
+    if (found.length) inbox = found;
+    if (!inbox.length) {
+      state = answered ? "no-inbox" : "unreachable";
+      looked = now();
+      return changed();
+    }
+    const got = await query(inbox, { kinds: [WRAP_KIND], "#p": [me], limit: MOST2 }, 5e3).catch(() => null);
+    if (hand.pubkey() !== me) return;
+    if (got) learnFrom(got.relays, now());
+    const wraps = (got?.events ?? []).filter((e) => !tried.has(e.id) && looksLikeWrap(e, me)).slice(0, MOST2);
+    for (const wrap2 of wraps) {
+      tried.add(wrap2.id);
+      const message = await hand.open(wrap2).catch(() => null);
+      if (hand.pubkey() !== me) return;
+      if (!message || read2.has(message.id)) continue;
+      read2.set(message.id, message);
+      if (!first && message.from !== me) for (const fn of newcomers) fn(message);
+    }
+    first = false;
+    state = got && Object.values(got.relays).some((said) => said === "eose") ? "ready" : read2.size ? "ready" : "unreachable";
+    looked = now();
+    changed();
+  };
+  const load2 = async (fresh = false) => {
+    const me = hand.ready() ? hand.pubkey() : null;
+    if (me !== who || !me && state !== "off") {
+      reset(me);
+      changed();
+    }
+    if (!me) return;
+    if (!fresh && looked && now() - looked < FRESH_MS2) return;
+    looking ??= look(me).finally(() => {
+      looking = null;
+    });
+    await looking;
+  };
+  const offered = () => (own.read.length ? own.read : usual()).slice(0, 3);
+  return {
+    state: () => hand.ready() && hand.pubkey() === who && who ? state : "off",
+    inbox: () => [...inbox],
+    offered,
+    load: load2,
+    async setUp() {
+      const me = hand.pubkey();
+      if (!me || !hand.ready()) return { ok: false, said: "Sign in first." };
+      const relays = offered();
+      const signed = await hand.reach(relays).catch(() => null);
+      if (!signed) return { ok: false, said: "It couldn't be signed. Nothing was changed." };
+      const sent = await sendWell(signed, { own: own.write, usual: usual(), publish, now }).catch(() => null);
+      if (!sent || sent.took === 0) return { ok: false, said: "No relay took it. Try again in a moment." };
+      inbox = relays;
+      state = "ready";
+      changed();
+      void load2(true);
+      return { ok: true, said: `Private messages now reach you at ${relays.map((r) => r.replace(/^wss:\/\//, "")).join(", ")}.` };
+    },
+    conversations() {
+      const out = [];
+      for (const [peer, list] of threads()) out.push({ with: peer, last: list[list.length - 1], unread: unreadIn(peer, list), known: knownTo(peer, list) });
+      return out.sort((a, b) => b.last.at - a.last.at);
+    },
+    thread: (peer) => threads().get(peer) ?? [],
+    async send(to, text, name = "") {
+      const me = hand.pubkey();
+      const them = name || "them";
+      if (!me || !hand.ready()) return { ok: false, said: "Sign in to write to people." };
+      if (!isHex642(to) || to === me) return { ok: false, said: "That isn't someone who can be written to." };
+      if (!inbox.length) return { ok: false, said: "Say where your own messages reach you first: without that you couldn't read back what you sent, or be answered." };
+      const asked = await askWell({ kinds: [MESSAGE_RELAYS_KIND], authors: [to], limit: 4 }, { own: inbox, usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
+      const theirs = readMessageRelays(asked?.events ?? [], to);
+      if (!theirs.length) {
+        const answered = !!asked && Object.values(asked.relays).some((said) => said === "eose");
+        return { ok: false, said: answered ? `${name || "They"} ${name ? "hasn't" : "haven't"} said where private messages reach them, so one can't be sent. Nothing was sent.` : "No relay could be reached. Nothing was sent." };
+      }
+      const sealed = await hand.seal(to, text).catch(() => null);
+      if (!sealed) return { ok: false, said: "It couldn't be signed. Nothing was sent." };
+      const t = now() / 1e3;
+      const forThem = wrapSeal(sealed.seals[0], to, { now: t });
+      const forMe = wrapSeal(sealed.seals[1], me, { now: t });
+      if (!forThem || !forMe) return { ok: false, said: "It couldn't be wrapped. Nothing was sent." };
+      const sent = await publish(theirs, forThem).catch(() => null);
+      if (sent) learnFrom(sent.relays, now());
+      if (!sent || !Object.values(sent.relays).some((said) => said === "ok")) return { ok: false, said: `None of the relays ${them === "them" ? "they use" : `${them} uses`} for messages took it. It wasn't sent.` };
+      tried.add(forMe.id);
+      void publish(inbox, forMe).then((kept2) => learnFrom(kept2.relays, now())).catch(() => void 0);
+      const m = sealed.message;
+      read2.set(m.id, { id: m.id, from: me, to: [to], text: m.content, at: m.created_at });
+      changed();
+      return { ok: true, said: "" };
+    },
+    seen(peer) {
+      if (!who) return;
+      const newest = (threads().get(peer) ?? []).reduce((at, m) => Math.max(at, m.at), 0);
+      if (!newest || (seenAt()[peer] ?? 0) >= newest) return;
+      seenAt()[peer] = newest;
+      try {
+        store?.setItem(seenKey(who), JSON.stringify(seenAt()));
+      } catch {
+      }
+      changed();
+    },
+    unread() {
+      let n = 0;
+      for (const [peer, list] of threads()) if (knownTo(peer, list)) n += unreadIn(peer, list);
+      return n;
+    },
+    onChange(fn) {
+      watchers2.add(fn);
+      return () => void watchers2.delete(fn);
+    },
+    onNew(fn) {
+      newcomers.add(fn);
+      return () => void newcomers.delete(fn);
+    }
+  };
+}
+
+// packages/sdk/src/messaging.ts
+import { shortNpub as shortNpub3, MESSAGE_LIMITS } from "@nswp/core";
+import * as THREE6 from "three";
+var W2 = 768;
+var H2 = 900;
+var LEAD = 130;
+var WRITE = 100;
+function addMessagingControls(controls, opts) {
+  const { hand, profiles } = opts;
+  const m = hand.messages;
+  let shown = [];
+  let withWhom = null;
+  let requests = false;
+  let wasMe = null;
+  let fetching = false;
+  const nameOf = (pubkey) => profiles.get(pubkey)?.name || shortNpub3(pubkey);
+  const say = (text) => controls.say(text);
+  const inHeadset = () => !!opts.presenting?.() && !!opts.panels;
+  let panel = null;
+  const closePanel = () => {
+    const was = panel;
+    panel = null;
+    was?.texture.dispose();
+    was?.panel.close();
+  };
+  const drawPanel = () => {
+    if (!panel) return;
+    const view = controls.letters.view();
+    if (!view.ready) return closePanel();
+    const stamp2 = `${view.version}:${Math.floor(Date.now() / 6e4)}:${view.title}`;
+    if (stamp2 === panel.drawn) return;
+    panel.drawn = stamp2;
+    const t = controls.theme;
+    const g = panel.canvas.getContext("2d");
+    g.fillStyle = t.glass;
+    g.fillRect(0, 0, W2, H2);
+    g.textBaseline = "middle";
+    g.textAlign = "left";
+    const measure = (text) => g.measureText(text).width;
+    g.fillStyle = t.ink;
+    g.globalAlpha = 0.72;
+    g.font = "27px system-ui, sans-serif";
+    wrapWords(view.lead, measure, W2 - 56, 3).forEach((row, r) => g.fillText(row, 28, 26 + r * 33));
+    g.globalAlpha = 1;
+    const top = H2 - WRITE;
+    g.strokeStyle = t.accent;
+    g.lineWidth = 3;
+    g.fillStyle = `rgba(${rgb(t.accent)}, 0.16)`;
+    g.beginPath();
+    g.roundRect(20, top + 8, W2 - 40, WRITE - 24, 22);
+    g.fill();
+    g.stroke();
+    g.font = "600 34px system-ui, sans-serif";
+    g.fillStyle = t.ink;
+    g.textAlign = "center";
+    g.fillText(wrapWords(`Write to ${view.with}`, measure, W2 - 80, 1)[0] ?? "Write", W2 / 2, top + 8 + (WRITE - 24) / 2);
+    g.textAlign = "left";
+    const ROW = 40;
+    const nowSec = Math.floor(Date.now() / 1e3);
+    let y = top - 12;
+    if (view.said) {
+      g.font = "italic 28px system-ui, sans-serif";
+      g.fillStyle = t.warn;
+      const rows = wrapWords(view.said, measure, W2 - 56, 2);
+      y -= rows.length * ROW;
+      rows.forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 0.5)));
+    }
+    if (!view.lines.length) {
+      g.font = "italic 30px system-ui, sans-serif";
+      g.fillStyle = t.ink;
+      g.globalAlpha = 0.7;
+      wrapWords(`Nothing yet. What you write here is for ${view.with} alone.`, measure, W2 - 56, 3).forEach((row, r) => g.fillText(row, 28, LEAD + ROW * (r + 0.5)));
+      g.globalAlpha = 1;
+    }
+    for (let i = view.lines.length - 1; i >= 0; i--) {
+      const line = view.lines[i];
+      g.font = "32px system-ui, sans-serif";
+      const rows = line.text.split("\n").flatMap((part) => wrapWords(part, measure, W2 - 56, 6)).slice(0, 8);
+      const tall = (rows.length + 1) * ROW + 10;
+      if (y - tall < LEAD) break;
+      y -= tall;
+      g.font = "600 26px system-ui, sans-serif";
+      g.fillStyle = line.mine ? t.accent : t.ink;
+      g.globalAlpha = line.state === "failed" ? 1 : 0.75;
+      if (line.state === "failed") g.fillStyle = t.warn;
+      g.fillText(`${line.mine ? "You" : line.who}  \xB7  ${line.state === "sending" ? "Sending\u2026" : line.state === "failed" ? "Not sent" : ago(line.at, nowSec)}`, 28, y + ROW * 0.5);
+      g.font = "32px system-ui, sans-serif";
+      g.fillStyle = t.ink;
+      g.globalAlpha = line.state === "sending" ? 0.6 : 1;
+      rows.forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 1.5)));
+      g.globalAlpha = 1;
+    }
+    panel.texture.needsUpdate = true;
+    controls.letters.seen();
+  };
+  const openPanel = () => {
+    if (!opts.panels || panel) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = W2;
+    canvas.height = H2;
+    const texture = new THREE6.CanvasTexture(canvas);
+    texture.colorSpace = THREE6.SRGBColorSpace;
+    try {
+      const made = opts.panels.open(
+        {
+          kind: "custom",
+          title: controls.letters.view().title,
+          texture,
+          aspect: W2 / H2,
+          onPress: (_x, y) => {
+            if (y < (H2 - WRITE) / H2 || !opts.panels) return;
+            const view = controls.letters.view();
+            void opts.panels.keyboard.ask({ title: `Write to ${view.with}. Only they can read it. Done sends it.`, maxLength: MESSAGE_LIMITS.chars, multiline: true }).then((text) => {
+              const trouble = text ? controls.letters.send(text) : null;
+              if (trouble) say(trouble);
+            });
+          },
+          onClose: () => {
+            if (panel?.texture === texture) panel = null;
+            texture.dispose();
+          }
+        },
+        { id: "private-messages", keep: false, place: { width: 0.46 }, pin: [-0.46, -0.04, -0.8] }
+      );
+      panel = { panel: made, canvas, texture, drawn: "" };
+      drawPanel();
+    } catch (err) {
+      texture.dispose();
+      say(err instanceof Error ? err.message.replace(/^nswp-sdk: /, "") : "The conversation couldn't be opened.");
+    }
+  };
+  controls.subscribe(drawPanel);
+  const open = (pubkey) => {
+    withWhom = pubkey;
+    void profiles.fetch([pubkey]);
+    controls.letters.attach({
+      with: () => nameOf(pubkey),
+      lines: () => m.thread(pubkey).map((x) => ({ key: x.id, mine: x.from !== pubkey, who: nameOf(x.from), text: x.text, at: x.at })),
+      send: (text) => m.send(pubkey, text, profiles.get(pubkey)?.name ?? ""),
+      seen: () => m.seen(pubkey)
+    });
+    if (inHeadset()) {
+      closePanel();
+      openPanel();
+    } else controls.signal("open:letters");
+    refresh();
+  };
+  const write = (pubkey) => {
+    const me = hand.pubkey();
+    if (!me) return say("Sign in to write to people: it is under You.");
+    if (pubkey === me) return;
+    const go = () => void m.load().then(() => open(pubkey));
+    if (hand.allowed()) return go();
+    say(hand.ask(go));
+  };
+  const refresh = () => {
+    for (const id of shown) controls.remove(id);
+    shown = [];
+    const me = hand.pubkey();
+    if (me !== wasMe) {
+      wasMe = me;
+      withWhom = null;
+      requests = false;
+      controls.letters.detach();
+      closePanel();
+    }
+    const allowed = !!me && hand.allowed();
+    if (allowed && m.state() === "off" && !fetching) {
+      fetching = true;
+      void m.load().finally(() => {
+        fetching = false;
+      });
+    }
+    const state = allowed ? m.state() === "off" ? "looking" : m.state() : "off";
+    const all = allowed ? m.conversations() : [];
+    const known = all.filter((c) => c.known);
+    const asking = all.filter((c) => !c.known);
+    const add = (...actions) => {
+      for (const a of actions) shown.push(a.id);
+      controls.add(...actions.map((a) => ({ section: "messages", ...a })));
+    };
+    controls.addSection({
+      id: "messages",
+      label: "Messages",
+      icon: "chat",
+      note: () => !me ? "Sign in to read and send private messages." : !allowed ? "Private messages are between you and one other person. This place hasn't been let send or read yours: say so below, and your sign-in address asks you once." : state === "looking" ? "Looking for your messages." : state === "unreachable" ? "No relay could be reached to look for your messages." : state === "no-inbox" ? "Nobody can write to you privately yet: you haven't said where messages should reach you. Say so below. It is a short public list of relays, and you can change it in any Nostr app." : known.length === 0 && asking.length === 0 ? "No messages yet. Write to someone from Following, or from their card in People." : "Only you and the other person can read a conversation. A relay is told who each message is for, and nothing more."
+    });
+    if (!me) return;
+    if (!allowed) {
+      add({ id: "messages-let", icon: "check", tone: "primary", label: "Let me send and read private messages here", act: () => say(hand.ask(() => void m.load().then(refresh))) });
+      return;
+    }
+    if (state === "no-inbox") {
+      const hosts = m.offered().map((r) => r.replace(/^wss:\/\//, ""));
+      add({
+        id: "messages-setup",
+        icon: "check",
+        tone: "primary",
+        label: `Have messages reach me at ${hosts.join(", ")}`,
+        act: async () => {
+          const done = await m.setUp();
+          say(done.said);
+          refresh();
+        }
+      });
+      return;
+    }
+    add({ id: "messages-look", icon: "turn", label: "Look for new messages", short: "Look", act: () => void m.load(true).then(refresh) });
+    const row = (c) => ({
+      id: `messages-${c.with.slice(0, 16)}`,
+      kind: "swatch",
+      color: `#${c.with.slice(0, 6)}`,
+      on: () => withWhom === c.with,
+      label: () => `${nameOf(c.with)}${c.unread ? `, ${c.unread} new` : ""}`,
+      act: () => open(c.with)
+    });
+    add(...known.slice(0, 40).map(row));
+    if (asking.length) {
+      add({
+        id: "messages-requests",
+        icon: "list",
+        on: () => requests,
+        label: `From people you don't follow: ${asking.length}`,
+        act: () => {
+          requests = !requests;
+          refresh();
+        }
+      });
+      if (requests) add(...asking.slice(0, 40).map(row));
+    }
+    void profiles.fetch(all.slice(0, 60).map((c) => c.with));
+  };
+  let drawing = false;
+  const soon2 = () => {
+    if (drawing) return;
+    drawing = true;
+    queueMicrotask(() => {
+      drawing = false;
+      refresh();
+      controls.letters.touch();
+    });
+  };
+  m.onChange(soon2);
+  profiles.onChange(soon2);
+  m.onNew((message) => {
+    const from = message.from;
+    if (from === withWhom) return;
+    if (m.conversations().find((c) => c.with === from)?.known) {
+      say(`${nameOf(from)} wrote to you privately. It is in Messages.`);
+      controls.signal("message");
+    }
+  });
+  const every = opts.everyMs ?? 6e4;
+  if (every > 0 && typeof setInterval === "function") {
+    setInterval(() => {
+      if (hand.pubkey() && hand.allowed() && (typeof document === "undefined" || document.visibilityState === "visible")) void m.load();
+    }, every);
+  }
+  if (hand.pubkey() && hand.allowed()) void m.load();
+  refresh();
+  return { refresh, write };
+}
+
+// packages/sdk/src/ui/identity.ts
+import { encodeNpub as encodeNpub2, getPublicKey, shortNpub as shortNpub4, signerAt as signerAt2 } from "@nswp/core";
+
+// packages/sdk/src/people.ts
+import { DEFAULT_RELAYS as DEFAULT_RELAYS3, FOLLOWS_KIND, followsIn, isFollowAsked, isHex64 as isHex643, newestFollows, publishEvent as publishEvent3, queryRelays as queryRelays4, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, verifyEvent as verifyEvent2 } from "@nswp/core";
+var KEPT_MOST = 4e5;
+var FRESH_MS3 = 6e4;
+function createPeople(opts) {
+  const { hand } = opts;
+  const now = opts.now ?? (() => Date.now());
+  const query = opts.query ?? queryRelays4;
+  const publish = opts.publish ?? publishEvent3;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS3;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
     try {
@@ -2027,7 +2484,7 @@ function createPeople(opts) {
   let relaysKept = null;
   const ownRelays = (key) => {
     if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList(got.events, key)?.write ?? []).catch(() => []);
+    const found = askWell({ kinds: [RELAY_LIST_KIND2], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList2(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: now(), found };
     return found;
   };
@@ -2057,7 +2514,7 @@ function createPeople(opts) {
       return null;
     }
     if (known && known.who !== who) known = null;
-    if (!fresh && known && now() - known.at < FRESH_MS2) return followsIn(known.list);
+    if (!fresh && known && now() - known.at < FRESH_MS3) return followsIn(known.list);
     looking ??= look(who).finally(() => {
       looking = null;
     });
@@ -2068,7 +2525,7 @@ function createPeople(opts) {
     const who = hand.pubkey();
     const them = name || "them";
     if (!who) return { ok: false, why: "signed-out", said: "Sign in to follow people." };
-    if (!isHex642(pubkey) || pubkey === who) return { ok: false, why: "refused", said: "That isn't someone who can be followed." };
+    if (!isHex643(pubkey) || pubkey === who) return { ok: false, why: "refused", said: "That isn't someone who can be followed." };
     if (!hand.ready()) return { ok: false, why: "not-allowed", said: "This place hasn't been let change who you follow." };
     await load2(true);
     const at = known && known.who === who ? known : null;
@@ -2111,12 +2568,12 @@ function createPeople(opts) {
 }
 
 // packages/sdk/src/saves.ts
-import { cleanSlot, DEFAULT_RELAYS as DEFAULT_RELAYS3, fitsInSave, publishEvent as publishEvent3, queryRelays as queryRelays4, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, SAVE_KIND, SAVE_SLOT, verifyEvent as verifyEvent3 } from "@nswp/core";
+import { cleanSlot, DEFAULT_RELAYS as DEFAULT_RELAYS4, fitsInSave, publishEvent as publishEvent4, queryRelays as queryRelays5, readRelayList as readRelayList3, RELAY_LIST_KIND as RELAY_LIST_KIND3, SAVE_KIND, SAVE_SLOT, verifyEvent as verifyEvent3 } from "@nswp/core";
 function createSaves(opts = {}) {
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays4;
-  const publish = opts.publish ?? publishEvent3;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS3;
+  const query = opts.query ?? queryRelays5;
+  const publish = opts.publish ?? publishEvent4;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS4;
   const signer = () => (typeof opts.signer === "function" ? opts.signer() : opts.signer) ?? null;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
@@ -2147,7 +2604,7 @@ function createSaves(opts = {}) {
   let relaysKept = null;
   const ownRelays = (key) => {
     if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND2], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList2(got.events, key)?.write ?? []).catch(() => []);
+    const found = askWell({ kinds: [RELAY_LIST_KIND3], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList3(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: now(), found };
     return found;
   };
@@ -2203,7 +2660,7 @@ function createSaves(opts = {}) {
 }
 
 // packages/sdk/src/signer.ts
-import { cleanMore, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex643, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent4, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { cleanMessage, cleanMore, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex644, isReachAsked, isSealAsked, looksLikeWrap as looksLikeWrap2, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent4, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -2227,6 +2684,9 @@ var NONE = {
   open: async () => null,
   want: () => false,
   follow: async () => null,
+  seal: async () => null,
+  unwrap: async () => null,
+  reach: async () => null,
   onChange: () => () => {
   },
   whenAnswered: async () => {
@@ -2478,8 +2938,21 @@ function createWorldSigner(opts) {
     follow(list, change2) {
       const add = "add" in change2 ? change2.add : void 0;
       const remove = "remove" in change2 ? change2.remove : void 0;
-      if (state !== "unlocked" || !frame || !more.includes("follows") || !isHex643(add ?? remove)) return Promise.resolve(null);
+      if (state !== "unlocked" || !frame || !more.includes("follows") || !isHex644(add ?? remove)) return Promise.resolve(null);
       return askAbout({ t: "follow", id: `w${++n}`, list, ...add ? { add } : { remove } }, (reply) => reply.t === "signed" && isFollowAsked2(reply.event, { list, ...add ? { add } : { remove }, pubkey }) ? reply.event : null);
+    },
+    seal(to, text) {
+      const words = cleanMessage(text);
+      if (state !== "unlocked" || !frame || !more.includes("messages") || !isHex644(to) || !words) return Promise.resolve(null);
+      return askAbout({ t: "seal", id: `m${++n}`, to, text: words }, (reply) => reply.t === "sealed" && isSealAsked(reply, { pubkey, to, text: words }) ? { message: reply.message, seals: reply.seals } : null);
+    },
+    unwrap(wrap2) {
+      if (state !== "unlocked" || !frame || !more.includes("messages") || !looksLikeWrap2(wrap2, pubkey ?? "")) return Promise.resolve(null);
+      return askAbout({ t: "unwrap", id: `m${++n}`, event: wrap2 }, (reply) => reply.t === "message" && (reply.message.from === pubkey || reply.message.to.includes(pubkey ?? "")) ? reply.message : null);
+    },
+    reach(relays) {
+      if (state !== "unlocked" || !frame || !more.includes("messages")) return Promise.resolve(null);
+      return askAbout({ t: "reach", id: `m${++n}`, relays: [...relays] }, (reply) => reply.t === "signed" && isReachAsked(reply.event, { pubkey, relays }) ? reply.event : null);
     },
     onChange(fn) {
       watchers2.add(fn);
@@ -2574,7 +3047,7 @@ async function byName(identity) {
 }
 function identityWords() {
   const who = hereAs();
-  const name = who ? who.name || shortNpub3(who.pubkey) : "";
+  const name = who ? who.name || shortNpub4(who.pubkey) : "";
   return who ? { signedIn: true, name, label: `Here as ${name}. Switch profile, or go as a guest`, short: "You" } : { signedIn: false, name: "", label: "You are a guest here. Sign in", short: "Sign in" };
 }
 function youCard() {
@@ -2582,10 +3055,10 @@ function youCard() {
   const signer = signerNamed() ? worldSigner() : null;
   if (who) {
     const npub = encodeNpub2(who.pubkey);
-    return { title: who.name || shortNpub3(who.pubkey), tag: "Signed in", proven: true, sub: shortNpub3(who.pubkey), copy: npub, text: who.about ?? "", picture: who.picture ?? "", color: "", now: [] };
+    return { title: who.name || shortNpub4(who.pubkey), tag: "Signed in", proven: true, sub: shortNpub4(who.pubkey), copy: npub, text: who.about ?? "", picture: who.picture ?? "", color: "", now: [] };
   }
   if (signer?.state === "unlocked" && signer.pubkey) {
-    return { title: signer.name ?? shortNpub3(signer.pubkey), tag: "Signed in to post", proven: false, sub: shortNpub3(signer.pubkey), copy: encodeNpub2(signer.pubkey), text: signer.about ?? "", picture: signer.picture ?? "", color: "", now: [] };
+    return { title: signer.name ?? shortNpub4(signer.pubkey), tag: "Signed in to post", proven: false, sub: shortNpub4(signer.pubkey), copy: encodeNpub2(signer.pubkey), text: signer.about ?? "", picture: signer.picture ?? "", color: "", now: [] };
   }
   return null;
 }
@@ -2672,7 +3145,7 @@ function signerAction(controls, opts = {}) {
   const signer = worldSigner();
   let was = signer.state;
   let wasAsking = false;
-  const short = () => shortNpub3(signer.pubkey ?? "");
+  const short = () => shortNpub4(signer.pubkey ?? "");
   signer.onChange(() => {
     if (signer.state === "unlocked" && was !== "unlocked") {
       void Promise.race([seekPass(), soon(4e3)]).then(() => {
@@ -2729,7 +3202,7 @@ function figureAction(controls, leaving = () => ({})) {
 }
 
 // packages/sdk/src/input.ts
-import * as THREE6 from "three";
+import * as THREE7 from "three";
 
 // packages/sdk/src/stroll.ts
 var WALK_SPEED = 2.4;
@@ -3041,25 +3514,25 @@ var unpointable = (root) => root.traverse((o) => void (o.raycast = () => {
 }));
 function controllerModel(accent) {
   const b = new MeshBuilder().at();
-  b.tone = new THREE6.Color(1712684);
+  b.tone = new THREE7.Color(1712684);
   b.light = accent.clone();
-  const lean = new THREE6.Matrix4().makeRotationX(THREE6.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
+  const lean = new THREE7.Matrix4().makeRotationX(THREE7.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
   b.place(lean);
   b.lathe([[5e-4, -0.07], [0.014, -0.068], [0.018, -0.02], [0.017, 0.03], [0.012, 0.046], [5e-4, 0.048]], [0, 0, 0], 6, (row) => row === 1 ? { glow: 0.5 } : { shade: 0.9 + row % 2 * 0.2 });
-  b.place(new THREE6.Matrix4());
+  b.place(new THREE7.Matrix4());
   b.box([0.03, 0.022, 0.07], [0, 4e-3, -0.045], { bevel: 6e-3, shade: 1.05 });
   b.box([0.018, 0.012, 4e-3], [0, 4e-3, -0.082], { glow: 1 });
-  b.place(new THREE6.Matrix4().makeRotationX(THREE6.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
+  b.place(new THREE7.Matrix4().makeRotationX(THREE7.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
   b.lathe([[0.046, -4e-3], [0.052, 0], [0.046, 4e-3], [0.041, 0]], [0, 0, 0], 12, (row) => row === 1 ? { glow: 0.7 } : { shade: 0.85 });
   const metal = createAlloy(accent, { gloss: 0.6 });
-  const group = new THREE6.Group();
+  const group = new THREE7.Group();
   group.add(b.build(metal));
-  const light = () => new THREE6.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
-  const trigger = new THREE6.Mesh(new THREE6.BoxGeometry(0.012, 0.02, 0.014), light());
+  const light = () => new THREE7.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
+  const trigger = new THREE7.Mesh(new THREE7.BoxGeometry(0.012, 0.02, 0.014), light());
   trigger.position.set(0, -0.016, -0.036);
-  const squeeze = new THREE6.Mesh(new THREE6.BoxGeometry(8e-3, 0.03, 0.012), light());
+  const squeeze = new THREE7.Mesh(new THREE7.BoxGeometry(8e-3, 0.03, 0.012), light());
   squeeze.position.set(0, -0.034, 0.018);
-  squeeze.rotation.x = THREE6.MathUtils.degToRad(-52);
+  squeeze.rotation.x = THREE7.MathUtils.degToRad(-52);
   group.add(trigger, squeeze);
   unpointable(group);
   return { group, metal, trigger, squeeze };
@@ -3068,7 +3541,7 @@ var VIGNETTE_VERT = `varying float vFar; void main(){ vFar = length(position.xy)
 var VIGNETTE_FRAG = `uniform float uAmount; varying float vFar; void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.24, 0.42, vFar) * uAmount); }`;
 function createXrInput(opts) {
   const { renderer, rig, camera } = opts;
-  const accent = new THREE6.Color(opts.accent ?? 16758364);
+  const accent = new THREE7.Color(opts.accent ?? 16758364);
   const came = arrivedSettings();
   let comfort = { ...loadComfort(), ...came.turn !== void 0 ? { turnStep: came.turn } : {}, ...came.hand !== void 0 ? { moveHand: came.hand } : {}, ...came.narrow !== void 0 ? { narrow: came.narrow } : {} };
   if (came.turn !== void 0 || came.hand !== void 0 || came.narrow !== void 0) saveComfort(comfort);
@@ -3101,25 +3574,25 @@ function createXrInput(opts) {
   });
   const kindOf = (s) => !s.source ? "none" : s.source.hand ? "hand" : "controller";
   const handOf = (s) => s.source?.handedness === "left" || s.source?.handedness === "right" ? s.source.handedness : "none";
-  const jointShape = new THREE6.OctahedronGeometry(1, 1);
-  const jointDark = new THREE6.MeshBasicMaterial({ color: 2568767 });
-  const jointLit = new THREE6.MeshBasicMaterial({ color: accent });
+  const jointShape = new THREE7.OctahedronGeometry(1, 1);
+  const jointDark = new THREE7.MeshBasicMaterial({ color: 2568767 });
+  const jointLit = new THREE7.MeshBasicMaterial({ color: accent });
   const dressHand = (hand) => {
     for (const joint of hand.children) {
       if (joint.userData.nswpJoint) continue;
       joint.userData.nswpJoint = true;
       const name = String(joint.jointName ?? "");
       const tip = name.endsWith("-tip");
-      const mesh = new THREE6.Mesh(jointShape, tip ? jointLit : jointDark);
+      const mesh = new THREE7.Mesh(jointShape, tip ? jointLit : jointDark);
       const radius = joint.jointRadius;
       mesh.scale.setScalar(Math.min(0.02, Math.max(5e-3, (radius ?? 8e-3) * (tip ? 0.9 : 0.75))));
       unpointable(mesh);
       joint.add(mesh);
     }
   };
-  const vignette = new THREE6.Mesh(
-    new THREE6.RingGeometry(0.12, 3, 48, 4),
-    new THREE6.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
+  const vignette = new THREE7.Mesh(
+    new THREE7.RingGeometry(0.12, 3, 48, 4),
+    new THREE7.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
   );
   vignette.position.z = -0.4;
   vignette.renderOrder = 999;
@@ -3141,8 +3614,8 @@ function createXrInput(opts) {
     } catch {
     }
   };
-  const headAt = new THREE6.Vector3();
-  const ahead = new THREE6.Vector3();
+  const headAt = new THREE7.Vector3();
+  const ahead = new THREE7.Vector3();
   const canStand = opts.canStand ?? (() => true);
   const walk = (right, forward) => {
     camera.getWorldPosition(headAt);
@@ -3159,12 +3632,12 @@ function createXrInput(opts) {
   const things = /* @__PURE__ */ new Map();
   const held = /* @__PURE__ */ new Map();
   const returning = [];
-  const box = new THREE6.Box3();
-  const ball = new THREE6.Sphere();
-  const handAt = new THREE6.Vector3();
-  const raycaster = new THREE6.Raycaster();
-  const turnOnly = new THREE6.Matrix4();
-  const HOLD_AT = new THREE6.Vector3(0, 0, -0.06);
+  const box = new THREE7.Box3();
+  const ball = new THREE7.Sphere();
+  const handAt = new THREE7.Vector3();
+  const raycaster = new THREE7.Raycaster();
+  const turnOnly = new THREE7.Matrix4();
+  const HOLD_AT = new THREE7.Vector3(0, 0, -0.06);
   const FAR_REACH = 6;
   const isHeld = (object) => [...held.values()].some((h) => h.thing.object === object);
   const grab = (slot, by) => {
@@ -3399,10 +3872,10 @@ function createXrInput(opts) {
 }
 
 // packages/sdk/src/panels.ts
-import * as THREE9 from "three";
+import * as THREE10 from "three";
 
 // packages/sdk/src/keyboard.ts
-import * as THREE7 from "three";
+import * as THREE8 from "three";
 
 // packages/sdk/src/panel-store.ts
 var PANEL_LOOKS = [
@@ -3563,24 +4036,24 @@ function libraryPage(items, page, perPage) {
 }
 
 // packages/sdk/src/keyboard.ts
-var W2 = 1024;
+var W3 = 1024;
 var SHOW = 300;
 var KEYS = 520;
 var LIVE_STRIP = 92;
 var WIDTH = 0.8;
 function createKeyboard(o) {
-  const accent = `#${new THREE7.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE8.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   const canvas = document.createElement("canvas");
-  canvas.width = W2;
+  canvas.width = W3;
   canvas.height = SHOW + KEYS;
   const g = canvas.getContext("2d");
-  const texture = new THREE7.CanvasTexture(canvas);
-  texture.colorSpace = THREE7.SRGBColorSpace;
+  const texture = new THREE8.CanvasTexture(canvas);
+  texture.colorSpace = THREE8.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE7.Mesh(new THREE7.PlaneGeometry(WIDTH, WIDTH * canvas.height / W2), new THREE7.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
+  const board = new THREE8.Mesh(new THREE8.PlaneGeometry(WIDTH, WIDTH * canvas.height / W3), new THREE8.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
   board.name = "keyboard";
-  const group = new THREE7.Group();
+  const group = new THREE8.Group();
   group.name = "keyboard";
   group.add(board);
   group.visible = false;
@@ -3607,25 +4080,25 @@ function createKeyboard(o) {
   };
   const paint = () => {
     stale = false;
-    g.clearRect(0, 0, W2, canvas.height);
+    g.clearRect(0, 0, W3, canvas.height);
     const top = live ? SHOW - LIVE_STRIP : 0;
     g.fillStyle = "rgba(10, 16, 24, 0.94)";
     g.beginPath();
-    g.roundRect(0, top, W2, SHOW - 16 - top, 26);
+    g.roundRect(0, top, W3, SHOW - 16 - top, 26);
     g.fill();
     g.textBaseline = "top";
     g.fillStyle = accent;
     g.font = "bold 30px system-ui, sans-serif";
-    if (live) g.fillText(notice || (live.keys.ctrl ? `${title}. Ctrl is on for the next key.` : title), 36, top + 22, W2 - 72);
+    if (live) g.fillText(notice || (live.keys.ctrl ? `${title}. Ctrl is on for the next key.` : title), 36, top + 22, W3 - 72);
     else {
-      g.fillText(notice || title, 36, 24, W2 - 72);
+      g.fillText(notice || title, 36, 24, W3 - 72);
       g.fillStyle = ink;
       g.font = "40px system-ui, sans-serif";
-      const lines = wrapText(`${entry.value}\u258F`, W2 - 72, (s) => g.measureText(s).width, 400);
+      const lines = wrapText(`${entry.value}\u258F`, W3 - 72, (s) => g.measureText(s).width, 400);
       lines.slice(-4).forEach((line, i) => g.fillText(line, 36, 76 + i * 50));
     }
     for (const k of keys) {
-      const [x, y, w, h] = [k.x * W2, SHOW + k.y * KEYS, k.width * W2, k.height * KEYS];
+      const [x, y, w, h] = [k.x * W3, SHOW + k.y * KEYS, k.width * W3, k.height * KEYS];
       const shift = live ? live.keys.shift : entry.shift;
       const on = aimed === k.id || k.kind === "shift" && shift !== "off" || k.kind === "ctrl" && !!live?.keys.ctrl || k.kind === "mic" && voice.state !== "idle";
       g.fillStyle = on ? accent : k.kind === "char" || k.kind === "space" ? "#162231" : k.kind === "done" ? "#24384c" : "#0e1722";
@@ -3700,9 +4173,9 @@ function createKeyboard(o) {
     field.focus();
   };
   const unheard = voice.subscribe(() => done || live ? lay() : void 0);
-  const at = new THREE7.Vector3();
-  const facing2 = new THREE7.Vector3();
-  const local2 = new THREE7.Vector3();
+  const at = new THREE8.Vector3();
+  const facing2 = new THREE8.Vector3();
+  const local2 = new THREE8.Vector3();
   const putUp = (under = false) => {
     o.camera.getWorldPosition(at);
     o.camera.getWorldDirection(facing2);
@@ -3804,7 +4277,7 @@ function createKeyboard(o) {
     pointOf(hit) {
       const k = hit.startsWith("kb:") ? keys.find((x) => x.id === hit.slice(3)) : null;
       if (!k || !done && !live) return null;
-      const height = WIDTH * canvas.height / W2;
+      const height = WIDTH * canvas.height / W3;
       const v = (SHOW + (k.y + k.height / 2) * KEYS) / canvas.height;
       local2.set((k.x + k.width / 2 - 0.5) * WIDTH, (0.5 - v) * height, 0);
       group.updateMatrixWorld(true);
@@ -3829,7 +4302,7 @@ function createKeyboard(o) {
 }
 
 // packages/sdk/src/library.ts
-import * as THREE8 from "three";
+import * as THREE9 from "three";
 var DB = "nswp-panels";
 function files() {
   return new Promise((resolve, reject) => {
@@ -3888,15 +4361,15 @@ async function thumbnail(file, kind) {
     return "";
   }
 }
-var W3 = 1024;
-var H2 = 768;
+var W4 = 1024;
+var H3 = 768;
 var COLS = 4;
 var ROWS = 2;
 var TOP = 96;
 var FOOT = 104;
 var WIDTH2 = 1.1;
 function createLibrary(o) {
-  const accent = `#${new THREE8.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE9.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   let items = [];
   if (o.keep) {
@@ -3915,15 +4388,15 @@ function createLibrary(o) {
     }
   };
   const canvas = document.createElement("canvas");
-  canvas.width = W3;
-  canvas.height = H2;
+  canvas.width = W4;
+  canvas.height = H3;
   const g = canvas.getContext("2d");
-  const texture = new THREE8.CanvasTexture(canvas);
-  texture.colorSpace = THREE8.SRGBColorSpace;
+  const texture = new THREE9.CanvasTexture(canvas);
+  texture.colorSpace = THREE9.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE8.Mesh(new THREE8.PlaneGeometry(WIDTH2, WIDTH2 * H2 / W3), new THREE8.MeshBasicMaterial({ map: texture, toneMapped: false }));
+  const board = new THREE9.Mesh(new THREE9.PlaneGeometry(WIDTH2, WIDTH2 * H3 / W4), new THREE9.MeshBasicMaterial({ map: texture, toneMapped: false }));
   board.name = "library";
-  const group = new THREE8.Group();
+  const group = new THREE9.Group();
   group.name = "library";
   group.add(board);
   group.visible = false;
@@ -3951,14 +4424,14 @@ function createLibrary(o) {
     const shown = libraryPage(items, page, COLS * ROWS);
     page = shown.page;
     g.fillStyle = "#0a1018";
-    g.fillRect(0, 0, W3, H2);
+    g.fillRect(0, 0, W4, H3);
     g.fillStyle = "#101a26";
-    g.fillRect(0, 0, W3, TOP);
+    g.fillRect(0, 0, W4, TOP);
     g.fillStyle = ink;
     g.textBaseline = "middle";
     g.textAlign = "left";
     g.font = "bold 40px system-ui, sans-serif";
-    g.fillText(removing ? "Select one to remove it" : "Your pictures and video", 36, TOP / 2 + 2, W3 - 200);
+    g.fillText(removing ? "Select one to remove it" : "Your pictures and video", 36, TOP / 2 + 2, W4 - 200);
     const button = (id, label, x, y, w, h, on = false) => {
       regions.push({ id, x, y, w, h });
       const lit = aimed === id || on;
@@ -3972,20 +4445,20 @@ function createLibrary(o) {
       g.fillText(label, x + w / 2, y + h / 2 + 2, w - 16);
       g.textAlign = "left";
     };
-    button("close", "Close", W3 - 164, 18, 140, TOP - 36);
+    button("close", "Close", W4 - 164, 18, 140, TOP - 36);
     if (shown.items.length === 0) {
       g.fillStyle = ink;
       g.globalAlpha = 0.8;
       g.font = "34px system-ui, sans-serif";
       g.textAlign = "center";
-      g.fillText("Nothing here yet.", W3 / 2, H2 / 2 - 40);
-      g.fillText("Hang a picture or video on a flat screen,", W3 / 2, H2 / 2 + 10);
-      g.fillText("or take a picture with the camera.", W3 / 2, H2 / 2 + 56);
+      g.fillText("Nothing here yet.", W4 / 2, H3 / 2 - 40);
+      g.fillText("Hang a picture or video on a flat screen,", W4 / 2, H3 / 2 + 10);
+      g.fillText("or take a picture with the camera.", W4 / 2, H3 / 2 + 56);
       g.textAlign = "left";
       g.globalAlpha = 1;
     }
-    const cellW = (W3 - 48) / COLS;
-    const cellH = (H2 - TOP - FOOT - 24) / ROWS;
+    const cellW = (W4 - 48) / COLS;
+    const cellH = (H3 - TOP - FOOT - 24) / ROWS;
     shown.items.forEach((item, i) => {
       const [x, y] = [24 + i % COLS * cellW + 10, TOP + 12 + Math.floor(i / COLS) * cellH + 8];
       const [w, h] = [cellW - 20, cellH - 16];
@@ -4020,7 +4493,7 @@ function createLibrary(o) {
       g.font = "26px system-ui, sans-serif";
       g.fillText(item.title || (item.kind === "video" ? "A video" : "A picture"), x + 12, y + h - 26, w - 24);
     });
-    const fy = H2 - FOOT + 14;
+    const fy = H3 - FOOT + 14;
     if (shown.pages > 1) {
       button("prev", "Earlier", 24, fy, 170, FOOT - 28);
       button("next", "Later", 206, fy, 170, FOOT - 28);
@@ -4028,11 +4501,11 @@ function createLibrary(o) {
       g.font = "28px system-ui, sans-serif";
       g.fillText(`${shown.page + 1} of ${shown.pages}`, 400, fy + (FOOT - 28) / 2 + 2);
     }
-    if (items.length) button("removing", removing ? "Stop removing" : "Remove one", W3 - 300, fy, 276, FOOT - 28, removing);
+    if (items.length) button("removing", removing ? "Stop removing" : "Remove one", W4 - 300, fy, 276, FOOT - 28, removing);
     texture.needsUpdate = true;
   };
-  const at = new THREE8.Vector3();
-  const facing2 = new THREE8.Vector3();
+  const at = new THREE9.Vector3();
+  const facing2 = new THREE9.Vector3();
   const api = {
     group,
     list: () => items,
@@ -4077,7 +4550,7 @@ function createLibrary(o) {
       if (!group.visible) return null;
       const hit = raycaster.intersectObject(board, false)[0];
       if (!hit?.uv) return null;
-      const [x, y] = [hit.uv.x * W3, (1 - hit.uv.y) * H2];
+      const [x, y] = [hit.uv.x * W4, (1 - hit.uv.y) * H3];
       const r = regions.find((q) => x >= q.x && x <= q.x + q.w && y >= q.y && y <= q.y + q.h);
       return `lib:${r?.id ?? ""}`;
     },
@@ -4104,9 +4577,9 @@ function createLibrary(o) {
     pointOf(hit) {
       const r = hit.startsWith("lib:") ? regions.find((q) => q.id === hit.slice(4)) : null;
       if (!r || !group.visible) return null;
-      const height = WIDTH2 * H2 / W3;
+      const height = WIDTH2 * H3 / W4;
       group.updateMatrixWorld(true);
-      return board.localToWorld(new THREE8.Vector3(((r.x + r.w / 2) / W3 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H2) * height, 0));
+      return board.localToWorld(new THREE9.Vector3(((r.x + r.w / 2) / W4 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H3) * height, 0));
     },
     info: () => ({ showing: group.visible, page, pages: libraryPage(items, page, COLS * ROWS).pages, removing, cells: regions.map((r) => r.id) }),
     update() {
@@ -4132,27 +4605,27 @@ function canvasTexture(width, height, draw) {
   canvas.width = width;
   canvas.height = height;
   draw(canvas.getContext("2d"), width, height);
-  const texture = new THREE9.CanvasTexture(canvas);
-  texture.colorSpace = THREE9.SRGBColorSpace;
+  const texture = new THREE10.CanvasTexture(canvas);
+  texture.colorSpace = THREE10.SRGBColorSpace;
   texture.anisotropy = 8;
   return texture;
 }
 function noteTexture(source, ink) {
-  const W4 = 1024;
+  const W5 = 1024;
   const pad = 56;
   const measure = document.createElement("canvas").getContext("2d");
   measure.font = "40px system-ui, sans-serif";
-  const lines = wrapText(source.text, W4 - pad * 2, (s) => measure.measureText(s).width);
-  const H4 = Math.round(Math.min(2048, Math.max(360, pad * 2 + lines.length * 56 + 12)));
-  const texture = canvasTexture(W4, H4, (g) => {
+  const lines = wrapText(source.text, W5 - pad * 2, (s) => measure.measureText(s).width);
+  const H5 = Math.round(Math.min(2048, Math.max(360, pad * 2 + lines.length * 56 + 12)));
+  const texture = canvasTexture(W5, H5, (g) => {
     g.fillStyle = "#0a1018";
-    g.fillRect(0, 0, W4, H4);
+    g.fillRect(0, 0, W5, H5);
     g.fillStyle = ink;
     g.textBaseline = "top";
     g.font = "40px system-ui, sans-serif";
     lines.forEach((line, i) => g.fillText(line, pad, pad + i * 56));
   });
-  return { texture, aspect: W4 / H4 };
+  return { texture, aspect: W5 / H5 };
 }
 function glyphTexture(glyph, ink) {
   return canvasTexture(128, 128, (g) => {
@@ -4219,9 +4692,9 @@ function barTexture(title, ink) {
   });
 }
 function createPanels(o) {
-  const accent = new THREE9.Color(o.accent ?? 16758364);
+  const accent = new THREE10.Color(o.accent ?? 16758364);
   const ink = o.textColor ?? "#eef5fb";
-  const root = new THREE9.Group();
+  const root = new THREE10.Group();
   root.name = "panels";
   o.scene.add(root);
   const live = /* @__PURE__ */ new Map();
@@ -4230,13 +4703,13 @@ function createPanels(o) {
   const glyph = (g) => glyphs.get(g) ?? (glyphs.set(g, glyphTexture(g, ink)), glyphs.get(g));
   const frameShape = (() => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE9.Color(1186340);
+    b.tone = new THREE10.Color(1186340);
     b.light = accent.clone();
     b.box([1, 1, 0.022], [0, 0, 0], { bevel: 8e-3 });
     return b.geometry();
   })();
-  const head = new THREE9.Vector3();
-  const at = new THREE9.Vector3();
+  const head = new THREE10.Vector3();
+  const at = new THREE10.Vector3();
   const headV3 = () => {
     o.camera.getWorldPosition(head);
     return [head.x, head.y, head.z];
@@ -4325,10 +4798,10 @@ function createPanels(o) {
   };
   const presenting = () => !!o.session?.();
   let follow = null;
-  const anchorAt = new THREE9.Vector3();
-  const anchorTurn = new THREE9.Quaternion();
-  const offset = new THREE9.Vector3();
-  const UP = new THREE9.Vector3(0, 1, 0);
+  const anchorAt = new THREE10.Vector3();
+  const anchorTurn = new THREE10.Quaternion();
+  const offset = new THREE10.Vector3();
+  const UP = new THREE10.Vector3(0, 1, 0);
   const anchor = (dt) => {
     o.camera.getWorldPosition(anchorAt);
     if (!presenting()) {
@@ -4369,20 +4842,20 @@ function createPanels(o) {
     save();
     if (p.source.kind === "custom") p.source.onClose?.();
   };
-  const flat = (texture, w = 1, h = 1) => new THREE9.Mesh(new THREE9.PlaneGeometry(w, h), new THREE9.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
+  const flat = (texture, w = 1, h = 1) => new THREE10.Mesh(new THREE10.PlaneGeometry(w, h), new THREE10.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
   const open = (content, opts = {}) => {
     const source = content.kind === "custom" ? content : cleanSource(content);
     if (!source) throw new Error("nswp-sdk: a panel needs something to show (a note with words, or a picture or video with an address).");
     if (live.size >= PANEL_LIMITS.count && !(opts.id && live.has(opts.id))) throw new Error(`nswp-sdk: ${PANEL_LIMITS.count} panels are open. Put one away first.`);
     const id = opts.id ?? newId();
     live.get(id)?.close();
-    const group = new THREE9.Group();
+    const group = new THREE10.Group();
     group.name = `panel:${id}`;
     const body = flat(null);
     body.name = `${id}:body`;
     const bar = flat(barTexture(source.title || (source.kind === "note" ? "Note" : source.kind === "picture" ? "Picture" : source.kind === "video" ? "Video" : ""), ink), 1, BAR);
     bar.name = `${id}:bar`;
-    const frame = new THREE9.Mesh(frameShape, metal);
+    const frame = new THREE10.Mesh(frameShape, metal);
     frame.name = "frame";
     frame.raycast = () => {
     };
@@ -4436,7 +4909,7 @@ function createPanels(o) {
         save();
       },
       place() {
-        const e = new THREE9.Euler().setFromQuaternion(group.quaternion, "YXZ");
+        const e = new THREE10.Euler().setFromQuaternion(group.quaternion, "YXZ");
         const round = (n) => Math.round(n * 1e3) / 1e3;
         return { position: group.position.toArray().map(round), yaw: round((e.y / DEG % 360 + 360) % 360), pitch: round(e.x / DEG), width: round(p.width) };
       },
@@ -4474,8 +4947,8 @@ function createPanels(o) {
           const image = new Image();
           image.onload = () => {
             if (!live.has(id)) return;
-            const texture = new THREE9.Texture(image);
-            texture.colorSpace = THREE9.SRGBColorSpace;
+            const texture = new THREE10.Texture(image);
+            texture.colorSpace = THREE10.SRGBColorSpace;
             texture.needsUpdate = true;
             show(texture, image.naturalWidth / Math.max(1, image.naturalHeight));
           };
@@ -4488,8 +4961,8 @@ function createPanels(o) {
           p.video = video;
           video.addEventListener("loadedmetadata", () => {
             if (!live.has(id) || !video.videoWidth) return;
-            const texture = new THREE9.VideoTexture(video);
-            texture.colorSpace = THREE9.SRGBColorSpace;
+            const texture = new THREE10.VideoTexture(video);
+            texture.colorSpace = THREE10.SRGBColorSpace;
             show(texture, video.videoWidth / video.videoHeight);
           });
           const mark = () => {
@@ -4556,9 +5029,9 @@ function createPanels(o) {
   const tint = (hit, on) => {
     const found = hit ? find(hit) : null;
     const mesh = found?.[0].buttons.get(found[1]);
-    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE9.Color(16777215));
+    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE10.Color(16777215));
   };
-  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE9.Color(16777215));
+  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE10.Color(16777215));
   const api = {
     open,
     async openFile(file) {
@@ -4801,14 +5274,14 @@ function addPanelControls(controls, panels, o) {
 }
 
 // packages/sdk/src/floor-mark.ts
-import * as THREE10 from "three";
-var MOST2 = 140;
+import * as THREE11 from "three";
+var MOST3 = 140;
 var TURNS = 16;
 function createFloorMarks(accent, opts = {}) {
   const y = opts.height ?? 0.02;
-  const group = new THREE10.Group();
+  const group = new THREE11.Group();
   group.name = "floor-marks";
-  const paint = (opacity) => new THREE10.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
+  const paint = (opacity) => new THREE11.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
   const flat = (o) => {
     o.rotation.x = -Math.PI / 2;
     o.renderOrder = 5;
@@ -4818,19 +5291,19 @@ function createFloorMarks(accent, opts = {}) {
     group.add(o);
     return o;
   };
-  const ring = flat(new THREE10.Mesh(new THREE10.RingGeometry(0.26, 0.34, 48), paint(0.85)));
-  const dot = flat(new THREE10.Mesh(new THREE10.CircleGeometry(0.14, 28), paint(0.95)));
-  const halo = flat(new THREE10.Mesh(new THREE10.RingGeometry(0.26, 0.3, 48), paint(0.7)));
-  const line = flat(new THREE10.InstancedMesh(new THREE10.CircleGeometry(0.07, 14), paint(0.8), MOST2));
+  const ring = flat(new THREE11.Mesh(new THREE11.RingGeometry(0.26, 0.34, 48), paint(0.85)));
+  const dot = flat(new THREE11.Mesh(new THREE11.CircleGeometry(0.14, 28), paint(0.95)));
+  const halo = flat(new THREE11.Mesh(new THREE11.RingGeometry(0.26, 0.3, 48), paint(0.7)));
+  const line = flat(new THREE11.InstancedMesh(new THREE11.CircleGeometry(0.07, 14), paint(0.8), MOST3));
   line.rotation.x = 0;
   line.frustumCulled = false;
-  const knots = flat(new THREE10.InstancedMesh(new THREE10.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
+  const knots = flat(new THREE11.InstancedMesh(new THREE11.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
   knots.rotation.x = 0;
   knots.frustumCulled = false;
-  const place = new THREE10.Matrix4();
-  const lie = new THREE10.Quaternion().setFromEuler(new THREE10.Euler(-Math.PI / 2, 0, 0));
-  const at = new THREE10.Vector3();
-  const one = new THREE10.Vector3(1, 1, 1);
+  const place = new THREE11.Matrix4();
+  const lie = new THREE11.Quaternion().setFromEuler(new THREE11.Euler(-Math.PI / 2, 0, 0));
+  const at = new THREE11.Vector3();
+  const one = new THREE11.Vector3(1, 1, 1);
   let shown = { ring: null, dot: null, dots: 0, turns: 0 };
   return {
     group,
@@ -4851,7 +5324,7 @@ function createFloorMarks(accent, opts = {}) {
         halo.material.opacity = 0.7 * (1 - pulse);
         let from = o.from;
         way.forEach((spot, leg) => {
-          for (const [x, z] of dotsBetween(from[0], from[1], spot[0], spot[1], { most: MOST2 - dots, clear: leg === 0 ? 0.45 : 0.32, short: leg === way.length - 1 ? 0.3 : 0.32 })) {
+          for (const [x, z] of dotsBetween(from[0], from[1], spot[0], spot[1], { most: MOST3 - dots, clear: leg === 0 ? 0.45 : 0.32, short: leg === way.length - 1 ? 0.3 : 0.32 })) {
             place.compose(at.set(x, y, z), lie, one);
             line.setMatrixAt(dots++, place);
           }
@@ -5929,9 +6402,9 @@ function addSoundControls(controls, sounds) {
 }
 
 // packages/sdk/src/chamber.ts
-import * as THREE11 from "three";
+import * as THREE12 from "three";
 var R = 1.8;
-var H3 = 2.8;
+var H4 = 2.8;
 var BAYS = 10;
 var DOOR_W = 1.04;
 var DOOR_H = 2.2;
@@ -5954,16 +6427,16 @@ function signTexture(lines, color) {
     const y = rows.length === 1 ? 192 : rows.length === 2 ? 138 + i * 118 : 92 + i * 100;
     g.fillText(line, 512, y, 944);
   });
-  const texture = new THREE11.CanvasTexture(canvas);
-  texture.colorSpace = THREE11.SRGBColorSpace;
+  const texture = new THREE12.CanvasTexture(canvas);
+  texture.colorSpace = THREE12.SRGBColorSpace;
   return texture;
 }
 function createChamber(accent, opts = {}) {
-  const light = new THREE11.Color(accent);
+  const light = new THREE12.Color(accent);
   const metal = createAlloy(light, { gloss: 0.5, speed: 0.9 });
   const builder = () => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE11.Color(1317668);
+    b.tone = new THREE12.Color(1317668);
     b.light = light.clone();
     return b;
   };
@@ -5975,13 +6448,13 @@ function createChamber(accent, opts = {}) {
   const wallShape = builder();
   for (let i = 1; i < BAYS; i++) {
     const a = i * 2 * Math.PI / BAYS;
-    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE11.MathUtils.radToDeg(a));
-    wallShape.box([bay, H3, 0.12], [0, H3 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
-    for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H3 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
+    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE12.MathUtils.radToDeg(a));
+    wallShape.box([bay, H4, 0.12], [0, H4 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
+    for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H4 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
   }
   wallShape.at([0, 0, -reach]);
-  for (const side of [-1, 1]) wallShape.box([(bay - DOOR_W) / 2, H3, 0.16], [side * (bay + DOOR_W) / 4, H3 / 2, 0], { bevel: 0.02 });
-  wallShape.box([DOOR_W, H3 - DOOR_H, 0.16], [0, DOOR_H + (H3 - DOOR_H) / 2, 0], { bevel: 0.02 });
+  for (const side of [-1, 1]) wallShape.box([(bay - DOOR_W) / 2, H4, 0.16], [side * (bay + DOOR_W) / 4, H4 / 2, 0], { bevel: 0.02 });
+  wallShape.box([DOOR_W, H4 - DOOR_H, 0.16], [0, DOOR_H + (H4 - DOOR_H) / 2, 0], { bevel: 0.02 });
   wallShape.line([-DOOR_W / 2, DOOR_H - 0.012, 0.082], [DOOR_W / 2, DOOR_H - 0.012, 0.082], 0.024, [0, 0, 1]);
   const walls = wallShape.build(metal);
   const lidShape = builder();
@@ -5995,31 +6468,31 @@ function createChamber(accent, opts = {}) {
     leaf.position.set(side * DOOR_W / 2, 0, -reach);
     return leaf;
   });
-  const sign = new THREE11.Mesh(new THREE11.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE11.MeshBasicMaterial({ transparent: true }));
-  sign.position.set(0, DOOR_H + (H3 - DOOR_H) / 2, -reach + 0.085);
-  const rising = new THREE11.Group();
+  const sign = new THREE12.Mesh(new THREE12.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE12.MeshBasicMaterial({ transparent: true }));
+  sign.position.set(0, DOOR_H + (H4 - DOOR_H) / 2, -reach + 0.085);
+  const rising = new THREE12.Group();
   rising.add(walls, ...leaves, sign);
-  const clear = new THREE11.Mesh(new THREE11.BufferGeometry().setAttribute("position", new THREE11.BufferAttribute(new Float32Array(9), 3)), new THREE11.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
+  const clear = new THREE12.Mesh(new THREE12.BufferGeometry().setAttribute("position", new THREE12.BufferAttribute(new Float32Array(9), 3)), new THREE12.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
   clear.frustumCulled = false;
   clear.renderOrder = CHAMBER_ORDER;
   clear.onBeforeRender = (renderer) => renderer.clearDepth();
   for (const part of [floor, walls, lid, ...leaves]) part.renderOrder = CHAMBER_ORDER + 1;
   sign.renderOrder = CHAMBER_ORDER + 1.3;
-  const depthOnly = (depth, o) => new THREE11.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE11.AlwaysDepth, depthWrite: true, side: THREE11.DoubleSide, ...o });
+  const depthOnly = (depth, o) => new THREE12.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE12.AlwaysDepth, depthWrite: true, side: THREE12.DoubleSide, ...o });
   const nearest2 = depthOnly("0.0", {});
   const farthest = depthOnly("1.0", { transparent: true });
-  const real = new THREE11.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE11.DoubleSide });
+  const real = new THREE12.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE12.DoubleSide });
   const shutOut = [];
   for (const part of [floor, walls, lid, ...leaves]) {
     for (const [material, order] of [[nearest2, SHUT_ORDER], [farthest, CHAMBER_ORDER + 1.1], [real, CHAMBER_ORDER + 1.2]]) {
-      const pass = new THREE11.Mesh(part.geometry, material);
+      const pass = new THREE12.Mesh(part.geometry, material);
       pass.renderOrder = order;
       pass.frustumCulled = false;
       part.add(pass);
       shutOut.push(pass);
     }
   }
-  const group = new THREE11.Group();
+  const group = new THREE12.Group();
   group.add(clear, floor, rising, lid);
   let door = 0;
   let presence = 1;
@@ -6030,7 +6503,7 @@ function createChamber(accent, opts = {}) {
     floor.scale.setScalar(Math.max(1e-3, Math.min(1, presence * 1.6)));
     floor.visible = presence > 2e-3;
     clear.visible = presence > 2e-3;
-    lid.position.y = H3 + (1 - up) * 3.5;
+    lid.position.y = H4 + (1 - up) * 3.5;
     lid.visible = presence > 0.5;
     const open = door * door * (3 - 2 * door);
     for (const leaf of leaves) leaf.scale.x = Math.max(0.02, 1 - open);
@@ -6086,8 +6559,8 @@ function createCrossing(o) {
   let hold;
   let shut = null;
   const moves = () => o.motion?.() ?? true;
-  const at = new THREE11.Vector3();
-  const facing2 = new THREE11.Vector3();
+  const at = new THREE12.Vector3();
+  const facing2 = new THREE12.Vector3();
   const place = () => {
     chamber?.dispose();
     const made = createChamber(o.accent, o.textColor ? { textColor: o.textColor } : {});
@@ -6190,16 +6663,16 @@ function createCrossing(o) {
 }
 
 // packages/sdk/src/camera.ts
-import * as THREE12 from "three";
+import * as THREE13 from "three";
 async function takePicture(renderer, scene, camera, opts = {}) {
   const width = Math.round(opts.width ?? 1920);
   const height = Math.round(opts.height ?? 1080);
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
   const xrWasEnabled = renderer.xr.enabled;
   const previousTarget = renderer.getRenderTarget();
-  const target = new THREE12.WebGLRenderTarget(width, height, { samples: 4 });
-  target.texture.colorSpace = THREE12.SRGBColorSpace;
-  const eye = new THREE12.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
+  const target = new THREE13.WebGLRenderTarget(width, height, { samples: 4 });
+  target.texture.colorSpace = THREE13.SRGBColorSpace;
+  const eye = new THREE13.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
   camera.updateWorldMatrix(true, false);
   camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
   eye.updateMatrixWorld(true);
@@ -6230,17 +6703,17 @@ async function takePicture(renderer, scene, camera, opts = {}) {
 }
 async function takeSelfie(renderer, scene, head, look, opts = {}) {
   head.updateWorldMatrix(true, false);
-  const at = new THREE12.Vector3();
-  const facing2 = new THREE12.Quaternion();
-  head.matrixWorld.decompose(at, facing2, new THREE12.Vector3());
-  const ahead = new THREE12.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
+  const at = new THREE13.Vector3();
+  const facing2 = new THREE13.Quaternion();
+  head.matrixWorld.decompose(at, facing2, new THREE13.Vector3());
+  const ahead = new THREE13.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
   if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
   ahead.normalize();
   const figure = createFigure(look);
   figure.group.position.copy(at);
   figure.group.rotation.y = Math.atan2(-ahead.x, -ahead.z);
   scene.add(figure.group);
-  const eye = new THREE12.PerspectiveCamera(58, 1, 0.05, head.far);
+  const eye = new THREE13.PerspectiveCamera(58, 1, 0.05, head.far);
   eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
   eye.position.y = at.y + 0.08;
   eye.lookAt(at.x, at.y - 0.22, at.z);
@@ -6404,9 +6877,9 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE13.CanvasTexture(canvas);
-  tex.colorSpace = THREE13.SRGBColorSpace;
-  const sprite = new THREE13.Sprite(new THREE13.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE14.CanvasTexture(canvas);
+  tex.colorSpace = THREE14.SRGBColorSpace;
+  const sprite = new THREE14.Sprite(new THREE14.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
@@ -6435,9 +6908,9 @@ function speechSprite(text, width = 0.8) {
   g.font = font;
   g.textBaseline = "middle";
   rows.forEach((row, i) => g.fillText(row, PAD, PAD * 0.7 + LINE * (i + 0.5), canvas.width - PAD * 2));
-  const tex = new THREE13.CanvasTexture(canvas);
-  tex.colorSpace = THREE13.SRGBColorSpace;
-  const sprite = new THREE13.Sprite(new THREE13.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
+  const tex = new THREE14.CanvasTexture(canvas);
+  tex.colorSpace = THREE14.SRGBColorSpace;
+  const sprite = new THREE14.Sprite(new THREE14.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
   const metres = width / FULL;
   sprite.scale.set(canvas.width * metres, canvas.height * metres, 1);
   sprite.center.set(0.5, 0);
@@ -6446,7 +6919,7 @@ function speechSprite(text, width = 0.8) {
 function createPresence(d) {
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE13.AudioListener();
+  const listener = new THREE14.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -6468,9 +6941,9 @@ function createPresence(d) {
       fade.addColorStop(1, "rgba(255,255,255,0)");
       g.fillStyle = fade;
       g.fillRect(0, 0, 64, 64);
-      dot = new THREE13.CanvasTexture(canvas);
+      dot = new THREE14.CanvasTexture(canvas);
     }
-    return new THREE13.Sprite(new THREE13.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
+    return new THREE14.Sprite(new THREE14.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
   };
   const showRecording = (a, on) => {
     if (on && !a.light) {
@@ -6552,9 +7025,9 @@ function createPresence(d) {
     if (!from) return void dress(a, a.member.look);
     void loadPicture(from).then((canvas) => {
       if (!canvas || a.pictureFrom !== from || !avatars.has(a.member.pubkey)) return;
-      const map = new THREE13.CanvasTexture(canvas);
-      map.colorSpace = THREE13.SRGBColorSpace;
-      const sprite = new THREE13.Sprite(new THREE13.SpriteMaterial({ map, depthWrite: false }));
+      const map = new THREE14.CanvasTexture(canvas);
+      map.colorSpace = THREE14.SRGBColorSpace;
+      const sprite = new THREE14.Sprite(new THREE14.SpriteMaterial({ map, depthWrite: false }));
       sprite.scale.set(0.2, 0.2, 1);
       sprite.position.set(0, 0.63, 0);
       sprite.userData.person = a.member.pubkey;
@@ -6569,7 +7042,7 @@ function createPresence(d) {
   let onPerson = () => {
   };
   const makeAvatar = (member) => {
-    const root = new THREE13.Group();
+    const root = new THREE14.Group();
     root.visible = false;
     const label = textSprite(member.name, labelColor, 0.5);
     label.position.set(0, 0.42, 0);
@@ -6595,7 +7068,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE13.PositionalAudio(listener);
+    const pa = new THREE14.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(MUSIC_RANGE);
     pa.setVolume(0);
@@ -6623,8 +7096,8 @@ function createPresence(d) {
     return Math.sqrt(buf.reduce((sum, x) => sum + x * x, 0) / buf.length);
   };
   const levelBuf = new Float32Array(512);
-  const headAt = new THREE13.Vector3();
-  const theirs = new THREE13.Vector3();
+  const headAt = new THREE14.Vector3();
+  const theirs = new THREE14.Vector3();
   const tendMusic = (dt) => {
     if (!session) return;
     d.camera.getWorldPosition(headAt);
@@ -6672,7 +7145,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE13.PositionalAudio(listener);
+    const pa = new THREE14.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -6697,8 +7170,8 @@ function createPresence(d) {
     dropBubble(a);
     a.figure.dispose();
   };
-  const v = new THREE13.Vector3();
-  const q = new THREE13.Quaternion();
+  const v = new THREE14.Vector3();
+  const q = new THREE14.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -6828,9 +7301,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE13.Vector3();
-  const tq = new THREE13.Quaternion();
-  const euler = new THREE13.Euler();
+  const tp = new THREE14.Vector3();
+  const tq = new THREE14.Quaternion();
+  const euler = new THREE14.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -6910,11 +7383,11 @@ function createPresence(d) {
       const a = avatars.get(pubkey);
       if (!a?.target) return null;
       d.camera.getWorldPosition(v);
-      const to = new THREE13.Vector3().fromArray(a.target.head.position).sub(v);
+      const to = new THREE14.Vector3().fromArray(a.target.head.position).sub(v);
       const distance = to.length();
       if (distance < 1e-3) return { distance: 0, pan: 0 };
-      const right = new THREE13.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
-      const pan = THREE13.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
+      const right = new THREE14.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
+      const pan = THREE14.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
       return { distance: Math.round(distance * 100) / 100, pan: Math.round(pan * 100) / 100 };
     },
     pressAt(raycaster) {
@@ -7031,7 +7504,7 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE13.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE14.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
         a.materials[0].material.tick?.(performance.now() / 1e3);
         if (a.beam?.visible && performance.now() > (a.beamUntil ?? 0)) a.beam.visible = false;
@@ -7110,11 +7583,11 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE13.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE13.HalfFloatType });
-  const flatTarget = new THREE13.WebGLRenderTarget(width, height);
-  flatTarget.texture.colorSpace = THREE13.SRGBColorSpace;
-  const material = new THREE13.ShaderMaterial({
-    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE13.Vector3() }, up: { value: new THREE13.Vector3() }, right: { value: new THREE13.Vector3() } },
+  const faceTarget = new THREE14.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE14.HalfFloatType });
+  const flatTarget = new THREE14.WebGLRenderTarget(width, height);
+  flatTarget.texture.colorSpace = THREE14.SRGBColorSpace;
+  const material = new THREE14.ShaderMaterial({
+    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE14.Vector3() }, up: { value: new THREE14.Vector3() }, right: { value: new THREE14.Vector3() } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
       void main(){
@@ -7131,19 +7604,19 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     depthTest: false,
     depthWrite: false
   });
-  const quad = new THREE13.Mesh(new THREE13.PlaneGeometry(2, 2), material);
-  const quadScene = new THREE13.Scene();
+  const quad = new THREE14.Mesh(new THREE14.PlaneGeometry(2, 2), material);
+  const quadScene = new THREE14.Scene();
   quadScene.add(quad);
-  const quadCamera = new THREE13.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const faceCamera = new THREE13.PerspectiveCamera(90, 1, 0.05, 700);
+  const quadCamera = new THREE14.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const faceCamera = new THREE14.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   const views = [
-    [new THREE13.Vector3(0, 0, -1), new THREE13.Vector3(0, 1, 0)],
-    [new THREE13.Vector3(1, 0, 0), new THREE13.Vector3(0, 1, 0)],
-    [new THREE13.Vector3(0, 0, 1), new THREE13.Vector3(0, 1, 0)],
-    [new THREE13.Vector3(-1, 0, 0), new THREE13.Vector3(0, 1, 0)],
-    [new THREE13.Vector3(0, 1, 0), new THREE13.Vector3(0, 0, 1)],
-    [new THREE13.Vector3(0, -1, 0), new THREE13.Vector3(0, 0, -1)]
+    [new THREE14.Vector3(0, 0, -1), new THREE14.Vector3(0, 1, 0)],
+    [new THREE14.Vector3(1, 0, 0), new THREE14.Vector3(0, 1, 0)],
+    [new THREE14.Vector3(0, 0, 1), new THREE14.Vector3(0, 1, 0)],
+    [new THREE14.Vector3(-1, 0, 0), new THREE14.Vector3(0, 1, 0)],
+    [new THREE14.Vector3(0, 1, 0), new THREE14.Vector3(0, 0, 1)],
+    [new THREE14.Vector3(0, -1, 0), new THREE14.Vector3(0, 0, -1)]
   ];
   try {
     for (const o of hidden) o.visible = false;
@@ -7190,24 +7663,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE13.Texture(image);
-  texture.colorSpace = THREE13.SRGBColorSpace;
-  texture.wrapS = THREE13.RepeatWrapping;
+  const texture = new THREE14.Texture(image);
+  texture.colorSpace = THREE14.SRGBColorSpace;
+  texture.wrapS = THREE14.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE13.LinearFilter;
-  texture.magFilter = THREE13.LinearFilter;
+  texture.minFilter = THREE14.LinearFilter;
+  texture.magFilter = THREE14.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE13.ShaderMaterial({
+  const material = new THREE14.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE13.Matrix3() },
-      center: { value: new THREE13.Vector3() },
+      toLocal: { value: new THREE14.Matrix3() },
+      center: { value: new THREE14.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -7227,10 +7700,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE13.DoubleSide
+    side: THREE14.DoubleSide
   });
-  const mesh = new THREE13.Mesh(geometry, material);
-  const rotation = new THREE13.Matrix4();
+  const mesh = new THREE14.Mesh(geometry, material);
+  const rotation = new THREE14.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();
@@ -7259,41 +7732,70 @@ function addRoomControls(controls, presence, opts = {}) {
     const as = s.self.guest ? "" : ` You are here as ${s.self.name}.`;
     return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${as}${presence.micOn ? " Your microphone is on." : ""}${presence.musicOn ? ` Your music is offered to people near you: ${presence.musicListeners === 0 ? "nobody is hearing it" : presence.musicListeners === 1 ? "1 person is hearing it" : `${presence.musicListeners} people are hearing it`}.` : ""}${presence.screenOn ? ` You are sharing your screen: ${presence.screenViewers === 0 ? "nobody is watching" : presence.screenViewers === 1 ? "1 person is watching" : `${presence.screenViewers} people are watching`}.` : ""}`;
   };
-  const worldFollows = () => {
-    let waiting = null;
-    let watched = false;
-    return {
-      people: worldPeople(),
-      pubkey: () => signerNamed() && worldSigner().state === "unlocked" ? worldSigner().pubkey : null,
-      allowed: () => worldSigner().more.includes("follows"),
-      ask(then) {
-        const signer = worldSigner();
-        if (!watched) {
-          watched = true;
-          signer.onChange(() => {
-            const was = waiting;
-            if (!was || !signer.more.includes("follows")) return;
-            waiting = null;
-            if (Date.now() - was.at < 3e5) was.then();
-          });
+  const waitingFor = /* @__PURE__ */ new Map();
+  let watchingSigner = false;
+  const askSigner = (what, to, then) => {
+    const signer = worldSigner();
+    if (!watchingSigner) {
+      watchingSigner = true;
+      signer.onChange(() => {
+        for (const [name, was] of [...waitingFor]) {
+          if (!signer.more.includes(name)) continue;
+          waitingFor.delete(name);
+          if (Date.now() - was.at < 3e5) was.then();
         }
-        const where = signer.host ?? "your sign-in address";
-        if (opts.presenting?.()) return `This world needs your say before it can change who you follow, once, in a window of ${where} that can't be seen from in here. Step out of the headset and press this again.`;
-        waiting = { then, at: Date.now() };
-        signer.want(["follows"]);
-        return signer.unlock() ? `This world needs your say before it can change who you follow: once, in the window of ${where} that has opened.` : `The window of ${where} couldn't be opened. Allow this site to open windows, and press again.`;
-      }
-    };
+      });
+    }
+    const where = signer.host ?? "your sign-in address";
+    if (opts.presenting?.()) return `This world needs your say before it can ${to}, once, in a window of ${where} that can't be seen from in here. Step out of the headset and press this again.`;
+    waitingFor.set(what, { then, at: Date.now() });
+    signer.want([...signer.more, what]);
+    return signer.unlock() ? `This world needs your say before it can ${to}: once, in the window of ${where} that has opened.` : `The window of ${where} couldn't be opened. Allow this site to open windows, and press again.`;
   };
+  const signedInHere = () => signerNamed() && worldSigner().state === "unlocked" ? worldSigner().pubkey : null;
+  const worldFollows = () => ({
+    people: worldPeople(),
+    pubkey: signedInHere,
+    allowed: () => worldSigner().more.includes("follows"),
+    ask: (then) => askSigner("follows", "change who you follow", then)
+  });
+  const worldMessages = () => ({
+    messages: createMessages({
+      hand: {
+        pubkey: signedInHere,
+        ready: () => worldSigner().more.includes("messages"),
+        seal: (to, text) => worldSigner().seal(to, text),
+        open: (wrap2) => worldSigner().unwrap(wrap2),
+        reach: (relays) => worldSigner().reach(relays)
+      },
+      known: (pubkey) => !!follows().people.follows()?.includes(pubkey),
+      ...opts.noteRelays ? { relays: opts.noteRelays } : {}
+    }),
+    pubkey: signedInHere,
+    allowed: () => worldSigner().more.includes("messages"),
+    ask: (then) => askSigner("messages", "send and read your private messages", then)
+  });
   let followsKept = null;
   const follows = () => followsKept ??= opts.follows ?? worldFollows();
   const following = addFollowingControls(controls, {
     follows: follows(),
     ...opts.noteRelays ? { relays: opts.noteRelays } : {},
     keyboard: () => opts.panels?.keyboard ?? null,
+    ...opts.presenting ? { presenting: opts.presenting } : {},
+    more: (who) => [{ id: "following-write", icon: "chat", label: `Write to ${who.name}, privately`, act: () => messaging.write(who.pubkey) }]
+  });
+  const messaging = addMessagingControls(controls, {
+    hand: opts.messages ?? worldMessages(),
+    profiles: following.profiles,
+    panels: opts.panels ?? null,
     ...opts.presenting ? { presenting: opts.presenting } : {}
   });
-  if (!opts.follows && signerNamed()) worldSigner().onChange(() => following.refresh());
+  if (signerNamed()) {
+    worldSigner().onChange(() => {
+      if (!opts.follows) following.refresh();
+      if (!opts.messages) messaging.refresh();
+    });
+  }
   const followPress = (key, name, adding) => following.press(key, name, adding);
   const refresh = () => {
     const s = presence.session;
@@ -7344,8 +7846,8 @@ function addRoomControls(controls, presence, opts = {}) {
     watching.set(m.pubkey, w);
     const show = () => {
       if (w.panel || watching.get(m.pubkey) !== w || !video.videoWidth || !video.videoHeight) return;
-      w.texture = new THREE13.VideoTexture(video);
-      w.texture.colorSpace = THREE13.SRGBColorSpace;
+      w.texture = new THREE14.VideoTexture(video);
+      w.texture.colorSpace = THREE14.SRGBColorSpace;
       w.panel = opts.panels.open(
         { kind: "custom", title: `${m.name}'s screen`, texture: w.texture, aspect: video.videoWidth / video.videoHeight, onClose: () => stopWatching(m.pubkey, true) },
         { keep: false }
@@ -7436,7 +7938,7 @@ function addRoomControls(controls, presence, opts = {}) {
           tag: who2.guest ? "Guest" : "By name",
           proven: !who2.guest,
           // A name is not unique and a picture can be copied: the key behind them is what tells two people apart.
-          sub: who2.identity ? shortNpub4(who2.identity) : "Nobody has vouched for who they are.",
+          sub: who2.identity ? shortNpub5(who2.identity) : "Nobody has vouched for who they are.",
           copy: who2.identity ? encodeNpub3(who2.identity) : "",
           text: who2.guest ? "" : who2.about ?? "",
           picture: !who2.guest && showsPictures() ? who2.picture ?? "" : "",
@@ -7501,6 +8003,11 @@ function addRoomControls(controls, presence, opts = {}) {
         label: () => people2.isFollowing(them) ? `Unfollow ${who.name}` : `Follow ${who.name}`,
         act: () => followPress(them, who.name, !people2.isFollowing(them))
       });
+    }
+    if (who?.identity && me && who.identity !== me) {
+      const them = who.identity;
+      extras.push("person-write");
+      controls.add({ id: "person-write", section: "people", icon: "chat", label: `Write to ${who.name}, privately`, act: () => messaging.write(them) });
     }
     if (who) {
       extras.push("person-mute", "person-music", "person-block");
@@ -7658,8 +8165,8 @@ function addRoomControls(controls, presence, opts = {}) {
     const canvas = document.createElement("canvas");
     canvas.width = CHAT_W;
     canvas.height = CHAT_H;
-    const texture = new THREE13.CanvasTexture(canvas);
-    texture.colorSpace = THREE13.SRGBColorSpace;
+    const texture = new THREE14.CanvasTexture(canvas);
+    texture.colorSpace = THREE14.SRGBColorSpace;
     try {
       const panel = opts.panels.open(
         {
@@ -7737,12 +8244,12 @@ function addRoomControls(controls, presence, opts = {}) {
     pubkey: () => worldSigner().pubkey,
     who: () => hereAs()?.name || worldSigner().name
   };
-  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS4;
+  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS5;
   let relaysKept = null;
   const ownRelays = (key) => {
     if (!key) return Promise.resolve([]);
     if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND3], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList3(got.events, key)?.write ?? []).catch(() => []);
+    const found = askWell({ kinds: [RELAY_LIST_KIND4], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList4(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: Date.now(), found };
     return found;
   };
@@ -7782,7 +8289,7 @@ function addRoomControls(controls, presence, opts = {}) {
       controls.feed.detach();
       return closeFeedPanel();
     }
-    controls.feed.attach({ who: () => notes2.who?.() || (key ? shortNpub4(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts });
+    controls.feed.attach({ who: () => notes2.who?.() || (key ? shortNpub5(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts });
   };
   const drawFeedPanel = () => {
     if (!feedPanel) return;
@@ -7852,8 +8359,8 @@ function addRoomControls(controls, presence, opts = {}) {
     const canvas = document.createElement("canvas");
     canvas.width = CHAT_W;
     canvas.height = CHAT_H;
-    const texture = new THREE13.CanvasTexture(canvas);
-    texture.colorSpace = THREE13.SRGBColorSpace;
+    const texture = new THREE14.CanvasTexture(canvas);
+    texture.colorSpace = THREE14.SRGBColorSpace;
     try {
       const panel = opts.panels.open(
         {
@@ -8152,6 +8659,7 @@ function addRoomControls(controls, presence, opts = {}) {
   return {
     refresh,
     following,
+    messaging,
     travelling: () => ({ joined: !!presence.session && !presence.roomName, mic: !!presence.session && !presence.roomName && presence.micOn, blocked: presence.newlyBlocked() })
   };
 }
@@ -8290,6 +8798,8 @@ export {
   createProfiles,
   keyIn,
   addFollowingControls,
+  createMessages,
+  addMessagingControls,
   createPeople,
   createSaves,
   createWorldSigner,

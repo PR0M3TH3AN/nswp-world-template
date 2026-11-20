@@ -13,6 +13,7 @@
  * Nothing here signs anything, and nothing here is a secret.
  */
 import type { EventTemplate, NostrEvent } from "./event.js";
+import { type Message, type SealedMessage } from "./message.js";
 export declare const SIGNER_PROTOCOL = "nswp-signer";
 export declare const SIGNER_VERSION = 1;
 export declare const SIGN_LIMITS: {
@@ -165,14 +166,37 @@ export type SignerRequest = {
     list: NostrEvent | null;
     add?: string;
     remove?: string;
+}
+/**
+ * Send a private message (protocol/14-people-and-messages.md). The world gives who it is to and the words, and
+ * nothing else. The signer writes it and seals it, to its reader and to the visitor; the world wraps and sends.
+ */
+ | {
+    t: "seal";
+    id: string;
+    to: string;
+    text: string;
+}
+/** Open this wrapped message, which a relay gave me. The signer opens both layers and checks who wrote it. */
+ | {
+    t: "unwrap";
+    id: string;
+    event: NostrEvent;
+}
+/** Sign where the visitor's private messages reach them: a few relays (kind 10050). */
+ | {
+    t: "reach";
+    id: string;
+    relays: string[];
 };
 /**
  * What a world may ask its visitor to let it do, beyond a note and a reaction. A closed list: each is a thing a
  * visitor can be asked in a few plain words, and none is "sign whatever I hand you".
  *
  * - "follows": follow and unfollow people for them, one at a time (the `follow` message).
+ * - "messages": send private messages as them, and read the ones sent to them (`seal`, `unwrap`, `reach`).
  */
-export declare const SIGNER_MORE: readonly ["follows"];
+export declare const SIGNER_MORE: readonly ["follows", "messages"];
 export type SignerMore = (typeof SIGNER_MORE)[number];
 /** What was asked for or allowed, as it may be used: only names on the list, each once. */
 export declare function cleanMore(input: unknown): SignerMore[];
@@ -212,6 +236,19 @@ export type SignerReply = {
     slot: string;
     data: string;
     at: number;
+}
+/** Answers `seal`: the message as written, and its two seals. */
+ | {
+    t: "sealed";
+    id: string;
+    message: SealedMessage["message"];
+    seals: SealedMessage["seals"];
+}
+/** Answers `unwrap`: the message that was inside. */
+ | {
+    t: "message";
+    id: string;
+    message: Message;
 } | {
     t: "refused";
     id: string;
