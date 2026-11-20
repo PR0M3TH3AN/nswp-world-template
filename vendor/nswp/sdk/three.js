@@ -116,7 +116,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-IVKMQBMS.js";
+} from "./shared-RLNX27XR.js";
 import {
   currentForm,
   deviceForms,

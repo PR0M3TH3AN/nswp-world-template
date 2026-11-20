@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.49.1";
+var KIT_VERSION = "0.50.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -3824,12 +3824,12 @@ function parseWorldEvent(input, opts = {}) {
   const cw = getTags({ tags }, "content-warning")[0];
   const contentWarning = cw ? cw[1] ?? "" : void 0;
   let audience;
-  const said = getTags({ tags }, "audience")[0]?.[1];
-  if (said !== void 0) {
-    if (AUDIENCES.includes(said))
-      audience = said;
+  const said2 = getTags({ tags }, "audience")[0]?.[1];
+  if (said2 !== void 0) {
+    if (AUDIENCES.includes(said2))
+      audience = said2;
     else
-      c.warn("unknown_audience", "tags.audience", `Unknown audience "${said}"; treated as not stated.`);
+      c.warn("unknown_audience", "tags.audience", `Unknown audience "${said2}"; treated as not stated.`);
   }
   let category;
   const kindOfPlace = getTags({ tags }, "category")[0]?.[1];
@@ -4310,6 +4310,29 @@ var decoder3 = new TextDecoder("utf-8", { fatal: true });
 var POSE_FLOATS = 22;
 var POSE_BYTES = POSE_FLOATS * 4;
 
+// packages/core/dist/chat.js
+var UNSEEN = [
+  [0, 31],
+  [127, 159],
+  [8203, 8204],
+  // 0x200d joins the parts of one emoji, and stays.
+  [8206, 8207],
+  [8232, 8239],
+  [8288, 8303],
+  [65279, 65279],
+  [65529, 65531]
+];
+var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
+function cleanLine(text, chars) {
+  if (typeof text !== "string")
+    return "";
+  let out = "";
+  for (const ch of text.slice(0, chars * 8).normalize("NFC"))
+    out += unseen(ch.codePointAt(0)) ? " " : ch;
+  out = out.replace(/\s+/g, " ").trim();
+  return [...out].slice(0, chars).join("").trim();
+}
+
 // packages/core/dist/pass.js
 var PASS_LIMITS = {
   defaultTtlSec: 4 * 3600,
@@ -4358,6 +4381,7 @@ var SIGN_LIMITS = {
 };
 
 // packages/core/dist/layout.js
+var ITEM_KIND = 37303;
 var LAYOUT_LIMITS = {
   placements: 64,
   publishedItems: 16,
@@ -4367,6 +4391,163 @@ var LAYOUT_LIMITS = {
   /** A picture in a frame (spec §10.1). */
   pictureBytes: 1024 * 1024
 };
+
+// packages/core/dist/item.js
+var ITEM_LIMITS = {
+  title: 60,
+  summary: 280,
+  /** No side of an item is longer than this, in metres. A file that is larger is scaled down to fit. */
+  metres: 4,
+  /** How many shapes its hit box may be made of, and how many moments may have an animation. */
+  colliders: 8,
+  clips: 8,
+  /** The longest an address may be. */
+  url: 300
+};
+var ITEM_BEHAVIORS = ["holdable", "sittable", "touchable", "readable", "wearable"];
+var ITEM_FITS = ["place", "head", "back", "hand-left", "hand-right", "side"];
+var ITEM_MOMENTS = ["idle", "touch", "held", "move", "use"];
+var NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
+var CLIP = /^[\w .-]{1,64}$/;
+function cleanFile(url, sha2562) {
+  if (typeof url !== "string" || url.length > ITEM_LIMITS.url || !isHex64(sha2562))
+    return null;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" || u.username || u.password)
+      return null;
+    return { url: u.href, sha256: sha2562 };
+  } catch {
+    return null;
+  }
+}
+var numbers = (text, n) => {
+  if (typeof text !== "string")
+    return null;
+  const parts = text.trim().split(/\s+/).map(Number);
+  return parts.length === n && parts.every((x) => Number.isFinite(x) && Math.abs(x) <= 100) ? parts : null;
+};
+var within = (n) => n > 0 && n <= ITEM_LIMITS.metres;
+var said = (xs) => xs.map((x) => String(Math.round(x * 1e3) / 1e3)).join(" ");
+function colliderTag(c) {
+  if (!c.centre.every((x) => Number.isFinite(x) && Math.abs(x) <= ITEM_LIMITS.metres))
+    return null;
+  if (c.shape === "box")
+    return c.size.every(within) ? ["collider", "box", said(c.centre), said(c.size)] : null;
+  if (c.shape === "sphere")
+    return within(c.radius) ? ["collider", "sphere", said(c.centre), said([c.radius])] : null;
+  return within(c.radius) && within(c.height) ? ["collider", "capsule", said(c.centre), said([c.radius]), said([c.height])] : null;
+}
+function readCollider(t) {
+  const centre = numbers(t[2], 3);
+  if (!centre || !centre.every((x) => Math.abs(x) <= ITEM_LIMITS.metres))
+    return null;
+  if (t[1] === "box") {
+    const size = numbers(t[3], 3);
+    return size && size.every(within) ? { shape: "box", centre, size } : null;
+  }
+  const radius = numbers(t[3], 1)?.[0];
+  if (radius === void 0 || !within(radius))
+    return null;
+  if (t[1] === "sphere")
+    return { shape: "sphere", centre, radius };
+  const height = numbers(t[4], 1)?.[0];
+  return t[1] === "capsule" && height !== void 0 && within(height) ? { shape: "capsule", centre, radius, height } : null;
+}
+function buildItem(o) {
+  const title = cleanLine(o.title, ITEM_LIMITS.title);
+  const model = cleanFile(o.model?.url, o.model?.sha256);
+  if (typeof o.d !== "string" || !NAME.test(o.d) || !title || !model || !Array.isArray(o.size) || o.size.length !== 3 || !o.size.every(within))
+    return null;
+  const tags = [
+    ["d", o.d],
+    ["title", title]
+  ];
+  const summary = cleanLine(o.summary ?? "", ITEM_LIMITS.summary);
+  if (summary)
+    tags.push(["summary", summary]);
+  tags.push(["model", model.url, "glb", model.sha256]);
+  if (o.thumb) {
+    const thumb = cleanFile(o.thumb.url, o.thumb.sha256);
+    if (!thumb)
+      return null;
+    tags.push(["thumb", thumb.url, thumb.sha256]);
+  }
+  tags.push(["size", said(o.size)]);
+  for (const c of (o.colliders ?? []).slice(0, ITEM_LIMITS.colliders)) {
+    const tag = colliderTag(c);
+    if (!tag)
+      return null;
+    tags.push(tag);
+  }
+  for (const moment of ITEM_MOMENTS) {
+    const clip = o.clips?.[moment];
+    if (clip === void 0)
+      continue;
+    if (!CLIP.test(clip))
+      return null;
+    tags.push(["clip", moment, clip]);
+  }
+  for (const b of ITEM_BEHAVIORS)
+    if (o.behaviors?.includes(b))
+      tags.push(["behavior", b]);
+  const fits = ITEM_FITS.filter((f) => o.fits?.includes(f));
+  if (fits.length)
+    tags.push(["fits", ...fits]);
+  if (o.use === "granted")
+    tags.push(["use", "granted"]);
+  if (o.script) {
+    const script = cleanFile(o.script.url, o.script.sha256);
+    if (!script)
+      return null;
+    tags.push(["script", script.url, script.sha256]);
+  }
+  const license = cleanLine(o.license ?? "", 40);
+  if (license)
+    tags.push(["license", license]);
+  tags.push(["alt", `Item: ${title}`]);
+  return { kind: ITEM_KIND, created_at: Math.floor(o.now), tags, content: "" };
+}
+function parseItem(event) {
+  if (!event || event.kind !== ITEM_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags))
+    return null;
+  const tag = (name) => getTags(event, name)[0];
+  const d = tag("d")?.[1];
+  const title = cleanLine(tag("title")?.[1], ITEM_LIMITS.title);
+  const m = tag("model");
+  const model = m && m[2] === "glb" ? cleanFile(m[1], m[3]) : null;
+  const size = numbers(tag("size")?.[1], 3);
+  if (typeof d !== "string" || !NAME.test(d) || !title || !model || !size || !size.every(within))
+    return null;
+  const th = tag("thumb");
+  const sc = tag("script");
+  const clips = {};
+  for (const t of getTags(event, "clip").slice(0, ITEM_LIMITS.clips)) {
+    if (ITEM_MOMENTS.includes(t[1] ?? "") && CLIP.test(t[2] ?? ""))
+      clips[t[1]] = t[2];
+  }
+  const behaviors = ITEM_BEHAVIORS.filter((b) => getTags(event, "behavior").some((t) => t[1] === b));
+  const fitsTag = tag("fits")?.slice(1) ?? [];
+  return {
+    maker: event.pubkey,
+    id: `${ITEM_KIND}:${event.pubkey}:${d}`,
+    d,
+    title,
+    summary: cleanLine(tag("summary")?.[1], ITEM_LIMITS.summary),
+    model,
+    thumb: th ? cleanFile(th[1], th[2]) : null,
+    size,
+    colliders: getTags(event, "collider").slice(0, ITEM_LIMITS.colliders).map(readCollider).filter((c) => c !== null),
+    clips,
+    behaviors,
+    fits: ITEM_FITS.filter((f) => fitsTag.includes(f)),
+    use: tag("use")?.[1] === "granted" ? "granted" : "anyone",
+    // Named, and run by nothing yet: where it runs, and what it may ask for, is protocol/17-items.md.
+    script: sc ? cleanFile(sc[1], sc[2]) : null,
+    license: cleanLine(tag("license")?.[1], 40),
+    at: Number.isInteger(event.created_at) ? event.created_at : 0
+  };
+}
 
 // packages/core/dist/list.js
 var LIST_LIMITS = { worlds: 200, titleChars: 200, descriptionChars: 1e3 };
@@ -4451,15 +4632,15 @@ var WORLD_GRANT_LIMITS = {
 function servedFresh(cacheControl) {
   if (typeof cacheControl !== "string" || !cacheControl.trim())
     return false;
-  const said = /* @__PURE__ */ new Map();
+  const said2 = /* @__PURE__ */ new Map();
   for (const part of cacheControl.toLowerCase().split(",")) {
     const [name, value = ""] = part.trim().split("=");
     if (name)
-      said.set(name.trim(), value.trim().replace(/^"|"$/g, ""));
+      said2.set(name.trim(), value.trim().replace(/^"|"$/g, ""));
   }
-  if (said.has("no-store") || said.has("no-cache"))
+  if (said2.has("no-store") || said2.has("no-cache"))
     return true;
-  const age = said.get("max-age");
+  const age = said2.get("max-age");
   return age !== void 0 && /^\d+$/.test(age) && Number(age) === 0;
 }
 
@@ -4628,6 +4809,40 @@ function keygen(path) {
   console.log(`  pubkey ${getPublicKey(sk)}`);
   return 0;
 }
+function signItem(inputPath) {
+  const keyFile = flag("key-file");
+  if (!keyFile) {
+    console.log(`${BAD} --key-file is required`);
+    return 1;
+  }
+  const read = JSON.parse(readFileSync(inputPath, "utf8"));
+  const inputs = Array.isArray(read) ? read : [read];
+  const outPath = flag("out");
+  const outDir = flag("out-dir");
+  if (inputs.length > 1 && !outDir) {
+    console.log(`${BAD} a list of items needs --out-dir: each is written to <d>.event.json there`);
+    return 1;
+  }
+  const key = readKey(keyFile);
+  const now = Date.now() / 1e3;
+  for (const input of inputs) {
+    const made = buildItem({ ...input, now });
+    const event = made ? finalizeEvent(made, key) : null;
+    const item = parseItem(event);
+    if (!event || !item) {
+      console.log(`${BAD} ${String(input?.d ?? "an item")} isn't an item as it stands: it needs a plain name, a title, a model at an https address with its SHA-256, and a size of at most 4 metres a side.`);
+      return 1;
+    }
+    const text = `${JSON.stringify(event, null, 2)}
+`;
+    const to = outDir ? `${outDir.replace(/\/$/, "")}/${item.d}.event.json` : outPath;
+    if (to) {
+      writeFileSync(to, text);
+      console.log(`${OK} Signed ${item.id.slice(0, 14)}\u2026:${item.d} \u2192 ${to}`);
+    } else process.stdout.write(text);
+  }
+  return 0;
+}
 function signWorld(inputPath) {
   const keyFile = flag("key-file");
   if (!keyFile) {
@@ -4763,6 +4978,9 @@ async function main() {
     case "sign-list":
       if (arg) return signList(arg);
       break;
+    case "sign-item":
+      if (arg) return signItem(arg);
+      break;
     case "worlds":
       return worlds();
     case "publish":
@@ -4782,6 +5000,8 @@ async function main() {
   nswp keygen <key-file>                                  create a publisher key (hex, mode 600)
   nswp sign-world <input.json> --key-file <f> [--out f]   sign a world announcement from a WorldInput file
   nswp sign-list <input.json> --key-file <f> [--out f]    sign a list of worlds: { "d", "title", "description", "worlds": [addresses] }
+  nswp sign-item <input.json> --key-file <f> [--out f | --out-dir d]
+                                                          sign an item's description, or a list of them (NSWP-17)
   nswp worlds [--verify] [--not-on <list.json>] [--json]  every world announced on the relays, newest first
   nswp publish <event.json> [--relays ...]                publish a signed event`);
   return cmd ? 1 : 0;

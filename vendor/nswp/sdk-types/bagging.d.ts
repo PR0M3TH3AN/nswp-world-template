@@ -22,6 +22,11 @@ export interface BaggingOptions {
     allowed?: () => boolean;
     keyboard?: () => Keyboard | null;
     presenting?: () => boolean;
+    /**
+     * A few items offered here, by coordinate, for someone to put in their bag with one press: a client's starter
+     * items. Shown only where the bag can be changed, and only the ones not already in it. Twelve at most.
+     */
+    offered?: () => string[];
     /** Read what the visitor copied. For tests; left out, the browser's own. */
     copied?: () => Promise<string>;
 }
