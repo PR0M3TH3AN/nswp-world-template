@@ -112,9 +112,23 @@ from it shows in your world is yours to say, in `world.json`:
   before they come in.
 
 Each person who sees a held item fetches it from wherever its maker keeps it, checks it is the file its maker
-signed, and counts it against a size limit. One that fails is drawn as a plain block of the right size. Items do
-nothing yet beyond being held and seen. Your world can't change anyone's bag, and a visitor can turn every item
-off for themselves in the Bag tab. Sign and announce again after changing this, so doors elsewhere say the same.
+signed, and counts it against a size limit. One that fails is drawn as a plain block of the right size. Your world
+can't change anyone's bag, and a visitor can turn every item off for themselves in the Bag tab. Sign and announce
+again after changing this, so doors elsewhere say the same.
+
+**Some items do something:** a toy blaster that sends out foam darts. In a world that allows items:
+
+- **An item's own code runs only for the person carrying it,** shut in a locked box: a page of its own
+  (`item-box.html`, which the build writes) that can reach nothing. It is never run in your page.
+- **What it sends out sticks to anything solid in your scene.** You change nothing: your walls and benches are
+  ordinary meshes, and nothing of yours has to be an item.
+- **A person is reached only if their own device says so.** With no rule of your own, it takes from their health
+  (five, back by itself). A visitor can mute one person's items from that person's card.
+- **Fire and Reload** are on the bar, on the mouse and R at a desk, and on the trigger in a headset.
+
+The locked box needs your host to serve `item-box.html` under its own rules and without your site's. The build
+writes that for Vercel (`vercel.json`) and Cloudflare Pages (`_headers`). On a host that can't, the box doesn't
+start: items are then shapes in your world, and nothing else is affected.
 
 ### Your own scene (`src/scene.ts`)
 

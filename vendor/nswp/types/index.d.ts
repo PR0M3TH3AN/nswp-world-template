@@ -19,6 +19,8 @@ export * from "./score.js";
 export * from "./achievement.js";
 export * from "./item.js";
 export * from "./bag.js";
+export * from "./play.js";
+export * from "./item-box.js";
 export * from "./people.js";
 export * from "./message.js";
 export * from "./layout.js";

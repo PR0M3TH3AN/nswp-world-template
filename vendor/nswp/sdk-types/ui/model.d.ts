@@ -20,6 +20,11 @@ export interface UiAction {
     tone?: "normal" | "primary" | "warn";
     /** Put it in the row of things always at hand. Keep that row to six. */
     hotbar?: boolean;
+    /**
+     * Put it at the front of that row, ahead of what is always there: for what the visitor is doing right now with
+     * the thing in their hand. So it is never one of those left off a narrow screen, and its key is 1 or 2.
+     */
+    lead?: boolean;
     /** A word or two for where there is little room, such as under a hotbar key. */
     short?: Text;
     /**

@@ -28,6 +28,8 @@ export declare const ITEM_BUDGET: {
     readonly materials: 16;
     /** The longest side of any picture a model's surfaces may use, in pixels. */
     readonly texture: 1024;
+    /** The most one of an item's sounds may weigh, in bytes. */
+    readonly sound: 150000;
 };
 /**
  * Whether this visitor has items drawn, and run, at all. Theirs to set; on unless they turned it off, here or
@@ -59,6 +61,14 @@ export interface Items {
     model(item: Item): Promise<THREE.Object3D>;
     /** A plain marker of an item's size. */
     marker(item: Pick<Item, "size">): THREE.Object3D;
+    /** The animations an item's own model brings, by name. Empty until its model has been made, and for a marker. */
+    clips(item: Item): THREE.AnimationClip[];
+    /** Something to draw for one of the things an item sends out: checked and counted like its model, or a marker. */
+    sent(item: Item, name: string): Promise<THREE.Object3D>;
+    /** One of an item's own sounds, as its bytes: fetched and checked against its hash. Null if there is none, or it failed. */
+    sound(item: Item, name: string): Promise<Uint8Array | null>;
+    /** An item's script, as its text: fetched and checked against its hash. Null if it has none, or it failed. */
+    script(item: Item): Promise<string | null>;
 }
 /** Count what a loaded model holds, and say whether it is within what may be drawn. */
 export declare function withinBudget(root: THREE.Object3D): boolean;

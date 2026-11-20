@@ -321,8 +321,17 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   draw an item any other way: every model is checked against the hash its
   maker signed and counted against a budget before it is shown, and a
   marker stands in for one that fails. A world never changes a visitor's
-  bag, and never runs anything an item brings. Don't set `"items"` for the
-  builder: it changes what their world announces.
+  bag. Don't set `"items"` for the builder: it changes what their world
+  announces.
+- **Items that do something (NSWP-17).** An item's own code runs only in
+  the locked box (`item-box.html`, written by the build, served under
+  `ITEM_BOX_CSP` and none of this site's other content rules), only for its
+  carrier. Never run an item's script any other way, never add to what that
+  page may reach, and never loosen this site's own content rules to make a
+  host serve it. What an item sends out sticks to any mesh of the scene:
+  nothing of the builder's has to be an item. A scene that wants to react
+  to being struck does it with its own code and rule, never by running the
+  item's.
 - **A shared screen.** A visitor at a desk can offer their screen to the room.
   It is sent only to people who choose to watch, who see it on a panel of
   their own. The plumbing does it. Don't show anyone a screen they didn't

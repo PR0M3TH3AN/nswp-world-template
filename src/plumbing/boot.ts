@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { checkPreviewBytes, cleanItemsRule, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addBagControls, createBag, createItems, createDoorRatings, signerNamed, worldPeople, worldSigner, addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addBagControls, addItemControls, type ItemControls, createBag, createItems, createDoorRatings, signerNamed, worldPeople, worldSigner, addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -47,7 +47,11 @@ interface TestHooks {
   capturePreview(width?: number): Promise<{ base64: string; width: number; height: number; bytes: number }>;
   teleport(x: number, z: number): void;
   /** Turn the visitor to face this many degrees left of −Z. */
-  face(degrees: number): void;
+  face(degrees: number, pitch?: number): void;
+  /** Items in play, for tests: what is in the air, this visitor's health, what their item shows. */
+  play?: () => unknown;
+  itemUse?: () => void;
+  itemSecond?: () => void;
   /** Step towards a spot on the floor, as pointing at it and selecting would. */
   step(x: number, z: number): void;
   /** Where the visitor's head is over the floor: [x, z] in metres. */
@@ -521,6 +525,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   let panels: Panels | null = null;
   // The room, once there is one: someone's picture over their head is pressed like anything else pointed at.
   let roomPresence: Presence | null = null;
+  let itemControls: ItemControls | null = null;
   let panelDrag = false;
   // Game controls, for a visitor who turned them on: the mouse looks, keys walk, F uses. While they are on, the
   // clicks and drags below stand down.
@@ -616,6 +621,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       const key = panels?.keyboard.pick(raycaster) ?? null;
       const button = key ? null : xrConsole.pick(raycaster);
       const onPanel = key ?? (button ? null : (panels?.pick(raycaster) ?? null));
+      // The hand that holds something that does something: its trigger is the item's, on anything but the console.
+      if (!button && !key && !onPanel && itemControls?.trigger(i)) return void input?.pulse(i, 0.4, 25);
       const person = button || onPanel ? null : (roomPresence?.personAt(raycaster) ?? null);
       if (button || gate || onPanel || person) input?.pulse(i, 0.5, 30);
       if (button) xrConsole.press(button);
@@ -732,7 +739,10 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     const at = camera.getWorldPosition(new THREE.Vector3());
     return [Math.round(at.x * 100) / 100, Math.round(at.z * 100) / 100];
   };
-  hooks.face = (degrees) => (rig.rotation.y = THREE.MathUtils.degToRad(degrees));
+  hooks.face = (degrees, pitch = 0) => {
+    rig.rotation.y = THREE.MathUtils.degToRad(degrees);
+    camera.rotation.x = THREE.MathUtils.degToRad(pitch);
+  };
   hooks.teleport = (x, z) => {
     rig.position.x = x - camera.position.x;
     rig.position.z = z - camera.position.z;
@@ -753,7 +763,13 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // world.json. Left out, nothing carried is drawn here and no model is fetched from anywhere.
     const itemsRule = cleanItemsRule((config.world as { items?: unknown }).items);
     const items = createItems({ relays: config.relays, ...(itemsRule === "none" ? { fetchBytes: async () => null } : {}) });
-    const presence = createPresence({ scene, camera, rig, renderer, controllers, ...(itemsRule === "none" ? {} : { items, itemsRule: () => itemsRule }), labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => refresh() });
+    // Where items are drawn, an item's own logic runs too, in its locked box (`item-box.html`, written by the build).
+    const presence = createPresence({ scene, camera, rig, renderer, controllers, ...(itemsRule === "none" ? {} : { items, itemsRule: () => itemsRule, itemScripts: true, sounds }), labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => (refresh(), itemControls?.refresh()) });
+    // What is in their hand, pressed: on the bar, by the mouse and R at a desk, by the trigger in a headset.
+    itemControls = addItemControls(controls, { play: () => presence.play, holdingHand: () => presence.holdingHand, dom: renderer.domElement });
+    hooks.play = () => presence.play?.info() ?? null;
+    hooks.itemUse = () => presence.play?.use();
+    hooks.itemSecond = () => presence.play?.second();
     roomPresence = presence;
     // Their bag, and the one thing in their hand. A world looks through its visitor's bag and can't change it:
     // that is done at their own client. A guest has no bag, and no tab.

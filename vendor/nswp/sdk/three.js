@@ -31,6 +31,7 @@ import {
   addCameraControls,
   addDeskControls,
   addFollowingControls,
+  addItemControls,
   addJump,
   addMessagingControls,
   addPanelControls,
@@ -38,6 +39,7 @@ import {
   addScoreControls,
   addSoundControls,
   addViewControls,
+  allowScript,
   byName,
   canRecord,
   capturePanorama,
@@ -57,6 +59,7 @@ import {
   createMessages,
   createPanels,
   createPeople,
+  createPlay,
   createPortalWindow,
   createPresence,
   createProfiles,
@@ -91,7 +94,9 @@ import {
   readPad,
   readProfile,
   recordClip,
+  runInBox,
   saveFile,
+  scriptAllowed,
   seekPass,
   setLookScale,
   setShowsItems,
@@ -116,7 +121,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-RLNX27XR.js";
+} from "./shared-HP3BPJH7.js";
 import {
   currentForm,
   deviceForms,
@@ -126,7 +131,7 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-PC7APQYS.js";
+} from "./shared-IBSHD2WC.js";
 import {
   PICTURE_LIMITS,
   askWell,
@@ -192,6 +197,7 @@ export {
   addCameraControls,
   addDeskControls,
   addFollowingControls,
+  addItemControls,
   addJump,
   addMessagingControls,
   addPanelControls,
@@ -199,6 +205,7 @@ export {
   addScoreControls,
   addSoundControls,
   addViewControls,
+  allowScript,
   arriveWith,
   arrivedSettings,
   askWell,
@@ -223,6 +230,7 @@ export {
   createMessages,
   createPanels,
   createPeople,
+  createPlay,
   createPortalWindow,
   createPresence,
   createProfiles,
@@ -276,7 +284,9 @@ export {
   relaysWell,
   reportSettings,
   resumeFullscreen,
+  runInBox,
   saveFile,
+  scriptAllowed,
   seekPass,
   sendWell,
   setLookScale,

@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildLayoutEvent, buildWorldEvent, decodeNpub, KIT_VERSION, parseLayoutEvent, parseWorldEvent, verifyEvent } from "../vendor/nswp/nswp-core.js";
+import { buildLayoutEvent, buildWorldEvent, cleanItemsRule, decodeNpub, ITEM_BOX_CSP, ITEM_BOX_HTML, KIT_VERSION, parseLayoutEvent, parseWorldEvent, verifyEvent } from "../vendor/nswp/nswp-core.js";
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const dist = join(root, "dist");
@@ -298,8 +298,24 @@ function writeStatic({ config, signed, pictures }) {
   // a script it kept, so an update reaches everyone on their next load. Said for each file that isn't named by its
   // hash, and not left to a host's habit: some hosts keep a page for ten minutes or more if nothing is said.
   const fresh = [["Cache-Control", "no-cache"]];
+  // A world that draws what its visitors carry (NSWP-17) also serves the locked box an item's own logic runs in:
+  // a page of its own, under rules that let it reach nothing. This world's other rules are left off that one
+  // page, because they would stop the one script the box is for, and the box's own are far tighter. A world with
+  // no items has no such page.
+  const carries = cleanItemsRule(config.world?.items) !== "none";
+  if (carries) writeFileSync(join(dist, "item-box.html"), ITEM_BOX_HTML);
+  const box = [
+    ["Content-Security-Policy", ITEM_BOX_CSP],
+    ["Referrer-Policy", "no-referrer"],
+    ["X-Content-Type-Options", "nosniff"],
+    ["Cache-Control", "no-cache"],
+  ];
   const rules = [
-    ["/*", "/(.*)", all],
+    ["/*", carries ? "/((?!item-box\\.html$).*)" : "/(.*)", all],
+    // In the `_headers` form a narrower path adds to the wider one, so the wider rule's content rules are taken
+    // off first ("! name", which Cloudflare Pages reads). A host that can't do that serves the box under both
+    // sets of rules, where it won't start: items are then shapes there, and nothing else is affected.
+    ...(carries ? [["/item-box.html", "/item-box\\.html", box, ["Content-Security-Policy", "Permissions-Policy"]]] : []),
     ["/", "/", fresh],
     ["/index.html", "/index.html", fresh],
     ["/app.js", "/app.js", fresh],
@@ -313,7 +329,7 @@ function writeStatic({ config, signed, pictures }) {
     ["/pictures/*", "/pictures/(.*)", open],
   ];
   writeFileSync(join(dist, "vercel.json"), `${JSON.stringify({ headers: rules.map(([, source, h]) => ({ source, headers: h.map(([key, value]) => ({ key, value })) })) }, null, 2)}\n`);
-  writeFileSync(join(dist, "_headers"), `${rules.map(([path, , h]) => `${path}\n${h.map(([k, v]) => `  ${k}: ${v}`).join("\n")}`).join("\n\n")}\n`);
+  writeFileSync(join(dist, "_headers"), `${rules.map(([path, , h, off = []]) => `${path}\n${[...off.map((k) => `  ! ${k}`), ...h.map(([k, v]) => `  ${k}: ${v}`)].join("\n")}`).join("\n\n")}\n`);
 }
 
 function options(dev) {

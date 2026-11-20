@@ -79,8 +79,34 @@ export interface Sounds {
     readonly hasHum: boolean;
     /** How loud everything going out is right now, from 0. For tests. */
     loudness(): number;
+    /**
+     * Make a sound that isn't one of the kit's ready to play: an item's own (protocol/17-items.md). Null if it
+     * isn't a sound, or runs longer than `FOREIGN_SOUND.seconds`. It is levelled as it is read, so that none can be
+     * louder than the kit's own cues.
+     */
+    decode(bytes: Uint8Array): Promise<ForeignSound | null>;
+    /**
+     * Play one, at the visitor's own volume for effects. With `from` it is heard from where it happened: quieter
+     * and duller the further off, to its side, and not at all beyond `FOREIGN_SOUND.gone` metres.
+     */
+    playForeign(sound: ForeignSound, from?: SoundPlace): void;
+    /** How many sounds that aren't the kit's have been played. For tests. */
+    readonly foreignPlayed: number;
     dispose(): void;
 }
+/** A sound that isn't one of the kit's own, ready to play. */
+export interface ForeignSound {
+    buffer: AudioBuffer;
+    /** What it is turned down by, so its loudest moment is no louder than a cue's. */
+    gain: number;
+}
+/** The longest such a sound may be, how loud its loudest moment may come out, and where it stops being heard. */
+export declare const FOREIGN_SOUND: {
+    readonly seconds: 4;
+    readonly peak: 0.7;
+    readonly fades: 25;
+    readonly gone: 45;
+};
 export declare function createSounds(o?: SoundsOptions): Sounds;
 /**
  * The Sound part of a world's controls: the visitor's volumes and their own

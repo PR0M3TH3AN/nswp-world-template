@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.50.0";
+var KIT_VERSION = "0.51.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4402,8 +4402,14 @@ var ITEM_LIMITS = {
   colliders: 8,
   clips: 8,
   /** The longest an address may be. */
-  url: 300
+  url: 300,
+  /** How many sounds of its own it may name, and how many things it may send out. */
+  sounds: 12,
+  sends: 4,
+  /** The most letters on one of its buttons. */
+  label: 16
 };
+var PLAIN = /^[a-z][a-z0-9-]{0,23}$/;
 var ITEM_BEHAVIORS = ["holdable", "sittable", "touchable", "readable", "wearable"];
 var ITEM_FITS = ["place", "head", "back", "hand-left", "hand-right", "side"];
 var ITEM_MOMENTS = ["idle", "touch", "held", "move", "use"];
@@ -4454,6 +4460,20 @@ function readCollider(t) {
   const height = numbers(t[4], 1)?.[0];
   return t[1] === "capsule" && height !== void 0 && within(height) ? { shape: "capsule", centre, radius, height } : null;
 }
+var SEND_MOMENTS = ["lands", "drops", "strikes", "tells"];
+function readSend(t) {
+  const model = t[3] === "glb" ? cleanFile(t[2], t[4]) : null;
+  const size = numbers(t[5], 3);
+  if (typeof t[1] !== "string" || !PLAIN.test(t[1]) || !model || !size || !size.every(within))
+    return null;
+  const send = { name: t[1], model, size };
+  for (const word of t.slice(6)) {
+    const [moment, sound] = word.split("=");
+    if (SEND_MOMENTS.includes(moment ?? "") && sound && PLAIN.test(sound))
+      send[moment] = sound;
+  }
+  return send;
+}
 function buildItem(o) {
   const title = cleanLine(o.title, ITEM_LIMITS.title);
   const model = cleanFile(o.model?.url, o.model?.sha256);
@@ -4502,6 +4522,31 @@ function buildItem(o) {
       return null;
     tags.push(["script", script.url, script.sha256]);
   }
+  for (const [name, file] of Object.entries(o.sounds ?? {}).slice(0, ITEM_LIMITS.sounds)) {
+    const sound = cleanFile(file?.url, file?.sha256);
+    if (!PLAIN.test(name) || !sound)
+      return null;
+    tags.push(["sound", name, sound.url, sound.sha256]);
+  }
+  for (const s of (o.sends ?? []).slice(0, ITEM_LIMITS.sends)) {
+    const model2 = cleanFile(s?.model?.url, s?.model?.sha256);
+    if (!s || !PLAIN.test(s.name) || !model2 || !Array.isArray(s.size) || s.size.length !== 3 || !s.size.every(within))
+      return null;
+    const when = SEND_MOMENTS.filter((m) => s[m] !== void 0);
+    if (when.some((m) => !PLAIN.test(s[m])))
+      return null;
+    tags.push(["sends", s.name, model2.url, "glb", model2.sha256, said(s.size), ...when.map((m) => `${m}=${s[m]}`)]);
+  }
+  for (const e of (o.effects ?? []).slice(0, ITEM_LIMITS.sends)) {
+    if (!e || !PLAIN.test(e.of) || e.state !== "health" || !Number.isInteger(e.take) || e.take < 1 || e.take > 5)
+      return null;
+    tags.push(["effect", e.of, e.state, String(-e.take)]);
+  }
+  for (const press of ["use", "second"]) {
+    const label = cleanLine(o.does?.[press] ?? "", ITEM_LIMITS.label);
+    if (label)
+      tags.push(["does", press, label]);
+  }
   const license = cleanLine(o.license ?? "", 40);
   if (license)
     tags.push(["license", license]);
@@ -4544,10 +4589,148 @@ function parseItem(event) {
     use: tag("use")?.[1] === "granted" ? "granted" : "anyone",
     // Named, and run by nothing yet: where it runs, and what it may ask for, is protocol/17-items.md.
     script: sc ? cleanFile(sc[1], sc[2]) : null,
+    sounds: Object.fromEntries(getTags(event, "sound").slice(0, ITEM_LIMITS.sounds).map((t) => [t[1], cleanFile(t[2], t[3])]).filter((s) => typeof s[0] === "string" && PLAIN.test(s[0]) && s[1] !== null)),
+    sends: getTags(event, "sends").slice(0, ITEM_LIMITS.sends).map(readSend).filter((s) => s !== null),
+    effects: getTags(event, "effect").slice(0, ITEM_LIMITS.sends).map((t) => {
+      const take = -Number(t[3]);
+      return typeof t[1] === "string" && PLAIN.test(t[1]) && t[2] === "health" && Number.isInteger(take) && take >= 1 && take <= 5 ? { of: t[1], state: "health", take } : null;
+    }).filter((e) => e !== null),
+    does: Object.fromEntries(getTags(event, "does").filter((t) => t[1] === "use" || t[1] === "second").map((t) => [t[1], cleanLine(t[2], ITEM_LIMITS.label)]).filter((d2) => d2[1])),
     license: cleanLine(tag("license")?.[1], 40),
     at: Number.isInteger(event.created_at) ? event.created_at : 0
   };
 }
+
+// packages/core/dist/play.js
+var PLAY_LIMITS = {
+  /** The fastest anything may be sent out, in metres a second. */
+  speed: 40,
+  /** The longest a thing may stay stuck where it landed, in seconds. */
+  stick: 10,
+  /** The longest a thing may fly before it is gone, in seconds. */
+  life: 5,
+  /** How far from the middle of a world anything may be said to start, in metres. */
+  far: 1e4,
+  /** How many things one person may send out: a burst, and then so many a second. */
+  burst: 8,
+  perSecond: 6,
+  /** How many of anyone's things are flown or left lying at once. The oldest go first. */
+  flown: 48,
+  /** How long a hit may wait for the person hit to say so, in seconds, before the thing drops off them. */
+  agree: 0.6,
+  /** The most an item's own words may be: its counter. */
+  words: 24
+};
+var ITEM_ASKS = {
+  /** Play one of its own sounds, by name. */
+  play: { burst: 6, perSecond: 6 },
+  /** Play one of its own animations, by name. */
+  clip: { burst: 4, perSecond: 4 },
+  /** Send out one of the things it has described. */
+  send: { burst: PLAY_LIMITS.burst, perSecond: PLAY_LIMITS.perSecond },
+  /** Show its own words: a counter. */
+  show: { burst: 8, perSecond: 8 }
+};
+var ITEM_EVENTS = ["held", "away", "use", "second", "tick"];
+var SCRIPT_LIMITS = { bytes: 64e3, silentMs: 1500 };
+
+// packages/core/dist/item-box.js
+var WORKER_HEAD = `"use strict";
+const __on = Object.create(null);
+let __timers = [];
+let __now = 0;
+const __ask = (name, args) => postMessage({ t: "ask", name, args });
+const item = Object.freeze({
+  on(event, fn) { if (typeof fn === "function") __on[String(event)] = fn; },
+  play(name) { __ask("play", [String(name)]); },
+  clip(name) { __ask("clip", [String(name)]); },
+  send(name, how) { __ask("send", [String(name), { speed: Number(how && how.speed), stick: Number(how && how.stick), lift: Number(how && how.lift) }]); },
+  show(text) { __ask("show", [String(text)]); },
+  after(ms, fn) { if (typeof fn === "function" && __timers.length < 32) __timers.push({ at: __now + Math.max(0, Number(ms) || 0), fn }); },
+});
+const __run = (fn, arg) => { try { fn(arg); } catch (err) { postMessage({ t: "error", text: String(err).slice(0, 200) }); } };
+onmessage = (e) => {
+  const m = e.data;
+  if (!m || m.t !== "event") return;
+  if (m.name === "tick") {
+    __now = Number(m.arg) || 0;
+    const due = __timers.filter((x) => x.at <= __now);
+    __timers = __timers.filter((x) => x.at > __now);
+    for (const x of due) __run(x.fn);
+  }
+  if (__on[m.name]) __run(__on[m.name], m.arg);
+  postMessage({ t: "beat", n: m.n });
+};
+try {
+(function (item, self, globalThis, postMessage, onmessage, navigator, location, fetch, XMLHttpRequest, WebSocket, EventSource, BroadcastChannel, indexedDB, caches, importScripts, Worker, close) {
+`;
+var WORKER_TAIL = `
+})(item);
+postMessage({ t: "started" });
+} catch (err) { postMessage({ t: "error", text: String(err).slice(0, 200) }); }
+`;
+var ITEM_BOX_HTML = `<!doctype html>
+<meta charset="utf-8">
+<title>An item's locked box</title>
+<script>
+"use strict";
+(() => {
+  const EVENTS = ${JSON.stringify(ITEM_EVENTS)};
+  const SILENT = ${SCRIPT_LIMITS.silentMs};
+  const MOST = ${SCRIPT_LIMITS.bytes};
+  const HEAD = ${JSON.stringify(WORKER_HEAD)};
+  const TAIL = ${JSON.stringify(WORKER_TAIL)};
+  let worker = null;
+  let sent = 0;
+  let answered = 0;
+  // When the script last answered anything, or last had nothing to answer. It is ended only if something has been
+  // waiting on it since then for too long: a busy device, with one thing always on its way in, is not a hung script.
+  let lastWord = 0;
+  const up = (m) => parent.postMessage(Object.assign({ nswpItemBox: 1 }, m), "*");
+  const stop = (why) => {
+    if (!worker) return;
+    worker.terminate();
+    worker = null;
+    up({ t: "stopped", why });
+  };
+  const start = (script) => {
+    stop("replaced");
+    if (typeof script !== "string" || script.length > MOST) return up({ t: "stopped", why: "too long" });
+    try {
+      worker = new Worker(URL.createObjectURL(new Blob([HEAD, script, TAIL], { type: "text/javascript" })));
+    } catch (err) {
+      return up({ t: "stopped", why: "no worker" });
+    }
+    sent = answered = 0;
+    lastWord = performance.now();
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (!m) return;
+      if (m.t === "beat") { answered = Math.max(answered, Number(m.n) || 0); lastWord = performance.now(); }
+      else if (m.t === "ask") up({ t: "ask", name: String(m.name), args: m.args });
+      else if (m.t === "started") up({ t: "started" });
+      else if (m.t === "error") up({ t: "error", text: String(m.text).slice(0, 200) });
+    };
+    worker.onerror = (e) => { up({ t: "error", text: String(e && e.message).slice(0, 200) }); stop("failed"); };
+  };
+  addEventListener("message", (e) => {
+    if (e.source !== parent) return;
+    const m = e.data;
+    if (!m || m.nswpItemBox !== 1) return;
+    if (m.t === "run") start(m.script);
+    else if (m.t === "stop") stop("asked");
+    else if (m.t === "event" && worker && EVENTS.includes(m.name)) {
+      if (answered >= sent) lastWord = performance.now();
+      sent += 1;
+      worker.postMessage({ t: "event", name: m.name, arg: m.arg, n: sent });
+    }
+  });
+  // A script that has stopped answering is ended: it can hang nothing but itself.
+  setInterval(() => { if (worker && sent > answered && performance.now() - lastWord > SILENT) stop("silent"); }, 250);
+  up({ t: "ready" });
+})();
+</script>
+`;
 
 // packages/core/dist/list.js
 var LIST_LIMITS = { worlds: 200, titleChars: 200, descriptionChars: 1e3 };
