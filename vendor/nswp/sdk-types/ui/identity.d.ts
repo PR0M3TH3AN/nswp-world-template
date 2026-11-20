@@ -14,6 +14,7 @@
  */
 import { type NostrEvent } from "@nswp/core";
 import { arrival, type GoOptions } from "../index.js";
+import { type Saves } from "../saves.js";
 import { type WorldSigner } from "../signer.js";
 import type { Controls, UiAction, UiCard, UiSection } from "./model.js";
 /**
@@ -77,6 +78,11 @@ export declare function identityAction(controls: Controls, leaving?: Leaving): U
 export declare function unansweredWords(signer: WorldSigner): string;
 /** This page's one signer, from the visitor's own client (signer.ts). "none" when they came through no client. */
 export declare function worldSigner(): WorldSigner;
+/**
+ * This world's saves (saves.ts, protocol/12-saves.md): on this device for anyone, and with their account for a
+ * visitor who is signed in here. One for the page, using the page's one signer.
+ */
+export declare function worldSaves(): Saves;
 /**
  * The control that unlocks the visitor's signer for this world, and locks it
  * again (protocol/10-identity.md, "Signing from a world"). Unlocking opens a

@@ -203,7 +203,10 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       let hash: string | undefined;
       try {
         const to = decodeNaddr(gate.destination.naddr);
-        hash = to.kind === WORLD_KIND ? site.doors?.[`${WORLD_KIND}:${to.pubkey}:${to.identifier}`] : undefined;
+        const coordinate = to.kind === WORLD_KIND ? `${WORLD_KIND}:${to.pubkey}:${to.identifier}` : "";
+        hash = site.doors?.[coordinate];
+        // What kind of place it leads to, on its sign: its own word, noted when `npm run doors` last asked.
+        gate.setCategory(site.kinds?.[coordinate]);
       } catch {
         /* not an address this page can read */
       }

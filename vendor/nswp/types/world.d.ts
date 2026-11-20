@@ -1,5 +1,5 @@
 /** Spatial World Announcements (spec §5). */
-import { type Audience } from "./constants.js";
+import { type Audience, type Category } from "./constants.js";
 import type { PreviewType } from "./constants.js";
 import { type EventTemplate } from "./event.js";
 import { type Result } from "./result.js";
@@ -40,6 +40,8 @@ export interface WorldInput {
     contentWarning?: string | true;
     /** Who it is for: `kids`, `general` or `adult`. An adult world is given a content warning if it has none. */
     audience?: Audience;
+    /** What kind of place it is: one of `CATEGORIES`. */
+    category?: Category;
     status?: string;
     /** Only when the manifest is not at the well-known path (it then can't verify). */
     manifest?: string;
@@ -73,6 +75,8 @@ export interface World {
     contentWarning?: string;
     /** Who its maker says it is for. Left out when they didn't say, or said something else. */
     audience?: Audience;
+    /** What kind of place its maker says it is. Left out when they didn't say, or said something else. */
+    category?: Category;
     status: string;
     manifest?: string;
     coCreators: string[];

@@ -8,7 +8,9 @@
 // A world says what it looks like in its announcement: a picture's address
 // and its SHA-256. This asks your relays for each door's announcement,
 // fetches the picture, checks it against that hash, and keeps it in doors/
-// under the hash, with doors/index.json saying which door shows which.
+// under the hash, with doors/index.json saying which door shows which. It
+// notes there, too, what kind of place each world says it is (a game, an
+// experience...), which the door's sign says under its name.
 //
 // The pictures are then served from your own site. So a visitor's browser
 // asks nobody else for them, and no world a door leads to learns that someone
@@ -67,8 +69,11 @@ for (const key of wanted.keys()) {
     console.log(`  ?  ${short}: no relay had its announcement.${kept[key] ? " Keeping the picture from before." : ""}`);
     continue;
   }
+  // What kind of place it says it is goes on the door's sign, picture or no picture.
+  const said = world.category ? { category: world.category } : {};
   const preview = world.previews.find((p) => p.type === "pano");
   if (!preview) {
+    if (world.category) index[key] = { title: world.title, ...said };
     console.log(`  -  ${world.title}: it has announced no 360° picture. Its door keeps its field of light.`);
     continue;
   }
@@ -87,6 +92,7 @@ for (const key of wanted.keys()) {
     } catch (e) {
       console.log(`  ✘  ${world.title}: the picture couldn't be fetched (${e.message}).${kept[key] ? " Keeping the one from before." : ""}`);
       if (kept[key]) index[key] = kept[key];
+      else if (world.category) index[key] = { title: world.title, ...said };
       continue;
     }
   }
@@ -94,17 +100,18 @@ for (const key of wanted.keys()) {
   const checked = checkPreviewBytes(preview, new Uint8Array(bytes));
   if (!checked.ok) {
     console.log(`  ✘  ${world.title}: the picture isn't what its announcement promised (${checked.message}). Not kept.`);
+    if (world.category) index[key] = { title: world.title, ...said };
     continue;
   }
   mkdirSync(dir, { recursive: true });
   writeFileSync(file, bytes);
-  index[key] = { sha256: preview.sha256, title: world.title };
+  index[key] = { sha256: preview.sha256, title: world.title, ...said };
   console.log(`  ✔  ${world.title}: ${(bytes.length / 1024).toFixed(0)} KB`);
 }
 
 mkdirSync(dir, { recursive: true });
 // Pictures no door shows any more are put away.
-const used = new Set(Object.values(index).map((entry) => entry.sha256));
+const used = new Set(Object.values(index).map((entry) => entry.sha256).filter(Boolean));
 for (const f of readdirSync(dir)) if (/^[0-9a-f]{64}\.webp$/.test(f) && !used.has(f.slice(0, 64))) rmSync(join(dir, f));
 writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
-console.log(`\n${Object.keys(index).length} of ${wanted.size} doors have a picture${fetched ? `, ${fetched} fetched just now` : ""}. They are in doors/, and the next build ships them.`);
+console.log(`\n${Object.values(index).filter((entry) => entry.sha256).length} of ${wanted.size} doors have a picture${fetched ? `, ${fetched} fetched just now` : ""}. They are in doors/, and the next build ships them.`);

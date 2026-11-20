@@ -37,7 +37,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE13 from "three";
-import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS, encodeNpub as encodeNpub2, publishEvent, queryRelays, readRelayList, RELAY_LIST_KIND, shortNpub as shortNpub3, spawnOffset, verifyEvent as verifyEvent2, writeRelaysFor } from "@nswp/core";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS2, encodeNpub as encodeNpub2, publishEvent as publishEvent2, queryRelays as queryRelays2, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, shortNpub as shortNpub3, spawnOffset, verifyEvent as verifyEvent3, writeRelaysFor as writeRelaysFor2 } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -1478,13 +1478,13 @@ var keep = (p) => {
 };
 function load() {
   if (prefs) return prefs;
-  let kept = {};
+  let kept2 = {};
   try {
-    kept = JSON.parse(localStorage.getItem(DESK_PREFS_KEY) ?? "{}") ?? {};
+    kept2 = JSON.parse(localStorage.getItem(DESK_PREFS_KEY) ?? "{}") ?? {};
   } catch {
   }
   const came = arrivedSettings();
-  prefs = { look: clampLook(came.look ?? kept.look), fov: came.fov !== void 0 ? clampFov(came.fov) : clampFov(kept.fov) };
+  prefs = { look: clampLook(came.look ?? kept2.look), fov: came.fov !== void 0 ? clampFov(came.fov) : clampFov(kept2.fov) };
   if (came.look !== void 0 || came.fov !== void 0) keep(prefs);
   reportSettings("desk", () => ({ look: load().look, ...load().fov === null ? {} : { fov: load().fov } }));
   return prefs;
@@ -1673,8 +1673,100 @@ function freshAction(controls, opts = {}) {
 // packages/sdk/src/ui/identity.ts
 import { encodeNpub, getPublicKey, shortNpub as shortNpub2, signerAt as signerAt2 } from "@nswp/core";
 
+// packages/sdk/src/saves.ts
+import { cleanSlot, DEFAULT_RELAYS, fitsInSave, publishEvent, queryRelays, readRelayList, RELAY_LIST_KIND, SAVE_KIND, SAVE_SLOT, verifyEvent, writeRelaysFor } from "@nswp/core";
+function createSaves(opts = {}) {
+  const now = opts.now ?? (() => Date.now());
+  const query = opts.query ?? queryRelays;
+  const publish = opts.publish ?? publishEvent;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS;
+  const signer = () => (typeof opts.signer === "function" ? opts.signer() : opts.signer) ?? null;
+  const store = (() => {
+    if (opts.storage !== void 0) return opts.storage;
+    try {
+      return globalThis.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const keyFor = (who, slot) => `nswp:save:${who ?? "guest"}:${slot}`;
+  const readLocal = (who, slot) => {
+    try {
+      const kept2 = JSON.parse(store?.getItem(keyFor(who, slot)) ?? "null");
+      return kept2 && typeof kept2.data === "string" && typeof kept2.at === "number" ? { data: kept2.data, at: kept2.at } : null;
+    } catch {
+      return null;
+    }
+  };
+  const writeLocal = (who, slot, kept2) => {
+    try {
+      if (!store) return false;
+      store.setItem(keyFor(who, slot), JSON.stringify(kept2));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  let relaysKept = null;
+  const relaysFor = (key) => {
+    if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
+    const found = query(usual(), { kinds: [RELAY_LIST_KIND], authors: [key], limit: 4 }, 2500).then((got) => writeRelaysFor(readRelayList(got.events, key), usual()).relays).catch(() => usual());
+    relaysKept = { key, at: now(), found };
+    return found;
+  };
+  const fromAccount = async (slot) => {
+    const s = signer();
+    const who = s?.state === "unlocked" ? s.pubkey : null;
+    if (!s || !who) return null;
+    const d = await s.find(slot);
+    if (!d) return null;
+    const got = await query(await relaysFor(who), { kinds: [SAVE_KIND], authors: [who], "#d": [d], limit: 4 }, 3500).catch(() => null);
+    const newest = (got?.events ?? []).filter((e) => e.kind === SAVE_KIND && e.pubkey === who && e.tags.some((t) => t[0] === "d" && t[1] === d) && verifyEvent(e)).sort((a, b) => b.created_at - a.created_at)[0];
+    if (!newest) return null;
+    const opened = await s.open(newest);
+    return opened && opened.slot === slot ? { data: opened.data, at: opened.at } : null;
+  };
+  const load2 = async (slotIn) => {
+    const slot = cleanSlot(slotIn ?? SAVE_SLOT);
+    if (!slot) return null;
+    const s = signer();
+    const who = s?.state === "unlocked" ? s.pubkey : null;
+    const here = [readLocal(who, slot), who ? readLocal(null, slot) : null].filter((x) => !!x).sort((a, b) => b.at - a.at)[0] ?? null;
+    const there = who ? await fromAccount(slot).catch(() => null) : null;
+    const newest = there && (!here || there.at >= here.at) ? { ...there, from: "account" } : here ? { ...here, from: "device" } : null;
+    if (newest?.from === "account") writeLocal(who, slot, { data: newest.data, at: newest.at });
+    if (who && newest?.from === "device" && !taking.has(slot)) {
+      taking.add(slot);
+      void toAccount(newest.data, slot, who).catch(() => false).then(() => taking.delete(slot));
+    }
+    return newest && newest.data !== "" ? newest : null;
+  };
+  const taking = /* @__PURE__ */ new Set();
+  const toAccount = async (data, slot, who) => {
+    const s = signer();
+    if (!s || s.state !== "unlocked" || s.pubkey !== who) return false;
+    const signed = await s.save(slot, data).catch(() => null);
+    if (!signed) return false;
+    writeLocal(who, slot, { data, at: signed.created_at });
+    const sent = await publish(await relaysFor(who), signed).catch(() => null);
+    return !!sent && Object.values(sent.relays).some((said) => said === "ok");
+  };
+  const save = async (data, slotIn) => {
+    const slot = cleanSlot(slotIn ?? SAVE_SLOT);
+    if (!slot || !fitsInSave(data)) return { kept: "nowhere", said: "That is too much to save, or not a slot's name." };
+    const s = signer();
+    const who = s?.state === "unlocked" ? s.pubkey : null;
+    const at = Math.floor(now() / 1e3);
+    const here = writeLocal(who, slot, { data, at });
+    if (!s || !who) return here ? { kept: "device", said: "Saved on this device. Sign in to keep it with your account." } : { kept: "nowhere", said: "This browser wouldn't keep it." };
+    if (await toAccount(data, slot, who).catch(() => false)) return { kept: "account", said: "Saved to your account." };
+    return here ? { kept: "device", said: "Saved on this device. It didn't reach your account this time." } : { kept: "nowhere", said: "That wasn't saved." };
+  };
+  return { load: load2, save, clear: (slot) => save("", slot) };
+}
+
 // packages/sdk/src/signer.ts
-import { cleanOrigin, isWhatWasAsked, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent2, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -1692,6 +1784,9 @@ var NONE = {
   },
   sign: async () => null,
   pass: async () => null,
+  save: async () => null,
+  find: async () => null,
+  open: async () => null,
   onChange: () => () => {
   },
   whenAnswered: async () => {
@@ -1715,6 +1810,15 @@ function createWorldSigner(opts) {
   const test = new URLSearchParams(opts.search ?? location.search).get("signer") === "test";
   const watchers2 = /* @__PURE__ */ new Set();
   const pending = /* @__PURE__ */ new Map();
+  const kept2 = /* @__PURE__ */ new Map();
+  const askAbout = (request, read) => new Promise((done) => {
+    const timer = setTimeout(() => {
+      kept2.delete(request.id);
+      done(null);
+    }, 8e3);
+    kept2.set(request.id, { answer: (reply) => done(reply ? read(reply) : null), timer });
+    tell(request);
+  });
   let state = "none";
   let pubkey = null;
   let name = null;
@@ -1779,11 +1883,17 @@ function createWorldSigner(opts) {
       for (const go of [...firstAnswer]) go();
       return changed();
     }
+    const question = kept2.get(reply.id);
+    if (question) {
+      kept2.delete(reply.id);
+      clearTimeout(question.timer);
+      return question.answer(reply.t === "refused" ? null : reply);
+    }
     const waiting2 = pending.get(reply.id);
     if (!waiting2) return;
     pending.delete(reply.id);
     clearTimeout(waiting2.timer);
-    if (reply.t === "refused") return waiting2.done(null);
+    if (reply.t !== "signed") return waiting2.done(null);
     const signed = reply.event;
     if (waiting2.session) {
       const checked = verifyRoomPass(signed, { origin: location.origin, session: waiting2.session });
@@ -1791,7 +1901,7 @@ function createWorldSigner(opts) {
     }
     if (!waiting2.asked) return waiting2.done(null);
     const marked = Array.isArray(signed?.tags) && signed.tags.some((t) => t[0] === WORLD_TAG && t[1] === cleanOrigin(location.origin));
-    waiting2.done(verifyEvent(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting2.asked, signed) ? signed : null);
+    waiting2.done(verifyEvent2(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting2.asked, signed) ? signed : null);
   };
   void (async () => {
     try {
@@ -1902,6 +2012,18 @@ function createWorldSigner(opts) {
         tell({ t: "pass", id, session });
       });
     },
+    save(slot, data) {
+      if (state !== "unlocked" || !frame || !cleanSlot2(slot) || !fitsInSave2(data)) return Promise.resolve(null);
+      return askAbout({ t: "save", id: `s${++n}`, slot, data }, (reply) => reply.t === "signed" && verifyEvent2(reply.event) && looksLikeSave(reply.event, pubkey) ? reply.event : null);
+    },
+    find(slot) {
+      if (state !== "unlocked" || !frame || !cleanSlot2(slot)) return Promise.resolve(null);
+      return askAbout({ t: "find", id: `f${++n}`, slot }, (reply) => reply.t === "found" ? reply.d : null);
+    },
+    open(event) {
+      if (state !== "unlocked" || !frame || !verifyEvent2(event) || !looksLikeSave(event, pubkey)) return Promise.resolve(null);
+      return askAbout({ t: "open", id: `o${++n}`, event }, (reply) => reply.t === "opened" ? { slot: reply.slot, data: reply.data, at: reply.at } : null);
+    },
     onChange(fn) {
       watchers2.add(fn);
       return () => void watchers2.delete(fn);
@@ -1930,6 +2052,11 @@ function createWorldSigner(opts) {
         w.done(null);
       }
       pending.clear();
+      for (const k of kept2.values()) {
+        clearTimeout(k.timer);
+        k.answer(null);
+      }
+      kept2.clear();
       state = "none";
     }
   };
@@ -2068,6 +2195,10 @@ function worldSigner() {
   });
   if (typeof document !== "undefined" && signerNamed()) setInterval(() => void seekPass(), 6e4);
   return signer;
+}
+var kept = null;
+function worldSaves() {
+  return kept ??= createSaves({ signer: () => signerNamed() ? worldSigner() : null });
 }
 function signerAction(controls, opts = {}) {
   const signer = worldSigner();
@@ -3934,12 +4065,12 @@ function createPanels(o) {
   };
   const restored = (async () => {
     if (!o.keep) return;
-    let kept = [];
+    let kept2 = [];
     try {
-      kept = cleanRecords(JSON.parse(localStorage.getItem(o.keep) ?? "[]"));
+      kept2 = cleanRecords(JSON.parse(localStorage.getItem(o.keep) ?? "[]"));
     } catch {
     }
-    for (const r of kept) {
+    for (const r of kept2) {
       const place = cleanPlace(r.place);
       if (place) open(r.source, { id: r.id, place, ...r.look ? { look: r.look } : {}, ...r.pin ? { pin: r.pin } : {} });
     }
@@ -5079,8 +5210,8 @@ function createSounds(o = {}) {
       const refusal = songRefusal({ type: file.type, size: file.size, ...file.name ? { name: file.name } : {} }, songs.length);
       if (refusal) return refusal;
       const id = `song-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      const kept = await fileStore("readwrite", (s) => s.put(file, `song:${id}`));
-      if (kept === void 0) return "This browser couldn't keep that file.";
+      const kept2 = await fileStore("readwrite", (s) => s.put(file, `song:${id}`));
+      if (kept2 === void 0) return "This browser couldn't keep that file.";
       songs = cleanSongs([...songs, { id, title: songTitle(file.name ?? ""), size: file.size, at: Math.floor(Date.now() / 1e3) }]);
       keepSongs();
       changed();
@@ -5698,7 +5829,7 @@ var slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+
 function addCameraControls(controls, d) {
   const name = slug(d.name ?? "world");
   const presenting = () => d.renderer.xr.isPresenting;
-  const kept = [];
+  const kept2 = [];
   let clip = null;
   const plain = `plain-${Math.random().toString(36).slice(2, 12)}`;
   let last = "Pictures and clips are saved to this device. Nothing is sent anywhere.";
@@ -5711,8 +5842,8 @@ function addCameraControls(controls, d) {
     latest = capture;
     d.onCapture?.(capture);
     if (presenting()) {
-      kept.push(capture);
-      tell(`Kept. Save ${kept.length === 1 ? "it" : `all ${kept.length}`} from the Camera menu when you leave VR.`);
+      kept2.push(capture);
+      tell(`Kept. Save ${kept2.length === 1 ? "it" : `all ${kept2.length}`} from the Camera menu when you leave VR.`);
     } else {
       saveFile(capture.blob, capture.name);
       tell(capture.kind === "clip" ? "Clip saved to this device." : "Picture saved to this device.");
@@ -5763,18 +5894,18 @@ function addCameraControls(controls, d) {
       id: "camera-save",
       section: "camera",
       icon: "save",
-      label: () => kept.length === 1 ? "Save 1 picture" : `Save ${kept.length} pictures`,
+      label: () => kept2.length === 1 ? "Save 1 picture" : `Save ${kept2.length} pictures`,
       short: "Save",
       tone: "primary",
-      hidden: () => kept.length === 0 || presenting(),
+      hidden: () => kept2.length === 0 || presenting(),
       act: () => {
-        for (const c of kept.splice(0)) saveFile(c.blob, c.name);
+        for (const c of kept2.splice(0)) saveFile(c.blob, c.name);
         tell("Saved to this device.");
       }
     }
   );
   return {
-    waiting: () => [...kept],
+    waiting: () => [...kept2],
     last: () => latest,
     get recording() {
       return !!clip;
@@ -7086,32 +7217,32 @@ function addRoomControls(controls, presence, opts = {}) {
     pubkey: () => worldSigner().pubkey,
     who: () => hereAs()?.name || worldSigner().name
   };
-  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS;
+  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS2;
   let relaysKept = null;
   const relaysFor = (key) => {
-    if (!key) return Promise.resolve(writeRelaysFor(null, usualRelays()));
+    if (!key) return Promise.resolve(writeRelaysFor2(null, usualRelays()));
     if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = queryRelays(usualRelays(), { kinds: [RELAY_LIST_KIND], authors: [key], limit: 4 }, 2500).then((got) => writeRelaysFor(readRelayList(got.events, key), usualRelays())).catch(() => writeRelaysFor(null, usualRelays()));
+    const found = queryRelays2(usualRelays(), { kinds: [RELAY_LIST_KIND2], authors: [key], limit: 4 }, 2500).then((got) => writeRelaysFor2(readRelayList2(got.events, key), usualRelays())).catch(() => writeRelaysFor2(null, usualRelays()));
     relaysKept = { key, at: Date.now(), found };
     return found;
   };
   let wantsFeed = false;
   const postNote = async (words) => {
     const signed = await notes.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
-    const note = signed && verifyEvent2(signed) && signed.kind === 1 && signed.content === words ? signed : null;
+    const note = signed && verifyEvent3(signed) && signed.kind === 1 && signed.content === words ? signed : null;
     if (!note) return { ok: false, said: "That wasn't sent: your sign-in said no." };
     const to = await relaysFor(note.pubkey);
-    const sent = await publishEvent(to.relays, note).catch(() => null);
-    const kept2 = sent ? Object.values(sent.relays).filter((said) => said === "ok").length : 0;
+    const sent = await publishEvent2(to.relays, note).catch(() => null);
+    const kept3 = sent ? Object.values(sent.relays).filter((said) => said === "ok").length : 0;
     const n = to.relays.length;
-    const where = to.own === n ? `${kept2} of your ${n} relays` : to.own ? `${kept2} of ${n} relays: yours, and the usual ones because your own list is short` : `${kept2} of the ${n} usual relays: you have published no relay list of your own`;
-    return kept2 ? { ok: true, said: `Sent out, to ${where}. Anyone can read it now.` } : { ok: false, said: "Signed, but no relay took it. It wasn't sent." };
+    const where = to.own === n ? `${kept3} of your ${n} relays` : to.own ? `${kept3} of ${n} relays: yours, and the usual ones because your own list is short` : `${kept3} of the ${n} usual relays: you have published no relay list of your own`;
+    return kept3 ? { ok: true, said: `Sent out, to ${where}. Anyone can read it now.` } : { ok: false, said: "Signed, but no relay took it. It wasn't sent." };
   };
   const loadPosts = async () => {
     const key = notes.pubkey?.();
     if (!key) return [];
     const from = await relaysFor(key);
-    const got = await queryRelays(from.relays, { kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, 5e3);
+    const got = await queryRelays2(from.relays, { kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, 5e3);
     if (!got.events.length && !Object.values(got.relays).some((said) => said === "eose")) return null;
     return got.events.filter((e) => e.pubkey === key && e.kind === 1 && !e.tags.some((t) => t[0] === "e")).map((e) => ({ id: e.id, text: e.content, at: e.created_at }));
   };
@@ -7473,13 +7604,13 @@ function addRoomControls(controls, presence, opts = {}) {
     presence.setVolume(l.off ? 0 : l.voices);
     presence.setHearShared(!!sounds && !l.off && l.hearShared, l.shared);
   });
-  let kept = null;
+  let kept2 = null;
   try {
-    kept = wasRefreshed() ? sessionStorage.getItem(JOINED_KEY()) : null;
+    kept2 = wasRefreshed() ? sessionStorage.getItem(JOINED_KEY()) : null;
   } catch {
   }
   refresh();
-  const carried = opts.arrived?.joined ? { mic: !!opts.arrived.mic, from: "there" } : kept ? { mic: kept === "mic", from: "refresh" } : null;
+  const carried = opts.arrived?.joined ? { mic: !!opts.arrived.mic, from: "there" } : kept2 ? { mic: kept2 === "mic", from: "refresh" } : null;
   if (carried && (carried.from === "refresh" || !invited)) {
     busy = true;
     void (async () => {
@@ -7631,6 +7762,7 @@ export {
   watchFov,
   watchFresh,
   freshAction,
+  createSaves,
   createWorldSigner,
   signerNamed,
   hereAs,
@@ -7643,6 +7775,7 @@ export {
   identitySection,
   identityAction,
   worldSigner,
+  worldSaves,
   signerAction,
   figureAction,
   WALK_SPEED,

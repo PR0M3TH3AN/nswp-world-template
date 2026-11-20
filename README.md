@@ -76,7 +76,9 @@ world announced, checks it against the hash in that announcement, and keeps
 it in `doors/`. The next build ships it from your own site, so a visitor's
 browser asks nobody else for it, and a world you link to learns nothing
 until someone goes there. A world that announced no picture keeps a field of
-light in its doorway. Run it again when a world you link to has a new look.
+light in its doorway. The same command notes what kind of place each world
+says it is, and the door's sign says it under the name: "A game at
+example.com". Run it again when a world you link to has a new look.
 A portal your own code adds (`ctx.addPortal`) is named on the command line:
 `npm run doors -- 37300:<key>:<name>`.
 
@@ -106,6 +108,23 @@ stand by returning `canStand(x, z)`.
 A click while they are walking adds to the path from where the last click
 ended, so a path is clicked out as it is walked, and the view turns to face
 the way they are going. Two clicks close together are a run straight there.
+
+**Keeping a visitor's progress.** If your scene has something to remember
+(a score, how far someone got, what they built), keep it as a save:
+
+```ts
+import { worldSaves } from "nswp-sdk/three";
+
+const saves = worldSaves();
+const last = await saves.load();                   // { data, at, from } or null
+await saves.save(JSON.stringify({ level: 3 }));    // text of your own, 32 KB at most
+```
+
+It is kept on their device at once. For a visitor who is signed in at your
+world it is also kept with their account, encrypted so that only they can
+read it, and is there on their next device. Your world can read its own
+saves and nobody else's. (Their sign-in has to support saves for the account
+part; until it does, a save stays on the device, and your code is the same.)
 
 ### The controls
 
@@ -321,8 +340,14 @@ looking at what an assistant or a new dependency adds to `src/`.
 
 ## Say who it is for, and what it is about
 
-Two lines in `world.json`, under `"world"`, decide where your world can be
+Three lines in `world.json`, under `"world"`, decide where your world can be
 shown and how people find it.
+
+- `"category"`: what kind of place it is. One of `"game"` (something to win,
+  beat or finish), `"experience"` (a place to walk through and look at),
+  `"social"` (made for meeting people), `"app"` (a tool that does a job) or
+  `"site"` (mostly words and pictures). Doors that lead to you say it under
+  your world's name. Leave the line out to say nothing.
 
 - `"audience"`: `"kids"` (made for children), `"general"` (not made for
   kids) or `"adult"` (NSFW). It is your word, and it has to be true. A site
