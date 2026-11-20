@@ -5,17 +5,28 @@
  * is how a headset moves (a slide there turns stomachs) and is wrong for a
  * phone or a desk: the room lurches, and a visitor loses where they were. So
  * on a flat screen a tap is a walk, at the pace the keys walk, to a spot no
- * further than a few metres away. A second tap changes where they are headed.
+ * further than a few metres away.
  *
- * Two taps close together are a run: the same few steps, taken at a run, and
- * each tap after that keeps them running until they arrive somewhere. It is
- * the only way to run for a visitor with no keys to hold.
+ * **A path, clicked out.** A tap while they are already walking doesn't start
+ * again from their feet: it adds a stretch to the way they are going, from
+ * where the last tap ended. So a visitor taps out a path as they walk it,
+ * round a corner or between things, and the line on the floor is that path.
+ *
+ * **They face the way they walk.** While a walk is on, the view turns to
+ * look along the stretch being walked, at an easy rate (`face`). Tapping
+ * ahead is then always tapping where they are looking.
+ *
+ * Two taps close together are a run, straight to that spot, whatever was
+ * planned: the way to change one's mind, and the only way to run for a
+ * visitor with no keys to hold. Each tap after that keeps them running until
+ * they arrive somewhere.
  *
  *   const stroll = createStroll({ where: () => [head.x, head.z], canStand, move: (dx, dz) => { rig.position.x += dx; rig.position.z += dz; } });
  *   // a tap on the floor, outside a headset:
- *   stroll.to(...reachOf(head.x, head.z, spot.x, spot.z));
+ *   stroll.tap(spot.x, spot.z);
  *   // every frame:
  *   stroll.update(dt);
+ *   if (stroll.going && !dragging) rig.rotation.y = stroll.face(rig.rotation.y, dt);
  *   // a key was pressed, a door was taken, a headset session began:
  *   stroll.stop();
  */
@@ -39,6 +50,10 @@ export declare const DOUBLE_TAP = 400;
  * at the keys' pace and never a jump, and it is shown before it is taken, so it surprises nobody.
  */
 export declare const TAP_REACH = 6;
+/** How many stretches a path may have waiting. More taps than this are not added until some are walked. */
+export declare const PATH_MOST = 12;
+/** How fast the view turns to face the way they walk, at most, in radians a second: a little under half a turn. */
+export declare const FACE_RATE = 2.8;
 /** How far dragging turns a visitor on a flat screen, in radians a pixel. Dragging right brings what was on the left round. */
 export declare const DRAG_LOOK = 0.005;
 /** The spot a tap leads to: the one tapped, or the point `reach` metres towards it when it is further off. */
@@ -79,14 +94,32 @@ export declare function createStepPace(o?: {
 }): StepPace;
 export interface Stroll {
     /**
-     * Start walking to (x, z), from wherever the visitor is. Asked twice close together, or while already
-     * running, or with `run` true, they run there.
+     * Start walking to (x, z), from wherever the visitor is, and forget any path they had tapped out. Asked twice
+     * close together, or while already running, or with `run` true, they run there. For a walk the page starts
+     * itself (up to a door, say). A press on the floor is `tap`.
      */
     to(x: number, z: number, run?: boolean): void;
+    /**
+     * A press on the floor at (x, z). Standing still, it starts a walk towards it, no further than one press
+     * reaches. Already walking, it adds a stretch to the path, from where the path ends, as far as one press
+     * reaches from there. Two presses close together are a run straight to the spot, with the rest forgotten.
+     */
+    tap(x: number, z: number): void;
+    /** Where a press at (x, z) would lead: for the ring under the pointer. From the end of the path while walking. */
+    reach(x: number, z: number): [number, number];
     /** Whether they are running to where they are headed. */
     readonly running: boolean;
-    /** Where they are headed, or null: for showing them, and nobody else, where a tap is taking them. */
+    /** Where they will end up, or null: the end of the path. */
     readonly target: readonly [number, number] | null;
+    /** The way they are going: each spot still to be walked to, in order. Empty when they are standing. */
+    readonly path: readonly (readonly [number, number])[];
+    /**
+     * The way they are walking now, as a turn about the vertical for something that looks down -Z (a three.js
+     * camera's rig), in radians. Null when they are standing.
+     */
+    readonly heading: number | null;
+    /** `yaw`, turned a little towards the way they are walking: call it every frame of a walk with their own turn. */
+    face(yaw: number, dt: number): number;
     /** Stop where they are. */
     stop(): void;
     /** Call every frame with the seconds since the last. */
@@ -103,6 +136,8 @@ export declare function createStroll(o: {
     move(dx: number, dz: number): void;
     /** Metres a second. */
     speed?: number;
+    /** How far one press reaches, in metres. `TAP_REACH` when left out. */
+    reach?: number;
     /** Called when something in the way stopped the walk short. */
     onBlocked?: () => void;
     /** The time now, in milliseconds. For tests. */

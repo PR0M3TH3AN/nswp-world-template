@@ -6,6 +6,7 @@ import {
   DOOR_REACH,
   DOUBLE_TAP,
   DRAG_LOOK,
+  FACE_RATE,
   FOV_STEPS,
   INTENSE_COMFORT,
   JUMP_GRAVITY,
@@ -16,6 +17,7 @@ import {
   LOOK_STEPS,
   PANEL_LIMITS,
   PANEL_LOOKS,
+  PATH_MOST,
   PITCH_LIMIT,
   RUN,
   SPRINT,
@@ -83,7 +85,7 @@ import {
   watchFov,
   worldSigner,
   youCard
-} from "./shared-DYH23GTI.js";
+} from "./shared-J6FMBJVZ.js";
 import {
   currentForm,
   deviceForms,
@@ -125,6 +127,7 @@ export {
   DOOR_REACH,
   DOUBLE_TAP,
   DRAG_LOOK,
+  FACE_RATE,
   FOV_STEPS,
   INTENSE_COMFORT,
   JUMP_GRAVITY,
@@ -135,6 +138,7 @@ export {
   LOOK_STEPS,
   PANEL_LIMITS,
   PANEL_LOOKS,
+  PATH_MOST,
   PICTURE_LIMITS,
   PITCH_LIMIT,
   RUN,

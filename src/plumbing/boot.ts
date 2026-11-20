@@ -25,7 +25,9 @@ import configJson from "../../world.json";
 import type { BuildScene, PortalOptions, SceneContext, WorldConfig } from "./types.js";
 
 interface TestHooks {
-  marks?: () => { ring: [number, number] | null; dot: [number, number] | null; dots: number };
+  marks?: () => { ring: [number, number] | null; dot: [number, number] | null; dots: number; turns: number };
+  /** The way they are walking: each spot still ahead. */
+  path?: () => number[][];
   jump?: { jump(): boolean; readonly height: number; readonly airborne: boolean };
   state: Record<string, unknown>;
   /** What this place sounds like: cues, its music, and the visitor's own. */
@@ -487,6 +489,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   const marks = createFloorMarks(controls.theme.accent);
   scene.add(marks.group);
   hooks.marks = () => marks.info();
+  hooks.path = () => stroll.path.map(([x, z]) => [Math.round(x * 100) / 100, Math.round(z * 100) / 100]);
   const stepTo = (spot: THREE.Vector3) => {
     if (!floorIsClear()) return;
     camera.getWorldPosition(headAt);
@@ -496,7 +499,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     if (renderer.xr.isPresenting) {
       if (!pace.take(Math.hypot(spot.x - headAt.x, spot.z - headAt.z))) return;
       moveTowards(spot.x, spot.z);
-    } else stroll.to(...reachOf(headAt.x, headAt.z, spot.x, spot.z));
+    } else stroll.tap(floorHit.x, floorHit.z); // where they pressed: standing, a walk there; walking, the path goes on from its end
     state.steps = ((state.steps as number | undefined) ?? 0) + 1;
   };
   const reticle = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.28, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthTest: false }));
@@ -844,7 +847,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     crossing.update(t, dt);
     let panelAimed: string | null = null;
     let hover: [number, number] | null = null;
-    let going: readonly [number, number] | null = null;
+    let going: readonly (readonly [number, number])[] | null = null;
     if (renderer.xr.isPresenting) {
       let button: string | null = null;
       for (const c of controllers) {
@@ -881,6 +884,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       else {
         walk(dt);
         stroll.update(dt);
+        // They face the way they walk, so the next press ahead is a press where they are looking. Not while they
+        // are turning the view themselves.
+        if (stroll.going && !dragging) rig.rotation.y = stroll.face(rig.rotation.y, dt);
       }
       raycaster.setFromCamera(pointer, camera);
       panelAimed = panels!.pick(raycaster);
@@ -894,13 +900,15 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       else if (hoverTick++ % 3 === 0) {
         // Looked for every third frame: finding what is in the way means looking at everything in the place.
         const spot = floorUnder();
-        hoverKept = spot && floorIsClear() && canStand(spot.x, spot.z) ? [spot.x, spot.z] : null;
+        // Where a press would lead: from their feet standing, from the end of the path they are walking.
+        const led = spot ? stroll.reach(floorHit.x, floorHit.z) : null;
+        hoverKept = led && floorIsClear() && canStand(led[0], led[1]) ? led : null;
       }
       hover = hoverKept;
-      going = fps!.enabled ? null : stroll.target;
+      going = fps!.enabled ? null : stroll.path;
     }
     camera.getWorldPosition(headAt);
-    marks.update({ hover, from: [headAt.x, headAt.z], to: going, t });
+    marks.update({ hover, from: [headAt.x, headAt.z], path: going, t });
     // Walking into a doorway goes through it, on foot or in a headset, with nothing brought up first.
     const through = state.ready ? walkedInto() : null;
     if (through) void go(through, "walked");
