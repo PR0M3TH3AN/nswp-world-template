@@ -1,5 +1,5 @@
 /** Spatial World Announcements (spec §5). */
-import { type Audience, type Category } from "./constants.js";
+import { type Audience, type Category, type ItemsRule } from "./constants.js";
 import type { PreviewType } from "./constants.js";
 import { type EventTemplate } from "./event.js";
 import { type Result } from "./result.js";
@@ -42,6 +42,8 @@ export interface WorldInput {
     audience?: Audience;
     /** What kind of place it is: one of `CATEGORIES`. */
     category?: Category;
+    /** What it does with the things visitors carry: one of `ITEM_RULES`. Left out, nothing carried works there. */
+    items?: ItemsRule;
     status?: string;
     /** Only when the manifest is not at the well-known path (it then can't verify). */
     manifest?: string;
@@ -77,6 +79,8 @@ export interface World {
     audience?: Audience;
     /** What kind of place its maker says it is. Left out when they didn't say, or said something else. */
     category?: Category;
+    /** What its maker says it does with the things visitors carry. Left out when they didn't say: then it is `none`. */
+    items?: ItemsRule;
     status: string;
     manifest?: string;
     coCreators: string[];

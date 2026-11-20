@@ -17,6 +17,7 @@ export * from "./save.js";
 export * from "./rating.js";
 export * from "./score.js";
 export * from "./achievement.js";
+export * from "./item.js";
 export * from "./people.js";
 export * from "./message.js";
 export * from "./layout.js";

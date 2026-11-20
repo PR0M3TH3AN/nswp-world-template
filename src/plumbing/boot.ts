@@ -207,6 +207,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
         hash = site.doors?.[coordinate];
         // What kind of place it leads to, on its sign: its own word, noted when `npm run doors` last asked.
         gate.setCategory(site.kinds?.[coordinate]);
+        // And whether items are part of play there (NSWP-17): told on the sign, before anyone goes in.
+        gate.setItems(site.carried?.[coordinate]);
       } catch {
         /* not an address this page can read */
       }
