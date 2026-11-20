@@ -54,6 +54,8 @@ var STANDARD = [
   { id: "figure", label: "Your look", icon: "look" },
   { id: "room", label: "Room", icon: "room" },
   { id: "people", label: "People", icon: "people" },
+  // Who the visitor follows (following.ts). Empty, and not shown, for a guest.
+  { id: "following", label: "Following", icon: "list" },
   { id: "camera", label: "Camera", icon: "camera" },
   { id: "panels", label: "Panels", icon: "panel" },
   { id: "view", label: "View", icon: "vr" },
