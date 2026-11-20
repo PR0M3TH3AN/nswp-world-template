@@ -11,3 +11,4 @@ export { DEFAULT_THEME, UI_PRESETS, cleanTheme, resolveTheme, type UiTheme } fro
 export { ICONS, type IconName } from "./ui/icons.js";
 export { createHeldButton, createHoldWatch, SUMMON_HOLD, SUMMON_KEY, SUMMON_SLOP } from "./ui/summon.js";
 export { loadPicture, onPicturesChange, PICTURE_LIMITS, PICTURES_KEY, setShowsPictures, showsPictures } from "./picture.js";
+export { askWell, foundRelays, learnFrom, publishBacked, queryBacked, relayBackup, relaysWell, sendWell, type SentWell } from "./relay-book.js";
