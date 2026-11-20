@@ -71,7 +71,9 @@ for (const key of wanted.keys()) {
   }
   // What kind of place it says it is goes on the door's sign, picture or no picture. And where it is: a door that
   // shows what people thought of the place needs its address, to leave out a rating the place asked for itself.
-  const said = { ...(world.category ? { category: world.category } : {}), ...(world.url ? { url: world.url } : {}) };
+  // And what it does with the things visitors carry (NSWP-17): a door to a place where items are part of play
+  // says so on its sign, before anyone goes in.
+  const said = { ...(world.category ? { category: world.category } : {}), ...(world.url ? { url: world.url } : {}), ...(world.items ? { items: world.items } : {}) };
   const noted = Object.keys(said).length > 0;
   const preview = world.previews.find((p) => p.type === "pano");
   if (!preview) {

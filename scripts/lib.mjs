@@ -95,9 +95,11 @@ export function readDoors() {
   const kinds = {};
   /** Where each door leads, as that world's announcement said: for leaving out a rating a place asked for itself. */
   const places = {};
+  /** What each place does with the things visitors carry, where its announcement said: "allowed" or "play". */
+  const carried = {};
   const files = [];
   const problems = [];
-  if (!existsSync(path)) return { doors, kinds, places, files, problems, watch: [] };
+  if (!existsSync(path)) return { doors, kinds, places, carried, files, problems, watch: [] };
   let index = {};
   try {
     index = JSON.parse(readFileSync(path, "utf8"));
@@ -106,6 +108,7 @@ export function readDoors() {
   }
   for (const [coordinate, entry] of Object.entries(index)) {
     if (typeof entry?.category === "string" && /^[a-z]{1,20}$/.test(entry.category)) kinds[coordinate] = entry.category;
+    if (entry?.items === "allowed" || entry?.items === "play") carried[coordinate] = entry.items;
     if (typeof entry?.url === "string" && /^https:\/\/[^\s]{1,300}$/.test(entry.url)) places[coordinate] = entry.url;
     // A door with no picture is listed only for what kind of place it leads to.
     if (entry?.sha256 === undefined) continue;
@@ -118,7 +121,7 @@ export function readDoors() {
       if (!files.includes(`${hash}.webp`)) files.push(`${hash}.webp`);
     }
   }
-  return { doors, kinds, places, files, problems, watch: [path] };
+  return { doors, kinds, places, carried, files, problems, watch: [path] };
 }
 
 /** Where this world's publisher key is kept. Never inside the repository. */
@@ -238,7 +241,7 @@ const nswpPlugin = {
       const shown = readDoors();
       return {
         warnings: [...state.pictures.problems, ...shown.problems].map((text) => ({ text })),
-        contents: JSON.stringify({ layout: templates(state).layout, publisher: state.signed.world?.pubkey ?? null, doors: shown.doors, kinds: shown.kinds, places: shown.places }),
+        contents: JSON.stringify({ layout: templates(state).layout, publisher: state.signed.world?.pubkey ?? null, doors: shown.doors, kinds: shown.kinds, places: shown.places, carried: shown.carried }),
         loader: "json",
         watchFiles: [join(root, "home.json"), join(root, "world.json"), join(root, "src", "index.html"), join(root, "signed", "world.event.json"), ...state.pictures.files.map((f) => join(PICTURES, f)), ...shown.watch],
         watchDirs: existsSync(PICTURES) ? [PICTURES] : [],

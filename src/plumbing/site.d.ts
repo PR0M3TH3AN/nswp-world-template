@@ -11,6 +11,8 @@ declare module "virtual:site" {
     kinds: Record<string, string>;
     /** Where each door leads, by the door's coordinate: its address, as that world's own announcement said. */
     places: Record<string, string>;
+    /** What each door's place does with the things visitors carry, by the door's coordinate: "allowed" or "play", as its own announcement said. */
+    carried: Record<string, string>;
   };
   export default site;
 }

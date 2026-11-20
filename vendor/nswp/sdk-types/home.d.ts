@@ -41,6 +41,12 @@ export interface PortalGate {
      * (protocol/13-ratings.md). "" says nothing, which is what a door says when nobody they know has rated it.
      */
     setRating(mark: string): void;
+    /**
+     * Say on the sign what the place does with the things visitors carry, as its own announcement says
+     * (protocol/17-items.md): "Items are part of play here". A visitor is told before they go in. Anything but
+     * `allowed` or `play` says nothing.
+     */
+    setItems(rule: string | null | undefined): void;
     /** Show a preview of the destination through the portal (spec §5.8). Returns the window, for a world that needs to hide it while it photographs itself. */
     showThrough(pano: THREE.Texture): THREE.Mesh;
     update(t: number, dt: number): void;

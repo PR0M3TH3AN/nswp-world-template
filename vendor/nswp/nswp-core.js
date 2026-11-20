@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.47.0";
+var KIT_VERSION = "0.48.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -34,6 +34,14 @@ var CAPABILITIES = [
   "home"
 ];
 var AUDIENCES = ["kids", "general", "adult"];
+var ITEM_RULES = ["none", "allowed", "play"];
+function cleanItemsRule(rule) {
+  return typeof rule === "string" && ITEM_RULES.includes(rule) ? rule : "none";
+}
+function itemsWords(rule) {
+  const r = cleanItemsRule(rule);
+  return r === "play" ? "Items are part of play here" : r === "allowed" ? "Items work here" : null;
+}
 var CATEGORIES = ["game", "experience", "social", "app", "site"];
 var CATEGORY_WORDS = { game: "A game", experience: "An experience", social: "A place to meet", app: "An app", site: "A site" };
 function categoryWords(category) {
@@ -4300,6 +4308,7 @@ function buildWorldEvent(w) {
   if (warning !== void 0) tags.push(warning === true ? ["content-warning"] : ["content-warning", warning]);
   if (w.audience) tags.push(["audience", w.audience]);
   if (w.category) tags.push(["category", w.category]);
+  if (w.items && w.items !== "none") tags.push(["items", w.items]);
   if (w.status) tags.push(["status", w.status]);
   if (w.manifest) tags.push(["manifest", w.manifest]);
   for (const p of w.coCreators ?? []) tags.push(["p", p, "", "co-creator"]);
@@ -4444,16 +4453,22 @@ function parseWorldEvent(input, opts = {}) {
   const cw = getTags({ tags }, "content-warning")[0];
   const contentWarning = cw ? cw[1] ?? "" : void 0;
   let audience;
-  const said = getTags({ tags }, "audience")[0]?.[1];
-  if (said !== void 0) {
-    if (AUDIENCES.includes(said)) audience = said;
-    else c.warn("unknown_audience", "tags.audience", `Unknown audience "${said}"; treated as not stated.`);
+  const said2 = getTags({ tags }, "audience")[0]?.[1];
+  if (said2 !== void 0) {
+    if (AUDIENCES.includes(said2)) audience = said2;
+    else c.warn("unknown_audience", "tags.audience", `Unknown audience "${said2}"; treated as not stated.`);
   }
   let category;
   const kindOfPlace = getTags({ tags }, "category")[0]?.[1];
   if (kindOfPlace !== void 0) {
     if (CATEGORIES.includes(kindOfPlace)) category = kindOfPlace;
     else c.warn("unknown_category", "tags.category", `Unknown category "${kindOfPlace}"; treated as not stated.`);
+  }
+  let items;
+  const carried = getTags({ tags }, "items")[0]?.[1];
+  if (carried !== void 0) {
+    if (ITEM_RULES.includes(carried)) items = carried;
+    else c.warn("unknown_items_rule", "tags.items", `Unknown rule for items "${carried}"; treated as none.`);
   }
   if (audience === "adult" && contentWarning === void 0) c.warn("adult_without_warning", "tags.audience", "An adult world should also carry a content-warning, which other clients read.");
   if (audience === "kids" && contentWarning !== void 0) c.warn("kids_with_warning", "tags.audience", "A world for kids carries a content warning. One of the two is wrong.");
@@ -4501,6 +4516,7 @@ function parseWorldEvent(input, opts = {}) {
   if (contentWarning !== void 0) world.contentWarning = contentWarning;
   if (audience) world.audience = audience;
   if (category) world.category = category;
+  if (items && items !== "none") world.items = items;
   if (manifest) world.manifest = manifest;
   if (access) world.access = access;
   return c.result(world);
@@ -5327,12 +5343,12 @@ function relayScore(note, now) {
 }
 function learnRelays(notes, results, now) {
   const next = { ...notes };
-  for (const [url, said] of Object.entries(results)) {
+  for (const [url, said2] of Object.entries(results)) {
     const clean3 = cleanRelayUrl(url);
     if (!clean3) continue;
     const had = next[clean3] && now - next[clean3].at <= RELAY_PICK.staleMs ? next[clean3] : { ok: 0, failed: 0, at: now };
     let { ok, failed } = had;
-    if (said === "ok" || said === "eose") ok++;
+    if (said2 === "ok" || said2 === "eose") ok++;
     else failed++;
     if (ok + failed > RELAY_PICK.remembered) {
       ok = Math.round(ok / 2);
@@ -5468,14 +5484,14 @@ function readRelayFinding(event) {
   const url = cleanRelayUrl(getTags(event, "d")[0]?.[1]);
   const network = getTags(event, "n")[0]?.[1];
   if (!url || network !== void 0 && network !== "clearnet") return null;
-  const said = (name) => {
+  const said2 = (name) => {
     const values = getTags(event, "R").map((t) => t[1]);
     return values.includes(name) ? true : values.includes(`!${name}`) ? false : null;
   };
   const ms = Number(getTags(event, "rtt-open")[0]?.[1]);
   const wrote = Number(getTags(event, "rtt-write")[0]?.[1]);
   const refuses = getTags(event, "k").map((t) => t[1] ?? "").filter((k) => /^!\d{1,5}$/.test(k)).map((k) => Number(k.slice(1)));
-  return { url, monitor: event.pubkey, at: Number.isInteger(event.created_at) ? event.created_at : 0, auth: said("auth"), payment: said("payment"), restricted: said("writes"), pow: said("pow"), rttOpen: Number.isFinite(ms) && ms > 0 ? ms : null, rttWrite: Number.isFinite(wrote) && wrote > 0 ? wrote : null, refuses };
+  return { url, monitor: event.pubkey, at: Number.isInteger(event.created_at) ? event.created_at : 0, auth: said2("auth"), payment: said2("payment"), restricted: said2("writes"), pow: said2("pow"), rttOpen: Number.isFinite(ms) && ms > 0 ? ms : null, rttWrite: Number.isFinite(wrote) && wrote > 0 ? wrote : null, refuses };
 }
 function pickDiscovered(events, o) {
   const newest = /* @__PURE__ */ new Map();
@@ -6858,52 +6874,6 @@ function readHandoffMessage(data) {
   return null;
 }
 
-// packages/core/src/people.ts
-var FOLLOWS_KIND = 3;
-function followsIn(event) {
-  if (!event || !Array.isArray(event.tags)) return [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const t of event.tags) {
-    if (!Array.isArray(t) || t[0] !== "p" || typeof t[1] !== "string") continue;
-    const key = t[1].toLowerCase();
-    if (isHex64(key)) seen.add(key);
-  }
-  return [...seen];
-}
-function newestFollows(events, pubkey) {
-  return events.filter((e) => e.kind === FOLLOWS_KIND && e.pubkey === pubkey && Array.isArray(e.tags)).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0] ?? null;
-}
-function changeFollows(newest, change) {
-  if (newest && (newest.kind !== FOLLOWS_KIND || !Array.isArray(newest.tags))) return null;
-  if (!newest && !change.fromNothing) return null;
-  const add = typeof change.add === "string" ? change.add.toLowerCase() : "";
-  const remove = typeof change.remove === "string" ? change.remove.toLowerCase() : "";
-  if (add === "" === (remove === "")) return null;
-  const who = add || remove;
-  if (!isHex64(who) || add && newest?.pubkey === add) return null;
-  const had = newest ? newest.tags.filter((t) => Array.isArray(t) && t.every((item) => typeof item === "string") && !SITE_MARKS.includes(t[0] ?? "")) : [];
-  const names = (t) => t[0] === "p" && typeof t[1] === "string" && t[1].toLowerCase() === who;
-  const follows = had.some(names);
-  if (add ? follows : !follows) return null;
-  const tags = add ? [...had.map((t) => [...t]), ["p", add, ...change.relay ? [change.relay] : []]] : had.filter((t) => !names(t)).map((t) => [...t]);
-  const created_at = Math.max(Math.floor(change.now), newest ? newest.created_at + 1 : 0);
-  return { kind: FOLLOWS_KIND, created_at, tags, content: typeof newest?.content === "string" ? newest.content : "" };
-}
-var FOLLOW_LIMITS = { burst: 6, perMs: 6e4, hourly: 60 };
-function followForWorld(o) {
-  const change = { ...typeof o.add === "string" ? { add: o.add } : {}, ...typeof o.remove === "string" ? { remove: o.remove } : {}, now: o.now };
-  if (o.list === null || o.list === void 0) return o.seen ? null : changeFollows(null, { ...change, fromNothing: true });
-  if (!verifyEvent(o.list) || o.list.kind !== FOLLOWS_KIND || o.list.pubkey !== o.pubkey) return null;
-  if (o.seen && o.list.created_at < o.seen) return null;
-  return changeFollows(o.list, change);
-}
-function isFollowAsked(signed, o) {
-  if (!o.pubkey || !verifyEvent(signed) || signed.kind !== FOLLOWS_KIND || signed.pubkey !== o.pubkey) return false;
-  const want = changeFollows(o.list, { ...o.add ? { add: o.add } : {}, ...o.remove ? { remove: o.remove } : {}, now: signed.created_at, fromNothing: o.list === null });
-  if (!want || signed.content !== want.content || o.list && signed.created_at <= o.list.created_at) return false;
-  return JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(want.tags);
-}
-
 // packages/core/src/layout.ts
 var HOME_LAYOUT_KIND = 37302;
 var ITEM_KIND = 37303;
@@ -7036,6 +7006,185 @@ function parseLayoutEvent(input) {
 }
 function checkPictureBytes(expectedSha256, bytes) {
   return bytes.length <= LAYOUT_LIMITS.pictureBytes && bytesToHex(sha256(bytes)) === expectedSha256;
+}
+
+// packages/core/src/item.ts
+var ITEM_LIMITS = {
+  title: 60,
+  summary: 280,
+  /** No side of an item is longer than this, in metres. A file that is larger is scaled down to fit. */
+  metres: 4,
+  /** How many shapes its hit box may be made of, and how many moments may have an animation. */
+  colliders: 8,
+  clips: 8,
+  /** The longest an address may be. */
+  url: 300
+};
+var ITEM_BEHAVIORS = ["holdable", "sittable", "touchable", "readable", "wearable"];
+var ITEM_FITS = ["place", "head", "back", "hand-left", "hand-right", "side"];
+var ITEM_MOMENTS = ["idle", "touch", "held", "move", "use"];
+var NAME2 = /^[a-z0-9][a-z0-9-]{0,63}$/;
+var CLIP = /^[\w .-]{1,64}$/;
+function cleanFile(url, sha2562) {
+  if (typeof url !== "string" || url.length > ITEM_LIMITS.url || !isHex64(sha2562)) return null;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" || u.username || u.password) return null;
+    return { url: u.href, sha256: sha2562 };
+  } catch {
+    return null;
+  }
+}
+var numbers = (text, n) => {
+  if (typeof text !== "string") return null;
+  const parts = text.trim().split(/\s+/).map(Number);
+  return parts.length === n && parts.every((x) => Number.isFinite(x) && Math.abs(x) <= 100) ? parts : null;
+};
+var within = (n) => n > 0 && n <= ITEM_LIMITS.metres;
+var said = (xs) => xs.map((x) => String(Math.round(x * 1e3) / 1e3)).join(" ");
+function colliderTag(c) {
+  if (!c.centre.every((x) => Number.isFinite(x) && Math.abs(x) <= ITEM_LIMITS.metres)) return null;
+  if (c.shape === "box") return c.size.every(within) ? ["collider", "box", said(c.centre), said(c.size)] : null;
+  if (c.shape === "sphere") return within(c.radius) ? ["collider", "sphere", said(c.centre), said([c.radius])] : null;
+  return within(c.radius) && within(c.height) ? ["collider", "capsule", said(c.centre), said([c.radius]), said([c.height])] : null;
+}
+function readCollider(t) {
+  const centre = numbers(t[2], 3);
+  if (!centre || !centre.every((x) => Math.abs(x) <= ITEM_LIMITS.metres)) return null;
+  if (t[1] === "box") {
+    const size = numbers(t[3], 3);
+    return size && size.every(within) ? { shape: "box", centre, size } : null;
+  }
+  const radius = numbers(t[3], 1)?.[0];
+  if (radius === void 0 || !within(radius)) return null;
+  if (t[1] === "sphere") return { shape: "sphere", centre, radius };
+  const height = numbers(t[4], 1)?.[0];
+  return t[1] === "capsule" && height !== void 0 && within(height) ? { shape: "capsule", centre, radius, height } : null;
+}
+function buildItem(o) {
+  const title = cleanLine(o.title, ITEM_LIMITS.title);
+  const model = cleanFile(o.model?.url, o.model?.sha256);
+  if (typeof o.d !== "string" || !NAME2.test(o.d) || !title || !model || !Array.isArray(o.size) || o.size.length !== 3 || !o.size.every(within)) return null;
+  const tags = [
+    ["d", o.d],
+    ["title", title]
+  ];
+  const summary = cleanLine(o.summary ?? "", ITEM_LIMITS.summary);
+  if (summary) tags.push(["summary", summary]);
+  tags.push(["model", model.url, "glb", model.sha256]);
+  if (o.thumb) {
+    const thumb = cleanFile(o.thumb.url, o.thumb.sha256);
+    if (!thumb) return null;
+    tags.push(["thumb", thumb.url, thumb.sha256]);
+  }
+  tags.push(["size", said(o.size)]);
+  for (const c of (o.colliders ?? []).slice(0, ITEM_LIMITS.colliders)) {
+    const tag = colliderTag(c);
+    if (!tag) return null;
+    tags.push(tag);
+  }
+  for (const moment of ITEM_MOMENTS) {
+    const clip = o.clips?.[moment];
+    if (clip === void 0) continue;
+    if (!CLIP.test(clip)) return null;
+    tags.push(["clip", moment, clip]);
+  }
+  for (const b of ITEM_BEHAVIORS) if (o.behaviors?.includes(b)) tags.push(["behavior", b]);
+  const fits = ITEM_FITS.filter((f) => o.fits?.includes(f));
+  if (fits.length) tags.push(["fits", ...fits]);
+  if (o.use === "granted") tags.push(["use", "granted"]);
+  if (o.script) {
+    const script = cleanFile(o.script.url, o.script.sha256);
+    if (!script) return null;
+    tags.push(["script", script.url, script.sha256]);
+  }
+  const license = cleanLine(o.license ?? "", 40);
+  if (license) tags.push(["license", license]);
+  tags.push(["alt", `Item: ${title}`]);
+  return { kind: ITEM_KIND, created_at: Math.floor(o.now), tags, content: "" };
+}
+function parseItem(event) {
+  if (!event || event.kind !== ITEM_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
+  const tag = (name) => getTags(event, name)[0];
+  const d = tag("d")?.[1];
+  const title = cleanLine(tag("title")?.[1], ITEM_LIMITS.title);
+  const m = tag("model");
+  const model = m && m[2] === "glb" ? cleanFile(m[1], m[3]) : null;
+  const size = numbers(tag("size")?.[1], 3);
+  if (typeof d !== "string" || !NAME2.test(d) || !title || !model || !size || !size.every(within)) return null;
+  const th = tag("thumb");
+  const sc = tag("script");
+  const clips = {};
+  for (const t of getTags(event, "clip").slice(0, ITEM_LIMITS.clips)) {
+    if (ITEM_MOMENTS.includes(t[1] ?? "") && CLIP.test(t[2] ?? "")) clips[t[1]] = t[2];
+  }
+  const behaviors = ITEM_BEHAVIORS.filter((b) => getTags(event, "behavior").some((t) => t[1] === b));
+  const fitsTag = tag("fits")?.slice(1) ?? [];
+  return {
+    maker: event.pubkey,
+    id: `${ITEM_KIND}:${event.pubkey}:${d}`,
+    d,
+    title,
+    summary: cleanLine(tag("summary")?.[1], ITEM_LIMITS.summary),
+    model,
+    thumb: th ? cleanFile(th[1], th[2]) : null,
+    size,
+    colliders: getTags(event, "collider").slice(0, ITEM_LIMITS.colliders).map(readCollider).filter((c) => c !== null),
+    clips,
+    behaviors,
+    fits: ITEM_FITS.filter((f) => fitsTag.includes(f)),
+    use: tag("use")?.[1] === "granted" ? "granted" : "anyone",
+    // Named, and run by nothing yet: where it runs, and what it may ask for, is protocol/17-items.md.
+    script: sc ? cleanFile(sc[1], sc[2]) : null,
+    license: cleanLine(tag("license")?.[1], 40),
+    at: Number.isInteger(event.created_at) ? event.created_at : 0
+  };
+}
+
+// packages/core/src/people.ts
+var FOLLOWS_KIND = 3;
+function followsIn(event) {
+  if (!event || !Array.isArray(event.tags)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const t of event.tags) {
+    if (!Array.isArray(t) || t[0] !== "p" || typeof t[1] !== "string") continue;
+    const key = t[1].toLowerCase();
+    if (isHex64(key)) seen.add(key);
+  }
+  return [...seen];
+}
+function newestFollows(events, pubkey) {
+  return events.filter((e) => e.kind === FOLLOWS_KIND && e.pubkey === pubkey && Array.isArray(e.tags)).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0] ?? null;
+}
+function changeFollows(newest, change) {
+  if (newest && (newest.kind !== FOLLOWS_KIND || !Array.isArray(newest.tags))) return null;
+  if (!newest && !change.fromNothing) return null;
+  const add = typeof change.add === "string" ? change.add.toLowerCase() : "";
+  const remove = typeof change.remove === "string" ? change.remove.toLowerCase() : "";
+  if (add === "" === (remove === "")) return null;
+  const who = add || remove;
+  if (!isHex64(who) || add && newest?.pubkey === add) return null;
+  const had = newest ? newest.tags.filter((t) => Array.isArray(t) && t.every((item) => typeof item === "string") && !SITE_MARKS.includes(t[0] ?? "")) : [];
+  const names = (t) => t[0] === "p" && typeof t[1] === "string" && t[1].toLowerCase() === who;
+  const follows = had.some(names);
+  if (add ? follows : !follows) return null;
+  const tags = add ? [...had.map((t) => [...t]), ["p", add, ...change.relay ? [change.relay] : []]] : had.filter((t) => !names(t)).map((t) => [...t]);
+  const created_at = Math.max(Math.floor(change.now), newest ? newest.created_at + 1 : 0);
+  return { kind: FOLLOWS_KIND, created_at, tags, content: typeof newest?.content === "string" ? newest.content : "" };
+}
+var FOLLOW_LIMITS = { burst: 6, perMs: 6e4, hourly: 60 };
+function followForWorld(o) {
+  const change = { ...typeof o.add === "string" ? { add: o.add } : {}, ...typeof o.remove === "string" ? { remove: o.remove } : {}, now: o.now };
+  if (o.list === null || o.list === void 0) return o.seen ? null : changeFollows(null, { ...change, fromNothing: true });
+  if (!verifyEvent(o.list) || o.list.kind !== FOLLOWS_KIND || o.list.pubkey !== o.pubkey) return null;
+  if (o.seen && o.list.created_at < o.seen) return null;
+  return changeFollows(o.list, change);
+}
+function isFollowAsked(signed, o) {
+  if (!o.pubkey || !verifyEvent(signed) || signed.kind !== FOLLOWS_KIND || signed.pubkey !== o.pubkey) return false;
+  const want = changeFollows(o.list, { ...o.add ? { add: o.add } : {}, ...o.remove ? { remove: o.remove } : {}, now: signed.created_at, fromNothing: o.list === null });
+  if (!want || signed.content !== want.content || o.list && signed.created_at <= o.list.created_at) return false;
+  return JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(want.tags);
 }
 
 // packages/core/src/list.ts
@@ -7477,13 +7626,13 @@ function setLocalMap(map) {
 // packages/core/src/fresh.ts
 function servedFresh(cacheControl) {
   if (typeof cacheControl !== "string" || !cacheControl.trim()) return false;
-  const said = /* @__PURE__ */ new Map();
+  const said2 = /* @__PURE__ */ new Map();
   for (const part of cacheControl.toLowerCase().split(",")) {
     const [name, value = ""] = part.trim().split("=");
-    if (name) said.set(name.trim(), value.trim().replace(/^"|"$/g, ""));
+    if (name) said2.set(name.trim(), value.trim().replace(/^"|"$/g, ""));
   }
-  if (said.has("no-store") || said.has("no-cache")) return true;
-  const age = said.get("max-age");
+  if (said2.has("no-store") || said2.has("no-cache")) return true;
+  const age = said2.get("max-age");
   return age !== void 0 && /^\d+$/.test(age) && Number(age) === 0;
 }
 var FRESH_HEADER = "no-cache";
@@ -7517,7 +7666,12 @@ export {
   HOME_CAPABILITY,
   HOME_LAYOUT_KIND,
   INPUTS,
+  ITEM_BEHAVIORS,
+  ITEM_FITS,
   ITEM_KIND,
+  ITEM_LIMITS,
+  ITEM_MOMENTS,
+  ITEM_RULES,
   KIT_VERSION,
   LAYOUT_ACCESS,
   LAYOUT_LIMITS,
@@ -7589,6 +7743,7 @@ export {
   buildBridgeSignal,
   buildEntryAssertion,
   buildHello,
+  buildItem,
   buildLayoutEvent,
   buildListEvent,
   buildMessage,
@@ -7612,6 +7767,7 @@ export {
   cleanAchievementId,
   cleanBoard,
   cleanChat,
+  cleanItemsRule,
   cleanKeys,
   cleanLine,
   cleanLocalMap,
@@ -7675,6 +7831,7 @@ export {
   isSealAsked,
   isWhatWasAsked,
   isWssUrl,
+  itemsWords,
   kitAge,
   latestAddressable,
   learnRelays,
@@ -7704,6 +7861,7 @@ export {
   parseAvatarEvent,
   parseBridgeControl,
   parseCoordinate,
+  parseItem,
   parseKitVersion,
   parseLayoutEvent,
   parseListEvent,

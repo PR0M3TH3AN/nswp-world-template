@@ -4,14 +4,14 @@
   "license": "MIT",
   "source": {
     "repository": "https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-.git",
-    "commit": "b589943cf45677735d2fb5c0a538814dd74c5ab2",
+    "commit": "9987faf978ce187fe8e603faeca04c4987e96d46",
     "dirty": false
   },
   "files": {
     "LICENSE": "bc40ab40278d23777e57ea2872fbaf64663e1c7d6faf4f5ca31e8f4686351b15",
     "THIRD-PARTY-NOTICES.md": "b57049889d0e38733d33f6f07558c1c9b8ba8d0548f9cde2fae287c0c2349b40",
-    "nswp-cli.js": "2ec61f22d4b514e12ab8e8c8481c0ddc12dcd0365cf2130cca17da9d7cc6015c",
-    "nswp-core.js": "b052776ea91fccf49e2af05a9938b81ac57ee9edb60128716bd9f7f22f62e17f",
+    "nswp-cli.js": "49cd1198e420f1873de198ca9af76c7728c8e17f5635d28e50a2d8f984d30393",
+    "nswp-core.js": "2fc7862cbc40fb12e854b2e037e68ab6bcf41dc5ca4ee1f47220168f396cd885",
     "sdk-types/achievements.d.ts": "8bc8881a70f1155f385b064f998fc4eec44a8a4ab9656a1cee4c26349ff2b3e8",
     "sdk-types/achieving.d.ts": "b77adcdc4abf978aee8384cc622033210e244d48bc6c1340ddc645c790c7f55b",
     "sdk-types/actions.d.ts": "e0beb8a24d3103c92f093611de9d9cac2d1d2d4a2c5eb85bb6e018314c15a3ec",
@@ -27,7 +27,7 @@
     "sdk-types/door-ratings.d.ts": "587e5b6fc55ff4dc3e5e85af49cf70ae5600cd5515bce416bf6f0f8fa502559b",
     "sdk-types/engine-crossing.d.ts": "53b8da36df15ece6531e006f9c194017295bb516c56ea8ceeea85e4e77323113",
     "sdk-types/engine-menu.d.ts": "6a7a1714e2fd520dd6ee949a44301ef9e5a4a018a7253531e120dea155993512",
-    "sdk-types/engine.d.ts": "8b1d65032ab9385539e7cd1f562b6b938165a039522e4a1d5b2985d952be64e0",
+    "sdk-types/engine.d.ts": "4acc223ff7271f6645b8215df16c8e9c489953caf1f2bf23041e69f0270a008d",
     "sdk-types/environment.d.ts": "f882dde0236f6c5f6963e861fdf5826b3aecc6ed7c004c2a7f9d341a2298dc07",
     "sdk-types/figure.d.ts": "60526ae01b89c4b693aa59cb594a81e3d86f867af21ed2af4d61c4bffb9a6392",
     "sdk-types/floor-mark.d.ts": "251579b297cf3e9c3b34369e1ac1771b71cce18b8a794f36933001ee62b95af8",
@@ -36,7 +36,7 @@
     "sdk-types/fps.d.ts": "3fb8f22f012555d21dec6f3214acf7af21116a92f438c8982ff983e823368272",
     "sdk-types/fresh.d.ts": "015ec6252cc546bb76d0f985b13fec33ff3f0355b38500e28054a01ccf0c645c",
     "sdk-types/gate-size.d.ts": "e36163d8b4c5f8982df3e92187d5bd46aa7e355eb3882eb2570394fb299cb105",
-    "sdk-types/home.d.ts": "2633095c508028eebd0252cf2799d7b7ad952b78a35e501d9fe3d6ac9ae936a5",
+    "sdk-types/home.d.ts": "fba4cfa615bef1d6a2d2074ca40657552853b043edb44ca4a85955274da2ef5e",
     "sdk-types/index.d.ts": "ee9f85a1194afb49e38880d4a9bd2fe1f3a691dac63f9c12f3e68c55f4944451",
     "sdk-types/input.d.ts": "2a49fd245af77d51b0202838ea616eeb4b39871f305ad09591edae8df2fcd4c5",
     "sdk-types/jump.d.ts": "8ea4de4c6c494506e76d3137ee6f07a97832e6aca41811a55f95c4febaf4771c",
@@ -82,7 +82,7 @@
     "sdk-types/ui/model.d.ts": "5d6530eb4630bde0847e8b25fcee8e5d3ed2934969e34f47f59ddc064b88eb13",
     "sdk-types/ui/summon.d.ts": "efcccf0e8a40753f475b99f3f0e90c1dfc60cbf0d45698c459b666b474a8fef6",
     "sdk-types/ui/theme.d.ts": "3f61222ab41a99c1a78a63c9f775f4753e6ace2a441b936278bb75c0631d5fa0",
-    "sdk/home.js": "4de91629a7841dba44bd6cba730ab1f8b9edd8c9c89d13800732ecbf782e4ea9",
+    "sdk/home.js": "1493d43f60237f5bbea024a6e26b7c97eff0d7b84056434741240ac1c382cde8",
     "sdk/index.js": "584347242c12c32d95207986a1b87dc9e137d2fb905802e3f4523cdaee00a252",
     "sdk/shared-F6F6TMXL.js": "59f6c88ce3a774bd4e524bd50a91d731b6a62c7cb9c87218a75237aa58869f3d",
     "sdk/shared-K6U46VNY.js": "766df35e51ee3cba44b6482dcb7e8ba951f49764f0f06720f9c5b26e1441498b",
@@ -142,11 +142,12 @@
     "types/avatar.d.ts": "a6d58509965d24b1d65adfc3692045a099b1bbb9faec78fcc055aba60efb92cc",
     "types/bridge.d.ts": "4d5c9ee66e7544a2050917411aeae9879d444a517b97b10de523a6601447c7f3",
     "types/chat.d.ts": "2496edc85c88d8e5e597c9e1d453f790c78b749bdf21fc08ca1e176bfc0f84ec",
-    "types/constants.d.ts": "ca857570b6c0dd639def02e6f2979df66e0eb698221b857ee2b4a8191e23be2f",
+    "types/constants.d.ts": "8a31ef26ca00738051c38a94fb058296cc3c6176122a11e1b54969a706c5eee0",
     "types/destination.d.ts": "5362cc720826df799c407821b617e08b054b0b084ae649a6729d91da8905a92f",
     "types/event.d.ts": "2abfc869243f06fdc029a6ad017cb98f8e9f2e544803b193d91643c74044bc54",
     "types/fresh.d.ts": "cbff7e864a9675193bec3aabdd45ae73177def49073c5215b4b20fa658bfb6b1",
-    "types/index.d.ts": "1de78ab2915f4621dd8c93863c7690a973f3a965d59ce5f32e35172a72e44919",
+    "types/index.d.ts": "1e651bafe9a6dded8561835ca5dfc041974ceda9c3fb4f2f6297b46dc2ff2699",
+    "types/item.d.ts": "815aadbc66e324bc12d604b211240df1d5b2fe7ebf3a3249f86d5d0a2d9178be",
     "types/layout.d.ts": "ad8d722d37130595bb6b483e90668be10bef6a0fabb8e6982736bf77c775dae7",
     "types/list.d.ts": "1c2af26c548232ca71b27daf4f49106c9c4b4de4296df929bff10f1b6a7b3160",
     "types/local.d.ts": "e2b0caa4e3f75cf169e4a1b320af1160083af65079732f461ee8e1ebd004c822",
@@ -166,6 +167,6 @@
     "types/score.d.ts": "6e4ca150a0dd134a9e36eb417e432e754d74ce8856b8cdc41c695bdb6191737a",
     "types/settings.d.ts": "8a905286d58d3c53959e38db34a597ee01b5b230cda66b12aaade015750fa2e9",
     "types/signing.d.ts": "355acae65cbf72d44fefb9d79ea57aff639c335968d0a243648cc227ea580e5d",
-    "types/world.d.ts": "da4707fdb18a6fc3657965d4ea5e94e612d7454dec55b1c1e4e8fb528d6c5611"
+    "types/world.d.ts": "7274d295278333028b88c297db08834a31178a968fb7f33c653efc10de73e284"
   }
 }
