@@ -15,6 +15,7 @@
     "sign": "node scripts/sign.mjs",
     "announce": "node scripts/announce.mjs",
     "preview": "node scripts/preview.mjs",
+    "doors": "node scripts/doors.mjs",
     "look": "node scripts/look.mjs",
     "update": "node scripts/update.mjs",
     "vendor": "node scripts/vendor.mjs",

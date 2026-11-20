@@ -5,6 +5,8 @@ declare module "virtual:site" {
     layout: unknown;
     /** The key that announced this world, or null before `npm run sign`. */
     publisher: string | null;
+    /** The 360° picture each door shows, by the door's coordinate: the SHA-256 it is kept under in /doors/. */
+    doors: Record<string, string>;
   };
   export default site;
 }

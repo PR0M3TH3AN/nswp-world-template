@@ -15,10 +15,10 @@
  * and gaze-and-pinch all produce, so nothing here is specific to one headset.
  */
 import * as THREE from "three";
-import { decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
+import { checkPreviewBytes, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -187,6 +187,46 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // Hands in a headset are set up further down, once there is something to point with.
   let input: XrInput | null = null;
   const toHold: [THREE.Object3D, GrabOptions | undefined][] = [];
+  /**
+   * What a door looks into: a 360° picture of the world it leads to, seen through the doorway (spec §5.8). Only
+   * a picture this site ships itself is ever shown (doors/, made by `npm run doors`), so nothing is asked of the
+   * world a door leads to until someone goes there. It is checked against its hash before it is drawn, and a
+   * door with none keeps its field of light.
+   */
+  const lookedThrough = new Set<PortalGate>();
+  const doorWindows: THREE.Object3D[] = [];
+  const showThrough = (which: PortalGate[]) => {
+    for (const gate of which) {
+      if (lookedThrough.has(gate) || !gate.destination.naddr) continue;
+      let hash: string | undefined;
+      try {
+        const to = decodeNaddr(gate.destination.naddr);
+        hash = to.kind === WORLD_KIND ? site.doors?.[`${WORLD_KIND}:${to.pubkey}:${to.identifier}`] : undefined;
+      } catch {
+        /* not an address this page can read */
+      }
+      if (!hash) continue;
+      lookedThrough.add(gate);
+      const sha256 = hash;
+      void (async () => {
+        try {
+          const res = await fetch(new URL(`doors/${sha256}.webp`, document.baseURI));
+          if (!res.ok) return;
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          if (!checkPreviewBytes({ url: res.url, type: "pano", sha256 }, bytes).ok) return;
+          const image = new Image();
+          const address = URL.createObjectURL(new Blob([bytes], { type: "image/webp" }));
+          image.src = address;
+          await image.decode();
+          URL.revokeObjectURL(address);
+          doorWindows.push(gate.showThrough(panoramaTexture(image)));
+          state.doorsShown = ((state.doorsShown as number | undefined) ?? 0) + 1;
+        } catch {
+          /* the doorway keeps its field of light */
+        }
+      })();
+    }
+  };
   const ctx: SceneContext = {
     grabbable(object, options) {
       if (input) input.grabbable(object, options);
@@ -216,16 +256,21 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       scene.add(gate.group);
       gates.push(gate);
       ownGates.push(gate);
-      // A portal added later (an exit that appears, say) gets its name looked up too.
-      if (built) void namePortals([gate], config.relays, state);
+      // A portal added later (an exit that appears, say) gets its name looked up too, and its picture.
+      if (built) {
+        void namePortals([gate], config.relays, state);
+        showThrough([gate]);
+      }
       return gate;
     },
     usePortals(more) {
       for (const g of more) if (!gates.includes(g)) gates.push(g);
+      if (built) showThrough(more);
     },
   };
   const handle = await buildScene(ctx);
   built = true;
+  showThrough(gates);
   hooks.portals = () => gates.map((g) => ({ label: g.group.userData.label ?? "", destination: g.destination, position: g.group.getWorldPosition(new THREE.Vector3()).toArray() }));
   void namePortals(gates, config.relays, state);
 
@@ -724,7 +769,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   // A 360° picture from the main entrance, for doors that lead here (spec §5.8).
   hooks.capturePreview = async (width = 2048) => {
     const main = config.entryPoints["main-entrance"] ?? entry;
-    const blob = await capturePanorama(renderer, scene, new THREE.Vector3(main.position[0], main.position[1] + 1.6, main.position[2]), { width, hide: handle.hideFromPreview ?? [] });
+    const blob = await capturePanorama(renderer, scene, new THREE.Vector3(main.position[0], main.position[1] + 1.6, main.position[2]), { width, hide: [...(handle.hideFromPreview ?? []), ...doorWindows] });
     const bytes = new Uint8Array(await blob.arrayBuffer());
     let binary = "";
     for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));

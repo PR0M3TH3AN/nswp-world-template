@@ -77,6 +77,12 @@ disagree, the documents are right and this file has a bug.
    because at home the way home leads nowhere new. The plumbing keeps the
    promise. Don't hide or remove **Your doors**; if the owner doesn't want
    this world to be a home, take `"home"` out of `capabilities` instead.
+9. **A door shows only a picture this site ships.** What is seen through a
+   doorway comes from `doors/`, fetched once by `npm run doors` on the
+   owner's computer and checked against the hash the other world announced.
+   Don't load a door's picture from the world it leads to, or from anywhere
+   else, while a visitor is here: that tells another site who is standing
+   near its door before they have chosen to go.
 
 ## When the owner asks for something the rules forbid
 

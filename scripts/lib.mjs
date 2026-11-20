@@ -83,6 +83,36 @@ export function readConfig() {
   return { config, home, written, pictures: { files, problems } };
 }
 
+const DOORS = join(root, "doors");
+/**
+ * The 360° pictures this world's doors show (scripts/doors.mjs): which door shows which, and the files. A picture
+ * is shipped only if it is there and is the file its name says it is, so a page never fetches one that isn't.
+ */
+export function readDoors() {
+  const path = join(DOORS, "index.json");
+  const doors = {};
+  const files = [];
+  const problems = [];
+  if (!existsSync(path)) return { doors, files, problems, watch: [] };
+  let index = {};
+  try {
+    index = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    problems.push("doors/index.json isn't readable. Run `npm run doors` to make it again.");
+  }
+  for (const [coordinate, entry] of Object.entries(index)) {
+    const hash = String(entry?.sha256 ?? "");
+    const file = join(DOORS, `${hash}.webp`);
+    if (!/^[0-9a-f]{64}$/.test(hash) || !existsSync(file)) problems.push(`doors/index.json names a picture that isn't in doors/ (${hash.slice(0, 12)}…). Run \`npm run doors\`.`);
+    else if (createHash("sha256").update(readFileSync(file)).digest("hex") !== hash) problems.push(`doors/${hash.slice(0, 12)}….webp doesn't match its name. Run \`npm run doors\`.`);
+    else {
+      doors[coordinate] = hash;
+      if (!files.includes(`${hash}.webp`)) files.push(`${hash}.webp`);
+    }
+  }
+  return { doors, files, problems, watch: [path] };
+}
+
 /** Where this world's publisher key is kept. Never inside the repository. */
 export function keyPath(config) {
   return process.env.NSWP_KEY_FILE ?? join(homedir(), ".config", "nswp", `${config.world.d}.key`);
@@ -197,11 +227,12 @@ const nswpPlugin = {
     b.onResolve({ filter: /^virtual:site$/ }, () => ({ path: "site", namespace: "nswp-site" }));
     b.onLoad({ filter: /.*/, namespace: "nswp-site" }, () => {
       const state = readState();
+      const shown = readDoors();
       return {
-        warnings: state.pictures.problems.map((text) => ({ text })),
-        contents: JSON.stringify({ layout: templates(state).layout, publisher: state.signed.world?.pubkey ?? null }),
+        warnings: [...state.pictures.problems, ...shown.problems].map((text) => ({ text })),
+        contents: JSON.stringify({ layout: templates(state).layout, publisher: state.signed.world?.pubkey ?? null, doors: shown.doors }),
         loader: "json",
-        watchFiles: [join(root, "home.json"), join(root, "world.json"), join(root, "src", "index.html"), join(root, "signed", "world.event.json"), ...state.pictures.files.map((f) => join(PICTURES, f))],
+        watchFiles: [join(root, "home.json"), join(root, "world.json"), join(root, "src", "index.html"), join(root, "signed", "world.event.json"), ...state.pictures.files.map((f) => join(PICTURES, f)), ...shown.watch],
         watchDirs: existsSync(PICTURES) ? [PICTURES] : [],
       };
     });
@@ -227,6 +258,12 @@ function writeStatic({ config, signed, pictures }) {
     mkdirSync(join(dist, "sounds"), { recursive: true });
     for (const f of sounds) cpSync(join(SOUNDS, f), join(dist, "sounds", f));
   }
+  // What the doors show: only the files doors/index.json names, each checked against its name.
+  const shown = readDoors();
+  if (shown.files.length) {
+    mkdirSync(join(dist, "doors"), { recursive: true });
+    for (const f of shown.files) cpSync(join(DOORS, f), join(dist, "doors", f));
+  }
   if (pictures.files.length) {
     mkdirSync(join(dist, "pictures"), { recursive: true });
     for (const f of pictures.files) cpSync(join(PICTURES, f), join(dist, "pictures", f));
@@ -250,6 +287,8 @@ function writeStatic({ config, signed, pictures }) {
     ["/*", "/(.*)", all],
     ["/.well-known/nswp.json", "/.well-known/nswp.json", [...open, ["Content-Type", "application/json; charset=utf-8"], ["Cache-Control", "public, max-age=300"]]],
     ["/previews/*", "/previews/(.*)", [...open, ["Cache-Control", "public, max-age=31536000, immutable"]]],
+    // What this world's own doors show: named by their hash, so a file never changes. Not opened to other sites.
+    ["/doors/*", "/doors/(.*)", [["Cache-Control", "public, max-age=31536000, immutable"]]],
     // Open, so another renderer drawing this home can fetch a picture and check its hash.
     ["/pictures/*", "/pictures/(.*)", open],
   ];
