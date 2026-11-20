@@ -33,6 +33,8 @@ export declare function engineWorld(): EngineWorld;
 export type FramePart = (said: Record<string, unknown>, dt: number) => Record<string, unknown>;
 /** Take part in every frame from now on. */
 export declare function addFramePart(part: FramePart): void;
+/** Hear what the engine said at the start of every frame, before any part does anything with it. */
+export declare function addFrameStart(start: (said: Record<string, unknown>) => void): void;
 /**
  * Every frame. `view` is JSON saying where the visitor is and what the engine found: `dt`, seconds since the last;
  * `head` and `turn`, where their view is and which way it faces (x, y, z, w); `floor`, how high the floor under

@@ -20,5 +20,7 @@ export declare function model(sha: unknown): string;
 export declare function itemTap(press?: string): boolean;
 /** The item's first press, from a control of the engine's own (a trigger in a headset). `toward` is where to send what it sends out, or nothing for where they look. */
 export declare function itemUse(toward?: string): boolean;
+/** What is in play for this visitor, as JSON: for tests. */
+export declare function itemsInfo(): string;
 /** The item's second press. */
 export declare function itemSecond(): boolean;
