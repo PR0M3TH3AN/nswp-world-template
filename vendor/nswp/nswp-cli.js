@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.36.0";
+var KIT_VERSION = "0.38.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4168,6 +4168,20 @@ function parsePortal(input) {
 
 // packages/core/dist/relay.js
 var DEFAULT_RELAYS = ["wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://nostr.mom"];
+var RELAY_PICK = {
+  /** A person's own relays are used up to this many. */
+  most: 6,
+  /** There should be this many that are thought to be working, their own or not. */
+  least: 3,
+  /** Below this, a relay is thought not to be working. One nothing is known of scores 0.5. */
+  working: 0.34,
+  /** What is remembered of a relay fades: past this many tries, the counts are halved, so lately counts for more. */
+  remembered: 8,
+  /** A relay that hasn't been tried for this long is given another chance: what was known of it is forgotten. */
+  staleMs: 7 * 24 * 3600 * 1e3,
+  /** No more relays than this are remembered. */
+  kept: 40
+};
 async function queryRelays(relays, filter, timeoutMs = 4e3) {
   const byId = /* @__PURE__ */ new Map();
   const status = {};

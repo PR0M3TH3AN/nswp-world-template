@@ -369,6 +369,7 @@ export { loadPicture, onPicturesChange, PICTURE_LIMITS, setShowsPictures, showsP
 export { addDeskControls, FOV_STEPS, LOOK_STEPS, lookScale, onDeskChange, setLookScale, setVisitorFov, visitorFov, watchFov } from "./desk.js";
 export { byName, figureAction, hereAs, identityAction, identityHost, identitySection, identityWords, onHereAs, seekPass, signerAction, signerNamed, worldSaves, worldSigner, youCard, type Leaving } from "./ui/identity.js";
 export { createSaves, type Saved, type SaveResult, type Saves, type SavesOptions } from "./saves.js";
+export { askWell, learnFrom, relaysWell, sendWell, type SentWell } from "./relay-book.js";
 export { createWorldSigner, type SignerState, type WorldSigner } from "./signer.js";
 export { currentForm, deviceForms, formFor, startingForm, usedForm, type DeviceForms, type Form } from "./form.js";
 export { createFps, heldKey, lookAfter, strideOf, LOOK_SPEED, PITCH_LIMIT, SPRINT, type Fps, type FpsOptions, type Held } from "./fps.js";
