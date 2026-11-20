@@ -2087,8 +2087,18 @@ function createPlay(o) {
     }
     return got;
   };
-  const hear = (item2, name, at) => {
-    if (!name || !o.sounds || !active()) return;
+  const lastTake = /* @__PURE__ */ new Map();
+  const take = (item2, name) => {
+    const takes = [name, ...[2, 3, 4].map((n) => `${name}-${n}`)].filter((n) => item2.sounds[n]);
+    if (takes.length < 2) return name;
+    const others = takes.filter((n) => n !== lastTake.get(`${item2.id}:${name}`));
+    const chosen = others[Math.floor(Math.random() * others.length)];
+    lastTake.set(`${item2.id}:${name}`, chosen);
+    return chosen;
+  };
+  const hear = (item2, said, at) => {
+    if (!said || !o.sounds || !active()) return;
+    const name = take(item2, said);
     void soundOf(item2, name).then((sound) => {
       if (!sound || !o.sounds) return;
       if (!at) return o.sounds.playForeign(sound);
@@ -2255,6 +2265,7 @@ function createPlay(o) {
   let model = null;
   let box = null;
   let scriptState = "none";
+  let stoppedBecause = "";
   let words = "";
   let wordsSprite = null;
   let holdingNo = 0;
@@ -2337,6 +2348,7 @@ function createPlay(o) {
       item = next;
       model = drawnFor;
       scriptState = "none";
+      stoppedBecause = "";
       words = "";
       refreshOwn();
       o.onChange?.();
@@ -2353,10 +2365,24 @@ function createPlay(o) {
       if (!next.script || !o.scripts || !scriptAllowed(next.script.sha256)) return;
       const text = await o.items.script(next);
       if (!text || no !== holdingNo) return;
-      const run = await runInBox(text, { ask: asked, stopped: () => void (scriptState = "stopped", box = null, showWords("")) }, typeof o.scripts === "object" ? o.scripts : {});
+      const run = await runInBox(
+        text,
+        {
+          ask: (ask) => void (no === holdingNo && asked(ask)),
+          stopped: (why) => {
+            if (no !== holdingNo) return;
+            scriptState = "stopped";
+            stoppedBecause = why;
+            box = null;
+            showWords("");
+          }
+        },
+        typeof o.scripts === "object" ? o.scripts : {}
+      );
       if (no !== holdingNo) return run?.stop();
       box = run;
       scriptState = run ? "running" : "stopped";
+      if (!run) stoppedBecause = "no box";
       run?.tell("held");
       o.onChange?.();
     },
@@ -2509,6 +2535,7 @@ function createPlay(o) {
         health: { value: own.value, full: own.full },
         words,
         script: scriptState,
+        stoppedBecause,
         marked: mark.visible,
         bars: Object.fromEntries([...bars].map(([who, b]) => [who, { value: b.value, full: b.full }]))
       };
@@ -8726,7 +8753,8 @@ function createPresence(d) {
     if (!mineModel) return;
     if (now < 0) {
       const tall = Math.tan(THREE16.MathUtils.degToRad(d.camera.fov / 2)) * 0.8;
-      mineModel.position.set(Math.min(0.34, tall * d.camera.aspect * 0.62), -Math.min(0.5, tall * 0.9), -0.8);
+      const low = d.camera.aspect < 1 ? tall * 0.52 : Math.min(0.5, tall * 0.9);
+      mineModel.position.set(Math.min(0.34, tall * d.camera.aspect * 0.62), -low, -0.8);
     }
     if (now === inHand) return;
     inHand = now;

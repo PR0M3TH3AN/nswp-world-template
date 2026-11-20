@@ -128,7 +128,7 @@ export type ItemEvent = (typeof ITEM_EVENTS)[number];
 /** The longest an item's script may be, in bytes, and how long it may go without answering before it is stopped. */
 export declare const SCRIPT_LIMITS: {
     readonly bytes: 64000;
-    readonly silentMs: 1500;
+    readonly silentMs: 3000;
 };
 /** A gate that lets `burst` through at once and then `perSecond`: for what one person, or one script, may ask. */
 export declare function createRate(burst: number, perSecond: number): {

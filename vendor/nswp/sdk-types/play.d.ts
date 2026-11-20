@@ -123,6 +123,8 @@ export interface PlayInfo {
     };
     words: string;
     script: "none" | "running" | "stopped";
+    /** Why the script last stopped, where it did: "silent", "asked", "no box", "failed". */
+    stoppedBecause: string;
     /** Whether the mark that says "you hit someone" is showing. */
     marked: boolean;
     bars: Record<string, {
