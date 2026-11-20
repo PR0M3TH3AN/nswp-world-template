@@ -56,6 +56,8 @@ export interface PresenceOptions {
     solid?: PlayOptions["solid"];
     /** Be told when something an item sent out sticks to a shape of this world: what that means is the world's rule. */
     onStruck?: PlayOptions["onStruck"];
+    /** The world's own colour and whether things may move for the visitor, for what is drawn of how they are. */
+    theme?: PlayOptions["theme"];
     /**
      * The visitor's own look, in its inline form (spec §4.2), for the others in a
      * room to draw them by: usually `arrival.look()`. A function is asked each
@@ -139,6 +141,12 @@ export interface Presence {
     readonly play: Play | null;
     /** Which hand holds the item in a headset: the index of its controller, or -1 at a desk or with nothing held. */
     readonly holdingHand: number;
+    /**
+     * Aim along the sight of what is in hand, at a desk, or stop: it is brought up to the eye, and they see as much
+     * narrower as the item asks (never narrower than a little under half). Nothing happens for an item with no sight.
+     */
+    setSighting(on: boolean): void;
+    readonly sighting: boolean;
     /** Stop, or let again, what one person's items do from reaching this visitor. Nobody is told. For a place that only allows items. */
     muteItems(pubkey: string, on: boolean): void;
     isItemsMuted(pubkey: string): boolean;
@@ -450,7 +458,7 @@ export { createBag, type Bag, type BagHand, type BagOptions, type BagResult } fr
 export { addBagControls, itemIn, type Bagging, type BaggingOptions } from "./bagging.js";
 export { allowScript, createPlay, scriptAllowed, type Play, type PlayInfo, type PlayOptions, type PlayPerson } from "./play.js";
 export { runInBox, type BoxAsk, type BoxRun, type ItemBoxOptions } from "./item-box.js";
-export { addItemControls, type ItemControls, type ItemControlsOptions } from "./item-controls.js";
+export { addItemControls, TAP_MS, type ItemControls, type ItemControlsOptions } from "./item-controls.js";
 export { createDoorRatings, type DoorRatings, type DoorRatingsOptions } from "./door-ratings.js";
 export { ordinal, someOf, worldPersonLines, type PersonLines } from "./person-lines.js";
 export { createAchievements, type AchievementHand, type Achievements, type AchievementsOptions } from "./achievements.js";

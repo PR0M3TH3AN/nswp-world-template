@@ -7,7 +7,7 @@ import {
   room,
   sha256,
   startingForm
-} from "./shared-QEPZNZ77.js";
+} from "./shared-ETHSPJMD.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -1502,6 +1502,9 @@ var change = (next) => {
   for (const w of watchers) w();
 };
 var lookScale = () => load().look;
+var aimScaleNow = 1;
+var aimScale = () => aimScaleNow;
+var setAimScale = (k) => void (aimScaleNow = Number.isFinite(k) ? Math.min(1, Math.max(0.3, k)) : 1);
 var setLookScale = (v) => change({ ...load(), look: clampLook(v) });
 var visitorFov = () => currentForm() === "desk" ? load().fov : null;
 var setVisitorFov = (v) => change({ ...load(), fov: v === null ? null : clampFov(v) });
@@ -2034,18 +2037,57 @@ var repaint = (sprite, paint) => {
   paint(g, canvas.width, canvas.height);
   map.needsUpdate = true;
 };
-var bar = (g, w, h, value, full) => {
-  const gap = 6;
-  const each = (w - gap * (full + 1)) / full;
-  g.fillStyle = "rgba(8,10,14,0.72)";
+var WARN = "#ff5d52";
+var bar = (g, w, h, o) => {
+  const low = o.value <= Math.ceil(o.full / 3);
+  const ink = o.down || low ? WARN : o.accent;
+  g.fillStyle = "rgba(10,12,16,0.8)";
   g.beginPath();
-  g.roundRect(0, 0, w, h, h / 3);
+  g.roundRect(1.5, 1.5, w - 3, h - 3, (h - 3) / 2);
   g.fill();
-  for (let i = 0; i < full; i++) {
-    g.fillStyle = i < value ? value <= full / 3 ? "#ff6b5e" : "#7be495" : "rgba(255,255,255,0.16)";
+  g.globalAlpha = 0.5;
+  g.strokeStyle = ink;
+  g.lineWidth = 2.5;
+  g.stroke();
+  g.globalAlpha = 1;
+  let x0 = h * 0.42;
+  if (o.heart !== false) {
+    const [cx, cy, r] = [h * 0.56, h * 0.47, h * 0.13];
+    g.fillStyle = ink;
     g.beginPath();
-    g.roundRect(gap + i * (each + gap), gap, each, h - gap * 2, 4);
+    g.arc(cx - r, cy, r, Math.PI, 0);
+    g.arc(cx + r, cy, r, Math.PI, 0);
+    g.lineTo(cx, cy + r * 2.5);
+    g.closePath();
     g.fill();
+    x0 = h * 1.02;
+  }
+  const x1 = w - h * 0.42;
+  if (o.down) {
+    g.fillStyle = WARN;
+    g.font = `600 ${Math.round(h * 0.42)}px system-ui, sans-serif`;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText("Tagged out", (x0 + x1) / 2, h / 2 + 1, x1 - x0);
+    return;
+  }
+  const gap = h * 0.11;
+  const each = (x1 - x0 - gap * (o.full - 1)) / o.full;
+  const [top, tall] = [h * 0.3, h * 0.4];
+  for (let i = 0; i < o.full; i++) {
+    const x = x0 + i * (each + gap);
+    g.fillStyle = "rgba(255,255,255,0.14)";
+    g.beginPath();
+    g.roundRect(x, top, each, tall, tall / 3);
+    g.fill();
+    const part = i < o.value ? 1 : i === o.value ? Math.max(0, Math.min(1, o.growing ?? 0)) : 0;
+    if (part <= 0) continue;
+    g.globalAlpha = i < o.value ? 1 : 0.55;
+    g.fillStyle = ink;
+    g.beginPath();
+    g.roundRect(x, top, Math.max(tall / 2, each * part), tall, tall / 3);
+    g.fill();
+    g.globalAlpha = 1;
   }
 };
 function createPlay(o) {
@@ -2053,6 +2095,7 @@ function createPlay(o) {
   const pending = /* @__PURE__ */ new Set();
   const rates = /* @__PURE__ */ new Map();
   const bars = /* @__PURE__ */ new Map();
+  const blinking = /* @__PURE__ */ new Set();
   const mixers = /* @__PURE__ */ new Map();
   const soundsOf = /* @__PURE__ */ new Map();
   const ray = new THREE7.Raycaster();
@@ -2096,16 +2139,47 @@ function createPlay(o) {
   mark.scale.setScalar(0.07);
   mark.visible = false;
   let markUntil = 0;
-  const own = { value: HEALTH.full, full: HEALTH.full, struckAt: -1e9, downUntil: 0, shownUntil: 0 };
-  const ownBar = drawn(256, 40, (g) => bar(g, 256, 40, own.value, own.full));
-  ownBar.position.set(0, 0.3, -1);
-  ownBar.scale.set(0.26, 0.04, 1);
+  const accent = () => o.theme?.().accent ?? "#7be495";
+  const lively = () => (o.theme?.().motion ?? true) && !isPresenting();
+  const own = { value: HEALTH.full, full: HEALTH.full, struckAt: -1e9, downUntil: 0, shownUntil: 0, regenAt: 0, flash: 0, painted: -1, shown: 0 };
+  const ownBar = drawn(384, 64, (g) => bar(g, 384, 64, { value: own.value, full: own.full, accent: accent() }));
+  ownBar.scale.set(0.3, 0.05, 1);
+  ownBar.material.opacity = 0;
   ownBar.visible = false;
-  hud.add(cross, mark, ownBar);
+  const edge = drawn(256, 256, (g) => {
+    const fade = g.createRadialGradient(128, 128, 70, 128, 128, 180);
+    fade.addColorStop(0, "rgba(255,70,60,0)");
+    fade.addColorStop(1, "rgba(255,70,60,0.95)");
+    g.fillStyle = fade;
+    g.fillRect(0, 0, 256, 256);
+  });
+  edge.position.set(0, 0, -0.6);
+  edge.renderOrder = 997;
+  edge.visible = false;
+  const glitch = drawn(8, 128, (g) => {
+    for (let y = 0; y < 128; ) {
+      const tall = 1 + Math.floor(Math.random() * 7);
+      const kind = Math.random();
+      g.fillStyle = kind < 0.55 ? "rgba(0,0,0,0)" : kind < 0.75 ? "rgba(255,255,255,0.5)" : kind < 0.9 ? "rgba(80,240,255,0.45)" : "rgba(255,70,160,0.45)";
+      g.fillRect(0, y, 8, tall);
+      y += tall;
+    }
+  });
+  if (glitch.material.map) glitch.material.map.wrapT = THREE7.RepeatWrapping;
+  glitch.position.set(0, 0, -0.58);
+  glitch.renderOrder = 998;
+  glitch.visible = false;
+  hud.add(cross, mark, ownBar, edge, glitch);
+  const paintOwn = () => {
+    const down = own.downUntil > 0;
+    const growing = own.regenAt ? (clock - own.regenAt) / HEALTH.regenSeconds : 0;
+    repaint(ownBar, (g, cw, ch) => bar(g, cw, ch, { value: own.value, full: own.full, accent: accent(), growing, down }));
+    own.painted = clock;
+  };
   const sayState = () => {
     const said = buildState({ name: "health", value: own.value, full: own.full });
     if (said && o.me()) o.tell(said);
-    repaint(ownBar, (g, cw, ch) => bar(g, cw, ch, own.value, own.full));
+    paintOwn();
     own.shownUntil = clock + 2.5;
     o.onChange?.();
   };
@@ -2298,6 +2372,8 @@ function createPlay(o) {
     if (effect && clock >= own.downUntil) {
       own.value = struck(own.value, effect.take);
       own.struckAt = clock;
+      own.regenAt = 0;
+      own.flash = 1;
       if (own.value === 0) own.downUntil = clock + HEALTH.downSeconds;
       sayState();
     }
@@ -2382,12 +2458,20 @@ function createPlay(o) {
     }
     o.onChange?.();
   };
+  let pointed = null;
   const aim = (lift) => {
     const said = o.aim?.();
     let from;
     let to;
+    const tapped = pointed && clock < pointed.until ? pointed.to : null;
+    pointed = null;
     if (said) ({ from, to } = said);
-    else {
+    else if (tapped || o.sighting?.()) {
+      const q = o.camera.getWorldQuaternion(new THREE7.Quaternion());
+      const eye2 = o.camera.getWorldPosition(new THREE7.Vector3());
+      from = eye2.clone().add(new THREE7.Vector3(tapped ? 0.14 : 0, tapped ? -0.12 : -0.05, -0.35).applyQuaternion(q));
+      to = tapped ?? eye2.clone().add(new THREE7.Vector3(0, 0, -18).applyQuaternion(q));
+    } else {
       const q = o.camera.getWorldQuaternion(new THREE7.Quaternion());
       const eye2 = o.camera.getWorldPosition(new THREE7.Vector3());
       from = eye2.clone().add(new THREE7.Vector3(0.14, -0.12, -0.35).applyQuaternion(q));
@@ -2424,7 +2508,7 @@ function createPlay(o) {
     if (o.me()) o.tell(said);
   };
   const refreshOwn = () => {
-    cross.visible = !!item && !!box && !!item.does.use && active() && !isPresenting();
+    cross.visible = !!item && !!box && !!item.does.use && active() && !isPresenting() && !o.sighting?.();
   };
   const isPresenting = () => !!o.presenting?.();
   return {
@@ -2450,8 +2534,8 @@ function createPlay(o) {
       if (next.does.use || next.script) {
         wordsSprite = drawn(256, 72, () => {
         });
-        wordsSprite.scale.set(0.16, 0.045, 1);
-        wordsSprite.position.set(0, next.size[1] + 0.05, 0);
+        wordsSprite.scale.set(0.1, 0.028, 1);
+        wordsSprite.position.set(0, next.size[1] + 0.028, 0);
         drawnFor.add(wordsSprite);
       }
       for (const s of next.sends) void o.items.sent(next, s.name);
@@ -2480,8 +2564,10 @@ function createPlay(o) {
       run?.tell("held");
       o.onChange?.();
     },
-    use() {
-      if (active()) box?.tell("use");
+    use(toward) {
+      if (!active() || !box) return;
+      pointed = toward ? { to: toward.clone(), until: clock + 0.6 } : null;
+      box.tell("use");
     },
     second() {
       if (active()) box?.tell("second");
@@ -2503,9 +2589,9 @@ function createPlay(o) {
       if (state) {
         let shown2 = bars.get(from);
         if (!shown2) {
-          const sprite = drawn(256, 40, () => {
+          const sprite = drawn(320, 56, () => {
           });
-          sprite.scale.set(0.42, 0.065, 1);
+          sprite.scale.set(0.44, 0.077, 1);
           sprite.position.set(0, 0.62, 0);
           shown2 = { value: state.value, full: state.full, sprite, until: 0 };
           bars.set(from, shown2);
@@ -2514,7 +2600,7 @@ function createPlay(o) {
         shown2.full = Math.min(state.full, 12);
         shown2.until = clock + (state.value < state.full ? 30 : 2);
         person.over.add(shown2.sprite);
-        repaint(shown2.sprite, (g, cw, ch) => bar(g, cw, ch, Math.min(shown2.value, shown2.full), shown2.full));
+        repaint(shown2.sprite, (g, cw, ch) => bar(g, cw, ch, { value: Math.min(shown2.value, shown2.full), full: shown2.full, accent: accent(), down: shown2.value === 0, heart: false }));
         return;
       }
       const hit = parseHit(said);
@@ -2543,7 +2629,8 @@ function createPlay(o) {
       if (shot) {
         let rate = rates.get(from);
         if (!rate) rates.set(from, rate = createRate2(PLAY_LIMITS.burst, PLAY_LIMITS.perSecond));
-        if (!rate.take(clock * 1e3) || pending.has(`${from}:${shot.id}`) || things.some((t) => t.by === from && t.shot.id === shot.id)) return;
+        if (pending.has(`${from}:${shot.id}`) || things.some((t) => t.by === from && t.shot.id === shot.id)) return;
+        if (!rate.take(clock * 1e3)) return;
         if (person.head.distanceTo(v.fromArray(shot.from)) > 3) return;
       }
       const does = (holding) => {
@@ -2577,14 +2664,59 @@ function createPlay(o) {
       for (const mixer of mixers.values()) mixer.update(dt);
       if (mark.visible && clock > markUntil) mark.visible = false;
       refreshOwn();
-      if (own.value < own.full && (own.downUntil && clock >= own.downUntil || !own.downUntil && clock - own.struckAt > HEALTH.restSeconds)) {
-        own.value = own.full;
-        own.downUntil = 0;
-        sayState();
+      if (own.downUntil) {
+        if (clock >= own.downUntil) {
+          own.value = own.full;
+          own.downUntil = 0;
+          own.regenAt = 0;
+          sayState();
+        }
+      } else if (own.value < own.full && clock - own.struckAt >= HEALTH.restSeconds) {
+        if (!own.regenAt) own.regenAt = clock;
+        if (clock - own.regenAt >= HEALTH.regenSeconds) {
+          own.value += 1;
+          own.regenAt = own.value < own.full ? clock : 0;
+          sayState();
+        }
       }
-      ownBar.visible = active() && (own.value < own.full || clock < own.shownUntil);
+      const on = active();
+      const down = own.downUntil > 0;
+      if (wordsSprite) wordsSprite.visible = !o.sighting?.();
+      const tall = Math.tan(THREE7.MathUtils.degToRad(o.camera.fov / 2));
+      const wide = tall * o.camera.aspect;
+      ownBar.position.set(0, isPresenting() ? -0.3 : -tall * (o.camera.aspect < 1 ? 0.5 : 0.66), -1);
+      const scale = Math.min(0.3, wide * 0.62);
+      ownBar.scale.set(scale, scale / 6, 1);
+      const want = on && (own.value < own.full || clock < own.shownUntil) ? 1 : 0;
+      own.shown += (want - own.shown) * Math.min(1, dt * 9);
+      ownBar.visible = own.shown > 0.02;
+      ownBar.material.opacity = own.shown * (down && lively() ? 0.55 + 0.45 * Math.abs(Math.sin(clock * 9)) : 1);
+      if (ownBar.visible && (own.regenAt || down) && clock - own.painted > 0.08) paintOwn();
+      own.flash = Math.max(0, own.flash - dt / 0.55);
+      const low = !down && own.value < own.full && own.value <= 1;
+      const red = on && !isPresenting() ? Math.max(own.flash * 0.8, down ? 0.5 : low ? 0.2 + (lively() ? 0.1 * Math.abs(Math.sin(clock * 3.2)) : 0) : 0) : 0;
+      edge.visible = red > 0.01;
+      edge.material.opacity = red;
+      edge.scale.set(wide * 1.2 * 1.02, tall * 1.2 * 1.02, 1);
+      glitch.visible = on && down && lively() && Math.random() < 0.8;
+      if (glitch.visible) {
+        glitch.scale.set(wide * 1.16 * 1.02, tall * 1.16 * 1.02 * (0.6 + Math.random() * 0.8), 1);
+        glitch.position.y = (Math.random() - 0.5) * tall * 0.5;
+        glitch.material.opacity = 0.18 + Math.random() * 0.3;
+        if (glitch.material.map) glitch.material.map.offset.y = Math.random();
+      }
+      const people = o.people();
       for (const [who, shown2] of bars) {
-        shown2.sprite.visible = active() && clock < shown2.until && !muted(who);
+        shown2.sprite.visible = on && clock < shown2.until && !muted(who);
+        const person = people.find((x) => x.pubkey === who);
+        const out = on && shown2.value === 0 && clock < shown2.until && !muted(who);
+        if (person?.root) {
+          if (out && lively()) {
+            person.root.visible = person.root.visible && Math.random() > 0.3;
+            person.root.scale.set(1 + (Math.random() - 0.5) * 0.14, 1, 1);
+            blinking.add(who);
+          } else if (blinking.delete(who)) person.root.scale.set(1, 1, 1);
+        }
       }
       for (const thing of [...things]) {
         if (thing.state === "flying") {
@@ -6414,7 +6546,7 @@ function createFps(o) {
   const free = (e) => !looking() && !o.hud?.open && e.target === o.dom && e.buttons === 0;
   const onMove = (e) => {
     if (!active() || !(looking() || free(e))) return;
-    const next = lookAfter(o.rig.rotation.y, pitch, e.movementX, e.movementY, LOOK_SPEED * lookScale());
+    const next = lookAfter(o.rig.rotation.y, pitch, e.movementX, e.movementY, LOOK_SPEED * lookScale() * aimScale());
     o.rig.rotation.y = next.yaw;
     pitch = next.pitch;
     o.camera.rotation.x = pitch;
@@ -7257,6 +7389,7 @@ function addBagControls(controls, opts) {
 }
 
 // packages/sdk/src/item-controls.ts
+var TAP_MS = 320;
 function addItemControls(controls, o) {
   let shown2 = "";
   const does = () => o.play()?.does ?? null;
@@ -7270,22 +7403,48 @@ function addItemControls(controls, o) {
     if (!now) return;
     if (now.use) controls.add({ id: "item-use", section: "bag", icon: "check", tone: "primary", hotbar: true, lead: true, label: now.use, short: now.use, act: () => o.play()?.use() });
     if (now.second) controls.add({ id: "item-second", section: "bag", icon: "turn", hotbar: true, lead: true, label: now.second, short: now.second, act: () => o.play()?.second() });
+    if (now.use) controls.say(`Tap or click where you want to ${now.use.toLowerCase()}. Hold a press to walk.`);
   };
   const typing = (e) => {
     const at = e.target;
     return !!at && (at.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(at.tagName ?? ""));
   };
+  let sighting = false;
+  const sight = (on) => {
+    if (on === sighting) return;
+    sighting = on;
+    o.sight?.(on);
+  };
   const onDown = (e) => {
-    if (e.button === 0 && document.pointerLockElement && does()?.use) o.play()?.use();
+    if (!document.pointerLockElement || !does()) return;
+    if (e.button === 0 && does()?.use) o.play()?.use();
+    else if (e.button === 2) sight(true);
+  };
+  const onUp = (e) => {
+    if (e.button === 2) sight(false);
+  };
+  const onMenu = (e) => {
+    if (document.pointerLockElement && does()) e.preventDefault();
+  };
+  const onLock = () => {
+    if (!document.pointerLockElement) sight(false);
   };
   const onKey = (e) => {
     if (e.code === "KeyR" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e) && does()?.second) o.play()?.second();
   };
   o.dom?.addEventListener("mousedown", onDown);
+  o.dom?.addEventListener("contextmenu", onMenu);
+  if (typeof addEventListener === "function") addEventListener("mouseup", onUp);
+  if (typeof document !== "undefined") document.addEventListener("pointerlockchange", onLock);
   if (typeof addEventListener === "function") addEventListener("keydown", onKey);
   refresh();
   return {
     refresh,
+    tap(ray, heldMs) {
+      if (heldMs >= TAP_MS || !does()?.use) return false;
+      o.play()?.use(ray.origin.clone().addScaledVector(ray.direction, 18));
+      return true;
+    },
     trigger(hand) {
       if (hand < 0 || hand !== o.holdingHand() || !does()?.use) return false;
       o.play()?.use();
@@ -7293,6 +7452,10 @@ function addItemControls(controls, o) {
     },
     dispose() {
       o.dom?.removeEventListener("mousedown", onDown);
+      o.dom?.removeEventListener("contextmenu", onMenu);
+      if (typeof removeEventListener === "function") removeEventListener("mouseup", onUp);
+      if (typeof document !== "undefined") document.removeEventListener("pointerlockchange", onLock);
+      sight(false);
       if (typeof removeEventListener === "function") removeEventListener("keydown", onKey);
       controls.remove("item-use");
       controls.remove("item-second");
@@ -8920,17 +9083,55 @@ function createPresence(d) {
     return right >= 0 && right < d.controllers.length ? right : 0;
   };
   let inHand = -2;
-  const placeMine = () => {
+  let sightWant = false;
+  let sightK = 0;
+  let fovBase = null;
+  const hip = new THREE16.Vector3();
+  const up = new THREE16.Vector3();
+  const endSight = () => {
+    sightWant = false;
+    sightK = 0;
+    if (fovBase !== null) {
+      d.camera.fov = fovBase;
+      d.camera.updateProjectionMatrix();
+      fovBase = null;
+    }
+    setAimScale(1);
+  };
+  const placeMine = (dt = 0) => {
     const now = hand();
     if (!mineModel) return;
+    const described = mine ? d.items?.known(mine) ?? null : null;
     if (now < 0) {
-      const tall = Math.tan(THREE16.MathUtils.degToRad(d.camera.fov / 2)) * 0.8;
-      const low = d.camera.aspect < 1 ? tall * 0.52 : Math.min(0.5, tall * 0.9);
-      mineModel.position.set(Math.min(0.34, tall * d.camera.aspect * 0.62), -low, -0.8);
+      const size = described?.size ?? [0.2, 0.3, 0.2];
+      const acts = !!described?.does.use;
+      const tall1 = Math.tan(THREE16.MathUtils.degToRad((fovBase ?? d.camera.fov) / 2));
+      const narrow = d.camera.aspect < 1;
+      const far = THREE16.MathUtils.clamp(size[1] / (2 * tall1 * (narrow ? 0.24 : acts ? 0.4 : 0.3)), 0.4, 0.95);
+      const tall = tall1 * far;
+      const wide = tall * d.camera.aspect;
+      hip.set(narrow ? wide * 0.5 : Math.min(wide * 0.6, wide - size[0] * 0.6), narrow ? -tall * 0.56 : -tall * 0.99, -far);
+      const aim = described?.aim ?? null;
+      sightK += ((sightWant && aim ? 1 : 0) - sightK) * (dt > 0 ? Math.min(1, dt * 14) : 1);
+      if (aim) {
+        up.set(-aim.at[0], -aim.at[1], -0.36 - aim.at[2]);
+        mineModel.position.lerpVectors(hip, up, sightK);
+        if (sightK > 2e-3 || fovBase !== null) {
+          fovBase ??= d.camera.fov;
+          const share = THREE16.MathUtils.lerp(1, Math.max(0.45, aim.zoom), sightK);
+          d.camera.fov = fovBase * share;
+          d.camera.updateProjectionMatrix();
+          setAimScale(share);
+          if (sightK <= 2e-3 && !sightWant) endSight();
+        }
+      } else mineModel.position.copy(hip);
+      mineModel.rotation.set(0, acts ? 0.1 * (1 - sightK) : 0, 0);
     }
     if (now === inHand) return;
     inHand = now;
     if (now >= 0) {
+      endSight();
+      mineModel.rotation.set(0, 0, 0);
       mineModel.position.set(0, -0.06, 0.02);
       d.controllers[now].add(mineModel);
     } else d.camera.add(mineModel);
@@ -8944,11 +9145,13 @@ function createPresence(d) {
     rule: () => itemsRule(),
     ...d.itemScripts ? { scripts: d.itemScripts } : {},
     me: () => session?.self.pubkey ?? null,
-    people: () => [...avatars.values()].filter((a) => a.target && a.root.visible).map((a) => ({ pubkey: a.member.pubkey, head: a.head.getWorldPosition(new THREE16.Vector3()), body: a.torso, over: a.head, holding: a.heldItem ?? "", held: a.held ?? null })),
+    people: () => [...avatars.values()].filter((a) => a.target && a.root.visible).map((a) => ({ pubkey: a.member.pubkey, head: a.head.getWorldPosition(new THREE16.Vector3()), body: a.torso, over: a.head, root: a.root, holding: a.heldItem ?? "", held: a.held ?? null })),
     itemsMuted: (pubkey) => itemMutes.has(pubkey),
     tell: (said) => session?.tellPlay(said),
     tintsOf: (pubkey) => pubkey === null ? mineTints : avatars.get(pubkey)?.tints ?? {},
     presenting: () => d.renderer.xr.isPresenting,
+    sighting: () => sightK > 0.5,
+    ...d.theme ? { theme: d.theme } : {},
     // In a headset a thing goes where the hand that holds the item points.
     aim: () => {
       const i = hand();
@@ -9416,6 +9619,7 @@ function createPresence(d) {
         mineModel?.removeFromParent();
         mineModel = null;
         inHand = -2;
+        endSight();
         void play?.held(null, null);
         session?.setHolding("");
       };
@@ -9453,6 +9657,12 @@ function createPresence(d) {
     },
     get holdingHand() {
       return mine ? hand() : -1;
+    },
+    setSighting(on) {
+      sightWant = on && !!mine && !d.renderer.xr.isPresenting;
+    },
+    get sighting() {
+      return sightK > 0.5;
     },
     muteItems(pubkey, on) {
       if (on) itemMutes.add(pubkey);
@@ -9598,7 +9808,7 @@ function createPresence(d) {
     },
     update(dt) {
       tendMusic(dt);
-      placeMine();
+      placeMine(dt);
       const k = 1 - Math.exp(-dt * 14);
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
@@ -10997,6 +11207,7 @@ export {
   createBag,
   itemIn,
   addBagControls,
+  TAP_MS,
   addItemControls,
   createDoorRatings,
   ordinal,

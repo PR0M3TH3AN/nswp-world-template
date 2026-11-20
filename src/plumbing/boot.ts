@@ -520,6 +520,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   let dragging = false;
   let lastX = 0;
   let moved = 0;
+  let downAt = 0;
   const setPointer = (e: PointerEvent) => pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   // The visitor's own panels, set up further down. One taken by its bar is dragged, and the view stays still.
   let panels: Panels | null = null;
@@ -539,6 +540,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     raycaster.setFromCamera(pointer, camera);
     const onPanel = panels?.pick(raycaster);
     if (onPanel) return void panels!.press(onPanel);
+    // With something in hand that does something, a tap is its first press, sent where they tapped. A press held
+    // is still how they walk, choose someone or go through a door.
+    if (itemControls?.tap(raycaster.ray, performance.now() - downAt)) return;
     // Someone's picture, over their head: pressing it chooses them.
     if (roomPresence?.pressAt(raycaster)) return;
     // Moving the intense way, a door is gone through by walking into it and no other way.
@@ -553,6 +557,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     dragging = !panelDrag;
     lastX = e.clientX;
     moved = 0;
+    downAt = performance.now();
   });
   addEventListener("pointerup", (e) => {
     dragging = false;
@@ -764,9 +769,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     const itemsRule = cleanItemsRule((config.world as { items?: unknown }).items);
     const items = createItems({ relays: config.relays, ...(itemsRule === "none" ? { fetchBytes: async () => null } : {}) });
     // Where items are drawn, an item's own logic runs too, in its locked box (`item-box.html`, written by the build).
-    const presence = createPresence({ scene, camera, rig, renderer, controllers, ...(itemsRule === "none" ? {} : { items, itemsRule: () => itemsRule, itemScripts: true, sounds }), labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => (refresh(), itemControls?.refresh()) });
+    const presence = createPresence({ scene, camera, rig, renderer, controllers, ...(itemsRule === "none" ? {} : { items, itemsRule: () => itemsRule, itemScripts: true, sounds, theme: () => ({ accent: controls.theme.accent, motion: controls.theme.motion }) }), labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => (refresh(), itemControls?.refresh()) });
     // What is in their hand, pressed: on the bar, by the mouse and R at a desk, by the trigger in a headset.
-    itemControls = addItemControls(controls, { play: () => presence.play, holdingHand: () => presence.holdingHand, dom: renderer.domElement });
+    itemControls = addItemControls(controls, { play: () => presence.play, holdingHand: () => presence.holdingHand, dom: renderer.domElement, sight: (on) => presence.setSighting(on) });
     hooks.play = () => presence.play?.info() ?? null;
     hooks.itemUse = () => presence.play?.use();
     hooks.itemSecond = () => presence.play?.second();

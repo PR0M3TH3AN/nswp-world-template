@@ -23,6 +23,7 @@ import {
   PITCH_LIMIT,
   RUN,
   SPRINT,
+  TAP_MS,
   TAP_REACH,
   TOP_SPEED,
   WALK_SPEED,
@@ -121,7 +122,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-FP4JS2XC.js";
+} from "./shared-5PCOENWY.js";
 import {
   currentForm,
   deviceForms,
@@ -131,7 +132,7 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-QEPZNZ77.js";
+} from "./shared-ETHSPJMD.js";
 import {
   PICTURE_LIMITS,
   askWell,
@@ -189,6 +190,7 @@ export {
   PITCH_LIMIT,
   RUN,
   SPRINT,
+  TAP_MS,
   TAP_REACH,
   TOP_SPEED,
   WALK_SPEED,

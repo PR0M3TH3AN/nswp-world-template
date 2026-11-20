@@ -10,7 +10,7 @@ import {
   startingForm,
   takeBrought,
   watchBrought
-} from "./shared-QEPZNZ77.js";
+} from "./shared-ETHSPJMD.js";
 import {
   arriveWith,
   arrivedSettings,

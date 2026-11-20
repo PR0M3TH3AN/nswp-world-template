@@ -31,6 +31,8 @@ export interface PlayPerson {
     body: THREE.Object3D;
     /** Their head, to put a bar over. */
     over: THREE.Object3D;
+    /** The whole of their figure, which blinks while they have nothing left. */
+    root?: THREE.Object3D;
     /** The item they say they hold, by its coordinate, and what is drawn for it. */
     holding: string;
     held: THREE.Object3D | null;
@@ -71,6 +73,13 @@ export interface PlayOptions {
     onChange?: () => void;
     /** Whether they are in a headset now: there, a thing goes where the hand points, and no ring is drawn. */
     presenting?: () => boolean;
+    /** The world's own colour, for what is drawn of how the visitor is, and whether things may move for them. */
+    theme?: () => {
+        accent?: string;
+        motion?: boolean;
+    };
+    /** Whether they are aiming along their item's sight now: then its own mark is what they aim by, and no ring is drawn. */
+    sighting?: () => boolean;
     /**
      * The colours someone chose for what they hold: the visitor's own for their own key (or null, outside a room),
      * anyone else's as they said them. Left out, everything is the colour its maker gave it.
@@ -80,8 +89,11 @@ export interface PlayOptions {
 export interface Play {
     /** This visitor took an item in hand, with what is drawn for it; or put it away, with nulls. */
     held(item: Item | null, model: THREE.Object3D | null): Promise<void>;
-    /** The item's first press, and its second: what they do is its own to say. */
-    use(): void;
+    /**
+     * The item's first press, and its second: what they do is its own to say. With `toward`, whatever the first
+     * press sends out goes that way: where a visitor tapped or clicked.
+     */
+    use(toward?: THREE.Vector3): void;
     second(): void;
     /** Whether what they hold does anything on a press, and what its presses are called. */
     readonly does: {
