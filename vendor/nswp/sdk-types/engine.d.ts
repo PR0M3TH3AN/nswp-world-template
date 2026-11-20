@@ -3,7 +3,7 @@ export { frame, items, itemSecond, itemTap, itemUse, model } from "./engine-item
 /** Bumped when what the functions take or give changes, so an engine's side can tell. */
 export declare const VERSION = 10;
 /** The kit this script was built from, as a world's manifest should say it (`"kit": NSWP.KIT`). */
-export declare const KIT = "0.54.0";
+export declare const KIT = "0.54.1";
 /** Where the crossing's room is: "arriving" (doors shut, the world loading), "opening", "none", "leaving", "shut", or "failed". */
 export declare function crossing(): string;
 /**
@@ -42,7 +42,8 @@ export declare function arrival(): string;
 /**
  * Call once when the page comes up. `options` is JSON: `airlock` is the
  * Airlock to send a visitor through when they arrived without one of their
- * own. Returns what `arrival()` returns.
+ * own, and `signer` the sign-in address offered to a visitor no client
+ * brought. Returns what `arrival()` returns.
  */
 export declare function start(options?: string): string;
 /**

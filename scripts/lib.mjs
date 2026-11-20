@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildLayoutEvent, buildWorldEvent, cleanItemsRule, decodeNpub, ITEM_BOX_CSP, ITEM_BOX_HTML, KIT_VERSION, parseLayoutEvent, parseWorldEvent, verifyEvent } from "../vendor/nswp/nswp-core.js";
+import { buildLayoutEvent, buildWorldEvent, cleanItemsRule, decodeNpub, ITEM_BOX_CSP, ITEM_BOX_HTML, KIT_VERSION, parseLayoutEvent, parseWorldEvent, signerAt, verifyEvent } from "../vendor/nswp/nswp-core.js";
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const dist = join(root, "dist");
@@ -169,6 +169,8 @@ export function validate({ config, home, pictures }) {
   else if (!["kids", "general", "adult"].includes(config.world.audience)) errors.push('world.json: "audience" is "kids", "general" or "adult".');
   errors.push(...soundProblems(config.sounds));
   if (config.sharedMusic !== undefined && typeof config.sharedMusic !== "boolean") errors.push('world.json: "sharedMusic" is true or false.');
+  // Where someone signs in who opened this address themselves. Left out it is BitLogin's; "" offers none.
+  if (config.signer !== undefined && config.signer !== "" && signerAt(config.signer) === null) errors.push('world.json: "signer" is an https address, such as "https://bitlogin.network/", or "" for none.');
   if (config.owner !== undefined && ownerKey(config) === null) errors.push('world.json: "owner" isn\'t a public key. It is your own, the way your sign-in shows it: npub1… and 63 characters long. Never a secret key.');
   return { errors, warnings, world: world.ok ? world.value : null, layout: layout.ok ? layout.value : null };
 }

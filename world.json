@@ -17,6 +17,7 @@
     "status": "beta"
   },
   "airlock": "https://portal.bitblocks.network/go/",
+  "signer": "https://bitlogin.network/",
   "relays": ["wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://nostr.mom"],
   "entryPoints": {
     "main-entrance": { "position": [0, 0, 4], "yaw": 0 }

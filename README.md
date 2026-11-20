@@ -485,6 +485,11 @@ someone's lobby.
 - `world.json` points at BitPortal's Airlock (`portal.bitblocks.network/go/`),
   which is itself experimental, for visitors who arrive without one of their
   own. Use any Airlock you trust.
+- `world.json` also names where a visitor signs in who opened your address
+  themselves (`"signer"`, BitLogin's at `bitlogin.network`). It is why
+  signing in is the same row in your menu however someone came. A visitor
+  their own client brought signs in where that client says. Nothing is
+  typed in your world either way: the sign-in is a window of that address.
 - The shared room connects visitors directly to each other, which shows them
   each other's IP addresses. The page says so before anyone joins.
 - Nothing here has been tried on a real headset yet, only in an emulated one.
