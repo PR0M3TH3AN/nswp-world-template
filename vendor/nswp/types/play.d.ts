@@ -58,6 +58,24 @@ export interface Did {
 export declare function buildDid(o: Did): string | null;
 export declare function parseDid(text: unknown): Did | null;
 /**
+ * The colours a visitor is offered for an item's tints. Whoever reads a colour takes any that is written as one;
+ * these are only what the kit's own menu steps through.
+ */
+export declare const TINT_PALETTE: readonly {
+    name: string;
+    color: string;
+}[];
+/** A holder's choice of colours, kept to the tints the item says it has and to colours written as colours. */
+export declare function cleanTints(item: {
+    tints: readonly {
+        slot: string;
+    }[];
+} | null | undefined, chosen: unknown): Record<string, string>;
+/** The colours someone chose for what they hold, as they say them to a room: "tint:accent=f2691c,dart=35f0e0". */
+export declare function buildTints(chosen: Record<string, string>): string;
+/** Read them. Null for anything that isn't that; an empty choice is "as its maker made it". */
+export declare function parseTints(text: unknown): Record<string, string> | null;
+/**
  * The state a world keeps of a person, where it keeps none of its own: health. It is theirs to say, as a hit is.
  * A world with a game of its own defines what it likes; this is what a place that only allows items has.
  */

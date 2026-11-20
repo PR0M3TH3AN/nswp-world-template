@@ -781,11 +781,13 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
         me,
         rule: () => itemsRule,
         holding: () => presence.holding,
-        hold: async (item) => {
-          const done = await presence.setHolding(item);
+        hold: async (item, tints) => {
+          const done = await presence.setHolding(item, tints);
           state.holding = presence.holding || null;
           return done;
         },
+        // A colour they chose for the thing in their hand shows on it at once, and the room is told.
+        tinted: (item, tints) => void (presence.holding === item && presence.setTints(tints)),
         keyboard: () => panels?.keyboard ?? null,
         presenting: () => renderer.xr.isPresenting,
       });

@@ -14,7 +14,22 @@ export declare const ITEM_LIMITS: {
     readonly sends: 4;
     /** The most letters on one of its buttons. */
     readonly label: 16;
+    /** How many of its colours a holder may choose. */
+    readonly tints: 4;
+    /** The longest a trail behind a thing sent out may be, in seconds of its flight. */
+    readonly trail: 0.6;
 };
+/** A colour, as it is written: "#rrggbb". */
+export declare const HEX: RegExp;
+/**
+ * A colour of the item that whoever holds it may choose: its name (which is also the name its model's material
+ * goes by, as `tint:<slot>`), what a visitor is shown it as, and the colour it is until they choose.
+ */
+export interface ItemTint {
+    slot: string;
+    label: string;
+    color: string;
+}
 /**
  * A thing an item may send out: a dart, a ball. It is a shape of its own, and it says, by name, which of the
  * item's sounds go with what happens to it. What it does to a person it reaches is said apart, in `effects`.
@@ -30,6 +45,11 @@ export interface ItemSend {
     strikes?: string;
     /** Which is heard by whoever sent it, when it reaches a person: the tick that goes with a hit mark. */
     tells?: string;
+    /**
+     * A streak of light behind it as it flies, this many seconds of its flight long. It follows the arc the thing
+     * flew, in the colour of the tint that has the thing's own name, where there is one.
+     */
+    trail?: number;
 }
 /**
  * What one of an item's things asks of a person it reaches. It is words, never code: "take 1 from their health".
@@ -105,6 +125,7 @@ export interface ItemInput {
     sends?: ItemSend[];
     effects?: ItemEffect[];
     does?: ItemDoes;
+    tints?: ItemTint[];
     license?: string;
 }
 export interface Item extends Required<Pick<ItemInput, "d" | "title" | "model" | "size">> {
@@ -124,6 +145,7 @@ export interface Item extends Required<Pick<ItemInput, "d" | "title" | "model" |
     sends: ItemSend[];
     effects: ItemEffect[];
     does: ItemDoes;
+    tints: ItemTint[];
     license: string;
     /** When its maker last described it, in seconds. */
     at: number;

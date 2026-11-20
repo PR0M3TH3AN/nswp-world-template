@@ -47,6 +47,16 @@ export interface Bag {
     canChange(): boolean;
     add(item: string, title?: string): Promise<BagResult>;
     remove(item: string, title?: string): Promise<BagResult>;
+    /**
+     * The colours they chose for one of their things (protocol/17-items.md, "A holder's own colours"): what this
+     * device keeps for this place, over what their bag says. Empty where they chose none.
+     */
+    tints(item: string): Record<string, string>;
+    /**
+     * Choose them. They are kept on this device at once. Where this place can change the bag, they are written into
+     * it a moment after the last change, so that they go with the thing to every world; elsewhere they are for here.
+     */
+    setTints(item: string, tints: Record<string, string>): void;
     onChange(fn: () => void): () => void;
 }
 export declare function createBag(opts: BagOptions): Bag;

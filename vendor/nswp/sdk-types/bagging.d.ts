@@ -11,11 +11,13 @@ export interface BaggingOptions {
     rule(): string;
     /** What they hold now, by its coordinate, or "". */
     holding(): string;
-    /** Take one in hand, or put it away with "". */
-    hold(item: string): Promise<{
+    /** Take one in hand, in the colours they chose for it, or put it away with "". */
+    hold(item: string, tints?: Record<string, string>): Promise<{
         ok: boolean;
         said: string;
     }>;
+    /** They chose a colour for one of their things: where it is the one in their hand, it is recoloured now. */
+    tinted?: (item: string, tints: Record<string, string>) => void;
     /** Where this place hasn't yet been let change the bag: have the visitor asked, from a press. */
     ask?: (then: () => void) => string;
     /** Whether a change can be signed now. */

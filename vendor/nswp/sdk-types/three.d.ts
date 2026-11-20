@@ -123,10 +123,15 @@ export interface Presence {
      * the room. Refused, with a few words why, where the world has no items, the item can't be held, or it has to
      * be granted.
      */
-    setHolding(item: string): Promise<{
+    setHolding(item: string, tints?: Record<string, string>): Promise<{
         ok: boolean;
         said: string;
     }>;
+    /**
+     * Choose the colours of what is in hand (protocol/17-items.md, "A holder's own colours"): for each of the item's
+     * tints, a colour. It is recoloured at once, and the room is told. A tint left out is as its maker made it.
+     */
+    setTints(tints: Record<string, string>): void;
     /**
      * Items in play (play.ts): what the item in hand does on a press, the things sent out, and how this visitor is.
      * Null in a world that draws no items.

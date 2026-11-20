@@ -7,7 +7,7 @@ import {
   room,
   sha256,
   startingForm
-} from "./shared-IBSHD2WC.js";
+} from "./shared-QEPZNZ77.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -44,7 +44,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE16 from "three";
-import { bubbleSeconds, CHAT_LIMITS, cleanItemsRule as cleanItemsRule2, itemCoordinate as itemCoordinate4, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS10, encodeNpub as encodeNpub3, readRelayList as readRelayList7, RELAY_LIST_KIND as RELAY_LIST_KIND7, shortNpub as shortNpub6, spawnOffset, verifyEvent as verifyEvent7 } from "@nswp/core";
+import { bubbleSeconds, buildTints, CHAT_LIMITS, cleanItemsRule as cleanItemsRule2, cleanTints, itemCoordinate as itemCoordinate4, parseTints, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS10, encodeNpub as encodeNpub3, readRelayList as readRelayList7, RELAY_LIST_KIND as RELAY_LIST_KIND7, shortNpub as shortNpub6, spawnOffset, verifyEvent as verifyEvent7 } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -1738,6 +1738,38 @@ async function fetchWithin(url, most) {
     return null;
   }
 }
+function applyTints(root, item, tints = {}) {
+  root.traverse((o) => {
+    const mesh = o;
+    if (!mesh.isMesh) return;
+    for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      const slot = material.userData.nswpTint ?? "";
+      if (!slot) continue;
+      const color = tints[slot] ?? item.tints.find((t) => t.slot === slot)?.color;
+      if (!color || !/^#[0-9a-f]{6}$/.test(color)) continue;
+      const m = material;
+      m.color?.set(color);
+      if (m.userData.nswpGlows) m.emissive?.set(color);
+    }
+  });
+}
+function tinted(root, item, tints) {
+  if (!item.tints.length) return root;
+  root.traverse((o) => {
+    const mesh = o;
+    if (!mesh.isMesh) return;
+    const own = (material) => {
+      const slot = /^tint:([a-z][a-z0-9-]{0,23})$/.exec(material.name)?.[1];
+      if (!slot || !item.tints.some((t) => t.slot === slot)) return material;
+      const copy = material.clone();
+      copy.userData = { ...copy.userData, nswpTint: slot, nswpGlows: (material.emissive?.getHex() ?? 0) !== 0 };
+      return copy;
+    };
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(own) : own(mesh.material);
+  });
+  applyTints(root, item, tints);
+  return root;
+}
 function withinBudget(root) {
   let triangles = 0;
   let meshes = 0;
@@ -1844,19 +1876,19 @@ function createItems(opts = {}) {
       return found;
     },
     known: (coordinate) => settled.get(itemCoordinate(coordinate)) ?? null,
-    async model(item) {
+    async model(item, tints) {
       if (!showsItems()) return marker(item);
       const made = await load2(item);
-      return made ? made.clone(true) : marker(item);
+      return made ? tinted(made.clone(true), item, tints) : marker(item);
     },
     marker,
     clips: (item) => clipsOf.get(`${item.model.sha256}:${item.size.join(",")}`) ?? [],
-    async sent(item, name) {
+    async sent(item, name, tints) {
       const send = item.sends.find((s) => s.name === name);
       if (!send) return marker({ size: [0.03, 0.03, 0.1] });
       if (!showsItems()) return marker(send);
       const made = await load2(send);
-      return made ? made.clone(true) : marker(send);
+      return made ? tinted(made.clone(true), item, tints) : marker(send);
     },
     async sound(item, name) {
       const named = item.sounds[name];
@@ -2158,7 +2190,62 @@ function createPlay(o) {
     thing.fall = 0;
     thing.floor = floorUnder(thing.object.getWorldPosition(new THREE7.Vector3()));
   };
+  const TRAIL_STEPS = 14;
+  const TRAIL_WIDTH = 0.026;
+  const makeTrail = (color) => {
+    const geometry = new THREE7.BufferGeometry();
+    geometry.setAttribute("position", new THREE7.BufferAttribute(new Float32Array((TRAIL_STEPS + 1) * 6), 3));
+    geometry.setAttribute("color", new THREE7.BufferAttribute(new Float32Array((TRAIL_STEPS + 1) * 6), 3));
+    const index = [];
+    for (let i = 0; i < TRAIL_STEPS; i++) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    geometry.setIndex(index);
+    const mesh = new THREE7.Mesh(geometry, new THREE7.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE7.AdditiveBlending, depthWrite: false, side: THREE7.DoubleSide, toneMapped: false }));
+    mesh.frustumCulled = false;
+    mesh.userData.nswpNoHit = true;
+    mesh.userData.base = new THREE7.Color(color);
+    o.scene.add(mesh);
+    return mesh;
+  };
+  const dropTrail = (thing) => {
+    if (!thing.trail) return;
+    thing.trail.removeFromParent();
+    thing.trail.geometry.dispose();
+    thing.trail.material.dispose();
+    thing.trail = null;
+  };
+  const eye = new THREE7.Vector3();
+  const drawTrail = (thing) => {
+    const mesh = thing.trail;
+    if (!mesh) return;
+    const head = thing.landedAt ?? thing.t;
+    const tail = Math.max(0, thing.t - thing.trailSeconds);
+    if (tail >= head - 1e-4) return thing.landedAt === null ? void (mesh.visible = false) : dropTrail(thing);
+    mesh.visible = true;
+    o.camera.getWorldPosition(eye);
+    const position = mesh.geometry.getAttribute("position");
+    const color = mesh.geometry.getAttribute("color");
+    const base = mesh.userData.base;
+    const left = Math.min(1, (head - tail) / thing.trailSeconds);
+    const p = new THREE7.Vector3();
+    const q = new THREE7.Vector3();
+    const side = new THREE7.Vector3();
+    for (let i = 0; i <= TRAIL_STEPS; i++) {
+      const f = i / TRAIL_STEPS;
+      const t = head - (head - tail) * f;
+      p.fromArray(shotAt(thing.shot, t));
+      q.fromArray(shotAt(thing.shot, Math.max(0, t - 0.01)));
+      side.copy(p).sub(q).cross(w.copy(eye).sub(p)).normalize().multiplyScalar(TRAIL_WIDTH / 2 * (1 - f * 0.85));
+      position.setXYZ(i * 2, p.x + side.x, p.y + side.y, p.z + side.z);
+      position.setXYZ(i * 2 + 1, p.x - side.x, p.y - side.y, p.z - side.z);
+      const bright = (1 - f) ** 1.6 * (0.35 + 0.65 * left);
+      color.setXYZ(i * 2, base.r * bright, base.g * bright, base.b * bright);
+      color.setXYZ(i * 2 + 1, base.r * bright, base.g * bright, base.b * bright);
+    }
+    position.needsUpdate = true;
+    color.needsUpdate = true;
+  };
   const gone = (thing) => {
+    dropTrail(thing);
     thing.object.removeFromParent();
     const at = things.indexOf(thing);
     if (at >= 0) things.splice(at, 1);
@@ -2168,7 +2255,8 @@ function createPlay(o) {
     if (!send || !active()) return;
     const born = clock;
     pending.add(`${by}:${shot.id}`);
-    const inner = await o.items.sent(item2, shot.name);
+    const tints = o.tintsOf?.(by === (o.me() ?? "") ? null : by) ?? {};
+    const inner = await o.items.sent(item2, shot.name, tints);
     if (!active()) return void pending.delete(`${by}:${shot.id}`);
     inner.position.y -= send.size[1] / 2;
     const object = new THREE7.Group();
@@ -2177,7 +2265,9 @@ function createPlay(o) {
     object.position.fromArray(shot.from);
     o.scene.add(object);
     while (things.length >= PLAY_LIMITS.flown) gone(things[0]);
-    const thing = { by, shot, send, item: item2, object, t: 0, state: "flying", on: "", agreeBy: null, agreed: false, until: 0, fall: 0, floor: 0 };
+    const trailSeconds = send.trail ?? 0;
+    const trailColor = tints[send.name] ?? item2.tints.find((t) => t.slot === send.name)?.color ?? "#ffffff";
+    const thing = { by, shot, send, item: item2, object, t: 0, state: "flying", on: "", agreeBy: null, agreed: false, until: 0, fall: 0, floor: 0, trail: trailSeconds > 0 ? makeTrail(trailColor) : null, trailSeconds, landedAt: null };
     things.push(thing);
     pending.delete(`${by}:${shot.id}`);
     const late = Math.min(PLAY_LIMITS.life, clock - born);
@@ -2254,8 +2344,12 @@ function createPlay(o) {
         };
       }
     }
+    const before = thing.t;
     thing.t += dt;
-    if (done) return done();
+    if (done) {
+      thing.landedAt = before + dt * Math.min(1, first);
+      return done();
+    }
     thing.object.position.copy(b);
     const going2 = new THREE7.Vector3(thing.shot.velocity[0], thing.shot.velocity[1] - GRAVITY * thing.t, thing.shot.velocity[2]);
     thing.object.lookAt(w.copy(b).add(going2));
@@ -2295,9 +2389,9 @@ function createPlay(o) {
     if (said) ({ from, to } = said);
     else {
       const q = o.camera.getWorldQuaternion(new THREE7.Quaternion());
-      const eye = o.camera.getWorldPosition(new THREE7.Vector3());
-      from = eye.clone().add(new THREE7.Vector3(0.14, -0.12, -0.35).applyQuaternion(q));
-      to = eye.clone().add(new THREE7.Vector3(0, 0, -18).applyQuaternion(q));
+      const eye2 = o.camera.getWorldPosition(new THREE7.Vector3());
+      from = eye2.clone().add(new THREE7.Vector3(0.14, -0.12, -0.35).applyQuaternion(q));
+      to = eye2.clone().add(new THREE7.Vector3(0, 0, -18).applyQuaternion(q));
     }
     const dir = to.clone().sub(from).normalize();
     if (lift) dir.applyAxisAngle(new THREE7.Vector3().crossVectors(dir, new THREE7.Vector3(0, 1, 0)).normalize(), lift);
@@ -2500,12 +2594,16 @@ function createPlay(o) {
             fly(thing, step);
             left -= step;
           }
+          drawTrail(thing);
         } else if (thing.state === "stuck") {
           thing.t += dt;
+          drawTrail(thing);
           if (thing.agreeBy !== null && thing.t > thing.agreeBy) drop(thing);
           else if (thing.t > thing.until) drop(thing);
           else if (thing.on !== "world" && !o.people().some((p) => p.pubkey === thing.on)) gone(thing);
         } else if (thing.state === "falling") {
+          thing.t += dt;
+          drawTrail(thing);
           thing.fall += GRAVITY * dt;
           thing.object.position.y -= thing.fall * dt;
           thing.object.rotation.x += dt * 5;
@@ -6777,7 +6875,7 @@ function addScoreControls(controls, opts) {
 }
 
 // packages/sdk/src/bag.ts
-import { BAG_KIND, bagIn, changeBag, DEFAULT_RELAYS as DEFAULT_RELAYS7, itemCoordinate as itemCoordinate2, newestBag, publishEvent as publishEvent5, queryRelays as queryRelays7, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, SITE_MARKS, verifyEvent as verifyEvent6 } from "@nswp/core";
+import { BAG_KIND, bagIn, bagTints, changeBag, tintBag, DEFAULT_RELAYS as DEFAULT_RELAYS7, itemCoordinate as itemCoordinate2, newestBag, publishEvent as publishEvent5, queryRelays as queryRelays7, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, SITE_MARKS, verifyEvent as verifyEvent6 } from "@nswp/core";
 var FRESH_MS4 = 6e4;
 function createBag(opts) {
   const now = opts.now ?? (() => Date.now());
@@ -6884,7 +6982,50 @@ function createBag(opts) {
     if (!sent || sent.took === 0) return { ok: false, why: "not-sent", said: "Signed, but no relay took it. It is kept on this device and will be sent again." };
     return { ok: true, said: adding ? `${it} is in your bag. Anyone can see what is in it.` : `${it} is out of your bag.` };
   };
+  const TINTS_KEY = "nswp:tints";
+  const keptTints = () => {
+    try {
+      const kept2 = JSON.parse(store?.getItem(TINTS_KEY) ?? "{}");
+      return kept2 && typeof kept2 === "object" && !Array.isArray(kept2) ? kept2 : {};
+    } catch {
+      return {};
+    }
+  };
+  const tintTimers = /* @__PURE__ */ new Map();
+  const writeTints = async (item) => {
+    const who = opts.me();
+    if (!who || !opts.hand?.ready()) return;
+    await load2(true);
+    const at = known && known.who === who ? known : null;
+    const made = at?.bag ? tintBag(at.bag, { item, tints: keptTints()[item] ?? {}, now: now() / 1e3 }) : null;
+    const signed = made ? await opts.hand.sign(made).catch(() => null) : null;
+    const same = signed && verifyEvent6(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
+    if (!signed || !same) return;
+    keep3(signed);
+    known = { who, bag: signed, answered: true, at: now() };
+    changed();
+    await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
+  };
   return {
+    tints(itemIn2) {
+      const item = itemCoordinate2(itemIn2);
+      const fromBag = known && known.who === opts.me() ? bagTints(known.bag)[item] ?? {} : {};
+      const here = keptTints()[item];
+      const clean = (o) => Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {}).filter((e) => typeof e[1] === "string" && /^#[0-9a-f]{6}$/.test(e[1])));
+      return { ...fromBag, ...clean(here) };
+    },
+    setTints(itemIn2, tints) {
+      const item = itemCoordinate2(itemIn2);
+      if (!item) return;
+      try {
+        store?.setItem(TINTS_KEY, JSON.stringify({ ...keptTints(), [item]: tints }));
+      } catch {
+      }
+      changed();
+      if (!opts.hand) return;
+      clearTimeout(tintTimers.get(item));
+      tintTimers.set(item, setTimeout(() => void writeTints(item).catch(() => null), 2500));
+    },
     items: () => known && known.who === opts.me() ? bagIn(known.bag) : null,
     load: load2,
     canChange: () => !!opts.hand,
@@ -6898,7 +7039,7 @@ function createBag(opts) {
 }
 
 // packages/sdk/src/bagging.ts
-import { decodeNaddr, ITEM_KIND as ITEM_KIND2, itemCoordinate as itemCoordinate3 } from "@nswp/core";
+import { decodeNaddr, ITEM_KIND as ITEM_KIND2, itemCoordinate as itemCoordinate3, TINT_PALETTE } from "@nswp/core";
 var PAGE2 = 24;
 function itemIn(text) {
   if (typeof text !== "string") return "";
@@ -7026,7 +7167,27 @@ function addBagControls(controls, opts) {
           tone: "primary",
           label: `Hold ${titleOf(item)}`,
           act: async () => {
-            say((await opts.hold(item)).said);
+            say((await opts.hold(item, bag.tints(item))).said);
+            refresh();
+          }
+        });
+      }
+      for (const tint of items.known(item)?.tints ?? []) {
+        const now = bag.tints(item)[tint.slot] ?? tint.color;
+        const at = TINT_PALETTE.findIndex((c) => c.color === now);
+        add({
+          id: `bag-tint-${tint.slot}`,
+          kind: "swatch",
+          color: now,
+          icon: "check",
+          label: `${tint.label}: ${TINT_PALETTE[at]?.name ?? "its maker's own"}`,
+          short: tint.label,
+          act: () => {
+            const next = TINT_PALETTE[(at + 1) % TINT_PALETTE.length];
+            const chosen2 = { ...bag.tints(item), [tint.slot]: next.color };
+            bag.setTints(item, chosen2);
+            opts.tinted?.(item, chosen2);
+            say(`${tint.label}: ${next.name}. ${bag.canChange() ? "It goes with it to every world." : "For this place. Choose it at your home to keep it everywhere."}`);
             refresh();
           }
         });
@@ -8739,6 +8900,17 @@ function createPresence(d) {
   const canBeHeld = (item) => item.behaviors.includes("holdable") || item.fits.includes("hand-right") || item.fits.includes("hand-left");
   let mine = "";
   let mineModel = null;
+  let mineTints = {};
+  const heardTints = (a, said) => {
+    const described = a?.heldItem ? d.items?.known(a.heldItem) : null;
+    const tints = parseTints(said);
+    if (!a || !tints) return;
+    a.tints = described ? cleanTints(described, tints) : tints;
+    if (described && a.held) applyTints(a.held, described, a.tints);
+  };
+  const sayTints = () => {
+    if (mine) session?.tellPlay(buildTints(mineTints));
+  };
   let askedScript = "";
   const itemMutes = /* @__PURE__ */ new Set();
   const hand = () => {
@@ -8775,6 +8947,7 @@ function createPresence(d) {
     people: () => [...avatars.values()].filter((a) => a.target && a.root.visible).map((a) => ({ pubkey: a.member.pubkey, head: a.head.getWorldPosition(new THREE16.Vector3()), body: a.torso, over: a.head, holding: a.heldItem ?? "", held: a.held ?? null })),
     itemsMuted: (pubkey) => itemMutes.has(pubkey),
     tell: (said) => session?.tellPlay(said),
+    tintsOf: (pubkey) => pubkey === null ? mineTints : avatars.get(pubkey)?.tints ?? {},
     presenting: () => d.renderer.xr.isPresenting,
     // In a headset a thing goes where the hand that holds the item points.
     aim: () => {
@@ -8790,14 +8963,16 @@ function createPresence(d) {
   }) : null;
   const showHeld = async (a, item) => {
     if (!a) return;
+    if (a.heldItem !== item) delete a.tints;
     a.heldItem = item;
     a.held?.removeFromParent();
     delete a.held;
     if (!item || !d.items || itemsRule() === "none" || !showsItems()) return;
     const described = await d.items.describe(item);
     if (!described || a.heldItem !== item || !canBeHeld(described) || described.use === "granted") return;
-    const model = await d.items.model(described);
+    const model = await d.items.model(described, a.tints);
     if (a.heldItem !== item) return;
+    if (a.tints) applyTints(model, described, a.tints);
     model.position.set(0.3, -0.12, -0.22);
     a.torso.add(model);
     a.held = model;
@@ -9095,7 +9270,8 @@ function createPresence(d) {
       changed();
     });
     if (mine) s.setHolding(mine);
-    s.on("play", (m, said) => play?.heard(m.pubkey, said));
+    s.on("play", (m, said) => said.startsWith("tint:") ? heardTints(avatars.get(m.pubkey), said) : play?.heard(m.pubkey, said));
+    sayTints();
     s.on("look", (m, look2) => {
       const a = avatars.get(m.pubkey);
       if (a) dress(a, look2);
@@ -9225,7 +9401,15 @@ function createPresence(d) {
     get holding() {
       return mine;
     },
-    async setHolding(itemIn2) {
+    setTints(tints) {
+      const described = mine ? d.items?.known(mine) : null;
+      if (!described) return;
+      mineTints = cleanTints(described, tints);
+      if (mineModel) applyTints(mineModel, described, mineTints);
+      sayTints();
+      changed();
+    },
+    async setHolding(itemIn2, tints) {
       const item = itemCoordinate4(itemIn2);
       const put = () => {
         mine = "";
@@ -9253,12 +9437,14 @@ function createPresence(d) {
         }
         allowScript(described.script.sha256);
       }
-      const model = await d.items.model(described);
+      mineTints = cleanTints(described, tints ?? {});
+      const model = await d.items.model(described, mineTints);
       put();
       mine = item;
       mineModel = model;
       placeMine();
       session?.setHolding(item);
+      sayTints();
       await play?.held(described, model);
       return { ok: true, said: `You are holding ${described.title}. People here can see it.` };
     },
@@ -9464,6 +9650,7 @@ function createPresence(d) {
           // What they say they hold, and whether anything is drawn for it: for tests.
           holding: a.heldItem || null,
           heldDrawn: !!a.held,
+          tints: a.tints ?? null,
           hands: [!!a.target?.left, !!a.target?.right],
           audioLevel: Math.round(level * 1e3) / 1e3,
           saying: a.bubbleText ?? "",
