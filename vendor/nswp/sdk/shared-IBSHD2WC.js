@@ -2237,8 +2237,11 @@ import {
   PASS_LIMITS,
   shortNpub,
   verifyRoomPass,
+  createRate,
   itemCoordinate
 } from "@nswp/core";
+var PLAY_WORD = /^(shot|hit|did|st):/;
+var PLAY_SAID = { burst: 24, perSecond: 16 };
 var DEFAULT_ICE = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
 var HELLO_EVERY_MS = 2e4;
 var RECORDING_HOLD_MS = 6e3;
@@ -2278,6 +2281,7 @@ var RoomSession = class {
     identity: /* @__PURE__ */ new Set(),
     recording: /* @__PURE__ */ new Set(),
     holding: /* @__PURE__ */ new Set(),
+    play: /* @__PURE__ */ new Set(),
     screen: /* @__PURE__ */ new Set(),
     video: /* @__PURE__ */ new Set(),
     tune: /* @__PURE__ */ new Set(),
@@ -2496,6 +2500,7 @@ var RoomSession = class {
       pc,
       refused: 0,
       words: createChatGate(),
+      plays: createRate(PLAY_SAID.burst, PLAY_SAID.perSecond),
       open: false,
       lastSeen: Date.now(),
       startedAt: Date.now()
@@ -2562,6 +2567,8 @@ var RoomSession = class {
             else delete peer.member.holding;
             this.emit("holding", peer.member, item);
           }
+        } else if (PLAY_WORD.test(e.data)) {
+          if (peer.plays.take(Date.now())) this.emit("play", peer.member, e.data);
         } else if (e.data.startsWith("say:")) {
           const line = parseSay(e.data);
           const now = Date.now();
@@ -2904,6 +2911,15 @@ var RoomSession = class {
       if (--left > 0) setTimeout(say, 700);
     };
     say();
+  }
+  /**
+   * Say something of an item in play to everyone: a thing sent out, a hit, a sound, this visitor's state
+   * (`buildShot`, `buildHit`, `buildDid`, `buildState` in the core). Sent once: these are moments, and a late one
+   * is a wrong one. Anything that isn't one of those is not sent.
+   */
+  tellPlay(said) {
+    if (this.closed || typeof said !== "string" || said.length > 200 || !PLAY_WORD.test(said)) return;
+    this.tellAll(said);
   }
   setRecording(on) {
     if (on === this.self.recording) return;

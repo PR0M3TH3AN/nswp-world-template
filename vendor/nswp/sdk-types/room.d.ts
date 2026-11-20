@@ -66,6 +66,8 @@ interface Events {
     recording: (member: Member, on: boolean) => void;
     /** A member took an item in hand, or put it away: its coordinate, or "". */
     holding: (member: Member, item: string) => void;
+    /** A member said something of an item in play (protocol/17-items.md): a thing sent out, a hit, a sound, their state. */
+    play: (member: Member, said: string) => void;
     audio: (member: Member, stream: MediaStream) => void;
     /** A member started or stopped offering their screen. */
     screen: (member: Member, on: boolean) => void;
@@ -231,6 +233,12 @@ export declare class RoomSession {
      * coordinate and nothing else: each fetches and checks the item for themselves, or draws nothing.
      */
     setHolding(item: string): void;
+    /**
+     * Say something of an item in play to everyone: a thing sent out, a hit, a sound, this visitor's state
+     * (`buildShot`, `buildHit`, `buildDid`, `buildState` in the core). Sent once: these are moments, and a late one
+     * is a wrong one. Anything that isn't one of those is not sent.
+     */
+    tellPlay(said: string): void;
     setRecording(on: boolean): void;
     private drop;
     private sweep;

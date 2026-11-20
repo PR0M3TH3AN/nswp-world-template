@@ -9,7 +9,44 @@ export declare const ITEM_LIMITS: {
     readonly clips: 8;
     /** The longest an address may be. */
     readonly url: 300;
+    /** How many sounds of its own it may name, and how many things it may send out. */
+    readonly sounds: 12;
+    readonly sends: 4;
+    /** The most letters on one of its buttons. */
+    readonly label: 16;
 };
+/**
+ * A thing an item may send out: a dart, a ball. It is a shape of its own, and it says, by name, which of the
+ * item's sounds go with what happens to it. What it does to a person it reaches is said apart, in `effects`.
+ */
+export interface ItemSend {
+    name: string;
+    model: ItemFile;
+    /** Its box in metres. */
+    size: [number, number, number];
+    /** Which of the item's sounds is heard when it lands and sticks, when it drops off, and when it reaches a person. */
+    lands?: string;
+    drops?: string;
+    strikes?: string;
+    /** Which is heard by whoever sent it, when it reaches a person: the tick that goes with a hit mark. */
+    tells?: string;
+}
+/**
+ * What one of an item's things asks of a person it reaches. It is words, never code: "take 1 from their health".
+ * The person's own device does it, by the rules of the world they are in, and may do nothing.
+ */
+export interface ItemEffect {
+    /** Which of the things it sends out. */
+    of: string;
+    state: "health";
+    /** How much is taken. A whole number from 1 to 5. */
+    take: number;
+}
+/** What its two presses are called, for the buttons a visitor is shown: "Fire", "Reload". */
+export interface ItemDoes {
+    use?: string;
+    second?: string;
+}
 /**
  * What an item can be, as its description says. A closed list: a world knows what each means, and ignores one it
  * doesn't. What happens when someone holds, sits on or touches it is the world's rule.
@@ -63,6 +100,11 @@ export interface ItemInput {
      * but its own item (protocol/17-items.md, "An item's own logic"). Named here, and run by nothing yet.
      */
     script?: ItemFile;
+    /** Its own sounds, by name. Each is a small file, fetched and checked like its model. */
+    sounds?: Record<string, ItemFile>;
+    sends?: ItemSend[];
+    effects?: ItemEffect[];
+    does?: ItemDoes;
     license?: string;
 }
 export interface Item extends Required<Pick<ItemInput, "d" | "title" | "model" | "size">> {
@@ -78,6 +120,10 @@ export interface Item extends Required<Pick<ItemInput, "d" | "title" | "model" |
     fits: ItemFit[];
     use: "anyone" | "granted";
     script: ItemFile | null;
+    sounds: Record<string, ItemFile>;
+    sends: ItemSend[];
+    effects: ItemEffect[];
+    does: ItemDoes;
     license: string;
     /** When its maker last described it, in seconds. */
     at: number;

@@ -20,6 +20,8 @@ export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
 import type { Controls } from "./ui/model.js";
 import { type Items } from "./items.js";
+import { type Play, type PlayOptions } from "./play.js";
+import type { ItemBoxOptions } from "./item-box.js";
 import { type Following, type FollowingHand } from "./following.js";
 import type { PersonLines } from "./person-lines.js";
 import { type Messaging, type MessagingHand } from "./messaging.js";
@@ -43,6 +45,17 @@ export interface PresenceOptions {
     items?: Items | null;
     /** What this world does with items: "none", "allowed" or "play". Asked each time. Left out, none. */
     itemsRule?: () => string;
+    /**
+     * Whether an item's own logic runs in this world, in its locked box (item-box.ts), and where the box's page is
+     * served. Left out, items are shapes here and do nothing of their own.
+     */
+    itemScripts?: boolean | ItemBoxOptions;
+    /** The world's sounds: an item's own sounds are played through them, at the visitor's own volume. */
+    sounds?: PlayOptions["sounds"];
+    /** Whether a shape of this world is solid to things items send out. Left out, every mesh that can be seen is. */
+    solid?: PlayOptions["solid"];
+    /** Be told when something an item sent out sticks to a shape of this world: what that means is the world's rule. */
+    onStruck?: PlayOptions["onStruck"];
     /**
      * The visitor's own look, in its inline form (spec §4.2), for the others in a
      * room to draw them by: usually `arrival.look()`. A function is asked each
@@ -114,6 +127,18 @@ export interface Presence {
         ok: boolean;
         said: string;
     }>;
+    /**
+     * Items in play (play.ts): what the item in hand does on a press, the things sent out, and how this visitor is.
+     * Null in a world that draws no items.
+     */
+    readonly play: Play | null;
+    /** Which hand holds the item in a headset: the index of its controller, or -1 at a desk or with nothing held. */
+    readonly holdingHand: number;
+    /** Stop, or let again, what one person's items do from reaching this visitor. Nobody is told. For a place that only allows items. */
+    muteItems(pubkey: string, on: boolean): void;
+    isItemsMuted(pubkey: string): boolean;
+    /** What this world does with items: "none", "allowed" or "play". */
+    readonly itemsRule: string;
     /** How this visitor looks to the others: for a selfie, or a mirror. */
     selfLook(): Member["look"] | string;
     /** Show for a few seconds where one member is: a column of light over their head. */
@@ -418,6 +443,9 @@ export { addScoreControls, type Scoring, type ScoringOptions } from "./scoring.j
 export { createItems, fitToSize, ITEM_BUDGET, onItemsChange, setShowsItems, showsItems, withinBudget, type Items, type ItemsOptions } from "./items.js";
 export { createBag, type Bag, type BagHand, type BagOptions, type BagResult } from "./bag.js";
 export { addBagControls, itemIn, type Bagging, type BaggingOptions } from "./bagging.js";
+export { allowScript, createPlay, scriptAllowed, type Play, type PlayInfo, type PlayOptions, type PlayPerson } from "./play.js";
+export { runInBox, type BoxAsk, type BoxRun, type ItemBoxOptions } from "./item-box.js";
+export { addItemControls, type ItemControls, type ItemControlsOptions } from "./item-controls.js";
 export { createDoorRatings, type DoorRatings, type DoorRatingsOptions } from "./door-ratings.js";
 export { ordinal, someOf, worldPersonLines, type PersonLines } from "./person-lines.js";
 export { createAchievements, type AchievementHand, type Achievements, type AchievementsOptions } from "./achievements.js";

@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.50.0";
+var KIT_VERSION = "0.51.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -629,8 +629,8 @@ function asafenumber(value, title = "") {
     throw new RangeError(prefix + "expected safe integer, got " + value);
   }
 }
-function numberToHexUnpadded(num3) {
-  const hex = abignumber(num3).toString(16);
+function numberToHexUnpadded(num4) {
+  const hex = abignumber(num4).toString(16);
   return hex.length & 1 ? "0" + hex : hex;
 }
 function hexToNumber(hex) {
@@ -783,7 +783,7 @@ function mod(a, b) {
   const result = a % b;
   return result >= _0n2 ? result : b + result;
 }
-function pow(num3, power, modulo) {
+function pow(num4, power, modulo) {
   if (modulo <= _1n2)
     throw new Error("pow: expected modulus > 1, got " + modulo);
   if (typeof power !== "bigint")
@@ -793,8 +793,8 @@ function pow(num3, power, modulo) {
   if (power === _0n2)
     return _1n2;
   if (power === _1n2)
-    return num3;
-  let d = num3 % modulo;
+    return num4;
+  let d = num4 % modulo;
   if (d < _0n2)
     d += modulo;
   if (power < POW_WINDOWED_MIN) {
@@ -1021,18 +1021,18 @@ function FpInvertBatch(Fp, nums, passZero = false) {
   abool(passZero, "passZero");
   const F = Fp;
   const inverted = new Array(nums.length).fill(passZero ? F.ZERO : void 0);
-  const multipliedAcc = nums.reduce((acc, num3, i) => {
-    if (F.is0(num3))
+  const multipliedAcc = nums.reduce((acc, num4, i) => {
+    if (F.is0(num4))
       return acc;
     inverted[i] = acc;
-    return F.mul(acc, num3);
+    return F.mul(acc, num4);
   }, F.ONE);
   const invertedAcc = F.inv(multipliedAcc);
-  nums.reduceRight((acc, num3, i) => {
-    if (F.is0(num3))
+  nums.reduceRight((acc, num4, i) => {
+    if (F.is0(num4))
       return acc;
     inverted[i] = F.mul(acc, inverted[i]);
-    return F.mul(acc, num3);
+    return F.mul(acc, num4);
   }, invertedAcc);
   return inverted;
 }
@@ -1098,32 +1098,32 @@ var _Field = class {
     this.BYTES = nByteLength;
     Object.freeze(this);
   }
-  create(num3) {
-    return mod(num3, this.ORDER);
+  create(num4) {
+    return mod(num4, this.ORDER);
   }
-  isValid(num3) {
-    if (typeof num3 !== "bigint")
-      throw new TypeError("invalid field element: expected bigint, got " + typeof num3);
-    return _0n2 <= num3 && num3 < this.ORDER;
+  isValid(num4) {
+    if (typeof num4 !== "bigint")
+      throw new TypeError("invalid field element: expected bigint, got " + typeof num4);
+    return _0n2 <= num4 && num4 < this.ORDER;
   }
-  is0(num3) {
-    return num3 === _0n2;
+  is0(num4) {
+    return num4 === _0n2;
   }
   // is valid and invertible
-  isValidNot0(num3) {
-    return !this.is0(num3) && this.isValid(num3);
+  isValidNot0(num4) {
+    return !this.is0(num4) && this.isValid(num4);
   }
-  isOdd(num3) {
-    return (num3 & _1n2) === _1n2;
+  isOdd(num4) {
+    return (num4 & _1n2) === _1n2;
   }
-  neg(num3) {
-    return mod(-num3, this.ORDER);
+  neg(num4) {
+    return mod(-num4, this.ORDER);
   }
   eql(lhs, rhs) {
     return lhs === rhs;
   }
-  sqr(num3) {
-    return mod(num3 * num3, this.ORDER);
+  sqr(num4) {
+    return mod(num4 * num4, this.ORDER);
   }
   add(lhs, rhs) {
     return mod(lhs + rhs, this.ORDER);
@@ -1134,15 +1134,15 @@ var _Field = class {
   mul(lhs, rhs) {
     return mod(lhs * rhs, this.ORDER);
   }
-  pow(num3, power) {
-    return pow(num3, power, this.ORDER);
+  pow(num4, power) {
+    return pow(num4, power, this.ORDER);
   }
   div(lhs, rhs) {
     return mod(lhs * invert(rhs, this.ORDER), this.ORDER);
   }
   // Same as above, but doesn't normalize
-  sqrN(num3) {
-    return num3 * num3;
+  sqrN(num4) {
+    return num4 * num4;
   }
   addN(lhs, rhs) {
     return lhs + rhs;
@@ -1153,17 +1153,17 @@ var _Field = class {
   mulN(lhs, rhs) {
     return lhs * rhs;
   }
-  inv(num3) {
-    return invert(num3, this.ORDER);
+  inv(num4) {
+    return invert(num4, this.ORDER);
   }
-  sqrt(num3) {
+  sqrt(num4) {
     let sqrt = FIELD_SQRT.get(this);
     if (!sqrt)
       FIELD_SQRT.set(this, sqrt = FpSqrt(this.ORDER));
-    return sqrt(this, num3);
+    return sqrt(this, num4);
   }
-  toBytes(num3) {
-    return this.isLE ? numberToBytesLE(num3, this.BYTES) : numberToBytesBE(num3, this.BYTES);
+  toBytes(num4) {
+    return this.isLE ? numberToBytesLE(num4, this.BYTES) : numberToBytesBE(num4, this.BYTES);
   }
   fromBytes(bytes, skipValidation = false) {
     abytes2(bytes);
@@ -1221,8 +1221,8 @@ function mapHashToField(key, fieldOrder, isLE2 = false) {
   const minLen = Math.max(getMinHashLength(fieldOrder), 16);
   if (len < minLen || len > 1024)
     throw new Error("expected " + minLen + "-1024 bytes of input, got " + len);
-  const num3 = isLE2 ? bytesToNumberLE(key) : bytesToNumberBE(key);
-  const reduced = mod(num3, fieldOrder - _1n2) + _1n2;
+  const num4 = isLE2 ? bytesToNumberLE(key) : bytesToNumberBE(key);
+  const reduced = mod(num4, fieldOrder - _1n2) + _1n2;
   return isLE2 ? numberToBytesLE(reduced, fieldLen) : numberToBytesBE(reduced, fieldLen);
 }
 
@@ -1762,12 +1762,12 @@ var _DER = {
   // - add zero byte if exists
   // - if next byte doesn't have a flag, leading zero is not allowed (minimal encoding)
   _int: {
-    encode(num3) {
+    encode(num4) {
       const { Err: E } = _DER;
-      abignumber(num3);
-      if (num3 < _0n4)
+      abignumber(num4);
+      if (num4 < _0n4)
         throw new E("integer: negative integers are not allowed");
-      let hex = numberToHexUnpadded(num3);
+      let hex = numberToHexUnpadded(num4);
       if (Number.parseInt(hex[0], 16) & 8)
         hex = "00" + hex;
       if (hex.length & 1)
@@ -1821,7 +1821,7 @@ var DER = /* @__PURE__ */ (() => {
 
 // node_modules/@noble/curves/abstract/weierstrass.js
 /*! noble-curves - MIT License (c) 2022 Paul Miller (paulmillr.com) */
-var divNearest = (num3, den) => (num3 + (num3 >= 0 ? den : -den) / _2n2) / den;
+var divNearest = (num4, den) => (num4 + (num4 >= 0 ? den : -den) / _2n2) / den;
 function _splitEndoScalar(k, basis, n) {
   aInRange("scalar", k, _0n5, n);
   const [[a1, b1], [a2, b2]] = basis;
@@ -2326,8 +2326,8 @@ function ecdh(Point, ecdhOpts = {}) {
   });
   function isValidSecretKey(secretKey) {
     try {
-      const num3 = Fn.fromBytes(secretKey);
-      return Fn.isValidNot0(num3);
+      const num4 = Fn.fromBytes(secretKey);
+      return Fn.isValidNot0(num4);
     } catch (error) {
       return false;
     }
@@ -2415,10 +2415,10 @@ function ecdsa(Point, hash, ecdsaOpts = {}) {
     const HALF = CURVE_ORDER >> _1n4;
     return number > HALF;
   }
-  function validateRS(title, num3) {
-    if (!Fn.isValidNot0(num3))
+  function validateRS(title, num4) {
+    if (!Fn.isValidNot0(num4))
       throw new Error(`invalid signature ${title}: out of range 1..Point.Fn.ORDER`);
-    return num3;
+    return num4;
   }
   function assertFieldSignIsSupported() {
     if (!Fp.isOdd)
@@ -2530,17 +2530,17 @@ function ecdsa(Point, hash, ecdsaOpts = {}) {
   const bits2int = opts.bits2int === void 0 ? function bits2int_def(bytes) {
     if (bytes.length > 8192)
       throw new Error("input is too large");
-    const num3 = bytesToNumberBE(bytes);
+    const num4 = bytesToNumberBE(bytes);
     const delta = bytes.length * 8 - fnBits;
-    return delta > 0 ? num3 >> BigInt(delta) : num3;
+    return delta > 0 ? num4 >> BigInt(delta) : num4;
   } : opts.bits2int;
   const bits2int_modN = opts.bits2int_modN === void 0 ? function bits2int_modN_def(bytes) {
     return Fn.create(bits2int(bytes));
   } : opts.bits2int_modN;
   const ORDER_MASK = bitMask(fnBits);
-  function int2octets(num3) {
-    aInRange("num < 2^" + fnBits, num3, _0n5, ORDER_MASK);
-    return Fn.toBytes(num3);
+  function int2octets(num4) {
+    aInRange("num < 2^" + fnBits, num4, _0n5, ORDER_MASK);
+    return Fn.toBytes(num4);
   }
   function validateMsgAndHash(message, prehash) {
     abytes2(message, void 0, "message");
@@ -7019,8 +7019,14 @@ var ITEM_LIMITS = {
   colliders: 8,
   clips: 8,
   /** The longest an address may be. */
-  url: 300
+  url: 300,
+  /** How many sounds of its own it may name, and how many things it may send out. */
+  sounds: 12,
+  sends: 4,
+  /** The most letters on one of its buttons. */
+  label: 16
 };
+var PLAIN = /^[a-z][a-z0-9-]{0,23}$/;
 var ITEM_BEHAVIORS = ["holdable", "sittable", "touchable", "readable", "wearable"];
 var ITEM_FITS = ["place", "head", "back", "hand-left", "hand-right", "side"];
 var ITEM_MOMENTS = ["idle", "touch", "held", "move", "use"];
@@ -7062,6 +7068,18 @@ function readCollider(t) {
   const height = numbers(t[4], 1)?.[0];
   return t[1] === "capsule" && height !== void 0 && within(height) ? { shape: "capsule", centre, radius, height } : null;
 }
+var SEND_MOMENTS = ["lands", "drops", "strikes", "tells"];
+function readSend(t) {
+  const model = t[3] === "glb" ? cleanFile(t[2], t[4]) : null;
+  const size = numbers(t[5], 3);
+  if (typeof t[1] !== "string" || !PLAIN.test(t[1]) || !model || !size || !size.every(within)) return null;
+  const send = { name: t[1], model, size };
+  for (const word of t.slice(6)) {
+    const [moment, sound] = word.split("=");
+    if (SEND_MOMENTS.includes(moment ?? "") && sound && PLAIN.test(sound)) send[moment] = sound;
+  }
+  return send;
+}
 function buildItem(o) {
   const title = cleanLine(o.title, ITEM_LIMITS.title);
   const model = cleanFile(o.model?.url, o.model?.sha256);
@@ -7098,6 +7116,26 @@ function buildItem(o) {
     const script = cleanFile(o.script.url, o.script.sha256);
     if (!script) return null;
     tags.push(["script", script.url, script.sha256]);
+  }
+  for (const [name, file] of Object.entries(o.sounds ?? {}).slice(0, ITEM_LIMITS.sounds)) {
+    const sound = cleanFile(file?.url, file?.sha256);
+    if (!PLAIN.test(name) || !sound) return null;
+    tags.push(["sound", name, sound.url, sound.sha256]);
+  }
+  for (const s of (o.sends ?? []).slice(0, ITEM_LIMITS.sends)) {
+    const model2 = cleanFile(s?.model?.url, s?.model?.sha256);
+    if (!s || !PLAIN.test(s.name) || !model2 || !Array.isArray(s.size) || s.size.length !== 3 || !s.size.every(within)) return null;
+    const when = SEND_MOMENTS.filter((m) => s[m] !== void 0);
+    if (when.some((m) => !PLAIN.test(s[m]))) return null;
+    tags.push(["sends", s.name, model2.url, "glb", model2.sha256, said(s.size), ...when.map((m) => `${m}=${s[m]}`)]);
+  }
+  for (const e of (o.effects ?? []).slice(0, ITEM_LIMITS.sends)) {
+    if (!e || !PLAIN.test(e.of) || e.state !== "health" || !Number.isInteger(e.take) || e.take < 1 || e.take > 5) return null;
+    tags.push(["effect", e.of, e.state, String(-e.take)]);
+  }
+  for (const press of ["use", "second"]) {
+    const label = cleanLine(o.does?.[press] ?? "", ITEM_LIMITS.label);
+    if (label) tags.push(["does", press, label]);
   }
   const license = cleanLine(o.license ?? "", 40);
   if (license) tags.push(["license", license]);
@@ -7137,6 +7175,17 @@ function parseItem(event) {
     use: tag("use")?.[1] === "granted" ? "granted" : "anyone",
     // Named, and run by nothing yet: where it runs, and what it may ask for, is protocol/17-items.md.
     script: sc ? cleanFile(sc[1], sc[2]) : null,
+    sounds: Object.fromEntries(
+      getTags(event, "sound").slice(0, ITEM_LIMITS.sounds).map((t) => [t[1], cleanFile(t[2], t[3])]).filter((s) => typeof s[0] === "string" && PLAIN.test(s[0]) && s[1] !== null)
+    ),
+    sends: getTags(event, "sends").slice(0, ITEM_LIMITS.sends).map(readSend).filter((s) => s !== null),
+    effects: getTags(event, "effect").slice(0, ITEM_LIMITS.sends).map((t) => {
+      const take = -Number(t[3]);
+      return typeof t[1] === "string" && PLAIN.test(t[1]) && t[2] === "health" && Number.isInteger(take) && take >= 1 && take <= 5 ? { of: t[1], state: "health", take } : null;
+    }).filter((e) => e !== null),
+    does: Object.fromEntries(
+      getTags(event, "does").filter((t) => t[1] === "use" || t[1] === "second").map((t) => [t[1], cleanLine(t[2], ITEM_LIMITS.label)]).filter((d2) => d2[1])
+    ),
     license: cleanLine(tag("license")?.[1], 40),
     at: Number.isInteger(event.created_at) ? event.created_at : 0
   };
@@ -7189,6 +7238,260 @@ function changeBag(newest, change) {
     content: ""
   };
 }
+
+// packages/core/src/play.ts
+var GRAVITY = 9.8;
+var PLAY_LIMITS = {
+  /** The fastest anything may be sent out, in metres a second. */
+  speed: 40,
+  /** The longest a thing may stay stuck where it landed, in seconds. */
+  stick: 10,
+  /** The longest a thing may fly before it is gone, in seconds. */
+  life: 5,
+  /** How far from the middle of a world anything may be said to start, in metres. */
+  far: 1e4,
+  /** How many things one person may send out: a burst, and then so many a second. */
+  burst: 8,
+  perSecond: 6,
+  /** How many of anyone's things are flown or left lying at once. The oldest go first. */
+  flown: 48,
+  /** How long a hit may wait for the person hit to say so, in seconds, before the thing drops off them. */
+  agree: 0.6,
+  /** The most an item's own words may be: its counter. */
+  words: 24
+};
+var NAME4 = /^[a-z][a-z0-9-]{0,23}$/;
+var num3 = (x) => String(Math.round(x * 1e3) / 1e3);
+var finite = (xs, most) => xs.every((x) => Number.isFinite(x) && Math.abs(x) <= most);
+function buildShot(o) {
+  const shot = cleanShot(o);
+  return shot ? `shot:${shot.id},${shot.name},${[...shot.from, ...shot.velocity, shot.stick].map(num3).join(",")}` : null;
+}
+function cleanShot(o) {
+  if (!o || !Number.isInteger(o.id) || o.id < 0 || o.id > 4294967295 || typeof o.name !== "string" || !NAME4.test(o.name)) return null;
+  if (!Array.isArray(o.from) || o.from.length !== 3 || !finite(o.from, PLAY_LIMITS.far)) return null;
+  if (!Array.isArray(o.velocity) || o.velocity.length !== 3 || !finite(o.velocity, 1e6)) return null;
+  const speed = Math.hypot(...o.velocity);
+  if (speed < 0.01) return null;
+  const k = Math.min(1, PLAY_LIMITS.speed / speed);
+  const stick = Number.isFinite(o.stick) ? Math.min(PLAY_LIMITS.stick, Math.max(0, o.stick)) : 0;
+  return { id: o.id, name: o.name, from: [...o.from], velocity: o.velocity.map((v) => v * k), stick };
+}
+function parseShot(text) {
+  if (typeof text !== "string" || !text.startsWith("shot:") || text.length > 200) return null;
+  const parts = text.slice(5).split(",");
+  if (parts.length !== 9) return null;
+  const n = parts.slice(2).map(Number);
+  return cleanShot({ id: Number(parts[0]), name: parts[1], from: [n[0], n[1], n[2]], velocity: [n[3], n[4], n[5]], stick: n[6] });
+}
+function shotAt(shot, t) {
+  return [shot.from[0] + shot.velocity[0] * t, shot.from[1] + shot.velocity[1] * t - 0.5 * GRAVITY * t * t, shot.from[2] + shot.velocity[2] * t];
+}
+function buildHit(o) {
+  if (!o || !isHex64(o.by) || !Number.isInteger(o.id) || o.id < 0 || !Array.isArray(o.at) || o.at.length !== 3 || !finite(o.at, 4)) return null;
+  return `hit:${o.by},${o.id},${o.at.map(num3).join(",")}`;
+}
+function parseHit(text) {
+  if (typeof text !== "string" || !text.startsWith("hit:") || text.length > 160) return null;
+  const parts = text.slice(4).split(",");
+  if (parts.length !== 5) return null;
+  const at = parts.slice(2).map(Number);
+  const hit = { by: parts[0], id: Number(parts[1]), at };
+  return buildHit(hit) ? hit : null;
+}
+var CLIP2 = /^[\w .-]{1,64}$/;
+function buildDid(o) {
+  if (!o || o.kind !== "sound" && o.kind !== "clip" || typeof o.name !== "string") return null;
+  if (o.kind === "sound" ? !NAME4.test(o.name) : !CLIP2.test(o.name)) return null;
+  return `did:${o.kind},${o.name}`;
+}
+function parseDid(text) {
+  if (typeof text !== "string" || !text.startsWith("did:") || text.length > 90) return null;
+  const at = text.indexOf(",");
+  const did = { kind: text.slice(4, at), name: text.slice(at + 1) };
+  return at > 0 && buildDid(did) ? did : null;
+}
+var HEALTH = {
+  /** How much someone has when nothing has reached them. */
+  full: 5,
+  /** The most one thing may take at once. */
+  most: 5,
+  /** After this long with nothing reaching them, they are back to full, in seconds. */
+  restSeconds: 6,
+  /** How long they stay at nothing before they are back to full, in seconds. */
+  downSeconds: 3
+};
+function buildState(o) {
+  if (!o || o.name !== "health" || !Number.isInteger(o.value) || !Number.isInteger(o.full) || o.full < 1 || o.full > 1e3 || o.value < 0 || o.value > o.full) return null;
+  return `st:${o.name},${o.value},${o.full}`;
+}
+function parseState(text) {
+  if (typeof text !== "string" || !text.startsWith("st:") || text.length > 40) return null;
+  const [name, value, full] = text.slice(3).split(",");
+  const state = { name, value: Number(value), full: Number(full) };
+  return buildState(state) ? state : null;
+}
+function struck(value, by) {
+  const take = Math.min(HEALTH.most, Math.max(0, Math.round(Math.abs(by))));
+  return Math.max(0, Math.round(value) - take);
+}
+function meetsPerson(a, b, feet, height, radius) {
+  const lo = feet[1] + radius;
+  const hi = Math.max(lo, feet[1] + height - radius);
+  const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  let best = null;
+  const steps = Math.max(1, Math.ceil(Math.hypot(d[0], d[1], d[2]) / (radius / 2)));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const p = [a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t];
+    const y = Math.min(hi, Math.max(lo, p[1]));
+    if (Math.hypot(p[0] - feet[0], p[1] - y, p[2] - feet[2]) <= radius) {
+      best = t;
+      break;
+    }
+  }
+  return best;
+}
+var PERSON_SHAPE = { radius: 0.28 };
+var ITEM_ASKS = {
+  /** Play one of its own sounds, by name. */
+  play: { burst: 6, perSecond: 6 },
+  /** Play one of its own animations, by name. */
+  clip: { burst: 4, perSecond: 4 },
+  /** Send out one of the things it has described. */
+  send: { burst: PLAY_LIMITS.burst, perSecond: PLAY_LIMITS.perSecond },
+  /** Show its own words: a counter. */
+  show: { burst: 8, perSecond: 8 }
+};
+var ITEM_EVENTS = ["held", "away", "use", "second", "tick"];
+var SCRIPT_LIMITS = { bytes: 64e3, silentMs: 1500 };
+function createRate(burst, perSecond) {
+  let have = burst;
+  let last = null;
+  return {
+    take(nowMs) {
+      if (last !== null) have = Math.min(burst, have + (nowMs - last) / 1e3 * perSecond);
+      last = nowMs;
+      if (have < 1) return false;
+      have -= 1;
+      return true;
+    }
+  };
+}
+function cleanAsk(name, args) {
+  const a = Array.isArray(args) ? args : [];
+  if (name === "play") return typeof a[0] === "string" && NAME4.test(a[0]) ? { ask: "play", name: a[0] } : null;
+  if (name === "clip") return typeof a[0] === "string" && CLIP2.test(a[0]) ? { ask: "clip", name: a[0] } : null;
+  if (name === "show") {
+    if (typeof a[0] !== "string") return null;
+    return { ask: "show", text: [...a[0].replace(/[^\p{L}\p{N} /:.,+\-·]/gu, "")].slice(0, PLAY_LIMITS.words).join("") };
+  }
+  if (name === "send") {
+    const o = a[1] && typeof a[1] === "object" ? a[1] : {};
+    const within2 = (x, least, most, otherwise) => typeof x === "number" && Number.isFinite(x) ? Math.min(most, Math.max(least, x)) : otherwise;
+    return typeof a[0] === "string" && NAME4.test(a[0]) ? { ask: "send", name: a[0], speed: within2(o.speed, 1, PLAY_LIMITS.speed, 12), stick: within2(o.stick, 0, PLAY_LIMITS.stick, 3), lift: within2(o.lift, -0.5, 0.5, 0) } : null;
+  }
+  return null;
+}
+
+// packages/core/src/item-box.ts
+var ITEM_BOX_CSP = "default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; frame-ancestors 'self'";
+var WORKER_HEAD = `"use strict";
+const __on = Object.create(null);
+let __timers = [];
+let __now = 0;
+const __ask = (name, args) => postMessage({ t: "ask", name, args });
+const item = Object.freeze({
+  on(event, fn) { if (typeof fn === "function") __on[String(event)] = fn; },
+  play(name) { __ask("play", [String(name)]); },
+  clip(name) { __ask("clip", [String(name)]); },
+  send(name, how) { __ask("send", [String(name), { speed: Number(how && how.speed), stick: Number(how && how.stick), lift: Number(how && how.lift) }]); },
+  show(text) { __ask("show", [String(text)]); },
+  after(ms, fn) { if (typeof fn === "function" && __timers.length < 32) __timers.push({ at: __now + Math.max(0, Number(ms) || 0), fn }); },
+});
+const __run = (fn, arg) => { try { fn(arg); } catch (err) { postMessage({ t: "error", text: String(err).slice(0, 200) }); } };
+onmessage = (e) => {
+  const m = e.data;
+  if (!m || m.t !== "event") return;
+  if (m.name === "tick") {
+    __now = Number(m.arg) || 0;
+    const due = __timers.filter((x) => x.at <= __now);
+    __timers = __timers.filter((x) => x.at > __now);
+    for (const x of due) __run(x.fn);
+  }
+  if (__on[m.name]) __run(__on[m.name], m.arg);
+  postMessage({ t: "beat", n: m.n });
+};
+try {
+(function (item, self, globalThis, postMessage, onmessage, navigator, location, fetch, XMLHttpRequest, WebSocket, EventSource, BroadcastChannel, indexedDB, caches, importScripts, Worker, close) {
+`;
+var WORKER_TAIL = `
+})(item);
+postMessage({ t: "started" });
+} catch (err) { postMessage({ t: "error", text: String(err).slice(0, 200) }); }
+`;
+var ITEM_BOX_HTML = `<!doctype html>
+<meta charset="utf-8">
+<title>An item's locked box</title>
+<script>
+"use strict";
+(() => {
+  const EVENTS = ${JSON.stringify(ITEM_EVENTS)};
+  const SILENT = ${SCRIPT_LIMITS.silentMs};
+  const MOST = ${SCRIPT_LIMITS.bytes};
+  const HEAD = ${JSON.stringify(WORKER_HEAD)};
+  const TAIL = ${JSON.stringify(WORKER_TAIL)};
+  let worker = null;
+  let sent = 0;
+  let answered = 0;
+  // When the script last answered anything, or last had nothing to answer. It is ended only if something has been
+  // waiting on it since then for too long: a busy device, with one thing always on its way in, is not a hung script.
+  let lastWord = 0;
+  const up = (m) => parent.postMessage(Object.assign({ nswpItemBox: 1 }, m), "*");
+  const stop = (why) => {
+    if (!worker) return;
+    worker.terminate();
+    worker = null;
+    up({ t: "stopped", why });
+  };
+  const start = (script) => {
+    stop("replaced");
+    if (typeof script !== "string" || script.length > MOST) return up({ t: "stopped", why: "too long" });
+    try {
+      worker = new Worker(URL.createObjectURL(new Blob([HEAD, script, TAIL], { type: "text/javascript" })));
+    } catch (err) {
+      return up({ t: "stopped", why: "no worker" });
+    }
+    sent = answered = 0;
+    lastWord = performance.now();
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (!m) return;
+      if (m.t === "beat") { answered = Math.max(answered, Number(m.n) || 0); lastWord = performance.now(); }
+      else if (m.t === "ask") up({ t: "ask", name: String(m.name), args: m.args });
+      else if (m.t === "started") up({ t: "started" });
+      else if (m.t === "error") up({ t: "error", text: String(m.text).slice(0, 200) });
+    };
+    worker.onerror = (e) => { up({ t: "error", text: String(e && e.message).slice(0, 200) }); stop("failed"); };
+  };
+  addEventListener("message", (e) => {
+    if (e.source !== parent) return;
+    const m = e.data;
+    if (!m || m.nswpItemBox !== 1) return;
+    if (m.t === "run") start(m.script);
+    else if (m.t === "stop") stop("asked");
+    else if (m.t === "event" && worker && EVENTS.includes(m.name)) {
+      if (answered >= sent) lastWord = performance.now();
+      sent += 1;
+      worker.postMessage({ t: "event", name: m.name, arg: m.arg, n: sent });
+    }
+  });
+  // A script that has stopped answering is ended: it can hang nothing but itself.
+  setInterval(() => { if (worker && sent > answered && performance.now() - lastWord > SILENT) stop("silent"); }, 250);
+  up({ t: "ready" });
+})();
+<\/script>
+`;
 
 // packages/core/src/people.ts
 var FOLLOWS_KIND = 3;
@@ -7714,11 +8017,17 @@ export {
   FOLLOW_LIMITS,
   FOV_RANGE,
   FRESH_HEADER,
+  GRAVITY,
   HANDOFF_PROTOCOL,
+  HEALTH,
   HOME_CAPABILITY,
   HOME_LAYOUT_KIND,
   INPUTS,
+  ITEM_ASKS,
   ITEM_BEHAVIORS,
+  ITEM_BOX_CSP,
+  ITEM_BOX_HTML,
+  ITEM_EVENTS,
   ITEM_FITS,
   ITEM_KIND,
   ITEM_LIMITS,
@@ -7746,7 +8055,9 @@ export {
   ORDINARY_KINDS,
   PASS_LIMITS,
   PERF_TIERS,
+  PERSON_SHAPE,
   PINS_MOST,
+  PLAY_LIMITS,
   POSE_BYTES,
   PREVIEW_LIMITS,
   PREVIEW_TYPES,
@@ -7765,6 +8076,7 @@ export {
   SCHEMAS,
   SCORE_KIND,
   SCORE_LIMITS,
+  SCRIPT_LIMITS,
   SEAL_KIND,
   SETTINGS_LINK_LIMIT,
   SIGNER_MORE,
@@ -7794,8 +8106,10 @@ export {
   buildAvatarEvent,
   buildBridgeGrant,
   buildBridgeSignal,
+  buildDid,
   buildEntryAssertion,
   buildHello,
+  buildHit,
   buildItem,
   buildLayoutEvent,
   buildListEvent,
@@ -7805,7 +8119,9 @@ export {
   buildRoomPass,
   buildSay,
   buildScore,
+  buildShot,
   buildSignal,
+  buildState,
   buildWayUrl,
   buildWorldEvent,
   buildWorldGrant,
@@ -7819,6 +8135,7 @@ export {
   claimsKey,
   cleanAbout,
   cleanAchievementId,
+  cleanAsk,
   cleanBoard,
   cleanChat,
   cleanItemsRule,
@@ -7841,6 +8158,7 @@ export {
   cleanWorldOrigin,
   coordinate,
   createChatGate,
+  createRate,
   createSignGate,
   decodeArrival,
   decodeLook,
@@ -7899,6 +8217,7 @@ export {
   mapToLocal,
   markFor,
   markGrid,
+  meetsPerson,
   newestBag,
   newestFollows,
   nip44Decrypt,
@@ -7917,6 +8236,8 @@ export {
   parseAvatarEvent,
   parseBridgeControl,
   parseCoordinate,
+  parseDid,
+  parseHit,
   parseItem,
   parseKitVersion,
   parseLayoutEvent,
@@ -7926,7 +8247,9 @@ export {
   parseRating,
   parseSay,
   parseScore,
+  parseShot,
   parseSpeechControl,
+  parseState,
   parseWorldEvent,
   pickDiscovered,
   pickRelays,
@@ -7958,6 +8281,7 @@ export {
   servedFresh,
   setLocalMap,
   shortNpub,
+  shotAt,
   shouldInitiate,
   signClass,
   signerAddresses,
@@ -7965,6 +8289,7 @@ export {
   signerMessage,
   spawnOffset,
   stripArrivalParam,
+  struck,
   tallyMark,
   tallyRatings,
   tallyWords,
