@@ -6,17 +6,6 @@
  */
 export declare function items(options?: string): string;
 /**
- * Every frame. `view` is JSON saying where the visitor is and what the engine found: `dt`, seconds since the last;
- * `head` and `turn`, where their view is and which way it faces (x, y, z, w); `floor`, how high the floor under
- * them is; `fov` and `aspect`; `presenting`, in a headset; `sighting`, whether their item is up at their eye; and
- * `met` and `floors`, the engine's answers about what things ran into and where the floor is under them.
- *
- * Returns everything there is to draw, as JSON: `held` (the thing in their hand: its model, box, colours, where
- * its sight is and whether it does anything), `sight` (whether they are holding the press that aims), and the
- * things, streaks of light and the visitor's own state, as `PlaySnapshot` has them.
- */
-export declare function frame(view?: string): string;
-/**
  * A model's bytes, as base64, by the hash its file is named by (`held.model`, `things[].model`). They have been
  * fetched, checked against that hash and counted: the engine reads them as a binary glTF. "" while they are on
  * their way, and "!" where the file failed a check: then a plain box of the thing's size is drawn in its place.
