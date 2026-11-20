@@ -295,7 +295,7 @@ function createControls(opts) {
       const bar = [...showing.filter((a) => a.hotbar && a.lead), ...showing.filter((a) => a.hotbar && !a.lead)].slice(0, 6);
       const item = (a) => {
         const slot = bar.indexOf(a);
-        return { id: a.id, label: read(a.label), icon: (typeof a.icon === "function" ? a.icon() : a.icon) ?? null, on: a.on ? a.on() : null, tone: a.tone ?? "normal", key: slot === -1 ? "" : String(slot + 1), short: read(a.short) || read(a.label), kind: a.kind ?? "button", color: read(a.color) };
+        return { id: a.id, label: read(a.label), icon: (typeof a.icon === "function" ? a.icon() : a.icon) ?? null, on: a.on ? a.on() : null, tone: a.tone ?? "normal", key: slot === -1 ? "" : String(slot + 1), short: read(a.short) || read(a.label), kind: a.kind ?? "button", color: read(a.color), ...a.picture ? { picture: a.picture } : {} };
       };
       const known = new Set(sections.map((s) => s.id));
       const extra = [...new Set(showing.map((a) => a.section ?? "travel").filter((id) => !known.has(id)))].map((id) => ({ id, label: id }));
@@ -508,9 +508,17 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 
 /* ---- the sheet: everything else, by section */
 .sheet { position: absolute; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 122px * var(--s)); transform: translateX(-50%);
-  width: min(480px, calc(100vw - 20px)); max-height: min(62vh, 560px); display: flex; flex-direction: column; pointer-events: auto;
+  width: min(480px, calc(100vw - 20px)); max-height: min(70vh, 640px); display: flex; flex-direction: column; pointer-events: auto;
   border-radius: 22px 22px 12px 12px; overflow: hidden; }
 .sheet[hidden] { display: none; }
+/* Where there is room, at a desk, the menu is larger: more of a list at once, and rows side by side. */
+@media (min-width: 900px) and (min-height: 560px) {
+  .sheet { width: min(780px, calc(100vw - 40px)); max-height: min(74vh, 780px); }
+  .rows { grid-template-columns: 1fr 1fr; align-content: start; }
+  .rows > .person, .rows > .swatches, .rows > .tiles, .rows > .row.primary { grid-column: 1 / -1; }
+  .rows > .person.thing { grid-template-columns: 160px 1fr; }
+  .rows > .tiles { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); }
+}
 .sheet::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; pointer-events: none;
   background: linear-gradient(90deg, transparent, rgb(var(--accent)), transparent); box-shadow: 0 0 16px rgb(var(--accent)); }
 .tabs { position: relative; display: flex; gap: 4px; padding: 12px 12px 0; overflow-x: auto; scrollbar-width: none; }
@@ -537,6 +545,16 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .swatch[aria-pressed="true"] i { box-shadow: 0 0 16px var(--c); }
 .swatch[aria-pressed="true"] u { background: var(--c); box-shadow: 0 0 10px var(--c); }
 .swatch[aria-pressed="true"] { color: rgb(var(--ink)); }
+/* Things with pictures of themselves, side by side: what is in a bag. Each is a small plinth the thing stands on. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; padding: 2px 0 4px; }
+.tile { display: grid; grid-template-rows: auto auto; justify-items: center; gap: 4px; padding: 8px 6px 9px; border-radius: 14px 14px 8px 8px; text-align: center;
+  border: 1px solid rgba(var(--ink), .12); background: radial-gradient(120% 90% at 50% 100%, rgba(var(--accent), .13), rgba(var(--ink), .03) 70%);
+  font-size: .9em; line-height: 1.2; color: rgba(var(--ink), .85); transition: background .12s, border-color .12s, transform .12s; }
+.tile .shown { width: 100%; aspect-ratio: 1; display: grid; place-items: center; font-weight: 700; font-size: 1.9em; color: rgba(var(--ink), .35); }
+.tile canvas { width: 100%; height: 100%; display: block; }
+.tile:hover { border-color: rgba(var(--accent), .7); transform: translateY(-2px); }
+.tile[aria-pressed="true"] { border-color: rgb(var(--accent)); color: rgb(var(--ink)); box-shadow: 0 0 0 1px rgb(var(--accent)), 0 0 18px rgba(var(--accent), .35); }
+.tile span { overflow-wrap: anywhere; }
 .row { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 8px 12px; border-radius: 10px; text-align: left;
   border: 1px solid rgba(var(--ink), .12); background: rgba(var(--ink), .03); transition: background .12s, border-color .12s; }
 .row:hover { background: rgba(var(--accent), .13); border-color: rgba(var(--accent), .7); }
@@ -553,6 +571,10 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .person .face { grid-row: span 2; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
   background: var(--c, rgba(var(--ink), .2)); color: rgb(var(--glass)); font-weight: 700; font-size: 1.5em; }
 .person .face canvas { width: 100%; height: 100%; display: block; }
+/* A card about a thing: the thing itself, large, on a lit plinth, where a person's card has a face. */
+.person.thing { grid-template-columns: minmax(112px, 30%) 1fr; align-items: start; gap: 4px 14px; }
+.person.thing .face { grid-row: span 4; width: 100%; height: auto; aspect-ratio: 1; border-radius: 14px;
+  background: radial-gradient(90% 70% at 50% 92%, rgba(var(--accent), .3), transparent 70%), rgba(var(--ink), .05); color: rgba(var(--ink), .4); }
 .person h3 { margin: 0; font-size: 1.15em; font-weight: 650; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; overflow-wrap: anywhere; }
 .person .tag { font-size: .76em; font-weight: 500; padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(var(--ink), .3); color: rgba(var(--ink), .75); white-space: nowrap; }
 .person .tag.proven { border-color: rgba(var(--accent), .8); color: rgb(var(--accent)); }
@@ -689,6 +711,7 @@ function mountHud(controls, opts = {}) {
   const tabsOn = el("button", { class: "more right", type: "button", "aria-label": "More sections", hidden: "" }, "\u203A");
   const tabbar = el("div", { class: "tabbar" }, tabsBack, tabs, tabsOn);
   let tabsShowing = "";
+  let cardShown = "";
   const tendTabs = () => {
     const most = tabs.scrollWidth - tabs.clientWidth;
     tabsBack.hidden = tabs.scrollLeft <= 6;
@@ -746,6 +769,30 @@ function mountHud(controls, opts = {}) {
   const drawCard = (card) => {
     const face = el("span", { class: "face", "aria-hidden": "true" }, [...card.title][0]?.toUpperCase() ?? "");
     if (card.color) face.style.setProperty("--c", card.color);
+    const paint = card.draw;
+    if (paint) {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 256;
+      const g = canvas.getContext("2d");
+      let had = false;
+      const tick2 = () => {
+        if (had && (!canvas.isConnected || sheet.hidden)) return;
+        const now = paint();
+        if (now && g) {
+          g.clearRect(0, 0, 256, 256);
+          g.drawImage(now, 0, 0, 256, 256);
+          if (!had) face.replaceChildren(canvas);
+          had = true;
+        }
+        if (canvas.isConnected || !had) requestAnimationFrame(tick2);
+      };
+      let tries = 0;
+      const begin = () => {
+        if (!face.isConnected && ++tries < 3) return void requestAnimationFrame(begin);
+        tick2();
+      };
+      requestAnimationFrame(begin);
+    }
     if (card.picture) {
       void loadPicture(card.picture).then((drawn2) => {
         if (!drawn2 || !face.isConnected) return;
@@ -765,7 +812,7 @@ function mountHud(controls, opts = {}) {
     });
     return el(
       "div",
-      { class: "person", role: "group", "aria-label": `About ${card.title}` },
+      { class: card.draw ? "person thing" : "person", role: "group", "aria-label": `About ${card.title}` },
       face,
       el("h3", {}, card.title, card.tag && el("span", { class: card.proven ? "tag proven" : "tag" }, card.tag)),
       el("div", { class: "keyline" }, el("span", { class: card.copy ? "mono" : "" }, card.sub), copyKey),
@@ -1082,23 +1129,50 @@ function mountHud(controls, opts = {}) {
       b.addEventListener("click", () => press(item));
       return b;
     };
-    const swatches = (current?.items ?? []).filter((i) => i.kind === "swatch");
-    rows.replaceChildren(
-      current?.card ? drawCard(current.card) : "",
-      swatches.length ? el("div", { class: "swatches" }, ...swatches.map(drawSwatch)) : "",
-      ...(current?.items ?? []).filter((i) => i.kind !== "swatch").map((item) => {
-        const b = el(
-          "button",
-          { class: `row ${item.tone}`, type: "button", ...item.on === null ? {} : { "aria-pressed": String(item.on) } },
-          icon(item.icon),
-          el("span", { class: "grow" }, item.label),
-          item.on !== null && el("span", { class: "state" }, item.on ? "On" : "Off"),
-          item.key ? el("kbd", { class: "mono" }, item.key) : null
-        );
-        b.addEventListener("click", () => press(item));
-        return b;
-      })
-    );
+    const drawTile = (item) => {
+      const shown2 = el("span", { class: "shown", "aria-hidden": "true" }, [...item.short][0]?.toUpperCase() ?? "");
+      const picture = item.picture?.();
+      if (picture) {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 192;
+        canvas.getContext("2d")?.drawImage(picture, 0, 0, 192, 192);
+        shown2.replaceChildren(canvas);
+      }
+      const b = el("button", { class: "tile", type: "button", "aria-label": item.label, "aria-pressed": String(item.on === true) }, shown2, el("span", {}, item.label));
+      b.addEventListener("click", () => press(item));
+      return b;
+    };
+    const drawRow = (item) => {
+      const b = el(
+        "button",
+        { class: `row ${item.tone}`, type: "button", ...item.on === null ? {} : { "aria-pressed": String(item.on) } },
+        icon(item.icon),
+        el("span", { class: "grow" }, item.label),
+        item.on !== null && el("span", { class: "state" }, item.on ? "On" : "Off"),
+        item.key ? el("kbd", { class: "mono" }, item.key) : null
+      );
+      b.addEventListener("click", () => press(item));
+      return b;
+    };
+    const laid = [];
+    let run = null;
+    for (const item of current?.items ?? []) {
+      if (item.kind === "button") {
+        run = null;
+        laid.push(drawRow(item));
+        continue;
+      }
+      if (run?.kind !== item.kind) {
+        run = { kind: item.kind, box: el("div", { class: item.kind === "tile" ? "tiles" : "swatches" }) };
+        laid.push(run.box);
+      }
+      run.box.append(item.kind === "tile" ? drawTile(item) : drawSwatch(item));
+    }
+    const about = current?.card ? `${section}:${current.card.title}` : "";
+    const fresh = about !== cardShown;
+    cardShown = about;
+    rows.replaceChildren(current?.card ? drawCard(current.card) : "", ...laid);
+    if (fresh && about) rows.scrollTop = 0;
     rows.hidden = !current?.items.length && !current?.card;
     note.textContent = current?.note ?? "";
     sheet.hidden = !open;
