@@ -42,7 +42,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE14 from "three";
-import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS6, encodeNpub as encodeNpub3, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, shortNpub as shortNpub6, spawnOffset, verifyEvent as verifyEvent5 } from "@nswp/core";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS7, encodeNpub as encodeNpub3, readRelayList as readRelayList6, RELAY_LIST_KIND as RELAY_LIST_KIND6, shortNpub as shortNpub6, spawnOffset, verifyEvent as verifyEvent5 } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -2623,7 +2623,7 @@ function createSaves(opts = {}) {
 }
 
 // packages/sdk/src/signer.ts
-import { cleanMessage, cleanMore, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex644, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap as looksLikeWrap2, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent4, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { isAchievementAsked, cleanMessage, cleanMore, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex644, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap as looksLikeWrap2, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent4, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -2652,6 +2652,7 @@ var NONE = {
   unwrap: async () => null,
   reach: async () => null,
   score: async () => null,
+  achieve: async () => null,
   onChange: () => () => {
   },
   whenAnswered: async () => {
@@ -2927,6 +2928,10 @@ function createWorldSigner(opts) {
     score(world, board, score) {
       if (state !== "unlocked" || !frame) return Promise.resolve(null);
       return askAbout({ t: "score", id: `c${++n}`, world, board, score }, (reply) => reply.t === "signed" && isScoreAsked(reply.event, { pubkey, world, board, score, origin: location.origin }) ? reply.event : null);
+    },
+    achieve(world, achievement, title) {
+      if (state !== "unlocked" || !frame) return Promise.resolve(null);
+      return askAbout({ t: "achieve", id: `a${++n}`, world, achievement, title }, (reply) => reply.t === "signed" && isAchievementAsked(reply.event, { pubkey, world, id: achievement, title, origin: location.origin }) ? reply.event : null);
     },
     onChange(fn) {
       watchers2.add(fn);
@@ -5888,6 +5893,210 @@ function addScoreControls(controls, opts) {
   return { refresh };
 }
 
+// packages/sdk/src/achievements.ts
+import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS6, publishEvent as publishEvent5, queryRelays as queryRelays6, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate2 } from "@nswp/core";
+function createAchievements(opts) {
+  const world = worldCoordinate2(opts.world);
+  const now = opts.now ?? (() => Date.now());
+  const query = opts.query ?? queryRelays6;
+  const publish = opts.publish ?? publishEvent5;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS6;
+  const list = opts.list.filter((a) => cleanAchievementId(a.id) && a.title);
+  const one = (id) => list.find((a) => a.id === id) ?? null;
+  const store = (() => {
+    if (opts.storage !== void 0) return opts.storage;
+    try {
+      return globalThis.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const watchers2 = /* @__PURE__ */ new Set();
+  const earners = /* @__PURE__ */ new Set();
+  const changed = () => {
+    for (const fn of watchers2) fn();
+  };
+  const keyFor = (who) => `nswp:achievements:${world}:${who ?? "guest"}`;
+  const held = /* @__PURE__ */ new Map();
+  const of = (who) => {
+    const k = keyFor(who);
+    if (!held.has(k)) {
+      let kept2 = { earned: [], shown: [] };
+      try {
+        const read = JSON.parse(store?.getItem(k) ?? "{}");
+        const ids = (v) => Array.isArray(v) ? v.filter((id) => !!cleanAchievementId(id)) : [];
+        kept2 = { earned: ids(read?.earned), shown: ids(read?.shown) };
+      } catch {
+      }
+      held.set(k, kept2);
+    }
+    return held.get(k);
+  };
+  const write = (who) => {
+    try {
+      store?.setItem(keyFor(who), JSON.stringify(of(who)));
+    } catch {
+    }
+  };
+  const earned = () => {
+    const who = opts.hand.pubkey();
+    const all = /* @__PURE__ */ new Set([...of(who).earned, ...who ? of(null).earned : []]);
+    return list.filter((a) => all.has(a.id)).map((a) => a.id);
+  };
+  let relaysKept = null;
+  const ownRelays = (key) => {
+    if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
+    const found = askWell({ kinds: [RELAY_LIST_KIND5], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList5(got.events, key)?.write ?? []).catch(() => []);
+    relaysKept = { key, at: now(), found };
+    return found;
+  };
+  let events = [];
+  let asked = 0;
+  let answered = false;
+  return {
+    list,
+    earned,
+    shown: () => of(opts.hand.pubkey()).shown.filter((id) => !!one(id)),
+    earn(id) {
+      const a = one(id);
+      if (!world || !a || earned().includes(id)) return false;
+      const who = opts.hand.pubkey();
+      of(who).earned.push(id);
+      write(who);
+      changed();
+      for (const fn of earners) fn(a);
+      return true;
+    },
+    async show() {
+      const who = opts.hand.pubkey();
+      if (!world) return { ok: false, said: "This world has no achievements." };
+      if (!who) return { ok: false, said: "Sign in here to show what you have earned: it is under You." };
+      const kept2 = of(who);
+      const waiting = earned().filter((id) => !kept2.shown.includes(id));
+      if (waiting.length === 0) return { ok: true, said: earned().length ? "Everything you have earned here is already shown." : "You haven't earned anything here yet." };
+      const own = await ownRelays(who);
+      let done = 0;
+      for (const id of waiting) {
+        const a = one(id);
+        const signed = await opts.hand.sign(world, id, a.title).catch(() => null);
+        if (!signed) break;
+        const sent = await sendWell(signed, { own, usual: usual(), publish, query, now }).catch(() => null);
+        if (!sent || sent.took === 0) break;
+        kept2.shown.push(id);
+        if (!kept2.earned.includes(id)) kept2.earned.push(id);
+        write(who);
+        events = [...events.filter((e) => e.id !== signed.id), signed];
+        done++;
+      }
+      changed();
+      if (done === 0) return { ok: false, said: "It couldn't be signed or sent, so nothing was shown. What you earned is still kept on this device." };
+      const rest = waiting.length - done;
+      return { ok: rest === 0, said: `${done === 1 ? "1 achievement is" : `${done} achievements are`} shown as yours. Anyone can see ${done === 1 ? "it" : "them"}.${rest ? ` ${rest} more couldn't be sent: try again in a moment.` : ""}` };
+    },
+    async holders(fresh = false) {
+      if (!world) return null;
+      if (fresh || !asked || now() - asked >= 6e4) {
+        asked = now();
+        const got = await askWell({ kinds: [ACHIEVEMENT_KIND], "#a": [world], limit: 500 }, { own: [], usual: usual(), query, timeoutMs: 4e3, now }).catch(() => null);
+        answered = !!got && Object.values(got.relays).some((said) => said === "eose");
+        const byId = new Map([...events, ...got?.events ?? []].map((e) => [e.id, e]));
+        events = [...byId.values()];
+      }
+      if (!answered && events.length === 0) return null;
+      return achievementsIn(events, { world, worldUrl: opts.worldUrl, counted: opts.counted?.() ?? [], me: opts.hand.pubkey() }).byId;
+    },
+    onChange(fn) {
+      watchers2.add(fn);
+      return () => void watchers2.delete(fn);
+    },
+    onEarn(fn) {
+      earners.add(fn);
+      return () => void earners.delete(fn);
+    }
+  };
+}
+
+// packages/sdk/src/achieving.ts
+function addAchievementControls(controls, opts) {
+  const a = opts.achievements;
+  let shown = [];
+  let holders;
+  let looking = false;
+  const look = (fresh = false) => {
+    if (looking) return;
+    looking = true;
+    void a.holders(fresh).catch(() => null).then((got) => {
+      looking = false;
+      holders = got;
+      refresh();
+    });
+  };
+  const refresh = () => {
+    for (const id of shown) controls.remove(id);
+    shown = [];
+    if (a.list.length === 0) return;
+    const add = (...actions) => {
+      for (const x of actions) shown.push(x.id);
+      controls.add(...actions.map((x) => ({ section: "achievements", ...x })));
+    };
+    const earned = a.earned();
+    const out = a.shown();
+    const waiting = earned.filter((id) => !out.includes(id)).length;
+    controls.addSection({
+      id: "achievements",
+      label: "Achievements",
+      icon: "check",
+      note: () => `You have earned ${earned.length} of ${a.list.length} here. What you earn is kept on this device until you show it. Showing it says publicly that you were here, and what you did. Nothing checks what anyone shows.`
+    });
+    add({
+      id: "achievements-show",
+      icon: "check",
+      tone: waiting ? "primary" : "normal",
+      label: () => earned.length === 0 ? "Nothing earned here yet" : !opts.signedIn() ? `Sign in to show the ${earned.length} you have earned` : waiting === 0 ? `All ${earned.length} you have earned ${earned.length === 1 ? "is" : "are"} shown as yours` : `Show the ${waiting} I have earned, as mine (public)`,
+      short: "Show",
+      act: async () => {
+        if (earned.length === 0) return controls.say("Earn one first: it is kept on this device until you show it.");
+        const done = await a.show();
+        controls.say(done.said);
+        look(true);
+        refresh();
+      }
+    });
+    if (holders === void 0) look();
+    for (const one of a.list) {
+      const mine = earned.includes(one.id);
+      const h = holders?.get(one.id);
+      const title = one.hidden && !mine ? "Something not yet found" : one.title;
+      const about = one.hidden && !mine ? "" : one.about ? `: ${one.about}` : "";
+      const others = h ? h.holders - (h.mine ? 1 : 0) : 0;
+      const held = others > 0 ? ` Shown by ${others === 1 ? "1 other" : `${others} others`}${h.known.length ? `, ${h.known.length} you follow` : ""}.` : "";
+      add({
+        id: `achievements-${one.id}`,
+        icon: mine ? "check" : "step",
+        on: () => mine,
+        label: `${title}${about}.${held}`.replace(/\.\./g, "."),
+        act: () => controls.say(mine ? `You earned "${one.title}"${out.includes(one.id) ? ", and it is shown as yours" : ". It is kept on this device until you show it"}.` : one.hidden ? "Not found yet." : `Not earned yet: ${one.about ?? one.title}.`)
+      });
+    }
+  };
+  let drawing = false;
+  const soon2 = () => {
+    if (drawing) return;
+    drawing = true;
+    queueMicrotask(() => {
+      drawing = false;
+      refresh();
+    });
+  };
+  a.onChange(soon2);
+  a.onEarn((one) => {
+    controls.say(`Achievement: ${one.title}. It is kept on this device. Show it as yours from Achievements, in the menu.`);
+    controls.signal("achievement");
+  });
+  refresh();
+  return { refresh };
+}
+
 // packages/sdk/src/sound.ts
 var GAP2 = { step: 0.14, hover: 0.08, bump: 0.5, land: 0.2, notice: 0.25, chat: 0.3 };
 var STRIDE = 0.75;
@@ -8430,12 +8639,12 @@ function addRoomControls(controls, presence, opts = {}) {
     pubkey: () => worldSigner().pubkey,
     who: () => hereAs()?.name || worldSigner().name
   };
-  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS6;
+  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS7;
   let relaysKept = null;
   const ownRelays = (key) => {
     if (!key) return Promise.resolve([]);
     if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND5], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList5(got.events, key)?.write ?? []).catch(() => []);
+    const found = askWell({ kinds: [RELAY_LIST_KIND6], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList6(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: Date.now(), found };
     return found;
   };
@@ -9047,6 +9256,8 @@ export {
   viewScale,
   createScores,
   addScoreControls,
+  createAchievements,
+  addAchievementControls,
   createSounds,
   addSoundControls,
   CHAMBER_ORDER,

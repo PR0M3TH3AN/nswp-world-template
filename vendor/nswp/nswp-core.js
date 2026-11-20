@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.44.0";
+var KIT_VERSION = "0.45.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6590,6 +6590,86 @@ function rankScores(events, o) {
   return { known: ranked.filter((s) => s.known).slice(0, most), others: ranked.filter((s) => !s.known).slice(0, most), mine: ranked.find((s) => s.by === o.me) ?? null, count: ranked.length };
 }
 
+// packages/core/src/achievement.ts
+var ACHIEVEMENT_KIND = 37307;
+var ACHIEVEMENT_LIMITS = {
+  /** A world may have no more than this many signed in `perMs`, and in an hour. */
+  burst: 6,
+  perMs: 6e4,
+  hourly: 60,
+  /** The longest a title may be, and the words about it, in characters. */
+  title: 60,
+  about: 160
+};
+var NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
+function cleanAchievementId(input) {
+  return typeof input === "string" && NAME.test(input) ? input : "";
+}
+function buildAchievement(o) {
+  const world = worldCoordinate(o.world);
+  const id = cleanAchievementId(o.id);
+  const title = cleanLine(o.title, ACHIEVEMENT_LIMITS.title);
+  if (!world || !id || !title) return null;
+  return {
+    kind: ACHIEVEMENT_KIND,
+    created_at: Math.floor(o.now),
+    tags: [
+      ["d", `${world}/${id}`],
+      ["a", world, ...o.relay ? [o.relay] : []],
+      ["achievement", id],
+      ["title", title],
+      ["alt", `An achievement in a world: ${title}`]
+    ],
+    content: ""
+  };
+}
+function achievementForWorld(o) {
+  const origin = cleanOrigin(o.origin);
+  const made = typeof o.world === "string" && typeof o.id === "string" && typeof o.title === "string" ? buildAchievement({ world: o.world, id: o.id, title: o.title, now: o.now }) : null;
+  if (!origin || !made) return null;
+  return { ...made, tags: [...made.tags, [SITE_MARKS[0], origin]] };
+}
+function parseAchievement(event) {
+  if (!event || event.kind !== ACHIEVEMENT_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
+  const world = worldCoordinate(getTags(event, "a")[0]?.[1]);
+  const id = cleanAchievementId(getTags(event, "achievement")[0]?.[1]);
+  const title = cleanLine(getTags(event, "title")[0]?.[1], ACHIEVEMENT_LIMITS.title);
+  if (!world || !id || !title || getTags(event, "d")[0]?.[1] !== `${world}/${id}`) return null;
+  const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
+  return { by: event.pubkey, world, id, title, at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
+}
+function isAchievementAsked(signed, o) {
+  if (!o.pubkey || !verifyEvent(signed) || signed.pubkey !== o.pubkey) return false;
+  const a = parseAchievement(signed);
+  return !!a && a.world === worldCoordinate(o.world) && a.id === o.id && a.title === cleanLine(o.title, ACHIEVEMENT_LIMITS.title) && a.askedAt.includes(cleanOrigin(o.origin));
+}
+function achievementsIn(events, o) {
+  const world = worldCoordinate(o.world);
+  const own = cleanOrigin(o.worldUrl);
+  const counted = new Set(o.counted ?? []);
+  const newest = /* @__PURE__ */ new Map();
+  if (world && own) {
+    for (const event of events) {
+      const a = parseAchievement(event);
+      if (!a || a.world !== world || !a.askedAt.includes(own)) continue;
+      const key = `${a.by} ${a.id}`;
+      const had = newest.get(key);
+      if (had && had.at >= a.at) continue;
+      if (!verifyEvent(event)) continue;
+      newest.set(key, a);
+    }
+  }
+  const byId = /* @__PURE__ */ new Map();
+  for (const a of newest.values()) {
+    const row = byId.get(a.id) ?? { id: a.id, holders: 0, known: [], mine: false };
+    row.holders++;
+    if (a.by === o.me) row.mine = true;
+    else if (counted.has(a.by)) row.known.push(a.by);
+    byId.set(a.id, row);
+  }
+  return { byId, held: [...newest.values()].sort((x, y) => y.at - x.at) };
+}
+
 // packages/core/src/signing.ts
 var SIGNER_PROTOCOL = "nswp-signer";
 var SIGNER_VERSION = 1;
@@ -6704,6 +6784,9 @@ function readSignerRequest(data) {
   if (d.t === "open" && d.event && typeof d.event === "object") return { t: "open", id: d.id, event: d.event };
   if (d.t === "want" && Array.isArray(d.more)) return { t: "want", id: d.id, more: cleanMore(d.more) };
   if (d.t === "score" && worldCoordinate(d.world) && cleanBoard(d.board) && cleanScore(d.score) !== null) return { t: "score", id: d.id, world: worldCoordinate(d.world), board: cleanBoard(d.board), score: cleanScore(d.score) };
+  if (d.t === "achieve" && worldCoordinate(d.world) && cleanAchievementId(d.achievement) && cleanLine(d.title, ACHIEVEMENT_LIMITS.title)) {
+    return { t: "achieve", id: d.id, world: worldCoordinate(d.world), achievement: cleanAchievementId(d.achievement), title: cleanLine(d.title, ACHIEVEMENT_LIMITS.title) };
+  }
   if (d.t === "seal" && isHex64(d.to) && cleanMessage(d.text)) return { t: "seal", id: d.id, to: d.to, text: cleanMessage(d.text) };
   if (d.t === "unwrap" && d.event && typeof d.event === "object") return { t: "unwrap", id: d.id, event: d.event };
   if (d.t === "reach" && Array.isArray(d.relays) && d.relays.length <= 8 && d.relays.every((r) => typeof r === "string" && r.length <= 200)) return { t: "reach", id: d.id, relays: d.relays };
@@ -7396,6 +7479,8 @@ var FRESH_HEADER = "no-cache";
 // packages/core/src/index.ts
 var VERSION = "0.1.0";
 export {
+  ACHIEVEMENT_KIND,
+  ACHIEVEMENT_LIMITS,
   AUDIENCES,
   AVATAR_KIND,
   BRIDGE_GRANT_KIND,
@@ -7476,12 +7561,15 @@ export {
   WORLD_KIND,
   WORLD_TAG,
   WRAP_KIND,
+  achievementForWorld,
+  achievementsIn,
   applyChoices,
   arrivalParam,
   assertManifest,
   audienceOf,
   bridgeTopic,
   bubbleSeconds,
+  buildAchievement,
   buildAirlockUrl,
   buildArrivalUrl,
   buildAvatarEvent,
@@ -7509,6 +7597,7 @@ export {
   checkPreviewBytes,
   claimsKey,
   cleanAbout,
+  cleanAchievementId,
   cleanBoard,
   cleanChat,
   cleanKeys,
@@ -7561,6 +7650,7 @@ export {
   handoffMessage,
   hasEventShape,
   hasSettings,
+  isAchievementAsked,
   isFollowAsked,
   isForm,
   isHex64,
@@ -7597,6 +7687,7 @@ export {
   openWrap,
   packBrought,
   packPose,
+  parseAchievement,
   parseAirlockFragment,
   parseAvatarEvent,
   parseBridgeControl,

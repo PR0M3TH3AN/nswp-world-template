@@ -25,6 +25,7 @@ import {
   TAP_REACH,
   TOP_SPEED,
   WALK_SPEED,
+  addAchievementControls,
   addCameraControls,
   addDeskControls,
   addFollowingControls,
@@ -38,6 +39,7 @@ import {
   byName,
   canRecord,
   capturePanorama,
+  createAchievements,
   createChamber,
   createConsole,
   createCrossing,
@@ -100,7 +102,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-YT2S4R7R.js";
+} from "./shared-EOPGRZ5X.js";
 import {
   currentForm,
   deviceForms,
@@ -170,6 +172,7 @@ export {
   TAP_REACH,
   TOP_SPEED,
   WALK_SPEED,
+  addAchievementControls,
   addCameraControls,
   addDeskControls,
   addFollowingControls,
@@ -188,6 +191,7 @@ export {
   canRecord,
   capturePanorama,
   computerVoice,
+  createAchievements,
   createChamber,
   createConsole,
   createCrossing,

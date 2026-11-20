@@ -199,6 +199,17 @@ export type SignerRequest = {
     world: string;
     board: string;
     score: number;
+}
+/**
+ * Sign that my visitor holds one of my achievements (protocol/16-achievements.md). The world gives its own
+ * coordinate, the achievement's name and what it is called: the signer writes the note and marks it.
+ */
+ | {
+    t: "achieve";
+    id: string;
+    world: string;
+    achievement: string;
+    title: string;
 };
 /**
  * What a world may ask its visitor to let it do, beyond a note and a reaction. A closed list: each is a thing a

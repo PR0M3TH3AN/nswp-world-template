@@ -390,6 +390,8 @@ export { createSaves, type Saved, type SaveResult, type Saves, type SavesOptions
 export { foundRelays, publishBacked, queryBacked, relayBackup } from "./relay-book.js";
 export { createScores, type ScoreHand, type Scores, type ScoresOptions } from "./scores.js";
 export { addScoreControls, type Scoring, type ScoringOptions } from "./scoring.js";
+export { createAchievements, type AchievementHand, type Achievements, type AchievementsOptions } from "./achievements.js";
+export { addAchievementControls, type Achieving, type AchievingOptions } from "./achieving.js";
 export { createMessages, type Conversation, type MessageHand, type Messages, type MessagesOptions, type MessagesState } from "./messages.js";
 export { addMessagingControls, type Messaging, type MessagingHand, type MessagingOptions } from "./messaging.js";
 export { addFollowingControls, keyIn, type Following, type FollowingHand, type FollowingOptions } from "./following.js";
