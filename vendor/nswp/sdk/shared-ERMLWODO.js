@@ -2905,9 +2905,15 @@ var paintHealth = (g, w, h, o) => {
     g.globalAlpha = 1;
   }
 };
+function viaOf(shot, t0, t1) {
+  const pieces = Math.min(24, Math.ceil((t1 - t0) / 0.03 - 1e-9));
+  if (!(pieces > 1)) return {};
+  return { via: Array.from({ length: pieces - 1 }, (_, i) => shotAt(shot, t0 + (t1 - t0) * (i + 1) / pieces)) };
+}
 function createPlay(o) {
   const things = [];
   const pending = /* @__PURE__ */ new Set();
+  const heardShots = /* @__PURE__ */ new Map();
   const rates = /* @__PURE__ */ new Map();
   const bars = /* @__PURE__ */ new Map();
   const blinking = /* @__PURE__ */ new Set();
@@ -3285,11 +3291,12 @@ function createPlay(o) {
     o.onChange?.();
   };
   let pointed = null;
+  const wall = () => typeof performance !== "undefined" ? performance.now() : Date.now();
   const aim = (lift) => {
     const said = o.aim?.();
     let from;
     let to;
-    const tapped = pointed && clock < pointed.until ? pointed.to : null;
+    const tapped = pointed && wall() < pointed.until ? pointed.to : null;
     pointed = null;
     if (said) ({ from, to } = said);
     else if (tapped || o.sighting?.()) {
@@ -3392,7 +3399,7 @@ function createPlay(o) {
     },
     use(toward) {
       if (!active() || !box) return;
-      pointed = toward ? { to: toward.clone(), until: clock + 0.6 } : null;
+      pointed = toward ? { to: toward.clone(), until: wall() + 1500 } : null;
       box.tell("use");
     },
     second() {
@@ -3455,9 +3462,15 @@ function createPlay(o) {
       if (shot) {
         let rate = rates.get(from);
         if (!rate) rates.set(from, rate = createRate2(PLAY_LIMITS.burst, PLAY_LIMITS.perSecond));
-        if (pending.has(`${from}:${shot.id}`) || things.some((t) => t.by === from && t.shot.id === shot.id)) return;
+        if (pending.has(`${from}:${shot.id}`) || heardShots.has(`${from}:${shot.id}`) || things.some((t) => t.by === from && t.shot.id === shot.id)) return;
         if (!rate.take(clock * 1e3)) return;
         if (person.head.distanceTo(v.fromArray(shot.from)) > 3) return;
+      }
+      if (shot) {
+        heardShots.set(`${from}:${shot.id}`, clock);
+        if (heardShots.size > 256) {
+          for (const [key, at] of heardShots) if (clock - at > 10) heardShots.delete(key);
+        }
       }
       const does = (holding) => {
         if (!holding) return;
@@ -3481,6 +3494,7 @@ function createPlay(o) {
       bars.get(pubkey)?.sprite.removeFromParent();
       bars.delete(pubkey);
       rates.delete(pubkey);
+      for (const key of heardShots.keys()) if (key.startsWith(`${pubkey}:`)) heardShots.delete(key);
     },
     update(frame) {
       const at = typeof performance === "undefined" ? null : performance.now();
@@ -3605,7 +3619,7 @@ function createPlay(o) {
             at: three(at),
             turn: [q.x, q.y, q.z, q.w],
             scale: t.object.scale.x,
-            test: last ? { step: last.n, a: shotAt(t.shot, last.t0), b: shotAt(t.shot, last.t1) } : null,
+            test: last ? { step: last.n, a: shotAt(t.shot, last.t0), b: shotAt(t.shot, last.t1), ...viaOf(t.shot, last.t0, last.t1) } : null,
             down: t.state === "falling" && !t.flooredAt
           };
         }),
@@ -3858,14 +3872,18 @@ function createPresence(d) {
     items: d.items,
     sounds: d.sounds ?? null,
     rule: () => itemsRule(),
-    ...d.itemScripts ? { scripts: d.itemScripts } : {},
+    // Asked each time it matters: an engine's world says whether items' own logic runs after this is made.
+    get scripts() {
+      return d.itemScripts ?? false;
+    },
+    ...d.deferredPlay ? { deferred: true } : {},
     me: () => session?.self.pubkey ?? null,
     people: () => [...avatars.values()].filter((a) => a.target && a.root.visible).map((a) => ({ pubkey: a.member.pubkey, head: a.head.getWorldPosition(new THREE8.Vector3()), body: a.torso, over: a.head, root: a.root, holding: a.heldItem ?? "", held: a.held ?? null })),
     itemsMuted: (pubkey) => itemMutes.has(pubkey),
     tell: (said) => session?.tellPlay(said),
     tintsOf: (pubkey) => pubkey === null ? mineTints : avatars.get(pubkey)?.tints ?? {},
     presenting: () => d.renderer.xr.isPresenting,
-    sighting: () => sightK > 0.5,
+    sighting: () => d.sighting ? d.sighting() : sightK > 0.5,
     ...d.theme ? { theme: d.theme } : {},
     // In a headset a thing goes where the hand that holds the item points.
     aim: () => {
@@ -4319,6 +4337,9 @@ function createPresence(d) {
     get holding() {
       return mine;
     },
+    get tints() {
+      return mineTints;
+    },
     setTints(tints) {
       const described = mine ? d.items?.known(mine) : null;
       if (!described) return;
@@ -4562,7 +4583,8 @@ function createPresence(d) {
         light: a.light?.visible ? a.light : null,
         beam: a.beam?.visible ? a.beam : null,
         holding: a.heldItem ?? "",
-        tints: a.tints ?? {}
+        tints: a.tints ?? {},
+        held: a.held ?? null
       }));
     },
     info() {

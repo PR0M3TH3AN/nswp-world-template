@@ -52,6 +52,16 @@ export interface PresenceOptions {
     /** The world's own colour and whether things may move for the visitor, for what is drawn of how they are. */
     theme?: PlayOptions["theme"];
     /**
+     * True for a world drawn by another engine: things in play are kept as places and directions, and that engine
+     * draws them and says what each ran into (`play.snapshot()`, `play.met()`).
+     */
+    deferredPlay?: boolean;
+    /**
+     * Whether the item in hand is up at the visitor's eye, where something other than this draws it there. Left
+     * out, this brings it up itself (`setSighting`).
+     */
+    sighting?: () => boolean;
+    /**
      * The visitor's own look, in its inline form (spec §4.2), for the others in a
      * room to draw them by: usually `arrival.look()`. A function is asked each
      * time a room is joined. Left out, they are drawn as their session key generates.
@@ -127,6 +137,8 @@ export interface Presence {
      * tints, a colour. It is recoloured at once, and the room is told. A tint left out is as its maker made it.
      */
     setTints(tints: Record<string, string>): void;
+    /** The colours chosen for what is in hand now. */
+    readonly tints: Record<string, string>;
     /**
      * Items in play (play.ts): what the item in hand does on a press, the things sent out, and how this visitor is.
      * Null in a world that draws no items.
@@ -265,9 +277,10 @@ export interface PersonDrawn {
     light: THREE.Sprite | null;
     /** A column of light while they are being pointed out. */
     beam: THREE.Sprite | null;
-    /** The item they say they hold, by its coordinate, or "": and the colours they chose for it. */
+    /** The item they say they hold, by its coordinate, or "": the colours they chose for it, and where it is. */
     holding: string;
     tints: Record<string, string>;
+    held: THREE.Object3D | null;
 }
 /** A text panel that always faces the viewer. `width` is in metres. */
 export declare function textSprite(text: string, color: string, width: number): THREE.Sprite;

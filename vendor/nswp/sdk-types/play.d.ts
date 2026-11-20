@@ -178,11 +178,17 @@ export interface PlaySnapshot {
         at: [number, number, number];
         turn: [number, number, number, number];
         scale: number;
-        /** A step to test against the world's shapes: from `a` to `b`. Null where there is nothing to test. */
+        /**
+         * A step to test against the world's shapes: from `a` to `b`. Null where there is nothing to test. A thing
+         * falls as it flies, so a step that took a while is a curve: `via` is then the places it passed between the
+         * two, evenly spaced in time. Test from `a` through each to `b`, in order, and say how far along the whole
+         * step the first meeting was (a meeting half way along the second of four pieces is 0.375).
+         */
         test: {
             step: number;
             a: [number, number, number];
             b: [number, number, number];
+            via?: [number, number, number][];
         } | null;
         /** It has let go and is falling: where is the floor under it? */
         down: boolean;

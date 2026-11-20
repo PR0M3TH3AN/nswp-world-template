@@ -1,7 +1,7 @@
 import { type Travelling } from "./room-controls.js";
 /**
  * Begin. Call once, after `menu`. `options` is JSON: `sharedMusic` false for a place that wants none of its
- * visitors' music shared, `labels` a CSS colour for names. The room's part of the menu is added: Join, the
+ * visitors' music shared. The room's part of the menu is added: Join, the
  * microphone, chat, who is here. Nobody is joined to anything until they ask, having been told what it shows
  * of them, as in every world. Returns `{ ok }`.
  */
