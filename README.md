@@ -117,7 +117,7 @@ the same as in every other world built this way.
   press them), and a Menu with everything else.
 - **In a headset** it is a console. Raise your left wrist in front of you and
   it appears above it; or select the small Menu button low in front of you.
-- **A Look section** lets each visitor change its colours. It starts from your
+- **A Display section** lets each visitor change its colours. It starts from your
   home's accent colour.
 
 A scene adds its own buttons with `ctx.controls.add({ id, label, icon, act })`
@@ -173,10 +173,12 @@ Whatever you build, keep these. `npm run check` looks for both.
 2. **Never ask a visitor for a password, a key or a sign-in.** A world doesn't
    need them. A place that asks looks exactly like a phishing page.
    Your visitors can still sign in from inside your world: the menu has
-   "You are a guest here. Sign in" under "You", with nothing for you to
-   write. It takes them to their own client, which asks them there and
-   brings them back to your world. That button is all a world does about
-   signing in.
+   "Sign in" under "You", with the address it leads to and nothing for you
+   to write. It opens a window at their own sign-in address, which asks
+   them there, and they never leave your world. A visitor whose client
+   names no sign-in address sees "You are a guest here. Sign in" in its
+   place, which takes them to their own client and brings them back. That
+   row is all a world does about signing in.
 
 ## Put it online
 
@@ -295,7 +297,9 @@ You can stand in your world while you change it.
   can listen, you can speak instead of typing.
 - **A terminal on your own computer,** if your home is a BitPortal room. Run
   the NSWP Bridge on your computer naming this world
-  (`npm run bridge -- --world http://127.0.0.1:5173`), name the same address
+  (`npm run bridge -- --world http://127.0.0.1:5173`, run in a copy of the
+  [NSWP repository](https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-),
+  where the Bridge is: this folder has no such command), name the same address
   under Your computers in your room, and go to it from there. A terminal on
   your computer opens in a panel here, and your computer asks you first.
 
@@ -384,7 +388,7 @@ their game through, so look yourself before you publish.
 
 ## The protocol
 
-The rules this world follows are written down as nine short documents:
+The rules this world follows are written down as eleven short documents:
 [the NSWP protocol documents](https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/tree/main/protocol). You don't need them to build a scene. Read
 them if you want to know what a door, an arrival or a look is on the wire, or
 to build a world without this template:

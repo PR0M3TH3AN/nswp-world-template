@@ -1,8 +1,22 @@
-export { bump, check, claim, door, events, headset, kit, menu, moved, open, play, presence, run, say, target, view } from "./engine-menu.js";
+export { bump, check, claim, door, events, headset, kit, menu, moved, open, play, presence, run, say, target, view, who } from "./engine-menu.js";
 /** Bumped when what the functions take or give changes, so an engine's side can tell. */
-export declare const VERSION = 7;
+export declare const VERSION = 8;
 /** The kit this script was built from, as a world's manifest should say it (`"kit": NSWP.KIT`). */
-export declare const KIT = "0.33.0";
+export declare const KIT = "0.34.0";
+/** Where the crossing's room is: "arriving" (doors shut, the world loading), "opening", "none", "leaving", "shut", or "failed". */
+export declare function crossing(): string;
+/**
+ * How much of the world has arrived, from 0 to 1: the line of light over the doors fills. Anything else (-1, say)
+ * for "loading, and nobody knows how much". The page that starts the engine calls this as the engine downloads.
+ */
+export declare function loading(fraction: number): void;
+/**
+ * The world is ready to be stepped into: the doors open. Asking for the menu does this by itself, so a world calls
+ * it only if it asked for its menu with `hold` true, to open the doors at a moment of its own choosing.
+ */
+export declare function ready(): void;
+/** The world couldn't start: the doors stay shut, and the sign says why. Plain words, shown as text. */
+export declare function failed(words: string): void;
 /**
  * How the visitor arrived, as JSON. Reading it takes it out of the page's
  * address, as it must be: an arrival is for this visit and not for whoever
@@ -18,8 +32,9 @@ export declare const KIT = "0.33.0";
  *
  * `arrived` is false for someone who came by an ordinary link, and every
  * other field then has its plain value. `name` and `pubkey` are filled only
- * when they came by name and their pass checks out for this site; otherwise
- * `guest` is true. `canGoHome` says whether `home()` would lead anywhere, and
+ * for someone signed in here, whose pass checks out for this site; otherwise
+ * `guest` is true. It changes when they sign in or out in the menu: ask `who()`
+ * when a `who` event comes. `canGoHome` says whether `home()` would lead anywhere, and
  * `signIn()` with it: both go to the visitor's own client.
  */
 export declare function arrival(): string;

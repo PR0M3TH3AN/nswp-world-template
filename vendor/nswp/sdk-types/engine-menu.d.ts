@@ -1,3 +1,11 @@
+declare const tell: (event: Record<string, unknown>) => void;
+/** For the rest of the engine's script to tell the engine something the same way. */
+export declare const tellEngine: typeof tell;
+export declare const onMenu: (fn: (look: {
+    title: string;
+    accent?: string;
+    hold: boolean;
+}) => void) => void;
 /**
  * The numbers every world shares, and the two a visitor sets for themselves
  * (how fast the view turns, how wide they see), as JSON: how fast a visitor walks, how far
@@ -29,6 +37,12 @@ export declare function check(url: string): string;
  * whether there is a mouse to move the intense way with.
  */
 export declare function menu(options?: string): string;
+/**
+ * Who the visitor is here, now, as JSON: `guest` true, or `name`, `pubkey`, `picture` (an address, to be fetched the
+ * way the kit fetches one or not at all) and `about`. It changes when they sign in or out in the menu: a `who`
+ * event says so, with the same fields. A name is theirs only while they are signed in here.
+ */
+export declare function who(): string;
 /** What happened since the engine last asked, as a JSON list, oldest first. Ask every frame. */
 export declare function events(): string;
 /** Play one of the kit's cues by name (`kit().cues`): the world's own sound for it, or the default. */
@@ -96,3 +110,4 @@ export declare function claim(on: unknown): void;
  * `remove` true, the door is taken off the list.
  */
 export declare function door(entry: string): void;
+export {};
