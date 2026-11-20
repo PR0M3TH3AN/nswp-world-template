@@ -84,6 +84,11 @@ disagree, the documents are right and this file has a bug.
    Don't load a door's picture from the world it leads to, or from anywhere
    else, while a visitor is here: that tells another site who is standing
    near its door before they have chosen to go.
+10. **Visitors always get the latest.** The build tells the host to send the
+    page and scripts with `Cache-Control: no-cache`, and the menu offers the
+    latest to a page that was open across an update. Don't lengthen what a
+    browser may keep, don't add a service worker that serves old copies, and
+    never clear a visitor's storage to make an update take.
 
 ## When the owner asks for something the rules forbid
 

@@ -19,4 +19,5 @@ export * from "./pass.js";
 export * from "./bridge.js";
 export * from "./local.js";
 export * from "./settings.js";
+export * from "./fresh.js";
 export declare const VERSION = "0.1.0";

@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.34.0";
+var KIT_VERSION = "0.35.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6833,6 +6833,20 @@ function setLocalMap(map) {
   loading = map ? Promise.resolve(map) : void 0;
 }
 
+// packages/core/src/fresh.ts
+function servedFresh(cacheControl) {
+  if (typeof cacheControl !== "string" || !cacheControl.trim()) return false;
+  const said = /* @__PURE__ */ new Map();
+  for (const part of cacheControl.toLowerCase().split(",")) {
+    const [name, value = ""] = part.trim().split("=");
+    if (name) said.set(name.trim(), value.trim().replace(/^"|"$/g, ""));
+  }
+  if (said.has("no-store") || said.has("no-cache")) return true;
+  const age = said.get("max-age");
+  return age !== void 0 && /^\d+$/.test(age) && Number(age) === 0;
+}
+var FRESH_HEADER = "no-cache";
+
 // packages/core/src/index.ts
 var VERSION = "0.1.0";
 export {
@@ -6850,6 +6864,7 @@ export {
   DEFAULT_RELAYS,
   ENTRY_ASSERTION_KIND,
   FOV_RANGE,
+  FRESH_HEADER,
   HANDOFF_PROTOCOL,
   HOME_CAPABILITY,
   HOME_LAYOUT_KIND,
@@ -7013,6 +7028,7 @@ export {
   readSignerRequest,
   roomTopic,
   serializeEvent,
+  servedFresh,
   setLocalMap,
   shortNpub,
   shouldInitiate,
