@@ -14,6 +14,8 @@ export * from "./chat.js";
 export * from "./signing.js";
 export * from "./save.js";
 export * from "./rating.js";
+export * from "./people.js";
+export * from "./message.js";
 export * from "./layout.js";
 export * from "./avatar.js";
 export * from "./list.js";
