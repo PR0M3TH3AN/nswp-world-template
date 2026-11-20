@@ -36,6 +36,11 @@ export interface PortalGate {
     setLabel(label: string): void;
     /** Say what kind of place it leads to, on the sign: one of the core's `CATEGORIES`. Anything else says nothing. */
     setCategory(category: string | null | undefined): void;
+    /**
+     * Say what the people this visitor has reason to trust thought of the place, under the address: "★ 4.5 from 3"
+     * (protocol/13-ratings.md). "" says nothing, which is what a door says when nobody they know has rated it.
+     */
+    setRating(mark: string): void;
     /** Show a preview of the destination through the portal (spec §5.8). Returns the window, for a world that needs to hide it while it photographs itself. */
     showThrough(pano: THREE.Texture): THREE.Mesh;
     update(t: number, dt: number): void;

@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { checkPreviewBytes, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { createDoorRatings, signerNamed, worldPeople, worldSigner, addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -751,6 +751,42 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     roomPresence = presence;
     // A visitor who was in the room where they came from stays joined here: their own client says so (NSWP-03).
     ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context, panels, sounds, presenting: () => renderer.xr.isPresenting, ...(config.sharedMusic === false ? { sharedMusic: false } : {}) }));
+    // What the people this visitor follows thought of where each door leads, on the door's sign (NSWP-13). Their
+    // own rating always counts; the people they follow do where they have let this world see who that is. Asked of
+    // relays by world, never by person; for a guest nothing is asked or shown. Only for a door whose address
+    // `npm run doors` has noted: without it, a rating the place asked for itself couldn't be told from the rest.
+    const rated: { gate: PortalGate; world: string; url: string }[] = [];
+    for (const gate of gates) {
+      try {
+        const to = gate.destination.naddr ? decodeNaddr(gate.destination.naddr) : null;
+        const world = to && to.kind === WORLD_KIND ? `${WORLD_KIND}:${to.pubkey}:${to.identifier}` : "";
+        const url = site.places?.[world];
+        if (world && url) rated.push({ gate, world, url });
+      } catch {
+        /* not an address this page can read */
+      }
+    }
+    if (rated.length && signerNamed()) {
+      const signedIn = () => worldSigner().state === "unlocked";
+      const doorRatings = createDoorRatings({
+        doors: rated.map((r) => ({ world: r.world, url: r.url })),
+        me: () => (signedIn() ? worldSigner().pubkey : null),
+        counted: () => (signedIn() && worldSigner().more.includes("follows") ? worldPeople().follows() : null),
+        relays: config.relays,
+      });
+      const paint = () => {
+        for (const r of rated) r.gate.setRating(doorRatings.mark(r.world));
+        state.rated = Object.fromEntries(rated.map((r) => [r.world, doorRatings.mark(r.world)]));
+      };
+      const look = () => {
+        if (signedIn() && worldSigner().more.includes("follows") && worldPeople().follows() === null) void worldPeople().load();
+        void doorRatings.load();
+      };
+      doorRatings.onChange(paint);
+      worldPeople().onChange(paint);
+      worldSigner().onChange(look);
+      look();
+    }
     // Shut in the crossing's room, nobody else is in it with the visitor, wherever they happen to be standing.
     presenceUpdate = (dt) => {
       presence.setHidden(crossing.state !== "none");

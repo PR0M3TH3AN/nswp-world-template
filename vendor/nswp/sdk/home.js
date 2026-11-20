@@ -8,7 +8,7 @@ import {
   createAlloy,
   createPortalWindow,
   textSprite
-} from "./shared-RGBID5EZ.js";
+} from "./shared-XJIBPTZG.js";
 import "./shared-K6U46VNY.js";
 import "./shared-F6F6TMXL.js";
 import "./shared-Q3D4OUDA.js";
@@ -940,6 +940,7 @@ function createPortalGate(destination, opts = {}) {
   let sign = null;
   let said = opts.label ?? "Portal";
   let category = opts.category ?? null;
+  let rating = "";
   const setLabel = (label) => {
     said = label;
     if (sign) {
@@ -948,7 +949,8 @@ function createPortalGate(destination, opts = {}) {
       sign.material.dispose();
     }
     sign = textSprite(`${label}
-${addressLine(destination, category)}`, textColor, 2.2);
+${addressLine(destination, category)}${rating ? `
+${rating}` : ""}`, textColor, 2.2);
     sign.position.set(0, PORTAL_SIGN_HEIGHT, 0);
     group.add(sign);
   };
@@ -963,6 +965,12 @@ ${addressLine(destination, category)}`, textColor, 2.2);
     setCategory(next) {
       if ((next ?? null) === category) return;
       category = next ?? null;
+      setLabel(said);
+    },
+    setRating(mark) {
+      const next = typeof mark === "string" ? mark.replace(/\s+/g, " ").trim().slice(0, 24) : "";
+      if (next === rating) return;
+      rating = next;
       setLabel(said);
     },
     showThrough(pano) {

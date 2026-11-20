@@ -43,6 +43,7 @@ import {
   createChamber,
   createConsole,
   createCrossing,
+  createDoorRatings,
   createFigure,
   createFloorMarks,
   createFps,
@@ -105,7 +106,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-RGBID5EZ.js";
+} from "./shared-XJIBPTZG.js";
 import {
   currentForm,
   deviceForms,
@@ -198,6 +199,7 @@ export {
   createChamber,
   createConsole,
   createCrossing,
+  createDoorRatings,
   createFigure,
   createFloorMarks,
   createFps,

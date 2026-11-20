@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.46.0";
+var KIT_VERSION = "0.47.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6501,6 +6501,9 @@ function tallyRatings(events, o) {
   const sum = ratings.reduce((n, r) => n + r.stars, 0);
   return { count: ratings.length, average: ratings.length ? Math.round(sum / ratings.length * 10) / 10 : 0, mine: o.me && newest.get(o.me)?.stars || 0, ratings };
 }
+function tallyMark(tally) {
+  return tally && tally.count ? `\u2605 ${tally.average.toFixed(1)} from ${tally.count}` : "";
+}
 function tallyWords(tally) {
   return tally.count ? `${tally.average.toFixed(1)} of ${RATING_LIMITS.most}, from ${tally.count}` : "";
 }
@@ -7748,6 +7751,7 @@ export {
   signerMessage,
   spawnOffset,
   stripArrivalParam,
+  tallyMark,
   tallyRatings,
   tallyWords,
   toHex,
