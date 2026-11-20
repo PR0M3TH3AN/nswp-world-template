@@ -15,7 +15,7 @@
  * refusal. Nothing is asked of the visitor here. The window that unlocks it
  * is the client's own page, which this page can't read.
  */
-import { type NostrEvent, type SignerMore } from "@nswp/core";
+import { type NostrEvent, type Message, type SealedMessage, type SignerMore } from "@nswp/core";
 /** "none": the visitor has no client here that offers one. "locked": there is one, and it hasn't been unlocked for this world. */
 export type SignerState = "none" | "locked" | "unlocked";
 export interface WorldSigner {
@@ -110,6 +110,17 @@ export interface WorldSigner {
     } | {
         remove: string;
     }): Promise<NostrEvent | null>;
+    /**
+     * Have a private message written and sealed, for a visitor who let this world send them
+     * (protocol/14-people-and-messages.md). What comes back is the message and its two seals: one for its reader,
+     * one for the visitor to read back. This page wraps each and sends it. Null if it is locked, or they haven't
+     * allowed it, or it refused, or what came back isn't that message, sealed by the key it holds.
+     */
+    seal(to: string, text: string): Promise<SealedMessage | null>;
+    /** Have a wrapped message opened: one a relay gave this page, sent to the visitor. Null as for `seal`, or if it isn't a message for them. */
+    unwrap(wrap: NostrEvent): Promise<Message | null>;
+    /** Have the list of where their private messages reach them signed. Null as for `seal`. */
+    reach(relays: readonly string[]): Promise<NostrEvent | null>;
     /** Be told when its state changes. Returns how to stop. */
     onChange(fn: () => void): () => void;
     /**

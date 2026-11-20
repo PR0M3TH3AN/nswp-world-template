@@ -29,6 +29,7 @@ import {
   addDeskControls,
   addFollowingControls,
   addJump,
+  addMessagingControls,
   addPanelControls,
   addRoomControls,
   addSoundControls,
@@ -46,6 +47,7 @@ import {
   createJump,
   createKeyboard,
   createLibrary,
+  createMessages,
   createPanels,
   createPeople,
   createPortalWindow,
@@ -100,7 +102,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-SUMPHWXH.js";
+} from "./shared-A76RO72F.js";
 import {
   currentForm,
   deviceForms,
@@ -166,6 +168,7 @@ export {
   addDeskControls,
   addFollowingControls,
   addJump,
+  addMessagingControls,
   addPanelControls,
   addRoomControls,
   addSoundControls,
@@ -187,6 +190,7 @@ export {
   createJump,
   createKeyboard,
   createLibrary,
+  createMessages,
   createPanels,
   createPeople,
   createPortalWindow,

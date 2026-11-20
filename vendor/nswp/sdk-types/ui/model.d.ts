@@ -1,5 +1,6 @@
 import { type ChatView, type UiChat } from "./chat.js";
 import { type FeedView, type UiFeed } from "./feed.js";
+import { type LettersView, type UiLetters } from "./letters.js";
 import type { IconName } from "./icons.js";
 import { DEFAULT_THEME, type UiTheme } from "./theme.js";
 type Text = string | (() => string);
@@ -137,6 +138,8 @@ export interface UiView {
     chat: ChatView;
     /** The visitor's own public posts, and the place to send out another (ui/feed.ts). */
     feed: FeedView;
+    /** A private conversation with one person (ui/letters.ts). */
+    letters: LettersView;
 }
 export interface Controls {
     readonly theme: UiTheme;
@@ -194,6 +197,8 @@ export interface Controls {
     readonly chat: UiChat;
     /** The visitor's own public posts (ui/feed.ts). The room fills it once something signs for them; every renderer draws it. */
     readonly feed: UiFeed;
+    /** A private conversation with one person (ui/letters.ts). Whoever holds the visitor's messages fills it; every renderer draws it. */
+    readonly letters: UiLetters;
 }
 export interface ControlsOptions {
     /** The world's name. */

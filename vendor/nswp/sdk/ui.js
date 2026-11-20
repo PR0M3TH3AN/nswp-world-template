@@ -35,6 +35,73 @@ import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/ui/model.ts
 import { cleanSettings, PINS_MOST } from "@nswp/core";
+
+// packages/sdk/src/ui/letters.ts
+import { cleanMessage, MESSAGE_LIMITS } from "@nswp/core";
+function createUiLetters(changed, now = () => Date.now()) {
+  let opts = null;
+  let waiting = [];
+  let said = "";
+  let version = 0;
+  let count = 0;
+  const bump = () => {
+    version++;
+    changed();
+  };
+  return {
+    attach(next) {
+      opts = next;
+      waiting = [];
+      said = "";
+      bump();
+    },
+    detach() {
+      if (!opts) return;
+      opts = null;
+      waiting = [];
+      said = "";
+      bump();
+    },
+    touch: bump,
+    seen() {
+      opts?.seen?.();
+    },
+    send(text) {
+      const mine = opts;
+      if (!mine) return "There is nobody to write to: choose someone first.";
+      const words = cleanMessage(text);
+      if (!words) return null;
+      const line = { key: `new-${++count}`, mine: true, who: "You", text: words, at: Math.floor(now() / 1e3), state: "sending" };
+      waiting.push(line);
+      said = "";
+      bump();
+      void mine.send(words).catch(() => ({ ok: false, said: "That wasn't sent." })).then((how) => {
+        if (opts !== mine) return;
+        if (how.ok) waiting = waiting.filter((l) => l !== line);
+        else line.state = "failed";
+        said = how.said;
+        bump();
+      });
+      return null;
+    },
+    view() {
+      const name = typeof opts?.with === "function" ? opts.with() : opts?.with ?? "";
+      const lines = opts ? [...opts.lines().map((l) => ({ ...l, state: "out" })), ...waiting].sort((a, b) => a.at - b.at) : [];
+      return {
+        ready: !!opts,
+        title: name ? `${name}, privately` : "Private messages",
+        with: name,
+        lines,
+        said,
+        lead: name ? `Private: only you and ${name} can read what is written here. A relay is told who it is for, and nothing more.` : "",
+        limit: MESSAGE_LIMITS.chars,
+        version
+      };
+    }
+  };
+}
+
+// packages/sdk/src/ui/model.ts
 var PRESENCES = ["full", "quiet", "hidden"];
 var CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"];
 function cleanKeys(now, k) {
@@ -56,6 +123,8 @@ var STANDARD = [
   { id: "people", label: "People", icon: "people" },
   // Who the visitor follows (following.ts). Empty, and not shown, for a guest.
   { id: "following", label: "Following", icon: "list" },
+  // Their private messages (messaging.ts). Empty, and not shown, for a guest.
+  { id: "messages", label: "Messages", icon: "chat" },
   { id: "camera", label: "Camera", icon: "camera" },
   { id: "panels", label: "Panels", icon: "panel" },
   { id: "view", label: "View", icon: "vr" },
@@ -119,6 +188,7 @@ function createControls(opts) {
   };
   const chat = createUiChat(changed);
   const feed = createUiFeed(changed);
+  const letters = createUiLetters(changed);
   function addSection(s) {
     const i = sections.findIndex((x) => x.id === s.id);
     if (i === -1) sections.push({ ...s });
@@ -235,7 +305,8 @@ function createControls(opts) {
         corner,
         keys: claimed ? { menu: null, hotbar: false, chat: null } : keys,
         chat: chat.view(),
-        feed: feed.view()
+        feed: feed.view(),
+        letters: letters.view()
       };
     },
     subscribe(fn) {
@@ -259,7 +330,8 @@ function createControls(opts) {
       return () => sayers.delete(fn);
     },
     chat,
-    feed
+    feed,
+    letters
   };
   const keep = (patch) => controls.setTheme(patch, true);
   controls.add(
@@ -388,7 +460,10 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .chat form button:hover { background: rgb(var(--accent)); color: rgb(var(--glass)); }
 .chat .hint { margin: 0; padding: 0 12px 8px; font-size: .9em; color: rgb(var(--warn)); }
 .chat .hint:empty { display: none; }
-.chat header .tabs2 { flex: 1; display: flex; gap: 4px; min-width: 0; }
+/* Three sides may be up at once: the strip slides under a finger sooner than run under the button that puts the panel away. */
+.chat header .tabs2 { flex: 1; display: flex; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.chat header .tabs2::-webkit-scrollbar { display: none; }
+.chat header .tabs2 .tab { flex: 0 0 auto; white-space: nowrap; }
 .chat header .tab { width: auto; height: 30px; padding: 0 10px; font-weight: 650; white-space: nowrap; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; }
 .chat header .tab[aria-selected="true"] { color: rgb(var(--ink)); border-bottom-color: rgb(var(--accent)); }
 .chat .lead, .chat .said { margin: 0; padding: 8px 14px 0; font-size: .9em; color: rgba(var(--ink), .7); }
@@ -403,7 +478,10 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .chat[data-tab="feed"] ol { align-content: start; gap: 0; padding: 0 14px; }
 .chat li.post { padding: 10px 0; border-bottom: 1px solid rgba(var(--ink), .12); overflow-wrap: anywhere; }
 .chat li.post:last-child { border-bottom: 0; }
-.chat li.post small { display: block; margin-top: 3px; font-size: .86em; color: rgba(var(--ink), .55); }
+.chat li.letter { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat li.letter.sending { opacity: .6; }
+.chat li.letter.failed small { color: rgb(var(--warn)); opacity: 1; }
+.chat li.letter small, .chat li.post small { display: block; margin-top: 3px; font-size: .86em; color: rgba(var(--ink), .55); }
 .chat li.post.failed small { color: rgb(var(--warn)); }
 .chat li.post.sending { opacity: .7; }
 .chat[data-state="peek"] :is(header, form, .hint, .empty, .lead, .said) { display: none; }
@@ -626,7 +704,8 @@ function mountHud(controls, opts = {}) {
   const chatTitle = el("b");
   const tabRoom = el("button", { type: "button", class: "tab", role: "tab" }, "Room chat");
   const tabFeed = el("button", { type: "button", class: "tab", role: "tab" }, "My public feed");
-  const chatTabs = el("div", { class: "tabs2", role: "tablist" }, tabRoom, tabFeed);
+  const tabLetters = el("button", { type: "button", class: "tab", role: "tab" }, "Private messages");
+  const chatTabs = el("div", { class: "tabs2", role: "tablist" }, tabRoom, tabLetters, tabFeed);
   const feedLead = el("p", { class: "lead" });
   const feedSaid = el("p", { class: "said", role: "status" });
   const chatClose = el("button", { type: "button", "aria-label": "Put this away" }, icon("close"));
@@ -704,8 +783,11 @@ function mountHud(controls, opts = {}) {
   const drawChat = (view) => {
     const c = view.chat;
     const f = view.feed;
-    if (chatState === "open" && !(dockTab === "feed" ? f.ready : c.ready)) {
-      if (dockTab === "feed" ? c.ready : f.ready) dockTab = dockTab === "feed" ? "room" : "feed";
+    const l = view.letters;
+    const readyOf = (tab) => tab === "feed" ? f.ready : tab === "letters" ? l.ready : c.ready;
+    if (chatState === "open" && !readyOf(dockTab)) {
+      const other = ["room", "letters", "feed"].find(readyOf);
+      if (other) dockTab = other;
       else setChatState("closed");
     }
     if (chatState === "peek" && !c.ready) setChatState("closed");
@@ -713,23 +795,28 @@ function mountHud(controls, opts = {}) {
     if (c.ready && newest && newest !== chatNewest && chatState !== "open" && !c.lines[c.lines.length - 1].mine) setChatState("peek");
     chatNewest = newest;
     const showing = chatState === "open" ? dockTab : "room";
-    const now = JSON.stringify([chatState, showing, c.version, c.ready, f.version, f.ready, showing === "feed" ? [Math.floor(Date.now() / 6e4), f.lead] : 0]);
+    const now = JSON.stringify([chatState, showing, c.version, c.ready, f.version, f.ready, l.version, l.ready, showing === "feed" ? [Math.floor(Date.now() / 6e4), f.lead] : showing === "letters" ? [Math.floor(Date.now() / 6e4), l.title] : 0]);
     if (now === chatDrawn) return;
     chatDrawn = now;
     chat.dataset.state = chatState;
     chat.dataset.tab = showing;
-    chat.setAttribute("aria-label", showing === "feed" ? f.title : "Room chat");
-    const both = c.ready && f.ready;
+    chat.setAttribute("aria-label", showing === "feed" ? f.title : showing === "letters" ? l.title : "Room chat");
+    const both = [c.ready, f.ready, l.ready].filter(Boolean).length > 1;
     chatTabs.hidden = !both;
     chatTitle.hidden = both;
-    chatTitle.textContent = showing === "feed" ? f.title : c.title;
+    chatTitle.textContent = showing === "feed" ? f.title : showing === "letters" ? l.title : c.title;
+    tabRoom.hidden = !c.ready;
+    tabFeed.hidden = !f.ready;
+    tabLetters.hidden = !l.ready;
+    tabLetters.textContent = l.title;
+    tabLetters.setAttribute("aria-selected", String(showing === "letters"));
     tabRoom.textContent = c.unread && showing !== "room" ? `Room chat: ${c.unread} new` : "Room chat";
     tabRoom.setAttribute("aria-selected", String(showing === "room"));
     tabFeed.setAttribute("aria-selected", String(showing === "feed"));
-    feedLead.hidden = showing !== "feed";
-    feedSaid.hidden = showing !== "feed";
-    chatField.maxLength = showing === "feed" ? f.limit : c.limit;
-    const words = showing === "feed" ? "Write a post" : "Write to the room";
+    feedLead.hidden = showing === "room";
+    feedSaid.hidden = showing === "room";
+    chatField.maxLength = showing === "feed" ? f.limit : showing === "letters" ? l.limit : c.limit;
+    const words = showing === "feed" ? "Write a post" : showing === "letters" ? `Write to ${l.with}, privately` : "Write to the room";
     chatField.placeholder = words;
     chatField.setAttribute("aria-label", words);
     chatSend.textContent = showing === "feed" ? "Send out a post" : "Send";
@@ -741,6 +828,23 @@ function mountHud(controls, opts = {}) {
       chatEmpty.textContent = f.loading ? "Fetching your posts\u2026" : "Nothing here yet. What you send out appears here, and on Nostr for anyone to read.";
       chatEmpty.hidden = f.posts.length > 0;
       chatLines.hidden = f.posts.length === 0;
+      return;
+    }
+    if (showing === "letters") {
+      feedLead.textContent = l.lead;
+      feedSaid.textContent = l.said;
+      const nowSec = Math.floor(Date.now() / 1e3);
+      const wasAtEnd = chatLines.scrollHeight - chatLines.scrollTop - chatLines.clientHeight < 40;
+      chatLines.replaceChildren(
+        ...l.lines.map(
+          (line) => el("li", { class: `letter ${line.mine ? "mine" : ""} ${line.state}` }, el("b", {}, line.mine ? "You" : line.who), " ", line.text, el("small", {}, line.state === "sending" ? "Sending\u2026" : line.state === "failed" ? "Not sent" : ago(line.at, nowSec)))
+        )
+      );
+      chatEmpty.textContent = `Nothing yet. What you write here is for ${l.with} alone.`;
+      chatEmpty.hidden = l.lines.length > 0;
+      chatLines.hidden = l.lines.length === 0;
+      if (wasAtEnd || l.lines[l.lines.length - 1]?.mine) chatLines.scrollTop = chatLines.scrollHeight;
+      controls.letters.seen();
       return;
     }
     const lines = chatState === "peek" ? c.lines.slice(-PEEK_LINES) : c.lines;
@@ -762,8 +866,9 @@ function mountHud(controls, opts = {}) {
     if (next) {
       const c = controls.chat.view();
       const f = controls.feed.view();
-      const want = tab ?? (chatState === "open" ? dockTab : c.ready ? "room" : "feed");
-      if (!(want === "feed" ? f.ready : c.ready) || host.hidden || controls.view().presence === "hidden") return;
+      const l = controls.letters.view();
+      const want = tab ?? (chatState === "open" ? dockTab : c.ready ? "room" : l.ready ? "letters" : "feed");
+      if (!(want === "feed" ? f.ready : want === "letters" ? l.ready : c.ready) || host.hidden || controls.view().presence === "hidden") return;
       const was = chatState === "open";
       if (was && want === dockTab) return;
       dockTab = want;
@@ -793,11 +898,12 @@ function mountHud(controls, opts = {}) {
   chatClose.addEventListener("click", () => setChatOpen(false));
   tabRoom.addEventListener("click", () => setChatOpen(true, "room"));
   tabFeed.addEventListener("click", () => setChatOpen(true, "feed"));
+  tabLetters.addEventListener("click", () => setChatOpen(true, "letters"));
   chatForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = chatField.value;
     if (!text.trim()) return setChatOpen(false);
-    const trouble = dockTab === "feed" ? controls.feed.send(text) : controls.chat.send(text);
+    const trouble = dockTab === "feed" ? controls.feed.send(text) : dockTab === "letters" ? controls.letters.send(text) : controls.chat.send(text);
     chatHint.textContent = trouble ?? "";
     if (!trouble) chatField.value = "";
     if (!trouble && dockTab === "feed") chatLines.scrollTop = 0;
@@ -1073,6 +1179,7 @@ function mountHud(controls, opts = {}) {
     if (name.startsWith("show:") && !host.hidden) setOpen(true, name.slice(5));
     if (name === "toggle:chat" && !host.hidden) setChatOpen(!(chatState === "open" && dockTab === "room"), "room");
     if (name === "toggle:feed" && !host.hidden) setChatOpen(!(chatState === "open" && dockTab === "feed"), "feed");
+    if (name === "open:letters" && !host.hidden) setChatOpen(true, "letters");
   });
   const tick = setInterval(draw, 400);
   host.classList.add("arriving");

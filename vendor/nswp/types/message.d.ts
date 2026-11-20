@@ -95,5 +95,52 @@ export declare function openWrap(wrap: NostrEvent | null | undefined, secretKey:
  * at most. Empty when they have published none: they can't be sent a message this way until they have.
  */
 export declare function readMessageRelays(events: readonly NostrEvent[], pubkey: string): string[];
+/**
+ * A world may be let send and read its visitor's private messages (protocol/14-people-and-messages.md, "Messages
+ * from inside a world"). How often it may have one sealed: the pace of a person writing.
+ */
+export declare const MESSAGE_WORLD_LIMITS: {
+    readonly burst: 10;
+    readonly perMs: 60000;
+    readonly hourly: 200;
+};
+/** A message written and sealed twice: once for its reader, and once for its writer to read back. */
+export interface SealedMessage {
+    message: WrittenMessage;
+    /** For the reader, then for the writer. Each is wrapped for the one it is for, by whoever sends it. */
+    seals: [NostrEvent, NostrEvent];
+}
+/**
+ * What a signer does when it is asked to send a message, with the writer's key in hand: write it, and seal it to
+ * its reader and to its writer. Whoever asked wraps each seal (`wrapSeal`) and sends it; they never see a key.
+ * Null if the reader isn't a key, is the writer, or there are no words.
+ *
+ * `nonces` and `auxRand` exist for reproducible test vectors: leave them unset for anything real.
+ */
+export declare function sealMessage(o: {
+    secretKey: Uint8Array;
+    to: unknown;
+    text: unknown;
+    now: number;
+    nonces?: [Uint8Array, Uint8Array];
+    auxRand?: Uint8Array;
+}): SealedMessage | null;
+/**
+ * Whether what a signer handed back is the message that was asked for, as far as whoever asked can tell: written
+ * by the key the signer holds, to that reader, with those words, and sealed twice by that key. What is inside a
+ * seal can't be read here, and doesn't need to be.
+ */
+export declare function isSealAsked(sealed: unknown, o: {
+    pubkey: string | null;
+    to: string;
+    text: string;
+}): sealed is SealedMessage;
+/** Whether a signed list of where messages reach someone is the one that was asked for: theirs, and exactly those relays. */
+export declare function isReachAsked(signed: unknown, o: {
+    pubkey: string | null;
+    relays: readonly string[];
+}): signed is NostrEvent;
+/** A message as it is handed about once read: every part checked again, the words tidied. Null for anything else. */
+export declare function cleanRead(input: unknown): Message | null;
 /** A list of where someone's private messages reach them, ready to be signed by them. Null with no usable relay. */
 export declare function buildMessageRelays(relays: readonly string[], now: number): EventTemplate | null;
