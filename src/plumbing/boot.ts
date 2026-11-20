@@ -15,10 +15,10 @@
  * and gaze-and-pinch all produce, so nothing here is specific to one headset.
  */
 import * as THREE from "three";
-import { checkPreviewBytes, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
+import { checkPreviewBytes, cleanItemsRule, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { createDoorRatings, signerNamed, worldPeople, worldSigner, addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addBagControls, createBag, createItems, createDoorRatings, signerNamed, worldPeople, worldSigner, addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -749,8 +749,32 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // wearing their look, or plain. Going by name means their own client signed
     // a pass for this site (NSWP-10); this world never sees their key. A scene
     // can dress everyone its own way with `figureStyle`.
-    const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => refresh() });
+    // What this world does with the things visitors carry (NSWP-17): `"items": "allowed"` or `"play"` in
+    // world.json. Left out, nothing carried is drawn here and no model is fetched from anywhere.
+    const itemsRule = cleanItemsRule((config.world as { items?: unknown }).items);
+    const items = createItems({ relays: config.relays, ...(itemsRule === "none" ? { fetchBytes: async () => null } : {}) });
+    const presence = createPresence({ scene, camera, rig, renderer, controllers, ...(itemsRule === "none" ? {} : { items, itemsRule: () => itemsRule }), labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => refresh() });
     roomPresence = presence;
+    // Their bag, and the one thing in their hand. A world looks through its visitor's bag and can't change it:
+    // that is done at their own client. A guest has no bag, and no tab.
+    if (signerNamed()) {
+      const me = () => (worldSigner().state === "unlocked" ? worldSigner().pubkey : null);
+      const bagging = addBagControls(controls, {
+        bag: createBag({ me, relays: config.relays }),
+        items,
+        me,
+        rule: () => itemsRule,
+        holding: () => presence.holding,
+        hold: async (item) => {
+          const done = await presence.setHolding(item);
+          state.holding = presence.holding || null;
+          return done;
+        },
+        keyboard: () => panels?.keyboard ?? null,
+        presenting: () => renderer.xr.isPresenting,
+      });
+      worldSigner().onChange(() => bagging.refresh());
+    }
     // A visitor who was in the room where they came from stays joined here: their own client says so (NSWP-03).
     ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context, panels, sounds, presenting: () => renderer.xr.isPresenting, ...(config.sharedMusic === false ? { sharedMusic: false } : {}) }));
     // What the people this visitor follows thought of where each door leads, on the door's sign (NSWP-13). Their

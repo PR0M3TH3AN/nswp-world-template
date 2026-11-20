@@ -62,6 +62,11 @@ export interface TravelSettings {
      */
     chat?: boolean;
     /**
+     * Whether anything people carry is fetched, drawn or run for them (protocol/17-items.md). Left out, it is, in
+     * a world that has items. Turned off, it is off in the next world too: it is how they mute every item.
+     */
+    items?: boolean;
+    /**
      * Which tabs of the menu they keep on their bar, by name, in the order they pinned them: `PINS_MOST` at most.
      * An empty list is a choice too: they took them all off. A name a world has no tab for is simply not shown
      * there. Only they pin: a world never does it for them.

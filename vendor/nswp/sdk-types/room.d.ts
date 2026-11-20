@@ -17,6 +17,8 @@ export interface Member {
     look: Look;
     /** They have said they are recording what they see (spec §9). */
     recording: boolean;
+    /** The item they say they are holding, by its coordinate (protocol/17-items.md). Left out when they hold nothing. */
+    holding?: string;
     /** They are offering their screen to the room. It is sent only to members who ask to watch. */
     sharing?: boolean;
     /** They are offering their music to people near them. It is sent only to members who ask to hear it. */
@@ -62,6 +64,8 @@ interface Events {
     identity: (member: Member) => void;
     /** A member started or stopped recording what they see. */
     recording: (member: Member, on: boolean) => void;
+    /** A member took an item in hand, or put it away: its coordinate, or "". */
+    holding: (member: Member, item: string) => void;
     audio: (member: Member, stream: MediaStream) => void;
     /** A member started or stopped offering their screen. */
     screen: (member: Member, on: boolean) => void;
@@ -106,6 +110,8 @@ export declare class RoomSession {
     private readonly origin;
     /** This visitor's own pass, as it is said to the others, and when it stops. */
     private pass;
+    /** The item this visitor says they are holding, by its coordinate, or "". */
+    private held;
     private passUntil;
     private recordingTimer;
     /** This visitor's shared screen, while they share one. */
@@ -220,6 +226,11 @@ export declare class RoomSession {
      * shown a light on your figure while it is true. An honest client says so
      * whenever it records other people; nothing can make a dishonest one.
      */
+    /**
+     * Say what this visitor is holding, or "" for nothing (protocol/17-items.md). The others are told its
+     * coordinate and nothing else: each fetches and checks the item for themselves, or draws nothing.
+     */
+    setHolding(item: string): void;
     setRecording(on: boolean): void;
     private drop;
     private sweep;
