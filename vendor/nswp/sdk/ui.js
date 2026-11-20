@@ -137,6 +137,8 @@ var STANDARD = [
   { id: "scores", label: "Scores", icon: "list" },
   // What a world marks, and which of it the visitor has earned (achieving.ts). Added by the world, like Scores.
   { id: "achievements", label: "Achievements", icon: "check" },
+  // The items a visitor has, and the one in their hand (bagging.ts). Empty, and not shown, for a guest.
+  { id: "bag", label: "Bag", icon: "save" },
   { id: "camera", label: "Camera", icon: "camera" },
   { id: "panels", label: "Panels", icon: "panel" },
   { id: "view", label: "View", icon: "vr" },

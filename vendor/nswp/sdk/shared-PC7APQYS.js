@@ -2236,7 +2236,8 @@ import {
   markFor,
   PASS_LIMITS,
   shortNpub,
-  verifyRoomPass
+  verifyRoomPass,
+  itemCoordinate
 } from "@nswp/core";
 var DEFAULT_ICE = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
 var HELLO_EVERY_MS = 2e4;
@@ -2276,6 +2277,7 @@ var RoomSession = class {
     look: /* @__PURE__ */ new Set(),
     identity: /* @__PURE__ */ new Set(),
     recording: /* @__PURE__ */ new Set(),
+    holding: /* @__PURE__ */ new Set(),
     screen: /* @__PURE__ */ new Set(),
     video: /* @__PURE__ */ new Set(),
     tune: /* @__PURE__ */ new Set(),
@@ -2289,6 +2291,8 @@ var RoomSession = class {
   origin;
   /** This visitor's own pass, as it is said to the others, and when it stops. */
   pass = null;
+  /** The item this visitor says they are holding, by its coordinate, or "". */
+  held = "";
   passUntil = 0;
   recordingTimer;
   /** This visitor's shared screen, while they share one. */
@@ -2551,7 +2555,14 @@ var RoomSession = class {
             this.redraw(peer);
           }
         } else if (e.data.startsWith("id:")) this.checkPass(peer, e.data.slice(3));
-        else if (e.data.startsWith("say:")) {
+        else if (e.data.startsWith("hold:")) {
+          const item = itemCoordinate(e.data.slice(5));
+          if ((peer.member.holding ?? "") !== item) {
+            if (item) peer.member.holding = item;
+            else delete peer.member.holding;
+            this.emit("holding", peer.member, item);
+          }
+        } else if (e.data.startsWith("say:")) {
           const line = parseSay(e.data);
           const now = Date.now();
           if (line && peer.words.take(line.id, now)) this.emit("said", peer.member, { ...line, at: now });
@@ -2643,13 +2654,14 @@ var RoomSession = class {
    * over the first seconds.
    */
   introduce(ch) {
-    if (!this.look && !this.pass) return;
+    if (!this.look && !this.pass && !this.held) return;
     let left = 4;
     const say = () => {
       if (this.closed || ch.readyState !== "open") return;
       try {
         if (this.look) ch.send(`look:${this.look}`);
         if (this.pass) ch.send(`id:${this.pass}`);
+        if (this.held) ch.send(`hold:${this.held}`);
       } catch {
       }
       if (--left > 0) setTimeout(say, 1500);
@@ -2869,6 +2881,30 @@ var RoomSession = class {
    * shown a light on your figure while it is true. An honest client says so
    * whenever it records other people; nothing can make a dishonest one.
    */
+  /**
+   * Say what this visitor is holding, or "" for nothing (protocol/17-items.md). The others are told its
+   * coordinate and nothing else: each fetches and checks the item for themselves, or draws nothing.
+   */
+  setHolding(item) {
+    const next = itemCoordinate(item);
+    if (next === this.held) return;
+    this.held = next;
+    if (next) this.self.holding = next;
+    else delete this.self.holding;
+    let left = 3;
+    const say = () => {
+      if (this.closed || this.held !== next) return;
+      for (const peer of this.peers.values()) {
+        if (!peer.open || peer.pose?.readyState !== "open") continue;
+        try {
+          peer.pose.send(`hold:${next}`);
+        } catch {
+        }
+      }
+      if (--left > 0) setTimeout(say, 700);
+    };
+    say();
+  }
   setRecording(on) {
     if (on === this.self.recording) return;
     this.self.recording = on;
@@ -3387,6 +3423,8 @@ export {
   resumeFullscreen,
   fullscreenWaiting,
   fullscreenAction,
+  bytesToHex,
+  sha256,
   RoomSession,
   room,
   somethingBrought,

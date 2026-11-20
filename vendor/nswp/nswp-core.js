@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.48.0";
+var KIT_VERSION = "0.49.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4773,6 +4773,7 @@ function cleanSettings(input) {
   if (typeof s.fov === "number" && Number.isFinite(s.fov)) out.fov = Math.round(Math.min(FOV_RANGE[1], Math.max(FOV_RANGE[0], s.fov)));
   if (typeof s.pictures === "boolean") out.pictures = s.pictures;
   if (typeof s.chat === "boolean") out.chat = s.chat;
+  if (typeof s.items === "boolean") out.items = s.items;
   if (Array.isArray(s.pins)) out.pins = [...new Set(s.pins.filter((name) => typeof name === "string" && PIN_NAME.test(name)))].slice(0, PINS_MOST);
   return out;
 }
@@ -7141,6 +7142,54 @@ function parseItem(event) {
   };
 }
 
+// packages/core/src/bag.ts
+var BAG_KIND = 37308;
+var BAG_D = "bag";
+var BAG_LIMITS = {
+  /** No more than this many items are read from a bag. */
+  items: 200
+};
+var NAME3 = /^[a-z0-9][a-z0-9-]{0,63}$/;
+function itemCoordinate(input) {
+  if (typeof input !== "string" || input.length > 200) return "";
+  const [kind, maker, ...rest] = input.split(":");
+  const d = rest.join(":");
+  return kind === String(ITEM_KIND) && isHex64(maker) && NAME3.test(d) ? `${ITEM_KIND}:${maker}:${d}` : "";
+}
+function bagIn(event) {
+  if (!event || !Array.isArray(event.tags)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const t of event.tags) {
+    if (!Array.isArray(t) || t[0] !== "a") continue;
+    const item = itemCoordinate(t[1]);
+    if (item && seen.size < BAG_LIMITS.items) seen.add(item);
+  }
+  return [...seen];
+}
+function newestBag(events, pubkey) {
+  return events.filter((e) => e.kind === BAG_KIND && e.pubkey === pubkey && Array.isArray(e.tags) && e.tags.some((t) => t[0] === "d" && t[1] === BAG_D)).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0] ?? null;
+}
+function changeBag(newest, change) {
+  if (newest && (newest.kind !== BAG_KIND || !Array.isArray(newest.tags))) return null;
+  if (!newest && !change.fromNothing) return null;
+  const add = itemCoordinate(change.add);
+  const remove = itemCoordinate(change.remove);
+  if (add === "" === (remove === "")) return null;
+  const which = add || remove;
+  const had = newest ? newest.tags.filter((t) => Array.isArray(t) && t.every((x) => typeof x === "string") && !SITE_MARKS.includes(t[0] ?? "") && t[0] !== "d" && t[0] !== "alt") : [];
+  const names = (t) => t[0] === "a" && itemCoordinate(t[1]) === which;
+  const has = had.some(names);
+  if (add ? has : !has) return null;
+  if (add && bagIn({ tags: had }).length >= BAG_LIMITS.items) return null;
+  const kept = add ? [...had.map((t) => [...t]), ["a", add, ...change.relay ? [change.relay] : []]] : had.filter((t) => !names(t)).map((t) => [...t]);
+  return {
+    kind: BAG_KIND,
+    created_at: Math.max(Math.floor(change.now), newest ? newest.created_at + 1 : 0),
+    tags: [["d", BAG_D], ...kept, ["alt", "A bag: the items this person has"]],
+    content: ""
+  };
+}
+
 // packages/core/src/people.ts
 var FOLLOWS_KIND = 3;
 function followsIn(event) {
@@ -7644,6 +7693,9 @@ export {
   ACHIEVEMENT_LIMITS,
   AUDIENCES,
   AVATAR_KIND,
+  BAG_D,
+  BAG_KIND,
+  BAG_LIMITS,
   BRIDGE_GRANT_KIND,
   BRIDGE_LIMITS,
   BRIDGE_WORLD_GRANT_KIND,
@@ -7733,6 +7785,7 @@ export {
   arrivalParam,
   assertManifest,
   audienceOf,
+  bagIn,
   bridgeTopic,
   bubbleSeconds,
   buildAchievement,
@@ -7757,6 +7810,7 @@ export {
   buildWorldEvent,
   buildWorldGrant,
   categoryWords,
+  changeBag,
   changeFollows,
   chatId,
   checkDestination,
@@ -7831,6 +7885,7 @@ export {
   isSealAsked,
   isWhatWasAsked,
   isWssUrl,
+  itemCoordinate,
   itemsWords,
   kitAge,
   latestAddressable,
@@ -7844,6 +7899,7 @@ export {
   mapToLocal,
   markFor,
   markGrid,
+  newestBag,
   newestFollows,
   nip44Decrypt,
   nip44Encrypt,

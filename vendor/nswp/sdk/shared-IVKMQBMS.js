@@ -1,11 +1,13 @@
 import {
   arrival,
+  bytesToHex,
   currentForm,
   fullscreenAction,
   portal,
   room,
+  sha256,
   startingForm
-} from "./shared-K6U46VNY.js";
+} from "./shared-PC7APQYS.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -41,8 +43,8 @@ import {
 } from "./shared-WWPRVQWW.js";
 
 // packages/sdk/src/three.ts
-import * as THREE14 from "three";
-import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS8, encodeNpub as encodeNpub3, readRelayList as readRelayList6, RELAY_LIST_KIND as RELAY_LIST_KIND6, shortNpub as shortNpub6, spawnOffset, verifyEvent as verifyEvent5 } from "@nswp/core";
+import * as THREE15 from "three";
+import { bubbleSeconds, CHAT_LIMITS, cleanItemsRule, itemCoordinate as itemCoordinate4, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS10, encodeNpub as encodeNpub3, readRelayList as readRelayList7, RELAY_LIST_KIND as RELAY_LIST_KIND7, shortNpub as shortNpub6, spawnOffset, verifyEvent as verifyEvent7 } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -1675,11 +1677,173 @@ function freshAction(controls, opts = {}) {
   };
 }
 
+// packages/sdk/src/items.ts
+import { DEFAULT_RELAYS, ITEM_KIND, itemCoordinate, parseItem, queryRelays, verifyEvent } from "@nswp/core";
+import * as THREE6 from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+var ITEM_BUDGET = {
+  /** The most a model file may weigh, in bytes. */
+  bytes: 2e6,
+  /** The most triangles, meshes and materials a model may have. */
+  triangles: 2e4,
+  meshes: 40,
+  materials: 16,
+  /** The longest side of any picture a model's surfaces may use, in pixels. */
+  texture: 1024
+};
+var ITEMS_KEY = "nswp:items";
+var watchers2 = /* @__PURE__ */ new Set();
+var shown = null;
+var keep2 = (on) => {
+  try {
+    if (on) globalThis.localStorage?.removeItem(ITEMS_KEY);
+    else globalThis.localStorage?.setItem(ITEMS_KEY, "off");
+  } catch {
+  }
+};
+function showsItems() {
+  if (shown !== null) return shown;
+  const came = arrivedSettings().items;
+  let kept2 = null;
+  try {
+    kept2 = globalThis.localStorage?.getItem(ITEMS_KEY) ?? null;
+  } catch {
+  }
+  shown = came ?? kept2 !== "off";
+  if (came !== void 0) keep2(shown);
+  reportSettings("items", () => ({ items: showsItems() }));
+  return shown;
+}
+function setShowsItems(on) {
+  showsItems();
+  shown = on;
+  keep2(on);
+  for (const fn of watchers2) fn();
+}
+function onItemsChange(fn) {
+  watchers2.add(fn);
+  return () => void watchers2.delete(fn);
+}
+async function fetchWithin(url, most) {
+  try {
+    const res = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer", redirect: "error" });
+    if (!res.ok) return null;
+    const stated = Number(res.headers.get("content-length") ?? 0);
+    if (stated > most) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return bytes.length <= most ? bytes : null;
+  } catch {
+    return null;
+  }
+}
+function withinBudget(root) {
+  let triangles = 0;
+  let meshes = 0;
+  const materials = /* @__PURE__ */ new Set();
+  let ok = true;
+  root.traverse((o) => {
+    const mesh = o;
+    if (!mesh.isMesh) return;
+    meshes++;
+    const g = mesh.geometry;
+    triangles += Math.floor((g.index ? g.index.count : g.attributes.position?.count ?? 0) / 3);
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      materials.add(m);
+      for (const value of Object.values(m)) {
+        const image = value?.isTexture ? value.image : null;
+        if (image && Math.max(image.width ?? 0, image.height ?? 0) > ITEM_BUDGET.texture) ok = false;
+      }
+    }
+  });
+  return ok && meshes > 0 && meshes <= ITEM_BUDGET.meshes && triangles <= ITEM_BUDGET.triangles && materials.size <= ITEM_BUDGET.materials;
+}
+function fitToSize(root, size) {
+  const box = new THREE6.Box3().setFromObject(root);
+  const has = box.getSize(new THREE6.Vector3());
+  const scale = Math.min(size[0] / (has.x || 1), size[1] / (has.y || 1), size[2] / (has.z || 1));
+  const holder = new THREE6.Group();
+  root.scale.multiplyScalar(Number.isFinite(scale) && scale > 0 ? scale : 1);
+  const fitted = new THREE6.Box3().setFromObject(root);
+  const centre = fitted.getCenter(new THREE6.Vector3());
+  root.position.x -= centre.x;
+  root.position.z -= centre.z;
+  root.position.y -= fitted.min.y;
+  holder.add(root);
+  return holder;
+}
+function createItems(opts = {}) {
+  const query = opts.query ?? queryRelays;
+  const now = opts.now ?? (() => Date.now());
+  const fetchBytes = opts.fetchBytes ?? ((url) => fetchWithin(url, ITEM_BUDGET.bytes));
+  const described = /* @__PURE__ */ new Map();
+  const settled = /* @__PURE__ */ new Map();
+  const models = /* @__PURE__ */ new Map();
+  const marker = (item) => {
+    const [w, h, d] = item.size;
+    const box = new THREE6.Mesh(new THREE6.BoxGeometry(w, h, d), new THREE6.MeshBasicMaterial({ color: 10135476, wireframe: true }));
+    box.position.y = h / 2;
+    const holder = new THREE6.Group();
+    holder.add(box);
+    return holder;
+  };
+  const load2 = (item) => {
+    const key = `${item.model.sha256}:${item.size.join(",")}`;
+    let made = models.get(key);
+    if (!made) {
+      made = (async () => {
+        const bytes = await fetchBytes(item.model.url);
+        if (!bytes || bytes.length > ITEM_BUDGET.bytes || bytesToHex(sha256(bytes)) !== item.model.sha256) return null;
+        try {
+          const read = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), "");
+          const extra = [];
+          read.scene.traverse((o) => {
+            if (o.isLight || o.isCamera) extra.push(o);
+          });
+          for (const o of extra) o.removeFromParent();
+          return withinBudget(read.scene) ? fitToSize(read.scene, item.size) : null;
+        } catch {
+          return null;
+        }
+      })();
+      models.set(key, made);
+    }
+    return made;
+  };
+  return {
+    describe(coordinateIn) {
+      const coordinate = itemCoordinate(coordinateIn);
+      if (!coordinate) return Promise.resolve(null);
+      let found = described.get(coordinate);
+      if (!found) {
+        const [, maker, ...rest] = coordinate.split(":");
+        found = askWell({ kinds: [ITEM_KIND], authors: [maker], "#d": [rest.join(":")], limit: 4 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS, query, timeoutMs: 4e3, now }).then((got) => {
+          const newest = got.events.filter((e) => e.kind === ITEM_KIND && e.pubkey === maker && verifyEvent(e)).sort((a, b) => b.created_at - a.created_at)[0];
+          const item = newest ? parseItem(newest) : null;
+          return item && item.id === coordinate ? item : null;
+        }).catch(() => null).then((item) => {
+          settled.set(coordinate, item);
+          if (!item) described.delete(coordinate);
+          return item;
+        });
+        described.set(coordinate, found);
+      }
+      return found;
+    },
+    known: (coordinate) => settled.get(itemCoordinate(coordinate)) ?? null,
+    async model(item) {
+      if (!showsItems()) return marker(item);
+      const made = await load2(item);
+      return made ? made.clone(true) : marker(item);
+    },
+    marker
+  };
+}
+
 // packages/sdk/src/following.ts
 import { decodeNpub, encodeNpub, shortNpub as shortNpub2 } from "@nswp/core";
 
 // packages/sdk/src/profiles.ts
-import { cleanAbout, cleanName as cleanName2, cleanPicture, DEFAULT_RELAYS, isHex64, queryRelays, verifyEvent } from "@nswp/core";
+import { cleanAbout, cleanName as cleanName2, cleanPicture, DEFAULT_RELAYS as DEFAULT_RELAYS2, isHex64, queryRelays as queryRelays2, verifyEvent as verifyEvent2 } from "@nswp/core";
 var KEY2 = "nswp:profiles";
 var MOST = 400;
 var FRESH_MS = 24 * 3600 * 1e3;
@@ -1699,7 +1863,7 @@ function readProfile(event) {
 }
 function createProfiles(opts = {}) {
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays;
+  const query = opts.query ?? queryRelays2;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
     try {
@@ -1708,7 +1872,7 @@ function createProfiles(opts = {}) {
       return null;
     }
   })();
-  const watchers2 = /* @__PURE__ */ new Set();
+  const watchers3 = /* @__PURE__ */ new Set();
   let kept2 = null;
   const all = () => {
     if (kept2) return kept2;
@@ -1739,21 +1903,21 @@ function createProfiles(opts = {}) {
       const book = all();
       const wanted = [...new Set(pubkeys)].filter((k) => isHex64(k) && now() - (book[k]?.asked ?? 0) > FRESH_MS).slice(0, AT_ONCE);
       if (wanted.length === 0) return;
-      const got = await askWell({ kinds: [0], authors: wanted, limit: wanted.length * 2 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS, query, timeoutMs: 4e3, now }).catch(() => null);
+      const got = await askWell({ kinds: [0], authors: wanted, limit: wanted.length * 2 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS2, query, timeoutMs: 4e3, now }).catch(() => null);
       const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
       for (const e of got?.events ?? []) {
-        if (e.kind !== 0 || !wanted.includes(e.pubkey) || !verifyEvent(e)) continue;
+        if (e.kind !== 0 || !wanted.includes(e.pubkey) || !verifyEvent2(e)) continue;
         const had = book[e.pubkey];
         if (had && had.at >= e.created_at) continue;
         book[e.pubkey] = { ...readProfile(e), asked: now() };
       }
       if (answered) for (const k of wanted) book[k] = { ...book[k] ?? { name: "", picture: "", about: "", at: 0 }, asked: now() };
       save();
-      for (const fn of watchers2) fn();
+      for (const fn of watchers3) fn();
     },
     onChange(fn) {
-      watchers2.add(fn);
-      return () => void watchers2.delete(fn);
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
     }
   };
 }
@@ -1773,7 +1937,7 @@ function keyIn(text) {
 function addFollowingControls(controls, opts) {
   const f = opts.follows;
   const profiles = opts.profiles ?? createProfiles(opts.relays ? { relays: opts.relays } : {});
-  let shown = [];
+  let shown2 = [];
   let chosen = null;
   let pages = 1;
   let wasMe = null;
@@ -1812,8 +1976,8 @@ function addFollowingControls(controls, opts) {
     press(key, nameOf(key), true);
   };
   const refresh = () => {
-    for (const id of shown) controls.remove(id);
-    shown = [];
+    for (const id of shown2) controls.remove(id);
+    shown2 = [];
     const me = f.pubkey();
     if (me !== wasMe) {
       wasMe = me;
@@ -1824,7 +1988,7 @@ function addFollowingControls(controls, opts) {
     const allowed = !!me && f.allowed();
     const follows = allowed ? f.people.follows() : null;
     const add = (...actions) => {
-      for (const a of actions) shown.push(a.id);
+      for (const a of actions) shown2.push(a.id);
       controls.add(...actions.map((a) => ({ section: "following", ...a })));
     };
     controls.addSection({
@@ -1940,15 +2104,15 @@ function addFollowingControls(controls, opts) {
 }
 
 // packages/sdk/src/messages.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS2, isHex64 as isHex642, looksLikeWrap, MESSAGE_RELAYS_KIND, publishEvent, queryRelays as queryRelays2, readMessageRelays, readRelayList, RELAY_LIST_KIND, WRAP_KIND, wrapSeal, writtenWith } from "@nswp/core";
+import { DEFAULT_RELAYS as DEFAULT_RELAYS3, isHex64 as isHex642, looksLikeWrap, MESSAGE_RELAYS_KIND, publishEvent, queryRelays as queryRelays3, readMessageRelays, readRelayList, RELAY_LIST_KIND, WRAP_KIND, wrapSeal, writtenWith } from "@nswp/core";
 var MOST2 = 300;
 var FRESH_MS2 = 45e3;
 function createMessages(opts) {
   const { hand } = opts;
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays2;
+  const query = opts.query ?? queryRelays3;
   const publish = opts.publish ?? publishEvent;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS2;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS3;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
     try {
@@ -1957,10 +2121,10 @@ function createMessages(opts) {
       return null;
     }
   })();
-  const watchers2 = /* @__PURE__ */ new Set();
+  const watchers3 = /* @__PURE__ */ new Set();
   const newcomers = /* @__PURE__ */ new Set();
   const changed = () => {
-    for (const fn of watchers2) fn();
+    for (const fn of watchers3) fn();
   };
   let who = null;
   let state = "off";
@@ -2131,8 +2295,8 @@ function createMessages(opts) {
       return n;
     },
     onChange(fn) {
-      watchers2.add(fn);
-      return () => void watchers2.delete(fn);
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
     },
     onNew(fn) {
       newcomers.add(fn);
@@ -2143,7 +2307,7 @@ function createMessages(opts) {
 
 // packages/sdk/src/messaging.ts
 import { shortNpub as shortNpub3, MESSAGE_LIMITS } from "@nswp/core";
-import * as THREE6 from "three";
+import * as THREE7 from "three";
 var W2 = 768;
 var H2 = 900;
 var LEAD = 130;
@@ -2151,7 +2315,7 @@ var WRITE = 100;
 function addMessagingControls(controls, opts) {
   const { hand, profiles } = opts;
   const m = hand.messages;
-  let shown = [];
+  let shown2 = [];
   let withWhom = null;
   let requests = false;
   let wasMe = null;
@@ -2241,8 +2405,8 @@ function addMessagingControls(controls, opts) {
     const canvas = document.createElement("canvas");
     canvas.width = W2;
     canvas.height = H2;
-    const texture = new THREE6.CanvasTexture(canvas);
-    texture.colorSpace = THREE6.SRGBColorSpace;
+    const texture = new THREE7.CanvasTexture(canvas);
+    texture.colorSpace = THREE7.SRGBColorSpace;
     try {
       const made = opts.panels.open(
         {
@@ -2297,8 +2461,8 @@ function addMessagingControls(controls, opts) {
     say(hand.ask(go));
   };
   const refresh = () => {
-    for (const id of shown) controls.remove(id);
-    shown = [];
+    for (const id of shown2) controls.remove(id);
+    shown2 = [];
     const me = hand.pubkey();
     if (me !== wasMe) {
       wasMe = me;
@@ -2319,7 +2483,7 @@ function addMessagingControls(controls, opts) {
     const known = all.filter((c) => c.known);
     const asking = all.filter((c) => !c.known);
     const add = (...actions) => {
-      for (const a of actions) shown.push(a.id);
+      for (const a of actions) shown2.push(a.id);
       controls.add(...actions.map((a) => ({ section: "messages", ...a })));
     };
     controls.addSection({
@@ -2408,15 +2572,15 @@ function addMessagingControls(controls, opts) {
 import { encodeNpub as encodeNpub2, getPublicKey, shortNpub as shortNpub4, signerAt as signerAt2 } from "@nswp/core";
 
 // packages/sdk/src/people.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS3, FOLLOWS_KIND, followsIn, isFollowAsked, isHex64 as isHex643, newestFollows, publishEvent as publishEvent2, queryRelays as queryRelays3, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, verifyEvent as verifyEvent2 } from "@nswp/core";
+import { DEFAULT_RELAYS as DEFAULT_RELAYS4, FOLLOWS_KIND, followsIn, isFollowAsked, isHex64 as isHex643, newestFollows, publishEvent as publishEvent2, queryRelays as queryRelays4, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, verifyEvent as verifyEvent3 } from "@nswp/core";
 var KEPT_MOST = 4e5;
 var FRESH_MS3 = 6e4;
 function createPeople(opts) {
   const { hand } = opts;
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays3;
+  const query = opts.query ?? queryRelays4;
   const publish = opts.publish ?? publishEvent2;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS3;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS4;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
     try {
@@ -2425,20 +2589,20 @@ function createPeople(opts) {
       return null;
     }
   })();
-  const watchers2 = /* @__PURE__ */ new Set();
+  const watchers3 = /* @__PURE__ */ new Set();
   const changed = () => {
-    for (const fn of watchers2) fn();
+    for (const fn of watchers3) fn();
   };
   const keyFor = (who) => `nswp:follows:${who}`;
   const readKept = (who) => {
     try {
       const kept2 = JSON.parse(store?.getItem(keyFor(who)) ?? "null");
-      return verifyEvent2(kept2) && kept2.kind === FOLLOWS_KIND && kept2.pubkey === who ? kept2 : null;
+      return verifyEvent3(kept2) && kept2.kind === FOLLOWS_KIND && kept2.pubkey === who ? kept2 : null;
     } catch {
       return null;
     }
   };
-  const keep2 = (list) => {
+  const keep3 = (list) => {
     try {
       const text = JSON.stringify(list);
       if (text.length <= KEPT_MOST) store?.setItem(keyFor(list.pubkey), text);
@@ -2461,10 +2625,10 @@ function createPeople(opts) {
     const own = await ownRelays(who);
     const got = await askWell({ kinds: [FOLLOWS_KIND], authors: [who], limit: 4 }, { own, usual: usual(), query, timeoutMs: 4e3, now }).catch(() => null);
     const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
-    const found = newestFollows((got?.events ?? []).filter((e) => verifyEvent2(e)), who);
+    const found = newestFollows((got?.events ?? []).filter((e) => verifyEvent3(e)), who);
     const list = found && kept2 ? kept2.created_at > found.created_at ? kept2 : found : found ?? kept2;
     if (kept2 && list === kept2 && answered && (!found || found.id !== kept2.id)) void sendWell(kept2, { own, usual: usual(), publish, query, now }).catch(() => null);
-    if (list && list !== kept2) keep2(list);
+    if (list && list !== kept2) keep3(list);
     if (hand.pubkey() !== who) return;
     known = { who, list, answered, at: now() };
     changed();
@@ -2510,7 +2674,7 @@ function createPeople(opts) {
     const asked = adding ? { add: pubkey } : { remove: pubkey };
     const signed = await hand.change(list, asked).catch(() => null);
     if (!signed || !isFollowAsked(signed, { list, ...asked, pubkey: who })) return { ok: false, why: "refused", said: "It couldn't be signed. Who you follow is as it was." };
-    keep2(signed);
+    keep3(signed);
     known = { who, list: signed, answered: true, at: now() };
     changed();
     const sent = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
@@ -2526,19 +2690,19 @@ function createPeople(opts) {
     follow: (pubkey, name = "") => change2(pubkey, true, name),
     unfollow: (pubkey, name = "") => change2(pubkey, false, name),
     onChange(fn) {
-      watchers2.add(fn);
-      return () => void watchers2.delete(fn);
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
     }
   };
 }
 
 // packages/sdk/src/saves.ts
-import { cleanSlot, DEFAULT_RELAYS as DEFAULT_RELAYS4, fitsInSave, publishEvent as publishEvent3, queryRelays as queryRelays4, readRelayList as readRelayList3, RELAY_LIST_KIND as RELAY_LIST_KIND3, SAVE_KIND, SAVE_SLOT, verifyEvent as verifyEvent3 } from "@nswp/core";
+import { cleanSlot, DEFAULT_RELAYS as DEFAULT_RELAYS5, fitsInSave, publishEvent as publishEvent3, queryRelays as queryRelays5, readRelayList as readRelayList3, RELAY_LIST_KIND as RELAY_LIST_KIND3, SAVE_KIND, SAVE_SLOT, verifyEvent as verifyEvent4 } from "@nswp/core";
 function createSaves(opts = {}) {
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays4;
+  const query = opts.query ?? queryRelays5;
   const publish = opts.publish ?? publishEvent3;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS4;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS5;
   const signer = () => (typeof opts.signer === "function" ? opts.signer() : opts.signer) ?? null;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
@@ -2580,7 +2744,7 @@ function createSaves(opts = {}) {
     const d = await s.find(slot);
     if (!d) return null;
     const got = await askWell({ kinds: [SAVE_KIND], authors: [who], "#d": [d], limit: 4 }, { own: await ownRelays(who), usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
-    const newest = (got?.events ?? []).filter((e) => e.kind === SAVE_KIND && e.pubkey === who && e.tags.some((t) => t[0] === "d" && t[1] === d) && verifyEvent3(e)).sort((a, b) => b.created_at - a.created_at)[0];
+    const newest = (got?.events ?? []).filter((e) => e.kind === SAVE_KIND && e.pubkey === who && e.tags.some((t) => t[0] === "d" && t[1] === d) && verifyEvent4(e)).sort((a, b) => b.created_at - a.created_at)[0];
     if (!newest) return null;
     const opened = await s.open(newest);
     return opened && opened.slot === slot ? { data: opened.data, at: opened.at } : null;
@@ -2625,7 +2789,7 @@ function createSaves(opts = {}) {
 }
 
 // packages/sdk/src/signer.ts
-import { isAchievementAsked, cleanMessage, cleanMore, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex644, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap as looksLikeWrap2, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent4, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { isAchievementAsked, cleanMessage, cleanMore, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex644, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap as looksLikeWrap2, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent5, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -2676,7 +2840,7 @@ function createWorldSigner(opts) {
   const real = opts.at ? namedAddresses(opts.at) : signerAt(opts.under) ?? signerAddresses(opts.airlock);
   if (!real || typeof document === "undefined") return NONE;
   const test = new URLSearchParams(opts.search ?? location.search).get("signer") === "test";
-  const watchers2 = /* @__PURE__ */ new Set();
+  const watchers3 = /* @__PURE__ */ new Set();
   const pending = /* @__PURE__ */ new Map();
   const kept2 = /* @__PURE__ */ new Map();
   const askAbout = (request, read) => new Promise((done) => {
@@ -2728,7 +2892,7 @@ function createWorldSigner(opts) {
   const firstAnswer = /* @__PURE__ */ new Set();
   let n = 0;
   const changed = () => {
-    for (const fn of watchers2) fn();
+    for (const fn of watchers3) fn();
   };
   const tell = (message) => frame?.contentWindow?.postMessage(signerMessage(message), origin);
   const onMessage = (e) => {
@@ -2773,7 +2937,7 @@ function createWorldSigner(opts) {
     }
     if (!waiting2.asked) return waiting2.done(null);
     const marked = Array.isArray(signed?.tags) && signed.tags.some((t) => t[0] === WORLD_TAG && t[1] === cleanOrigin(location.origin));
-    waiting2.done(verifyEvent4(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting2.asked, signed) ? signed : null);
+    waiting2.done(verifyEvent5(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting2.asked, signed) ? signed : null);
   };
   void (async () => {
     try {
@@ -2892,14 +3056,14 @@ function createWorldSigner(opts) {
     },
     save(slot, data) {
       if (state !== "unlocked" || !frame || !cleanSlot2(slot) || !fitsInSave2(data)) return Promise.resolve(null);
-      return askAbout({ t: "save", id: `s${++n}`, slot, data }, (reply) => reply.t === "signed" && verifyEvent4(reply.event) && looksLikeSave(reply.event, pubkey) ? reply.event : null);
+      return askAbout({ t: "save", id: `s${++n}`, slot, data }, (reply) => reply.t === "signed" && verifyEvent5(reply.event) && looksLikeSave(reply.event, pubkey) ? reply.event : null);
     },
     find(slot) {
       if (state !== "unlocked" || !frame || !cleanSlot2(slot)) return Promise.resolve(null);
       return askAbout({ t: "find", id: `f${++n}`, slot }, (reply) => reply.t === "found" ? reply.d : null);
     },
     open(event) {
-      if (state !== "unlocked" || !frame || !verifyEvent4(event) || !looksLikeSave(event, pubkey)) return Promise.resolve(null);
+      if (state !== "unlocked" || !frame || !verifyEvent5(event) || !looksLikeSave(event, pubkey)) return Promise.resolve(null);
       return askAbout({ t: "open", id: `o${++n}`, event }, (reply) => reply.t === "opened" ? { slot: reply.slot, data: reply.data, at: reply.at } : null);
     },
     want(asked) {
@@ -2937,8 +3101,8 @@ function createWorldSigner(opts) {
       return askAbout({ t: "achieve", id: `a${++n}`, world, achievement, title }, (reply) => reply.t === "signed" && isAchievementAsked(reply.event, { pubkey, world, id: achievement, title, origin: location.origin }) ? reply.event : null);
     },
     onChange(fn) {
-      watchers2.add(fn);
-      return () => void watchers2.delete(fn);
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
     },
     whenAnswered(ms) {
       if (answered || disposed) return Promise.resolve();
@@ -3184,7 +3348,7 @@ function figureAction(controls, leaving = () => ({})) {
 }
 
 // packages/sdk/src/input.ts
-import * as THREE7 from "three";
+import * as THREE8 from "three";
 
 // packages/sdk/src/stroll.ts
 var WALK_SPEED = 2.4;
@@ -3496,25 +3660,25 @@ var unpointable = (root) => root.traverse((o) => void (o.raycast = () => {
 }));
 function controllerModel(accent) {
   const b = new MeshBuilder().at();
-  b.tone = new THREE7.Color(1712684);
+  b.tone = new THREE8.Color(1712684);
   b.light = accent.clone();
-  const lean = new THREE7.Matrix4().makeRotationX(THREE7.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
+  const lean = new THREE8.Matrix4().makeRotationX(THREE8.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
   b.place(lean);
   b.lathe([[5e-4, -0.07], [0.014, -0.068], [0.018, -0.02], [0.017, 0.03], [0.012, 0.046], [5e-4, 0.048]], [0, 0, 0], 6, (row) => row === 1 ? { glow: 0.5 } : { shade: 0.9 + row % 2 * 0.2 });
-  b.place(new THREE7.Matrix4());
+  b.place(new THREE8.Matrix4());
   b.box([0.03, 0.022, 0.07], [0, 4e-3, -0.045], { bevel: 6e-3, shade: 1.05 });
   b.box([0.018, 0.012, 4e-3], [0, 4e-3, -0.082], { glow: 1 });
-  b.place(new THREE7.Matrix4().makeRotationX(THREE7.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
+  b.place(new THREE8.Matrix4().makeRotationX(THREE8.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
   b.lathe([[0.046, -4e-3], [0.052, 0], [0.046, 4e-3], [0.041, 0]], [0, 0, 0], 12, (row) => row === 1 ? { glow: 0.7 } : { shade: 0.85 });
   const metal = createAlloy(accent, { gloss: 0.6 });
-  const group = new THREE7.Group();
+  const group = new THREE8.Group();
   group.add(b.build(metal));
-  const light = () => new THREE7.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
-  const trigger = new THREE7.Mesh(new THREE7.BoxGeometry(0.012, 0.02, 0.014), light());
+  const light = () => new THREE8.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
+  const trigger = new THREE8.Mesh(new THREE8.BoxGeometry(0.012, 0.02, 0.014), light());
   trigger.position.set(0, -0.016, -0.036);
-  const squeeze = new THREE7.Mesh(new THREE7.BoxGeometry(8e-3, 0.03, 0.012), light());
+  const squeeze = new THREE8.Mesh(new THREE8.BoxGeometry(8e-3, 0.03, 0.012), light());
   squeeze.position.set(0, -0.034, 0.018);
-  squeeze.rotation.x = THREE7.MathUtils.degToRad(-52);
+  squeeze.rotation.x = THREE8.MathUtils.degToRad(-52);
   group.add(trigger, squeeze);
   unpointable(group);
   return { group, metal, trigger, squeeze };
@@ -3523,7 +3687,7 @@ var VIGNETTE_VERT = `varying float vFar; void main(){ vFar = length(position.xy)
 var VIGNETTE_FRAG = `uniform float uAmount; varying float vFar; void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.24, 0.42, vFar) * uAmount); }`;
 function createXrInput(opts) {
   const { renderer, rig, camera } = opts;
-  const accent = new THREE7.Color(opts.accent ?? 16758364);
+  const accent = new THREE8.Color(opts.accent ?? 16758364);
   const came = arrivedSettings();
   let comfort = { ...loadComfort(), ...came.turn !== void 0 ? { turnStep: came.turn } : {}, ...came.hand !== void 0 ? { moveHand: came.hand } : {}, ...came.narrow !== void 0 ? { narrow: came.narrow } : {} };
   if (came.turn !== void 0 || came.hand !== void 0 || came.narrow !== void 0) saveComfort(comfort);
@@ -3556,25 +3720,25 @@ function createXrInput(opts) {
   });
   const kindOf = (s) => !s.source ? "none" : s.source.hand ? "hand" : "controller";
   const handOf = (s) => s.source?.handedness === "left" || s.source?.handedness === "right" ? s.source.handedness : "none";
-  const jointShape = new THREE7.OctahedronGeometry(1, 1);
-  const jointDark = new THREE7.MeshBasicMaterial({ color: 2568767 });
-  const jointLit = new THREE7.MeshBasicMaterial({ color: accent });
+  const jointShape = new THREE8.OctahedronGeometry(1, 1);
+  const jointDark = new THREE8.MeshBasicMaterial({ color: 2568767 });
+  const jointLit = new THREE8.MeshBasicMaterial({ color: accent });
   const dressHand = (hand) => {
     for (const joint of hand.children) {
       if (joint.userData.nswpJoint) continue;
       joint.userData.nswpJoint = true;
       const name = String(joint.jointName ?? "");
       const tip = name.endsWith("-tip");
-      const mesh = new THREE7.Mesh(jointShape, tip ? jointLit : jointDark);
+      const mesh = new THREE8.Mesh(jointShape, tip ? jointLit : jointDark);
       const radius = joint.jointRadius;
       mesh.scale.setScalar(Math.min(0.02, Math.max(5e-3, (radius ?? 8e-3) * (tip ? 0.9 : 0.75))));
       unpointable(mesh);
       joint.add(mesh);
     }
   };
-  const vignette = new THREE7.Mesh(
-    new THREE7.RingGeometry(0.12, 3, 48, 4),
-    new THREE7.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
+  const vignette = new THREE8.Mesh(
+    new THREE8.RingGeometry(0.12, 3, 48, 4),
+    new THREE8.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
   );
   vignette.position.z = -0.4;
   vignette.renderOrder = 999;
@@ -3596,8 +3760,8 @@ function createXrInput(opts) {
     } catch {
     }
   };
-  const headAt = new THREE7.Vector3();
-  const ahead = new THREE7.Vector3();
+  const headAt = new THREE8.Vector3();
+  const ahead = new THREE8.Vector3();
   const canStand = opts.canStand ?? (() => true);
   const walk = (right, forward) => {
     camera.getWorldPosition(headAt);
@@ -3614,12 +3778,12 @@ function createXrInput(opts) {
   const things = /* @__PURE__ */ new Map();
   const held = /* @__PURE__ */ new Map();
   const returning = [];
-  const box = new THREE7.Box3();
-  const ball = new THREE7.Sphere();
-  const handAt = new THREE7.Vector3();
-  const raycaster = new THREE7.Raycaster();
-  const turnOnly = new THREE7.Matrix4();
-  const HOLD_AT = new THREE7.Vector3(0, 0, -0.06);
+  const box = new THREE8.Box3();
+  const ball = new THREE8.Sphere();
+  const handAt = new THREE8.Vector3();
+  const raycaster = new THREE8.Raycaster();
+  const turnOnly = new THREE8.Matrix4();
+  const HOLD_AT = new THREE8.Vector3(0, 0, -0.06);
   const FAR_REACH = 6;
   const isHeld = (object) => [...held.values()].some((h) => h.thing.object === object);
   const grab = (slot, by) => {
@@ -3686,9 +3850,9 @@ function createXrInput(opts) {
       if (held.get(i)?.by === "pinch") release(i);
     }));
   });
-  const setComfort = (patch, keep2 = false) => {
+  const setComfort = (patch, keep3 = false) => {
     comfort = { ...comfort, ...cleanComfort(patch) };
-    if (keep2) saveComfort(comfort);
+    if (keep3) saveComfort(comfort);
   };
   if (opts.arrivedIntense && !isIntense(comfort)) setComfort(INTENSE_COMFORT, true);
   if (opts.controls) {
@@ -3854,10 +4018,10 @@ function createXrInput(opts) {
 }
 
 // packages/sdk/src/panels.ts
-import * as THREE10 from "three";
+import * as THREE11 from "three";
 
 // packages/sdk/src/keyboard.ts
-import * as THREE8 from "three";
+import * as THREE9 from "three";
 
 // packages/sdk/src/panel-store.ts
 var PANEL_LOOKS = [
@@ -4024,18 +4188,18 @@ var KEYS = 520;
 var LIVE_STRIP = 92;
 var WIDTH = 0.8;
 function createKeyboard(o) {
-  const accent = `#${new THREE8.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE9.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   const canvas = document.createElement("canvas");
   canvas.width = W3;
   canvas.height = SHOW + KEYS;
   const g = canvas.getContext("2d");
-  const texture = new THREE8.CanvasTexture(canvas);
-  texture.colorSpace = THREE8.SRGBColorSpace;
+  const texture = new THREE9.CanvasTexture(canvas);
+  texture.colorSpace = THREE9.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE8.Mesh(new THREE8.PlaneGeometry(WIDTH, WIDTH * canvas.height / W3), new THREE8.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
+  const board = new THREE9.Mesh(new THREE9.PlaneGeometry(WIDTH, WIDTH * canvas.height / W3), new THREE9.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
   board.name = "keyboard";
-  const group = new THREE8.Group();
+  const group = new THREE9.Group();
   group.name = "keyboard";
   group.add(board);
   group.visible = false;
@@ -4155,9 +4319,9 @@ function createKeyboard(o) {
     field.focus();
   };
   const unheard = voice.subscribe(() => done || live ? lay() : void 0);
-  const at = new THREE8.Vector3();
-  const facing2 = new THREE8.Vector3();
-  const local2 = new THREE8.Vector3();
+  const at = new THREE9.Vector3();
+  const facing2 = new THREE9.Vector3();
+  const local2 = new THREE9.Vector3();
   const putUp = (under = false) => {
     o.camera.getWorldPosition(at);
     o.camera.getWorldDirection(facing2);
@@ -4284,7 +4448,7 @@ function createKeyboard(o) {
 }
 
 // packages/sdk/src/library.ts
-import * as THREE9 from "three";
+import * as THREE10 from "three";
 var DB = "nswp-panels";
 function files() {
   return new Promise((resolve, reject) => {
@@ -4351,7 +4515,7 @@ var TOP = 96;
 var FOOT = 104;
 var WIDTH2 = 1.1;
 function createLibrary(o) {
-  const accent = `#${new THREE9.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE10.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   let items = [];
   if (o.keep) {
@@ -4373,12 +4537,12 @@ function createLibrary(o) {
   canvas.width = W4;
   canvas.height = H3;
   const g = canvas.getContext("2d");
-  const texture = new THREE9.CanvasTexture(canvas);
-  texture.colorSpace = THREE9.SRGBColorSpace;
+  const texture = new THREE10.CanvasTexture(canvas);
+  texture.colorSpace = THREE10.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE9.Mesh(new THREE9.PlaneGeometry(WIDTH2, WIDTH2 * H3 / W4), new THREE9.MeshBasicMaterial({ map: texture, toneMapped: false }));
+  const board = new THREE10.Mesh(new THREE10.PlaneGeometry(WIDTH2, WIDTH2 * H3 / W4), new THREE10.MeshBasicMaterial({ map: texture, toneMapped: false }));
   board.name = "library";
-  const group = new THREE9.Group();
+  const group = new THREE10.Group();
   group.name = "library";
   group.add(board);
   group.visible = false;
@@ -4403,8 +4567,8 @@ function createLibrary(o) {
   const paint = () => {
     stale = false;
     regions = [];
-    const shown = libraryPage(items, page, COLS * ROWS);
-    page = shown.page;
+    const shown2 = libraryPage(items, page, COLS * ROWS);
+    page = shown2.page;
     g.fillStyle = "#0a1018";
     g.fillRect(0, 0, W4, H3);
     g.fillStyle = "#101a26";
@@ -4428,7 +4592,7 @@ function createLibrary(o) {
       g.textAlign = "left";
     };
     button("close", "Close", W4 - 164, 18, 140, TOP - 36);
-    if (shown.items.length === 0) {
+    if (shown2.items.length === 0) {
       g.fillStyle = ink;
       g.globalAlpha = 0.8;
       g.font = "34px system-ui, sans-serif";
@@ -4441,7 +4605,7 @@ function createLibrary(o) {
     }
     const cellW = (W4 - 48) / COLS;
     const cellH = (H3 - TOP - FOOT - 24) / ROWS;
-    shown.items.forEach((item, i) => {
+    shown2.items.forEach((item, i) => {
       const [x, y] = [24 + i % COLS * cellW + 10, TOP + 12 + Math.floor(i / COLS) * cellH + 8];
       const [w, h] = [cellW - 20, cellH - 16];
       const id = `item:${item.id}`;
@@ -4476,18 +4640,18 @@ function createLibrary(o) {
       g.fillText(item.title || (item.kind === "video" ? "A video" : "A picture"), x + 12, y + h - 26, w - 24);
     });
     const fy = H3 - FOOT + 14;
-    if (shown.pages > 1) {
+    if (shown2.pages > 1) {
       button("prev", "Earlier", 24, fy, 170, FOOT - 28);
       button("next", "Later", 206, fy, 170, FOOT - 28);
       g.fillStyle = ink;
       g.font = "28px system-ui, sans-serif";
-      g.fillText(`${shown.page + 1} of ${shown.pages}`, 400, fy + (FOOT - 28) / 2 + 2);
+      g.fillText(`${shown2.page + 1} of ${shown2.pages}`, 400, fy + (FOOT - 28) / 2 + 2);
     }
     if (items.length) button("removing", removing ? "Stop removing" : "Remove one", W4 - 300, fy, 276, FOOT - 28, removing);
     texture.needsUpdate = true;
   };
-  const at = new THREE9.Vector3();
-  const facing2 = new THREE9.Vector3();
+  const at = new THREE10.Vector3();
+  const facing2 = new THREE10.Vector3();
   const api = {
     group,
     list: () => items,
@@ -4561,7 +4725,7 @@ function createLibrary(o) {
       if (!r || !group.visible) return null;
       const height = WIDTH2 * H3 / W4;
       group.updateMatrixWorld(true);
-      return board.localToWorld(new THREE9.Vector3(((r.x + r.w / 2) / W4 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H3) * height, 0));
+      return board.localToWorld(new THREE10.Vector3(((r.x + r.w / 2) / W4 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H3) * height, 0));
     },
     info: () => ({ showing: group.visible, page, pages: libraryPage(items, page, COLS * ROWS).pages, removing, cells: regions.map((r) => r.id) }),
     update() {
@@ -4587,8 +4751,8 @@ function canvasTexture(width, height, draw) {
   canvas.width = width;
   canvas.height = height;
   draw(canvas.getContext("2d"), width, height);
-  const texture = new THREE10.CanvasTexture(canvas);
-  texture.colorSpace = THREE10.SRGBColorSpace;
+  const texture = new THREE11.CanvasTexture(canvas);
+  texture.colorSpace = THREE11.SRGBColorSpace;
   texture.anisotropy = 8;
   return texture;
 }
@@ -4674,9 +4838,9 @@ function barTexture(title, ink) {
   });
 }
 function createPanels(o) {
-  const accent = new THREE10.Color(o.accent ?? 16758364);
+  const accent = new THREE11.Color(o.accent ?? 16758364);
   const ink = o.textColor ?? "#eef5fb";
-  const root = new THREE10.Group();
+  const root = new THREE11.Group();
   root.name = "panels";
   o.scene.add(root);
   const live = /* @__PURE__ */ new Map();
@@ -4685,13 +4849,13 @@ function createPanels(o) {
   const glyph = (g) => glyphs.get(g) ?? (glyphs.set(g, glyphTexture(g, ink)), glyphs.get(g));
   const frameShape = (() => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE10.Color(1186340);
+    b.tone = new THREE11.Color(1186340);
     b.light = accent.clone();
     b.box([1, 1, 0.022], [0, 0, 0], { bevel: 8e-3 });
     return b.geometry();
   })();
-  const head = new THREE10.Vector3();
-  const at = new THREE10.Vector3();
+  const head = new THREE11.Vector3();
+  const at = new THREE11.Vector3();
   const headV3 = () => {
     o.camera.getWorldPosition(head);
     return [head.x, head.y, head.z];
@@ -4780,10 +4944,10 @@ function createPanels(o) {
   };
   const presenting = () => !!o.session?.();
   let follow = null;
-  const anchorAt = new THREE10.Vector3();
-  const anchorTurn = new THREE10.Quaternion();
-  const offset = new THREE10.Vector3();
-  const UP = new THREE10.Vector3(0, 1, 0);
+  const anchorAt = new THREE11.Vector3();
+  const anchorTurn = new THREE11.Quaternion();
+  const offset = new THREE11.Vector3();
+  const UP = new THREE11.Vector3(0, 1, 0);
   const anchor = (dt) => {
     o.camera.getWorldPosition(anchorAt);
     if (!presenting()) {
@@ -4824,20 +4988,20 @@ function createPanels(o) {
     save();
     if (p.source.kind === "custom") p.source.onClose?.();
   };
-  const flat = (texture, w = 1, h = 1) => new THREE10.Mesh(new THREE10.PlaneGeometry(w, h), new THREE10.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
+  const flat = (texture, w = 1, h = 1) => new THREE11.Mesh(new THREE11.PlaneGeometry(w, h), new THREE11.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
   const open = (content, opts = {}) => {
     const source = content.kind === "custom" ? content : cleanSource(content);
     if (!source) throw new Error("nswp-sdk: a panel needs something to show (a note with words, or a picture or video with an address).");
     if (live.size >= PANEL_LIMITS.count && !(opts.id && live.has(opts.id))) throw new Error(`nswp-sdk: ${PANEL_LIMITS.count} panels are open. Put one away first.`);
     const id = opts.id ?? newId();
     live.get(id)?.close();
-    const group = new THREE10.Group();
+    const group = new THREE11.Group();
     group.name = `panel:${id}`;
     const body = flat(null);
     body.name = `${id}:body`;
     const bar = flat(barTexture(source.title || (source.kind === "note" ? "Note" : source.kind === "picture" ? "Picture" : source.kind === "video" ? "Video" : ""), ink), 1, BAR);
     bar.name = `${id}:bar`;
-    const frame = new THREE10.Mesh(frameShape, metal);
+    const frame = new THREE11.Mesh(frameShape, metal);
     frame.name = "frame";
     frame.raycast = () => {
     };
@@ -4891,7 +5055,7 @@ function createPanels(o) {
         save();
       },
       place() {
-        const e = new THREE10.Euler().setFromQuaternion(group.quaternion, "YXZ");
+        const e = new THREE11.Euler().setFromQuaternion(group.quaternion, "YXZ");
         const round = (n) => Math.round(n * 1e3) / 1e3;
         return { position: group.position.toArray().map(round), yaw: round((e.y / DEG % 360 + 360) % 360), pitch: round(e.x / DEG), width: round(p.width) };
       },
@@ -4929,8 +5093,8 @@ function createPanels(o) {
           const image = new Image();
           image.onload = () => {
             if (!live.has(id)) return;
-            const texture = new THREE10.Texture(image);
-            texture.colorSpace = THREE10.SRGBColorSpace;
+            const texture = new THREE11.Texture(image);
+            texture.colorSpace = THREE11.SRGBColorSpace;
             texture.needsUpdate = true;
             show(texture, image.naturalWidth / Math.max(1, image.naturalHeight));
           };
@@ -4943,8 +5107,8 @@ function createPanels(o) {
           p.video = video;
           video.addEventListener("loadedmetadata", () => {
             if (!live.has(id) || !video.videoWidth) return;
-            const texture = new THREE10.VideoTexture(video);
-            texture.colorSpace = THREE10.SRGBColorSpace;
+            const texture = new THREE11.VideoTexture(video);
+            texture.colorSpace = THREE11.SRGBColorSpace;
             show(texture, video.videoWidth / video.videoHeight);
           });
           const mark = () => {
@@ -5011,9 +5175,9 @@ function createPanels(o) {
   const tint = (hit, on) => {
     const found = hit ? find(hit) : null;
     const mesh = found?.[0].buttons.get(found[1]);
-    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE10.Color(16777215));
+    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE11.Color(16777215));
   };
-  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE10.Color(16777215));
+  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE11.Color(16777215));
   const api = {
     open,
     async openFile(file) {
@@ -5256,14 +5420,14 @@ function addPanelControls(controls, panels, o) {
 }
 
 // packages/sdk/src/floor-mark.ts
-import * as THREE11 from "three";
+import * as THREE12 from "three";
 var MOST3 = 140;
 var TURNS = 16;
 function createFloorMarks(accent, opts = {}) {
   const y = opts.height ?? 0.02;
-  const group = new THREE11.Group();
+  const group = new THREE12.Group();
   group.name = "floor-marks";
-  const paint = (opacity) => new THREE11.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
+  const paint = (opacity) => new THREE12.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
   const flat = (o) => {
     o.rotation.x = -Math.PI / 2;
     o.renderOrder = 5;
@@ -5273,20 +5437,20 @@ function createFloorMarks(accent, opts = {}) {
     group.add(o);
     return o;
   };
-  const ring = flat(new THREE11.Mesh(new THREE11.RingGeometry(0.26, 0.34, 48), paint(0.85)));
-  const dot = flat(new THREE11.Mesh(new THREE11.CircleGeometry(0.14, 28), paint(0.95)));
-  const halo = flat(new THREE11.Mesh(new THREE11.RingGeometry(0.26, 0.3, 48), paint(0.7)));
-  const line = flat(new THREE11.InstancedMesh(new THREE11.CircleGeometry(0.07, 14), paint(0.8), MOST3));
+  const ring = flat(new THREE12.Mesh(new THREE12.RingGeometry(0.26, 0.34, 48), paint(0.85)));
+  const dot = flat(new THREE12.Mesh(new THREE12.CircleGeometry(0.14, 28), paint(0.95)));
+  const halo = flat(new THREE12.Mesh(new THREE12.RingGeometry(0.26, 0.3, 48), paint(0.7)));
+  const line = flat(new THREE12.InstancedMesh(new THREE12.CircleGeometry(0.07, 14), paint(0.8), MOST3));
   line.rotation.x = 0;
   line.frustumCulled = false;
-  const knots = flat(new THREE11.InstancedMesh(new THREE11.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
+  const knots = flat(new THREE12.InstancedMesh(new THREE12.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
   knots.rotation.x = 0;
   knots.frustumCulled = false;
-  const place = new THREE11.Matrix4();
-  const lie = new THREE11.Quaternion().setFromEuler(new THREE11.Euler(-Math.PI / 2, 0, 0));
-  const at = new THREE11.Vector3();
-  const one = new THREE11.Vector3(1, 1, 1);
-  let shown = { ring: null, dot: null, dots: 0, turns: 0 };
+  const place = new THREE12.Matrix4();
+  const lie = new THREE12.Quaternion().setFromEuler(new THREE12.Euler(-Math.PI / 2, 0, 0));
+  const at = new THREE12.Vector3();
+  const one = new THREE12.Vector3(1, 1, 1);
+  let shown2 = { ring: null, dot: null, dots: 0, turns: 0 };
   return {
     group,
     update(o) {
@@ -5323,9 +5487,9 @@ function createFloorMarks(accent, opts = {}) {
       line.visible = dots > 0;
       knots.count = turns;
       knots.visible = turns > 0;
-      shown = { ring: o.hover ? [o.hover[0], o.hover[1]] : null, dot: end ? [end[0], end[1]] : null, dots, turns };
+      shown2 = { ring: o.hover ? [o.hover[0], o.hover[1]] : null, dot: end ? [end[0], end[1]] : null, dots, turns };
     },
-    info: () => shown,
+    info: () => shown2,
     dispose() {
       for (const o of [ring, dot, halo, line, knots]) {
         o.geometry.dispose();
@@ -5418,7 +5582,7 @@ function createFps(o) {
   let pitch = 0;
   let weLetGo = false;
   let closedAt = -1;
-  let shown = false;
+  let shown2 = false;
   const looking = () => document.pointerLockElement === o.dom;
   const active = () => enabled && !o.presenting();
   const dot = document.createElement("div");
@@ -5551,16 +5715,16 @@ function createFps(o) {
     update(dt) {
       if (!active()) {
         if (looking()) letGo();
-        if (shown) {
-          shown = false;
+        if (shown2) {
+          shown2 = false;
           dot.style.display = "none";
           o.dom.style.cursor = "";
         }
         return false;
       }
       const aiming = !o.hud?.open;
-      if (aiming !== shown) {
-        shown = aiming;
+      if (aiming !== shown2) {
+        shown2 = aiming;
         dot.style.display = aiming ? "block" : "none";
       }
       o.dom.style.cursor = aiming ? "none" : "";
@@ -5686,13 +5850,13 @@ function viewScale(metres, opts) {
 }
 
 // packages/sdk/src/scores.ts
-import { cleanBoard, cleanScore, DEFAULT_RELAYS as DEFAULT_RELAYS5, publishEvent as publishEvent4, queryRelays as queryRelays5, rankScores, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, SCORE_KIND, scoreWords, worldCoordinate } from "@nswp/core";
+import { cleanBoard, cleanScore, DEFAULT_RELAYS as DEFAULT_RELAYS6, publishEvent as publishEvent4, queryRelays as queryRelays6, rankScores, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, SCORE_KIND, scoreWords, worldCoordinate } from "@nswp/core";
 function createScores(opts) {
   const world = worldCoordinate(opts.world);
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays5;
+  const query = opts.query ?? queryRelays6;
   const publish = opts.publish ?? publishEvent4;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS5;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS6;
   const boards = opts.boards.filter((b) => cleanBoard(b.id));
   const boardOf = (id) => boards.find((b) => b.id === id) ?? null;
   const better = (b, a, than) => than === null || (b.order === "low" ? a < than : a > than);
@@ -5704,9 +5868,9 @@ function createScores(opts) {
       return null;
     }
   })();
-  const watchers2 = /* @__PURE__ */ new Set();
+  const watchers3 = /* @__PURE__ */ new Set();
   const changed = () => {
-    for (const fn of watchers2) fn();
+    for (const fn of watchers3) fn();
   };
   const keyFor = (who) => `nswp:scores:${world}:${who ?? "guest"}`;
   const read = (who) => {
@@ -5808,8 +5972,8 @@ function createScores(opts) {
       return b ? scoreWords(b, score) : String(score);
     },
     onChange(fn) {
-      watchers2.add(fn);
-      return () => void watchers2.delete(fn);
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
     }
   };
 }
@@ -5818,7 +5982,7 @@ function createScores(opts) {
 import { shortNpub as shortNpub5 } from "@nswp/core";
 function addScoreControls(controls, opts) {
   const { scores } = opts;
-  let shown = [];
+  let shown2 = [];
   const read = /* @__PURE__ */ new Map();
   const looking = /* @__PURE__ */ new Set();
   const nameOf = (pubkey) => opts.profiles?.get(pubkey)?.name || shortNpub5(pubkey);
@@ -5834,11 +5998,11 @@ function addScoreControls(controls, opts) {
     });
   };
   const refresh = () => {
-    for (const id of shown) controls.remove(id);
-    shown = [];
+    for (const id of shown2) controls.remove(id);
+    shown2 = [];
     if (scores.boards.length === 0) return;
     const add = (...actions) => {
-      for (const a of actions) shown.push(a.id);
+      for (const a of actions) shown2.push(a.id);
       controls.add(...actions.map((a) => ({ section: "scores", ...a })));
     };
     controls.addSection({
@@ -5902,14 +6066,313 @@ function addScoreControls(controls, opts) {
   return { refresh };
 }
 
+// packages/sdk/src/bag.ts
+import { BAG_KIND, bagIn, changeBag, DEFAULT_RELAYS as DEFAULT_RELAYS7, itemCoordinate as itemCoordinate2, newestBag, publishEvent as publishEvent5, queryRelays as queryRelays7, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, SITE_MARKS, verifyEvent as verifyEvent6 } from "@nswp/core";
+var FRESH_MS4 = 6e4;
+function createBag(opts) {
+  const now = opts.now ?? (() => Date.now());
+  const query = opts.query ?? queryRelays7;
+  const publish = opts.publish ?? publishEvent5;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS7;
+  const store = (() => {
+    if (opts.storage !== void 0) return opts.storage;
+    try {
+      return globalThis.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const watchers3 = /* @__PURE__ */ new Set();
+  const changed = () => {
+    for (const fn of watchers3) fn();
+  };
+  const keyFor = (who) => `nswp:bag:${who}`;
+  const readKept = (who) => {
+    try {
+      const kept2 = JSON.parse(store?.getItem(keyFor(who)) ?? "null");
+      return verifyEvent6(kept2) && kept2.kind === BAG_KIND && kept2.pubkey === who ? kept2 : null;
+    } catch {
+      return null;
+    }
+  };
+  const keep3 = (bag) => {
+    try {
+      store?.setItem(keyFor(bag.pubkey), JSON.stringify(bag));
+    } catch {
+    }
+  };
+  let relaysKept = null;
+  const ownRelays = (key) => {
+    if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
+    const found = askWell({ kinds: [RELAY_LIST_KIND5], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList5(got.events, key)?.write ?? []).catch(() => []);
+    relaysKept = { key, at: now(), found };
+    return found;
+  };
+  let known = null;
+  let looking = null;
+  let offered = null;
+  const look = async (who) => {
+    const kept2 = readKept(who);
+    const own = await ownRelays(who);
+    const got = await askWell({ kinds: [BAG_KIND], authors: [who], limit: 4 }, { own, usual: usual(), query, timeoutMs: 4e3, now }).catch(() => null);
+    const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
+    const found = newestBag((got?.events ?? []).filter((e) => verifyEvent6(e)), who);
+    const bag = found && kept2 ? kept2.created_at > found.created_at ? kept2 : found : found ?? kept2;
+    if (kept2 && bag === kept2 && answered && (!found || found.id !== kept2.id)) void sendWell(kept2, { own, usual: usual(), publish, query, now }).catch(() => null);
+    if (bag && bag !== kept2) keep3(bag);
+    if (opts.me() !== who) return;
+    known = { who, bag, answered, at: now() };
+    changed();
+  };
+  const load2 = async (fresh = false) => {
+    const who = opts.me();
+    if (!who) {
+      if (known) {
+        known = null;
+        changed();
+      }
+      return null;
+    }
+    if (known && known.who !== who) known = null;
+    if (!fresh && known && now() - known.at < FRESH_MS4) return bagIn(known.bag);
+    looking ??= look(who).finally(() => {
+      looking = null;
+    });
+    await looking;
+    return known && known.who === who ? bagIn(known.bag) : null;
+  };
+  const change2 = async (itemIn2, adding, title) => {
+    const who = opts.me();
+    const it = title || "It";
+    const item = itemCoordinate2(itemIn2);
+    if (!who) return { ok: false, why: "signed-out", said: "Sign in to keep a bag." };
+    if (!opts.hand) return { ok: false, why: "read-only", said: "Your bag is changed at your home, not from here." };
+    if (!item) return { ok: false, why: "refused", said: "That isn't an item." };
+    if (!opts.hand.ready()) return { ok: false, why: "not-allowed", said: "This place hasn't been let change your bag." };
+    await load2(true);
+    const at = known && known.who === who ? known : null;
+    if (!at) return { ok: false, why: "unreachable", said: "Your bag couldn't be looked for. Nothing was changed." };
+    if (!at.bag) {
+      if (!at.answered) return { ok: false, why: "unreachable", said: "No relay could be reached to find your bag, so nothing was changed. Try again in a moment." };
+      if (!adding) return { ok: false, why: "already", said: `${it} isn't in your bag.` };
+      if (!offered || offered.item !== item || now() - offered.at > 12e4) {
+        offered = { item, at: now() };
+        return { ok: false, why: "no-bag", said: "No bag of yours was found. If you have none yet, press again to start one." };
+      }
+    }
+    offered = null;
+    const has = bagIn(at.bag).includes(item);
+    if (adding === has) return { ok: true, why: "already", said: adding ? `${it} is already in your bag.` : `${it} isn't in your bag.` };
+    const made = changeBag(at.bag, { ...adding ? { add: item } : { remove: item }, now: now() / 1e3, fromNothing: at.bag === null });
+    const signed = made ? await opts.hand.sign(made).catch(() => null) : null;
+    const same = signed && verifyEvent6(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
+    if (!signed || !same) return { ok: false, why: "refused", said: "It couldn't be signed. Your bag is as it was." };
+    keep3(signed);
+    known = { who, bag: signed, answered: true, at: now() };
+    changed();
+    const sent = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
+    if (!sent || sent.took === 0) return { ok: false, why: "not-sent", said: "Signed, but no relay took it. It is kept on this device and will be sent again." };
+    return { ok: true, said: adding ? `${it} is in your bag. Anyone can see what is in it.` : `${it} is out of your bag.` };
+  };
+  return {
+    items: () => known && known.who === opts.me() ? bagIn(known.bag) : null,
+    load: load2,
+    canChange: () => !!opts.hand,
+    add: (item, title = "") => change2(item, true, title),
+    remove: (item, title = "") => change2(item, false, title),
+    onChange(fn) {
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
+    }
+  };
+}
+
+// packages/sdk/src/bagging.ts
+import { decodeNaddr, ITEM_KIND as ITEM_KIND2, itemCoordinate as itemCoordinate3 } from "@nswp/core";
+var PAGE2 = 24;
+function itemIn(text) {
+  if (typeof text !== "string") return "";
+  const plain = itemCoordinate3(/37303:[0-9a-f]{64}:[a-z0-9][a-z0-9-]{0,63}/.exec(text)?.[0]);
+  if (plain) return plain;
+  const address = /naddr1[02-9ac-hj-np-z]{20,400}/.exec(text)?.[0];
+  if (!address) return "";
+  try {
+    const to = decodeNaddr(address);
+    return to.kind === ITEM_KIND2 ? itemCoordinate3(`${ITEM_KIND2}:${to.pubkey}:${to.identifier}`) : "";
+  } catch {
+    return "";
+  }
+}
+function addBagControls(controls, opts) {
+  const { bag, items } = opts;
+  let shown2 = [];
+  let chosen = null;
+  let pages = 1;
+  let wasMe = null;
+  let looked = false;
+  const say = (text) => controls.say(text);
+  const titleOf = (item) => items.known(item)?.title ?? item.split(":")[2] ?? "an item";
+  const change2 = (item, adding) => {
+    const now = async () => {
+      const done = await (adding ? bag.add(item, titleOf(item)) : bag.remove(item, titleOf(item)));
+      say(done.said);
+      refresh();
+    };
+    if (!bag.canChange()) return say("Your bag is changed at your home, not from here.");
+    if (opts.allowed && !opts.allowed() && opts.ask) return say(opts.ask(() => void now()));
+    void now();
+  };
+  const fromCopy = async () => {
+    let text = "";
+    const keyboard = opts.presenting?.() ? opts.keyboard?.() ?? null : null;
+    if (keyboard) text = await keyboard.ask({ title: "The item's address: naddr1\u2026 Paste it, or type it.", maxLength: 420 }).catch(() => null) ?? "";
+    else {
+      try {
+        text = await (opts.copied ? opts.copied() : navigator.clipboard.readText());
+      } catch {
+        return say("What you copied couldn't be read here. Copy an item's address, allow this site to read what you copy, and press again.");
+      }
+    }
+    const item = itemIn(text);
+    if (!item) return say("That isn't an item's address. Copy one from the place that keeps the item, and press again.");
+    const described = await items.describe(item);
+    if (!described) return say("No description of that item could be found, so it wasn't put in your bag.");
+    chosen = item;
+    change2(item, true);
+  };
+  const refresh = () => {
+    for (const id of shown2) controls.remove(id);
+    shown2 = [];
+    const me = opts.me();
+    if (me !== wasMe) {
+      wasMe = me;
+      chosen = null;
+      pages = 1;
+      looked = false;
+    }
+    const has = me ? bag.items() : null;
+    const rule = opts.rule();
+    const add = (...actions) => {
+      for (const a of actions) shown2.push(a.id);
+      controls.add(...actions.map((a) => ({ section: "bag", ...a })));
+    };
+    controls.addSection({
+      id: "bag",
+      label: "Bag",
+      icon: "save",
+      note: () => {
+        const here = rule === "play" ? "Items are part of play here: what people hold can reach you." : rule === "allowed" ? "Items work here." : "Nothing carried is drawn or works in this place.";
+        if (!me) return "Sign in to keep a bag.";
+        if (has === null) return looked ? "Your bag couldn't be looked for just now." : "Looking for your bag.";
+        if (has.length === 0) return `Your bag is empty. ${bag.canChange() ? "Put an item in by its address: copy it from the place that keeps the item." : "Things are put in it at your home."} ${here}`;
+        return `${has.length === 1 ? "1 thing" : `${has.length} things`} in your bag. Anyone can see what is in it. ${here}`;
+      },
+      card: () => {
+        const item = chosen ? items.known(chosen) : null;
+        if (!item) return null;
+        return { title: item.title, tag: opts.holding() === item.id ? "In your hand" : "In your bag", proven: false, sub: `Made by ${item.maker.slice(0, 8)}\u2026`, copy: item.id, text: item.summary, picture: "", color: "", now: [] };
+      }
+    });
+    if (!me) return;
+    add({
+      id: "bag-items",
+      icon: "check",
+      on: () => showsItems(),
+      label: () => showsItems() ? "Items: on" : "Items: off. Nothing of anyone's is fetched, drawn or run",
+      short: "Items",
+      act: () => {
+        setShowsItems(!showsItems());
+        if (!showsItems() && opts.holding()) void opts.hold("");
+        say(showsItems() ? "Items are drawn, here and in the next world that allows them." : "No item is fetched, drawn or run for you, here or in the next world.");
+        refresh();
+      }
+    });
+    if (has === null) {
+      if (!looked) {
+        looked = true;
+        void bag.load().then(refresh);
+      } else
+        add({
+          id: "bag-again",
+          icon: "turn",
+          label: "Look again",
+          act: () => {
+            looked = false;
+            refresh();
+          }
+        });
+      return;
+    }
+    add({ id: "bag-look", icon: "turn", label: "Look again", short: "Look", act: () => void bag.load(true).then(refresh) });
+    if (bag.canChange()) add({ id: "bag-add", icon: "save", label: () => opts.presenting?.() && opts.keyboard?.() ? "Put in an item by its address" : "Put in the item I copied", short: "Add", act: () => void fromCopy() });
+    if (opts.holding()) add({ id: "bag-away", icon: "close", label: `Put ${titleOf(opts.holding())} away`, short: "Away", act: async () => say((await opts.hold("")).said) });
+    if (chosen && has.includes(chosen)) {
+      const item = chosen;
+      if (opts.holding() !== item && rule !== "none" && showsItems()) {
+        add({
+          id: "bag-hold",
+          icon: "check",
+          tone: "primary",
+          label: `Hold ${titleOf(item)}`,
+          act: async () => {
+            say((await opts.hold(item)).said);
+            refresh();
+          }
+        });
+      }
+      if (bag.canChange()) add({ id: "bag-remove", icon: "close", label: `Take ${titleOf(item)} out of my bag`, act: () => change2(item, false) });
+    }
+    const listed = has.slice(0, pages * PAGE2);
+    for (const item of listed) if (!items.known(item)) void items.describe(item).then((found) => found && soon2());
+    add(
+      ...listed.map(
+        (item) => ({
+          id: `bag-${item.split(":")[1].slice(0, 8)}-${item.split(":")[2]}`.slice(0, 60),
+          icon: "save",
+          on: () => chosen === item,
+          label: () => `${titleOf(item)}${opts.holding() === item ? ", in your hand" : ""}`,
+          act: () => {
+            chosen = chosen === item ? null : item;
+            refresh();
+          }
+        })
+      )
+    );
+    if (has.length > listed.length) {
+      add({
+        id: "bag-more",
+        icon: "list",
+        label: `Show more (${listed.length} of ${has.length})`,
+        act: () => {
+          pages++;
+          refresh();
+        }
+      });
+    }
+  };
+  let drawing = false;
+  const soon2 = () => {
+    if (drawing) return;
+    drawing = true;
+    queueMicrotask(() => {
+      drawing = false;
+      refresh();
+    });
+  };
+  bag.onChange(soon2);
+  onItemsChange(soon2);
+  refresh();
+  return { refresh };
+}
+
 // packages/sdk/src/door-ratings.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS6, queryRelays as queryRelays6, RATING_KIND, tallyMark, tallyRatings, worldCoordinate as worldCoordinate2 } from "@nswp/core";
-var FRESH_MS4 = 5 * 6e4;
+import { DEFAULT_RELAYS as DEFAULT_RELAYS8, queryRelays as queryRelays8, RATING_KIND, tallyMark, tallyRatings, worldCoordinate as worldCoordinate2 } from "@nswp/core";
+var FRESH_MS5 = 5 * 6e4;
 function createDoorRatings(opts) {
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays6;
+  const query = opts.query ?? queryRelays8;
   const doors = new Map(opts.doors.map((d) => [worldCoordinate2(d.world), d.url]).filter(([world]) => world));
-  const watchers2 = /* @__PURE__ */ new Set();
+  const watchers3 = /* @__PURE__ */ new Set();
   let events = [];
   let asked = 0;
   let askedFor = null;
@@ -5929,18 +6392,18 @@ function createDoorRatings(opts) {
           events = [];
           askedFor = null;
           asked = 0;
-          for (const fn of watchers2) fn();
+          for (const fn of watchers3) fn();
         }
         return;
       }
-      if (!fresh && askedFor === me && now() - asked < FRESH_MS4) return;
+      if (!fresh && askedFor === me && now() - asked < FRESH_MS5) return;
       asked = now();
       askedFor = me;
-      const got = await askWell({ kinds: [RATING_KIND], "#a": [...doors.keys()], limit: 500 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS6, query, timeoutMs: 4e3, now }).catch(() => null);
+      const got = await askWell({ kinds: [RATING_KIND], "#a": [...doors.keys()], limit: 500 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS8, query, timeoutMs: 4e3, now }).catch(() => null);
       if (opts.me() !== me) return;
       const byId = new Map((got?.events ?? []).filter((e) => e.kind === RATING_KIND).map((e) => [e.id, e]));
       events = [...byId.values()];
-      for (const fn of watchers2) fn();
+      for (const fn of watchers3) fn();
     },
     tally,
     mark: (world) => tallyMark(tally(world)),
@@ -5954,8 +6417,8 @@ function createDoorRatings(opts) {
       return `Rated ${stars}, by ${t.mine ? `you and ${them}` : them}`;
     },
     onChange(fn) {
-      watchers2.add(fn);
-      return () => void watchers2.delete(fn);
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
     }
   };
 }
@@ -5967,14 +6430,14 @@ function ordinal(n) {
   return `${n}${tens >= 11 && tens <= 13 ? "th" : last === 1 ? "st" : last === 2 ? "nd" : last === 3 ? "rd" : "th"}`;
 }
 function someOf(names, most = 3) {
-  const shown = names.slice(0, most).join(", ");
+  const shown2 = names.slice(0, most).join(", ");
   const rest = names.length - most;
-  return rest > 0 ? `${shown} and ${rest} more` : shown;
+  return rest > 0 ? `${shown2} and ${rest} more` : shown2;
 }
 function worldPersonLines(o) {
-  const watchers2 = /* @__PURE__ */ new Set();
+  const watchers3 = /* @__PURE__ */ new Set();
   const changed = () => {
-    for (const fn of watchers2) fn();
+    for (const fn of watchers3) fn();
   };
   let asked = 0;
   const read = () => {
@@ -6000,20 +6463,20 @@ function worldPersonLines(o) {
       return out;
     },
     onChange(fn) {
-      watchers2.add(fn);
-      return () => void watchers2.delete(fn);
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
     }
   };
 }
 
 // packages/sdk/src/achievements.ts
-import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS7, publishEvent as publishEvent5, queryRelays as queryRelays7, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate3 } from "@nswp/core";
+import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS9, publishEvent as publishEvent6, queryRelays as queryRelays9, readRelayList as readRelayList6, RELAY_LIST_KIND as RELAY_LIST_KIND6, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate3 } from "@nswp/core";
 function createAchievements(opts) {
   const world = worldCoordinate3(opts.world);
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays7;
-  const publish = opts.publish ?? publishEvent5;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS7;
+  const query = opts.query ?? queryRelays9;
+  const publish = opts.publish ?? publishEvent6;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS9;
   const list = opts.list.filter((a) => cleanAchievementId(a.id) && a.title);
   const one = (id) => list.find((a) => a.id === id) ?? null;
   const store = (() => {
@@ -6024,10 +6487,10 @@ function createAchievements(opts) {
       return null;
     }
   })();
-  const watchers2 = /* @__PURE__ */ new Set();
+  const watchers3 = /* @__PURE__ */ new Set();
   const earners = /* @__PURE__ */ new Set();
   const changed = () => {
-    for (const fn of watchers2) fn();
+    for (const fn of watchers3) fn();
   };
   const keyFor = (who) => `nswp:achievements:${world}:${who ?? "guest"}`;
   const held = /* @__PURE__ */ new Map();
@@ -6059,7 +6522,7 @@ function createAchievements(opts) {
   let relaysKept = null;
   const ownRelays = (key) => {
     if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND5], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList5(got.events, key)?.write ?? []).catch(() => []);
+    const found = askWell({ kinds: [RELAY_LIST_KIND6], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList6(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: now(), found };
     return found;
   };
@@ -6124,8 +6587,8 @@ function createAchievements(opts) {
       return list.filter((a) => theirs.has(a.id));
     },
     onChange(fn) {
-      watchers2.add(fn);
-      return () => void watchers2.delete(fn);
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
     },
     onEarn(fn) {
       earners.add(fn);
@@ -6137,7 +6600,7 @@ function createAchievements(opts) {
 // packages/sdk/src/achieving.ts
 function addAchievementControls(controls, opts) {
   const a = opts.achievements;
-  let shown = [];
+  let shown2 = [];
   let holders;
   let looking = false;
   const look = (fresh = false) => {
@@ -6150,11 +6613,11 @@ function addAchievementControls(controls, opts) {
     });
   };
   const refresh = () => {
-    for (const id of shown) controls.remove(id);
-    shown = [];
+    for (const id of shown2) controls.remove(id);
+    shown2 = [];
     if (a.list.length === 0) return;
     const add = (...actions) => {
-      for (const x of actions) shown.push(x.id);
+      for (const x of actions) shown2.push(x.id);
       controls.add(...actions.map((x) => ({ section: "achievements", ...x })));
     };
     const earned = a.earned();
@@ -6914,7 +7377,7 @@ function addSoundControls(controls, sounds) {
 }
 
 // packages/sdk/src/chamber.ts
-import * as THREE12 from "three";
+import * as THREE13 from "three";
 var R = 1.8;
 var H4 = 2.8;
 var BAYS = 10;
@@ -6939,16 +7402,16 @@ function signTexture(lines, color) {
     const y = rows.length === 1 ? 192 : rows.length === 2 ? 138 + i * 118 : 92 + i * 100;
     g.fillText(line, 512, y, 944);
   });
-  const texture = new THREE12.CanvasTexture(canvas);
-  texture.colorSpace = THREE12.SRGBColorSpace;
+  const texture = new THREE13.CanvasTexture(canvas);
+  texture.colorSpace = THREE13.SRGBColorSpace;
   return texture;
 }
 function createChamber(accent, opts = {}) {
-  const light = new THREE12.Color(accent);
+  const light = new THREE13.Color(accent);
   const metal = createAlloy(light, { gloss: 0.5, speed: 0.9 });
   const builder = () => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE12.Color(1317668);
+    b.tone = new THREE13.Color(1317668);
     b.light = light.clone();
     return b;
   };
@@ -6960,7 +7423,7 @@ function createChamber(accent, opts = {}) {
   const wallShape = builder();
   for (let i = 1; i < BAYS; i++) {
     const a = i * 2 * Math.PI / BAYS;
-    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE12.MathUtils.radToDeg(a));
+    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE13.MathUtils.radToDeg(a));
     wallShape.box([bay, H4, 0.12], [0, H4 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
     for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H4 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
   }
@@ -6980,31 +7443,31 @@ function createChamber(accent, opts = {}) {
     leaf.position.set(side * DOOR_W / 2, 0, -reach);
     return leaf;
   });
-  const sign = new THREE12.Mesh(new THREE12.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE12.MeshBasicMaterial({ transparent: true }));
+  const sign = new THREE13.Mesh(new THREE13.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE13.MeshBasicMaterial({ transparent: true }));
   sign.position.set(0, DOOR_H + (H4 - DOOR_H) / 2, -reach + 0.085);
-  const rising = new THREE12.Group();
+  const rising = new THREE13.Group();
   rising.add(walls, ...leaves, sign);
-  const clear = new THREE12.Mesh(new THREE12.BufferGeometry().setAttribute("position", new THREE12.BufferAttribute(new Float32Array(9), 3)), new THREE12.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
+  const clear = new THREE13.Mesh(new THREE13.BufferGeometry().setAttribute("position", new THREE13.BufferAttribute(new Float32Array(9), 3)), new THREE13.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
   clear.frustumCulled = false;
   clear.renderOrder = CHAMBER_ORDER;
   clear.onBeforeRender = (renderer) => renderer.clearDepth();
   for (const part of [floor, walls, lid, ...leaves]) part.renderOrder = CHAMBER_ORDER + 1;
   sign.renderOrder = CHAMBER_ORDER + 1.3;
-  const depthOnly = (depth, o) => new THREE12.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE12.AlwaysDepth, depthWrite: true, side: THREE12.DoubleSide, ...o });
+  const depthOnly = (depth, o) => new THREE13.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE13.AlwaysDepth, depthWrite: true, side: THREE13.DoubleSide, ...o });
   const nearest2 = depthOnly("0.0", {});
   const farthest = depthOnly("1.0", { transparent: true });
-  const real = new THREE12.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE12.DoubleSide });
+  const real = new THREE13.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE13.DoubleSide });
   const shutOut = [];
   for (const part of [floor, walls, lid, ...leaves]) {
     for (const [material, order] of [[nearest2, SHUT_ORDER], [farthest, CHAMBER_ORDER + 1.1], [real, CHAMBER_ORDER + 1.2]]) {
-      const pass = new THREE12.Mesh(part.geometry, material);
+      const pass = new THREE13.Mesh(part.geometry, material);
       pass.renderOrder = order;
       pass.frustumCulled = false;
       part.add(pass);
       shutOut.push(pass);
     }
   }
-  const group = new THREE12.Group();
+  const group = new THREE13.Group();
   group.add(clear, floor, rising, lid);
   let door = 0;
   let presence = 1;
@@ -7071,8 +7534,8 @@ function createCrossing(o) {
   let hold;
   let shut = null;
   const moves = () => o.motion?.() ?? true;
-  const at = new THREE12.Vector3();
-  const facing2 = new THREE12.Vector3();
+  const at = new THREE13.Vector3();
+  const facing2 = new THREE13.Vector3();
   const place = () => {
     chamber?.dispose();
     const made = createChamber(o.accent, o.textColor ? { textColor: o.textColor } : {});
@@ -7175,16 +7638,16 @@ function createCrossing(o) {
 }
 
 // packages/sdk/src/camera.ts
-import * as THREE13 from "three";
+import * as THREE14 from "three";
 async function takePicture(renderer, scene, camera, opts = {}) {
   const width = Math.round(opts.width ?? 1920);
   const height = Math.round(opts.height ?? 1080);
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
   const xrWasEnabled = renderer.xr.enabled;
   const previousTarget = renderer.getRenderTarget();
-  const target = new THREE13.WebGLRenderTarget(width, height, { samples: 4 });
-  target.texture.colorSpace = THREE13.SRGBColorSpace;
-  const eye = new THREE13.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
+  const target = new THREE14.WebGLRenderTarget(width, height, { samples: 4 });
+  target.texture.colorSpace = THREE14.SRGBColorSpace;
+  const eye = new THREE14.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
   camera.updateWorldMatrix(true, false);
   camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
   eye.updateMatrixWorld(true);
@@ -7215,17 +7678,17 @@ async function takePicture(renderer, scene, camera, opts = {}) {
 }
 async function takeSelfie(renderer, scene, head, look, opts = {}) {
   head.updateWorldMatrix(true, false);
-  const at = new THREE13.Vector3();
-  const facing2 = new THREE13.Quaternion();
-  head.matrixWorld.decompose(at, facing2, new THREE13.Vector3());
-  const ahead = new THREE13.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
+  const at = new THREE14.Vector3();
+  const facing2 = new THREE14.Quaternion();
+  head.matrixWorld.decompose(at, facing2, new THREE14.Vector3());
+  const ahead = new THREE14.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
   if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
   ahead.normalize();
   const figure = createFigure(look);
   figure.group.position.copy(at);
   figure.group.rotation.y = Math.atan2(-ahead.x, -ahead.z);
   scene.add(figure.group);
-  const eye = new THREE13.PerspectiveCamera(58, 1, 0.05, head.far);
+  const eye = new THREE14.PerspectiveCamera(58, 1, 0.05, head.far);
   eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
   eye.position.y = at.y + 0.08;
   eye.lookAt(at.x, at.y - 0.22, at.z);
@@ -7292,7 +7755,7 @@ function addCameraControls(controls, d) {
     controls.say(text);
   };
   let latest = null;
-  const keep2 = (capture) => {
+  const keep3 = (capture) => {
     latest = capture;
     d.onCapture?.(capture);
     if (presenting()) {
@@ -7307,7 +7770,7 @@ function addCameraControls(controls, d) {
     try {
       const hide = d.hide?.() ?? [];
       const blob = kind === "selfie" ? await takeSelfie(d.renderer, d.scene, d.camera, d.look?.() ?? plain, { hide }) : await takePicture(d.renderer, d.scene, d.camera, { hide });
-      keep2({ kind, blob, name: `${name}-${kind === "selfie" ? "selfie-" : ""}${stamp()}.jpg` });
+      keep3({ kind, blob, name: `${name}-${kind === "selfie" ? "selfie-" : ""}${stamp()}.jpg` });
     } catch {
       tell("That picture couldn't be taken on this device.");
     }
@@ -7315,7 +7778,7 @@ function addCameraControls(controls, d) {
   const finish = (blob) => {
     clip = null;
     d.recording?.(false);
-    keep2({ kind: "clip", blob, name: `${name}-clip-${stamp()}.${blob.type.includes("mp4") ? "mp4" : "webm"}` });
+    keep3({ kind: "clip", blob, name: `${name}-clip-${stamp()}.${blob.type.includes("mp4") ? "mp4" : "webm"}` });
   };
   controls.addSection({ id: "camera", label: "Camera", icon: "camera", note: () => clip ? `Recording: ${Math.floor(clip.seconds())} s. Others in the room can see that you are.` : last });
   controls.add(
@@ -7389,9 +7852,9 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE14.CanvasTexture(canvas);
-  tex.colorSpace = THREE14.SRGBColorSpace;
-  const sprite = new THREE14.Sprite(new THREE14.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE15.CanvasTexture(canvas);
+  tex.colorSpace = THREE15.SRGBColorSpace;
+  const sprite = new THREE15.Sprite(new THREE15.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
@@ -7420,9 +7883,9 @@ function speechSprite(text, width = 0.8) {
   g.font = font;
   g.textBaseline = "middle";
   rows.forEach((row, i) => g.fillText(row, PAD, PAD * 0.7 + LINE * (i + 0.5), canvas.width - PAD * 2));
-  const tex = new THREE14.CanvasTexture(canvas);
-  tex.colorSpace = THREE14.SRGBColorSpace;
-  const sprite = new THREE14.Sprite(new THREE14.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
+  const tex = new THREE15.CanvasTexture(canvas);
+  tex.colorSpace = THREE15.SRGBColorSpace;
+  const sprite = new THREE15.Sprite(new THREE15.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
   const metres = width / FULL;
   sprite.scale.set(canvas.width * metres, canvas.height * metres, 1);
   sprite.center.set(0.5, 0);
@@ -7431,7 +7894,7 @@ function speechSprite(text, width = 0.8) {
 function createPresence(d) {
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE14.AudioListener();
+  const listener = new THREE15.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -7453,9 +7916,9 @@ function createPresence(d) {
       fade.addColorStop(1, "rgba(255,255,255,0)");
       g.fillStyle = fade;
       g.fillRect(0, 0, 64, 64);
-      dot = new THREE14.CanvasTexture(canvas);
+      dot = new THREE15.CanvasTexture(canvas);
     }
-    return new THREE14.Sprite(new THREE14.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
+    return new THREE15.Sprite(new THREE15.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
   };
   const showRecording = (a, on) => {
     if (on && !a.light) {
@@ -7467,6 +7930,24 @@ function createPresence(d) {
       a.light.visible = on;
       a.head.add(a.light);
     }
+  };
+  const itemsRule = () => cleanItemsRule(d.itemsRule?.());
+  const canBeHeld = (item) => item.behaviors.includes("holdable") || item.fits.includes("hand-right") || item.fits.includes("hand-left");
+  let mine = "";
+  let mineModel = null;
+  const showHeld = async (a, item) => {
+    if (!a) return;
+    a.heldItem = item;
+    a.held?.removeFromParent();
+    delete a.held;
+    if (!item || !d.items || itemsRule() === "none" || !showsItems()) return;
+    const described = await d.items.describe(item);
+    if (!described || a.heldItem !== item || !canBeHeld(described) || described.use === "granted") return;
+    const model = await d.items.model(described);
+    if (a.heldItem !== item) return;
+    model.position.set(0.3, -0.12, -0.22);
+    a.torso.add(model);
+    a.held = model;
   };
   const dress = (a, look) => {
     const was = a.figure;
@@ -7488,6 +7969,7 @@ function createPresence(d) {
       was.dispose();
     }
     if (a.light) figure.head.add(a.light);
+    if (a.held) figure.torso.add(a.held);
     if (a.beam) figure.head.add(a.beam);
     if (a.bubble) figure.head.add(a.bubble);
     a.root.add(figure.group);
@@ -7537,9 +8019,9 @@ function createPresence(d) {
     if (!from) return void dress(a, a.member.look);
     void loadPicture(from).then((canvas) => {
       if (!canvas || a.pictureFrom !== from || !avatars.has(a.member.pubkey)) return;
-      const map = new THREE14.CanvasTexture(canvas);
-      map.colorSpace = THREE14.SRGBColorSpace;
-      const sprite = new THREE14.Sprite(new THREE14.SpriteMaterial({ map, depthWrite: false }));
+      const map = new THREE15.CanvasTexture(canvas);
+      map.colorSpace = THREE15.SRGBColorSpace;
+      const sprite = new THREE15.Sprite(new THREE15.SpriteMaterial({ map, depthWrite: false }));
       sprite.scale.set(0.2, 0.2, 1);
       sprite.position.set(0, 0.63, 0);
       sprite.userData.person = a.member.pubkey;
@@ -7554,7 +8036,7 @@ function createPresence(d) {
   let onPerson = () => {
   };
   const makeAvatar = (member) => {
-    const root = new THREE14.Group();
+    const root = new THREE15.Group();
     root.visible = false;
     const label = textSprite(member.name, labelColor, 0.5);
     label.position.set(0, 0.42, 0);
@@ -7580,7 +8062,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE14.PositionalAudio(listener);
+    const pa = new THREE15.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(MUSIC_RANGE);
     pa.setVolume(0);
@@ -7608,8 +8090,8 @@ function createPresence(d) {
     return Math.sqrt(buf.reduce((sum, x) => sum + x * x, 0) / buf.length);
   };
   const levelBuf = new Float32Array(512);
-  const headAt = new THREE14.Vector3();
-  const theirs = new THREE14.Vector3();
+  const headAt = new THREE15.Vector3();
+  const theirs = new THREE15.Vector3();
   const tendMusic = (dt) => {
     if (!session) return;
     d.camera.getWorldPosition(headAt);
@@ -7657,7 +8139,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE14.PositionalAudio(listener);
+    const pa = new THREE15.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -7682,8 +8164,8 @@ function createPresence(d) {
     dropBubble(a);
     a.figure.dispose();
   };
-  const v = new THREE14.Vector3();
-  const q = new THREE14.Quaternion();
+  const v = new THREE15.Vector3();
+  const q = new THREE15.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -7753,6 +8235,11 @@ function createPresence(d) {
       if (a) showRecording(a, on);
       changed();
     });
+    s.on("holding", (m, item) => {
+      void showHeld(avatars.get(m.pubkey), item);
+      changed();
+    });
+    if (mine) s.setHolding(mine);
     s.on("look", (m, look2) => {
       const a = avatars.get(m.pubkey);
       if (a) dress(a, look2);
@@ -7813,9 +8300,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE14.Vector3();
-  const tq = new THREE14.Quaternion();
-  const euler = new THREE14.Euler();
+  const tp = new THREE15.Vector3();
+  const tq = new THREE15.Quaternion();
+  const euler = new THREE15.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -7879,10 +8366,41 @@ function createPresence(d) {
     setRecording(on) {
       session?.setRecording(on);
     },
+    get holding() {
+      return mine;
+    },
+    async setHolding(itemIn2) {
+      const item = itemCoordinate4(itemIn2);
+      const put = () => {
+        mine = "";
+        mineModel?.removeFromParent();
+        mineModel = null;
+        session?.setHolding("");
+      };
+      if (!item) {
+        const had = !!mine;
+        put();
+        return { ok: true, said: had ? "Put away." : "You are holding nothing." };
+      }
+      if (!d.items || itemsRule() === "none") return { ok: false, said: "Nothing carried is drawn or works in this place." };
+      if (!showsItems()) return { ok: false, said: "You have items turned off. Turn them on to hold one." };
+      const described = await d.items.describe(item);
+      if (!described) return { ok: false, said: "That item's description couldn't be found." };
+      if (!canBeHeld(described)) return { ok: false, said: `${described.title} isn't something to hold.` };
+      if (described.use === "granted") return { ok: false, said: `${described.title} has to be granted by its maker, which can't be checked here yet.` };
+      const model = await d.items.model(described);
+      put();
+      mine = item;
+      mineModel = model;
+      model.position.set(0.34, -0.5, -0.8);
+      d.camera.add(model);
+      session?.setHolding(item);
+      return { ok: true, said: `You are holding ${described.title}. People here can see it.` };
+    },
     selfLook() {
       if (session) return session.self.look;
-      const mine = typeof d.look === "function" ? d.look() : d.look;
-      const read = mine ? decodeLook(mine) : null;
+      const mine2 = typeof d.look === "function" ? d.look() : d.look;
+      const read = mine2 ? decodeLook(mine2) : null;
       return read?.ok ? read.value.look : plainSeed ??= `plain-${Math.random().toString(36).slice(2, 12)}`;
     },
     personAt(raycaster) {
@@ -7895,11 +8413,11 @@ function createPresence(d) {
       const a = avatars.get(pubkey);
       if (!a?.target) return null;
       d.camera.getWorldPosition(v);
-      const to = new THREE14.Vector3().fromArray(a.target.head.position).sub(v);
+      const to = new THREE15.Vector3().fromArray(a.target.head.position).sub(v);
       const distance = to.length();
       if (distance < 1e-3) return { distance: 0, pan: 0 };
-      const right = new THREE14.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
-      const pan = THREE14.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
+      const right = new THREE15.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
+      const pan = THREE15.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
       return { distance: Math.round(distance * 100) / 100, pan: Math.round(pan * 100) / 100 };
     },
     pressAt(raycaster) {
@@ -8016,7 +8534,7 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE14.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE15.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
         a.materials[0].material.tick?.(performance.now() / 1e3);
         if (a.beam?.visible && performance.now() > (a.beamUntil ?? 0)) a.beam.visible = false;
@@ -8059,6 +8577,9 @@ function createPresence(d) {
           visible: a.root.visible,
           opacity: Math.round((a.materials[0]?.material.opacity ?? 1) * 100) / 100,
           head: a.target?.head.position.map((n) => Math.round(n * 100) / 100) ?? null,
+          // What they say they hold, and whether anything is drawn for it: for tests.
+          holding: a.heldItem || null,
+          heldDrawn: !!a.held,
           hands: [!!a.target?.left, !!a.target?.right],
           audioLevel: Math.round(level * 1e3) / 1e3,
           saying: a.bubbleText ?? "",
@@ -8095,11 +8616,11 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE14.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE14.HalfFloatType });
-  const flatTarget = new THREE14.WebGLRenderTarget(width, height);
-  flatTarget.texture.colorSpace = THREE14.SRGBColorSpace;
-  const material = new THREE14.ShaderMaterial({
-    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE14.Vector3() }, up: { value: new THREE14.Vector3() }, right: { value: new THREE14.Vector3() } },
+  const faceTarget = new THREE15.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE15.HalfFloatType });
+  const flatTarget = new THREE15.WebGLRenderTarget(width, height);
+  flatTarget.texture.colorSpace = THREE15.SRGBColorSpace;
+  const material = new THREE15.ShaderMaterial({
+    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE15.Vector3() }, up: { value: new THREE15.Vector3() }, right: { value: new THREE15.Vector3() } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
       void main(){
@@ -8116,19 +8637,19 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     depthTest: false,
     depthWrite: false
   });
-  const quad = new THREE14.Mesh(new THREE14.PlaneGeometry(2, 2), material);
-  const quadScene = new THREE14.Scene();
+  const quad = new THREE15.Mesh(new THREE15.PlaneGeometry(2, 2), material);
+  const quadScene = new THREE15.Scene();
   quadScene.add(quad);
-  const quadCamera = new THREE14.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const faceCamera = new THREE14.PerspectiveCamera(90, 1, 0.05, 700);
+  const quadCamera = new THREE15.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const faceCamera = new THREE15.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   const views = [
-    [new THREE14.Vector3(0, 0, -1), new THREE14.Vector3(0, 1, 0)],
-    [new THREE14.Vector3(1, 0, 0), new THREE14.Vector3(0, 1, 0)],
-    [new THREE14.Vector3(0, 0, 1), new THREE14.Vector3(0, 1, 0)],
-    [new THREE14.Vector3(-1, 0, 0), new THREE14.Vector3(0, 1, 0)],
-    [new THREE14.Vector3(0, 1, 0), new THREE14.Vector3(0, 0, 1)],
-    [new THREE14.Vector3(0, -1, 0), new THREE14.Vector3(0, 0, -1)]
+    [new THREE15.Vector3(0, 0, -1), new THREE15.Vector3(0, 1, 0)],
+    [new THREE15.Vector3(1, 0, 0), new THREE15.Vector3(0, 1, 0)],
+    [new THREE15.Vector3(0, 0, 1), new THREE15.Vector3(0, 1, 0)],
+    [new THREE15.Vector3(-1, 0, 0), new THREE15.Vector3(0, 1, 0)],
+    [new THREE15.Vector3(0, 1, 0), new THREE15.Vector3(0, 0, 1)],
+    [new THREE15.Vector3(0, -1, 0), new THREE15.Vector3(0, 0, -1)]
   ];
   try {
     for (const o of hidden) o.visible = false;
@@ -8175,24 +8696,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE14.Texture(image);
-  texture.colorSpace = THREE14.SRGBColorSpace;
-  texture.wrapS = THREE14.RepeatWrapping;
+  const texture = new THREE15.Texture(image);
+  texture.colorSpace = THREE15.SRGBColorSpace;
+  texture.wrapS = THREE15.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE14.LinearFilter;
-  texture.magFilter = THREE14.LinearFilter;
+  texture.minFilter = THREE15.LinearFilter;
+  texture.magFilter = THREE15.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE14.ShaderMaterial({
+  const material = new THREE15.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE14.Matrix3() },
-      center: { value: new THREE14.Vector3() },
+      toLocal: { value: new THREE15.Matrix3() },
+      center: { value: new THREE15.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -8212,10 +8733,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE14.DoubleSide
+    side: THREE15.DoubleSide
   });
-  const mesh = new THREE14.Mesh(geometry, material);
-  const rotation = new THREE14.Matrix4();
+  const mesh = new THREE15.Mesh(geometry, material);
+  const rotation = new THREE15.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();
@@ -8360,8 +8881,8 @@ function addRoomControls(controls, presence, opts = {}) {
     watching.set(m.pubkey, w);
     const show = () => {
       if (w.panel || watching.get(m.pubkey) !== w || !video.videoWidth || !video.videoHeight) return;
-      w.texture = new THREE14.VideoTexture(video);
-      w.texture.colorSpace = THREE14.SRGBColorSpace;
+      w.texture = new THREE15.VideoTexture(video);
+      w.texture.colorSpace = THREE15.SRGBColorSpace;
       w.panel = opts.panels.open(
         { kind: "custom", title: `${m.name}'s screen`, texture: w.texture, aspect: video.videoWidth / video.videoHeight, onClose: () => stopWatching(m.pubkey, true) },
         { keep: false }
@@ -8681,8 +9202,8 @@ function addRoomControls(controls, presence, opts = {}) {
     const canvas = document.createElement("canvas");
     canvas.width = CHAT_W;
     canvas.height = CHAT_H;
-    const texture = new THREE14.CanvasTexture(canvas);
-    texture.colorSpace = THREE14.SRGBColorSpace;
+    const texture = new THREE15.CanvasTexture(canvas);
+    texture.colorSpace = THREE15.SRGBColorSpace;
     try {
       const panel = opts.panels.open(
         {
@@ -8760,19 +9281,19 @@ function addRoomControls(controls, presence, opts = {}) {
     pubkey: () => worldSigner().pubkey,
     who: () => hereAs()?.name || worldSigner().name
   };
-  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS8;
+  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS10;
   let relaysKept = null;
   const ownRelays = (key) => {
     if (!key) return Promise.resolve([]);
     if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND6], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList6(got.events, key)?.write ?? []).catch(() => []);
+    const found = askWell({ kinds: [RELAY_LIST_KIND7], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList7(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: Date.now(), found };
     return found;
   };
   let wantsFeed = false;
   const postNote = async (words) => {
     const signed = await notes.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
-    const note = signed && verifyEvent5(signed) && signed.kind === 1 && signed.content === words ? signed : null;
+    const note = signed && verifyEvent7(signed) && signed.kind === 1 && signed.content === words ? signed : null;
     if (!note) return { ok: false, said: "That wasn't sent: your sign-in said no." };
     const to = await sendWell(note, { own: await ownRelays(note.pubkey), usual: usualRelays() }).catch(() => null);
     const kept3 = to?.took ?? 0;
@@ -8875,8 +9396,8 @@ function addRoomControls(controls, presence, opts = {}) {
     const canvas = document.createElement("canvas");
     canvas.width = CHAT_W;
     canvas.height = CHAT_H;
-    const texture = new THREE14.CanvasTexture(canvas);
-    texture.colorSpace = THREE14.SRGBColorSpace;
+    const texture = new THREE15.CanvasTexture(canvas);
+    texture.colorSpace = THREE15.SRGBColorSpace;
     try {
       const panel = opts.panels.open(
         {
@@ -9306,6 +9827,13 @@ export {
   watchFov,
   watchFresh,
   freshAction,
+  ITEM_BUDGET,
+  showsItems,
+  setShowsItems,
+  onItemsChange,
+  withinBudget,
+  fitToSize,
+  createItems,
   readProfile,
   createProfiles,
   keyIn,
@@ -9377,6 +9905,9 @@ export {
   viewScale,
   createScores,
   addScoreControls,
+  createBag,
+  itemIn,
+  addBagControls,
   createDoorRatings,
   ordinal,
   someOf,

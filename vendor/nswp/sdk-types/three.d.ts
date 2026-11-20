@@ -19,6 +19,7 @@ import { type JoinOptions, type Member, type RoomSession } from "./room.js";
 export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
 import type { Controls } from "./ui/model.js";
+import { type Items } from "./items.js";
 import { type Following, type FollowingHand } from "./following.js";
 import type { PersonLines } from "./person-lines.js";
 import { type Messaging, type MessagingHand } from "./messaging.js";
@@ -35,6 +36,13 @@ export interface PresenceOptions {
     controllers: THREE.Object3D[];
     /** CSS colour for name labels. */
     labelColor?: string;
+    /**
+     * What fetches and checks items (items.ts), for a world that lets visitors carry things in
+     * (protocol/17-items.md). Left out, nothing anyone holds is drawn.
+     */
+    items?: Items | null;
+    /** What this world does with items: "none", "allowed" or "play". Asked each time. Left out, none. */
+    itemsRule?: () => string;
     /**
      * The visitor's own look, in its inline form (spec §4.2), for the others in a
      * room to draw them by: usually `arrival.look()`. A function is asked each
@@ -95,6 +103,17 @@ export interface Presence {
     testTone(): MediaStreamTrack;
     /** Tell the others you are recording what you see, or have stopped. They are shown a light on your figure. */
     setRecording(on: boolean): void;
+    /** The item this visitor is holding, by its coordinate, or "". */
+    readonly holding: string;
+    /**
+     * Take an item in hand, or put it away with "" (protocol/17-items.md). It is drawn for the visitor and said to
+     * the room. Refused, with a few words why, where the world has no items, the item can't be held, or it has to
+     * be granted.
+     */
+    setHolding(item: string): Promise<{
+        ok: boolean;
+        said: string;
+    }>;
     /** How this visitor looks to the others: for a selfie, or a mirror. */
     selfLook(): Member["look"] | string;
     /** Show for a few seconds where one member is: a column of light over their head. */
@@ -396,6 +415,9 @@ export { createSaves, type Saved, type SaveResult, type Saves, type SavesOptions
 export { foundRelays, publishBacked, queryBacked, relayBackup } from "./relay-book.js";
 export { createScores, type ScoreHand, type Scores, type ScoresOptions } from "./scores.js";
 export { addScoreControls, type Scoring, type ScoringOptions } from "./scoring.js";
+export { createItems, fitToSize, ITEM_BUDGET, onItemsChange, setShowsItems, showsItems, withinBudget, type Items, type ItemsOptions } from "./items.js";
+export { createBag, type Bag, type BagHand, type BagOptions, type BagResult } from "./bag.js";
+export { addBagControls, itemIn, type Bagging, type BaggingOptions } from "./bagging.js";
 export { createDoorRatings, type DoorRatings, type DoorRatingsOptions } from "./door-ratings.js";
 export { ordinal, someOf, worldPersonLines, type PersonLines } from "./person-lines.js";
 export { createAchievements, type AchievementHand, type Achievements, type AchievementsOptions } from "./achievements.js";

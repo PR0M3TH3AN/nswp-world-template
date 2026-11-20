@@ -96,6 +96,26 @@ name, when your visitor is signed in. The menu has **Following** and **Messages*
 with the room. They are the visitor's own Nostr follow list and private messages. The first time in your world,
 their sign-in address asks them whether your world may see to each. Your code is never handed a key or a message.
 
+### Things people carry
+
+A visitor has a bag: the items they have, which are theirs and go with them from world to world. Whether anything
+from it shows in your world is yours to say, in `world.json`:
+
+```json
+"world": { "items": "allowed" }
+```
+
+- **Left out:** nothing carried is drawn in your world, and no file of anyone's is fetched. The menu's **Bag** tab
+  still lets a signed-in visitor look through what they have.
+- **`"allowed"`:** a visitor can take one thing in hand, and everyone in the room sees it.
+- **`"play"`:** the same today. It says items are part of the game here, and a door to your world warns people
+  before they come in.
+
+Each person who sees a held item fetches it from wherever its maker keeps it, checks it is the file its maker
+signed, and counts it against a size limit. One that fails is drawn as a plain block of the right size. Items do
+nothing yet beyond being held and seen. Your world can't change anyone's bag, and a visitor can turn every item
+off for themselves in the Bag tab. Sign and announce again after changing this, so doors elsewhere say the same.
+
 ### Your own scene (`src/scene.ts`)
 
 `src/scene.ts` is one line that picks a scene. Two come with the template:

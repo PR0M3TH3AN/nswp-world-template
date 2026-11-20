@@ -314,6 +314,15 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   fades with distance. To have none of it in your world, set
   `"sharedMusic": false` in `world.json`. You can't turn it on for anyone,
   and mustn't play one visitor's music to another any other way.
+- **Things people carry (NSWP-17).** `"items"` in `world.json` is the
+  builder's to set: left out, nothing carried is drawn and no model is
+  fetched; `"allowed"` or `"play"` and the one thing each person holds is
+  drawn. The plumbing does it all (`createItems`, `addBagControls`). Don't
+  draw an item any other way: every model is checked against the hash its
+  maker signed and counted against a budget before it is shown, and a
+  marker stands in for one that fails. A world never changes a visitor's
+  bag, and never runs anything an item brings. Don't set `"items"` for the
+  builder: it changes what their world announces.
 - **A shared screen.** A visitor at a desk can offer their screen to the room.
   It is sent only to people who choose to watch, who see it on a panel of
   their own. The plumbing does it. Don't show anyone a screen they didn't
