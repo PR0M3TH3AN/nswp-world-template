@@ -8,7 +8,7 @@ the scene, and to leave the protocol's plumbing working.
 ## Where the protocol is written down
 
 The plumbing here implements the Nostr Spatial Web Protocol. Its formats are
-defined in nine short documents, each with a schema and test vectors:
+defined in eleven short documents, each with a schema and test vectors:
 <https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/tree/main/protocol>. Start with the index (`README.md` there). Read
 `09-what-a-world-owes.md` before changing anything under `src/plumbing/`, and
 the document for a format before touching code that reads or writes it. This
@@ -28,6 +28,7 @@ disagree, the documents are right and this file has a bug.
 | `scripts/` | Build and publishing commands | Avoid |
 | `vendor/` | The vendored NSWP library | Never edit. `npm run check` fails if it changes |
 | `signed/`, `previews/` | Generated, and public | Never edit by hand. `npm run sign` and `npm run preview` write them |
+| `doors/` | The pictures the doors show. Generated, and public | Never edit by hand. `npm run doors` fetches them |
 | `dist/` | Build output | Never edit |
 
 ## Rules that must survive any change
@@ -41,9 +42,9 @@ disagree, the documents are right and this file has a bug.
 2. **Never ask for credentials.** No password fields, no key or `nsec` entry, no
    `window.nostr`, no sign-in of any kind. A world doesn't need them, and a
    credential prompt inside a 3D scene can't be told apart from phishing.
-   A visitor who chose to go by name arrives with a **pass** their own client
-   signed (NSWP-10), and the plumbing already hands it to the room, where
-   others see their name. If the scene wants the name, `arrival.identity()`
+   A visitor who signs in here, from the row under You in the menu, gets a
+   **pass** from their own signer (NSWP-10), and the plumbing already hands
+   it to the room, where others see their name. If the scene wants the name, `arrival.identity()`
    from `nswp-sdk` gives `{ pubkey, name }` once checked, or `undefined` for a
    guest. Show it; gate nothing on it; never store the pass or send it
    anywhere. It is proof that this person came here, and it isn't the world's
@@ -280,9 +281,12 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
 - **Moving around.** The plumbing gives every visitor two ways to move:
   W, A, S, D on a keyboard, and stepping, which is pointing at the floor and
   selecting (a click, a tap, a trigger pull or a pinch) to stand there. In a
-  headset a step is a jump of at most 5 m, never a slide. On a flat screen it
-  is a walk at the keys' pace to a spot 3 m off at most, so a tap doesn't
-  lurch the room. Stepping is the only way to move for someone on a phone or
+  headset a step is a jump of at most 5 m, never a slide, paced so nobody
+  goes faster than a run. On a flat screen it
+  is a walk at the keys' pace to a spot 6 m off at most, so a tap doesn't
+  lurch the room. A press while they are walking adds to the path from where
+  the last press ended, the view turns to face the way they walk, and two
+  presses close together are a run straight there. Stepping is the only way to move for someone on a phone or
   in a headset, so a scene bigger than a room must keep it. The floor is the
   plane y = 0.
 - **The camera and the People list** come with the plumbing: a picture, a
@@ -353,7 +357,7 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   `ctx.controls`. The plumbing draws it as a HUD on a flat screen and as a
   console in a headset (on the wrist, or from a small Menu button), so a thing
   added once appears in both. It already holds the way back to the visitor's
-  lobby, the room and microphone, Enter VR, Turn around, and a Look section
+  lobby, the room and microphone, Enter VR, Turn around, and a Display section
   where the visitor changes the colours.
   - A button: `ctx.controls.add({ id: "reset", section: "game", label: "Start again", icon: "turn", act: () => restart() })`.
     Add `hotbar: true` to keep it on the row at the bottom (six at most),
