@@ -35,6 +35,11 @@ export declare const WALK_SPEED = 2.4;
 /** How much faster a run is than a walk, however it is asked for: Shift, two taps, or a stick pressed in. */
 export declare const RUN = 1.75;
 /**
+ * Radians a second: how fast the left and right arrow keys turn someone, the casual way on a flat screen. A
+ * quarter turn in a little under a second: quick enough to look about, slow enough to stop where they meant.
+ */
+export declare const KEY_TURN = 1.9;
+/**
  * The fastest anyone goes on foot, in metres a second: a run. Nobody in a room covers ground faster than this,
  * whatever they hold or wear: keys, a mouse, a finger on a phone, or a headset's sticks and steps.
  */

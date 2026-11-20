@@ -19,7 +19,7 @@ import { type JoinOptions, type Member, type RoomSession } from "./room.js";
 export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
 import type { Controls } from "./ui/model.js";
-import type { People } from "./people.js";
+import { type Following, type FollowingHand } from "./following.js";
 import type { GoOptions } from "./index.js";
 import type { Panels } from "./panels.js";
 import type { Sounds } from "./sound.js";
@@ -283,16 +283,8 @@ export interface RoomNotes {
      */
     marked?(): string | null;
 }
-/** What follows and unfollows someone for the visitor, from a person's card in a room (protocol/14-people-and-messages.md). */
-export interface RoomFollows {
-    people: People;
-    /** The visitor's key here, or null: nobody is followed for a guest. */
-    pubkey(): string | null;
-    /** Whether the visitor has let this place change who they follow. */
-    allowed(): boolean;
-    /** From a press: have the visitor asked. Returns what to say meanwhile; `then` is run once they have allowed it. */
-    ask(then: () => void): string;
-}
+/** What follows and unfollows someone for the visitor: from a person's card in a room, and in Following (protocol/14-people-and-messages.md). */
+export type RoomFollows = FollowingHand;
 export declare function addRoomControls(controls: Controls, presence: Presence, opts?: {
     search?: string;
     onState?: (state: Record<string, unknown> | null) => void;
@@ -339,6 +331,7 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
 }): {
     refresh(): void;
     travelling(): Travelling;
+    following: Following;
 };
 export declare function addViewControls(controls: Controls, d: {
     renderer: THREE.WebGLRenderer;
@@ -376,7 +369,7 @@ export { LIBRARY_LIMITS, PANEL_LIMITS, PANEL_LOOKS, type LibraryItem, type Panel
 export { createStay, wasRefreshed, type Stay, type Stood } from "./stay.js";
 export { watchFresh, type Fresh, type FreshOptions } from "./fresh.js";
 export { freshAction } from "./ui/fresh.js";
-export { createStepPace, createStroll, dotsBetween, DOUBLE_TAP, DRAG_LOOK, FACE_RATE, PATH_MOST, reachOf, RUN, TAP_REACH, TOP_SPEED, WALK_SPEED, type StepPace, type Stroll } from "./stroll.js";
+export { createStepPace, createStroll, dotsBetween, DOUBLE_TAP, DRAG_LOOK, FACE_RATE, KEY_TURN, PATH_MOST, reachOf, RUN, TAP_REACH, TOP_SPEED, WALK_SPEED, type StepPace, type Stroll } from "./stroll.js";
 export { createFloorMarks, type FloorMarks } from "./floor-mark.js";
 export { DOOR_REACH } from "./gate-size.js";
 export { addJump, createJump, JUMP_GRAVITY, JUMP_HEIGHT, JUMP_SPEED, type AddJumpOptions, type Jump } from "./jump.js";
@@ -387,6 +380,8 @@ export { loadPicture, onPicturesChange, PICTURE_LIMITS, setShowsPictures, showsP
 export { addDeskControls, FOV_STEPS, LOOK_STEPS, lookScale, onDeskChange, setLookScale, setVisitorFov, visitorFov, watchFov } from "./desk.js";
 export { byName, figureAction, hereAs, identityAction, identityHost, identitySection, identityWords, onHereAs, seekPass, signerAction, signerNamed, worldPeople, worldSaves, worldSigner, youCard, type Leaving } from "./ui/identity.js";
 export { createSaves, type Saved, type SaveResult, type Saves, type SavesOptions } from "./saves.js";
+export { addFollowingControls, keyIn, type Following, type FollowingHand, type FollowingOptions } from "./following.js";
+export { createProfiles, readProfile, type Profile, type Profiles } from "./profiles.js";
 export { createPeople, type FollowHand, type FollowResult, type FollowWhy, type People, type PeopleOptions } from "./people.js";
 export { askWell, learnFrom, relaysWell, sendWell, type SentWell } from "./relay-book.js";
 export { createWorldSigner, type SignerState, type WorldSigner } from "./signer.js";

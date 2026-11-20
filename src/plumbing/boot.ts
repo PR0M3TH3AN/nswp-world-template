@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { checkPreviewBytes, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -371,7 +371,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     id: "help",
     label: "Help",
     icon: "help",
-    note: "Drag to look around. Walk with W, A, S, D, or point at the floor and select to step there: twice to run. Shift runs and Space jumps. The key left of 1 brings these controls up in any world, whatever is on screen; on a touch screen, hold two fingers still. Select a doorway to see where it leads before you go. These controls are this world's own: your headset's or browser's own controls always get you out.",
+    note: "Drag to look around. Walk with W, A, S, D or the up and down arrows; the left and right arrows turn you. Or point at the floor and select to step there: twice to run. Shift runs and Space jumps. The key left of 1 brings these controls up in any world, whatever is on screen; on a touch screen, hold two fingers still. Select a doorway to see where it leads before you go. These controls are this world's own: your headset's or browser's own controls always get you out.",
   });
 
   // In a headset the page can't be seen, so the same controls go on a console in the scene.
@@ -698,7 +698,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     return null;
   };
 
-  // Without a headset: W, A, S, D or the arrow keys.
+  // Without a headset: W, A, S, D, and the arrow keys. Up and down walk; left and right turn. A and D step to the side.
   const keys = new Set<string>();
   addEventListener("keydown", (e) => {
     if (!(e.target instanceof HTMLButtonElement)) keys.add(e.code);
@@ -708,7 +708,12 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   const step = new THREE.Vector3();
   const walk = (dt: number) => {
     const forward = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
-    const strafe = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
+    const strafe = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+    const turn = (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
+    if (turn) {
+      stroll.stop(); // a walk a tap began turns them its own way
+      rig.rotation.y += turn * KEY_TURN * dt;
+    }
     if (!forward && !strafe) return;
     stroll.stop(); // the keys take over from a walk a tap began
     // The kit's own walking pace, and Shift runs, moving the casual way as it does the intense way.
