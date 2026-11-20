@@ -135,6 +135,8 @@ var STANDARD = [
   { id: "messages", label: "Messages", icon: "chat" },
   // A world's boards, where it keeps score (scoring.ts). Added by the world; empty, and not shown, otherwise.
   { id: "scores", label: "Scores", icon: "list" },
+  // What a world marks, and which of it the visitor has earned (achieving.ts). Added by the world, like Scores.
+  { id: "achievements", label: "Achievements", icon: "check" },
   { id: "camera", label: "Camera", icon: "camera" },
   { id: "panels", label: "Panels", icon: "panel" },
   { id: "view", label: "View", icon: "vr" },
