@@ -1,3 +1,55 @@
+// packages/sdk/src/stay.ts
+var finite = (n) => typeof n === "number" && Number.isFinite(n);
+function cleanStood(input, now, maxAgeSec = 12 * 3600) {
+  if (!input || typeof input !== "object") return null;
+  const s = input;
+  if (!finite(s.x) || !finite(s.z) || !finite(s.yaw) || !finite(s.at)) return null;
+  if (Math.abs(s.x) > 1e4 || Math.abs(s.z) > 1e4) return null;
+  if (s.at > now + 60 || now - s.at > maxAgeSec) return null;
+  return { x: s.x, z: s.z, yaw: (s.yaw % 360 + 360) % 360, headset: s.headset === true, at: s.at };
+}
+function wasRefreshed() {
+  try {
+    const nav = performance.getEntriesByType("navigation")[0];
+    return nav?.type === "reload";
+  } catch {
+    return false;
+  }
+}
+function createStay(o = {}) {
+  const now = o.now ?? (() => Math.floor(Date.now() / 1e3));
+  let storage = null;
+  try {
+    storage = o.storage === void 0 ? sessionStorage : o.storage;
+  } catch {
+  }
+  const key3 = `nswp:stood:${o.name ?? (typeof location === "undefined" ? "" : location.pathname)}`;
+  let before = null;
+  if (o.refreshed ?? wasRefreshed()) {
+    try {
+      before = cleanStood(JSON.parse(storage?.getItem(key3) ?? "null"), now());
+    } catch {
+    }
+  }
+  return {
+    before,
+    keep(s) {
+      const stood = cleanStood({ ...s, at: now() }, now());
+      if (!stood) return;
+      try {
+        storage?.setItem(key3, JSON.stringify(stood));
+      } catch {
+      }
+    },
+    clear() {
+      try {
+        storage?.removeItem(key3);
+      } catch {
+      }
+    }
+  };
+}
+
 // packages/sdk/src/speech.ts
 function toPcm16(samples, fromRate, toRate = 16e3) {
   if (!(fromRate > 0) || !(toRate > 0)) return new Int16Array(0);
@@ -475,59 +527,9 @@ var LiveKeys = class {
   }
 };
 
-// packages/sdk/src/stay.ts
-var finite = (n) => typeof n === "number" && Number.isFinite(n);
-function cleanStood(input, now, maxAgeSec = 12 * 3600) {
-  if (!input || typeof input !== "object") return null;
-  const s = input;
-  if (!finite(s.x) || !finite(s.z) || !finite(s.yaw) || !finite(s.at)) return null;
-  if (Math.abs(s.x) > 1e4 || Math.abs(s.z) > 1e4) return null;
-  if (s.at > now + 60 || now - s.at > maxAgeSec) return null;
-  return { x: s.x, z: s.z, yaw: (s.yaw % 360 + 360) % 360, headset: s.headset === true, at: s.at };
-}
-function wasRefreshed() {
-  try {
-    const nav = performance.getEntriesByType("navigation")[0];
-    return nav?.type === "reload";
-  } catch {
-    return false;
-  }
-}
-function createStay(o = {}) {
-  const now = o.now ?? (() => Math.floor(Date.now() / 1e3));
-  let storage = null;
-  try {
-    storage = o.storage === void 0 ? sessionStorage : o.storage;
-  } catch {
-  }
-  const key3 = `nswp:stood:${o.name ?? (typeof location === "undefined" ? "" : location.pathname)}`;
-  let before = null;
-  if (o.refreshed ?? wasRefreshed()) {
-    try {
-      before = cleanStood(JSON.parse(storage?.getItem(key3) ?? "null"), now());
-    } catch {
-    }
-  }
-  return {
-    before,
-    keep(s) {
-      const stood = cleanStood({ ...s, at: now() }, now());
-      if (!stood) return;
-      try {
-        storage?.setItem(key3, JSON.stringify(stood));
-      } catch {
-      }
-    },
-    clear() {
-      try {
-        storage?.removeItem(key3);
-      } catch {
-      }
-    }
-  };
-}
-
 export {
+  wasRefreshed,
+  createStay,
   placeKeys,
   keyAt,
   TextEntry,
@@ -540,7 +542,5 @@ export {
   forApplication,
   pasteBytes,
   placeLiveKeys,
-  LiveKeys,
-  wasRefreshed,
-  createStay
+  LiveKeys
 };
