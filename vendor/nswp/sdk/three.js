@@ -83,7 +83,7 @@ import {
   watchFov,
   worldSigner,
   youCard
-} from "./shared-IZ6GK22I.js";
+} from "./shared-BAZEUU6L.js";
 import {
   currentForm,
   deviceForms,

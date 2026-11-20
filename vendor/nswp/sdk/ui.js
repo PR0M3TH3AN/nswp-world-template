@@ -442,6 +442,29 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 /* Keys the world has switched off aren't advertised. */
 :host(.no-menu-key) .menu kbd, :host(.no-hotbar-keys) :is(.key .num, .row kbd) { display: none; }
 
+/* Who they are signed in as, said once when it becomes so: top centre, in one place, and gone again. It is never
+   pressed and never in the way: it can't be clicked, and what is under it can. */
+.as { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 10px;
+  padding: 6px 18px 6px 6px; border-radius: 999px; max-width: min(72vw, 380px); opacity: 0; visibility: hidden; pointer-events: none; }
+.as.plain { padding-left: 18px; }
+.as .face { flex: none; width: calc(36px * var(--s)); height: calc(36px * var(--s)); border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  background: rgba(var(--accent), .16); color: rgb(var(--accent)); font-weight: 650; box-shadow: 0 0 0 2px rgba(var(--accent), .75); }
+.as.plain .face { display: none; }
+.as .face canvas { width: 100%; height: 100%; display: block; }
+.as .who { min-width: 0; }
+.as small { display: block; font-size: .8em; line-height: 1.15; color: rgba(var(--ink), .72); white-space: nowrap; }
+.as b { display: block; font-weight: 650; font-size: 1.06em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as.shown { opacity: 1; visibility: visible; }
+/* It comes into focus where it stands and goes out the same way: nothing slides across the view. */
+:host(.moving) .as { transform: scale(.9); filter: blur(8px); transition: opacity .4s ease, transform .5s cubic-bezier(.2, .8, .2, 1), filter .4s ease, visibility 0s linear .5s; }
+:host(.moving) .as.shown { transform: none; filter: none; transition: opacity .4s ease, transform .5s cubic-bezier(.2, .8, .2, 1), filter .4s ease, visibility 0s; }
+:host(.moving) .as.shown .face { animation: as-ring 1.2s ease-out .15s both; }
+:host(.moving) .as.shown b { animation: as-name .5s ease-out .12s both; }
+@keyframes as-ring { from { box-shadow: 0 0 0 2px rgba(var(--accent), .95), 0 0 0 0 rgba(var(--accent), .55); } to { box-shadow: 0 0 0 2px rgba(var(--accent), .75), 0 0 0 14px rgba(var(--accent), 0); } }
+@keyframes as-name { from { opacity: 0; letter-spacing: .08em; } }
+/* On a narrow screen the place's name and the menu take the top row: it stands just under them. */
+@media (max-width: 760px) { .as { top: calc(max(12px, env(safe-area-inset-top)) + 60px * var(--s)); } }
+
 /* ---- one moment of motion: things arrive. Nothing loops. */
 @keyframes say-in { from { opacity: 0; transform: translateX(-8px); } }
 @keyframes chat-in { from { opacity: 0; transform: translateX(8px); } }
@@ -508,6 +531,10 @@ function mountHud(controls, opts = {}) {
   const target = el("div", { class: "target glass", "aria-live": "polite" });
   const hotbar = el("nav", { class: "hotbar glass", "aria-label": "Controls" });
   const says = el("div", { class: "says", role: "status" });
+  const asFace = el("span", { class: "face", "aria-hidden": "true" });
+  const asLead = el("small");
+  const asName = el("b");
+  const asWho = el("div", { class: "as glass", role: "status" }, asFace, el("span", { class: "who" }, asLead, asName));
   const tabs = el("div", { class: "tabs", role: "tablist" });
   const tabsBack = el("button", { class: "more left", type: "button", "aria-label": "Earlier sections", hidden: "" }, "\u2039");
   const tabsOn = el("button", { class: "more right", type: "button", "aria-label": "More sections", hidden: "" }, "\u203A");
@@ -552,7 +579,7 @@ function mountHud(controls, opts = {}) {
   const chatSend = el("button", { type: "submit" }, "Send");
   const chatForm = el("form", {}, chatField, chatSend);
   const chat = el("section", { class: "chat", "aria-label": "Room chat", "data-state": "closed", "data-tab": "room" }, el("div", { class: "frame glass" }, el("header", {}, chatTitle, chatTabs, chatClose), feedLead, chatEmpty, chatLines, chatHint, feedSaid, chatForm));
-  root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, says, chat, sheet, el("div", { class: "low" }, target, hotbar));
+  root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, says, chat, sheet, el("div", { class: "low" }, target, hotbar));
   (opts.parent ?? document.body).append(host);
   let open = false;
   let section = "";
@@ -729,6 +756,49 @@ function mountHud(controls, opts = {}) {
   };
   vv?.addEventListener("resize", onViewport);
   vv?.addEventListener("scroll", onViewport);
+  let asKey = null;
+  let asPicture = "";
+  let asTimer;
+  const AS_SHOWN_MS = 5200;
+  const sayWho = (card) => {
+    const key = card ? card.copy || card.title : "";
+    const first = asKey === null;
+    const changed = key !== asKey;
+    asKey = key;
+    if (card) {
+      asLead.textContent = "Signed in as";
+      asName.textContent = card.title;
+      if (changed || card.picture !== asPicture) {
+        asPicture = card.picture;
+        asFace.replaceChildren([...card.title][0]?.toUpperCase() ?? "");
+        const want = card.picture;
+        if (want) {
+          void loadPicture(want).then((drawn2) => {
+            if (!drawn2 || asPicture !== want) return;
+            const copy = document.createElement("canvas");
+            copy.width = drawn2.width;
+            copy.height = drawn2.height;
+            copy.getContext("2d")?.drawImage(drawn2, 0, 0);
+            asFace.replaceChildren(copy);
+          });
+        }
+      }
+    }
+    if (!changed || first && !card) return;
+    if (!card) {
+      asPicture = "";
+      asLead.textContent = "Signed out";
+      asName.textContent = "You are a guest here";
+    }
+    if (host.hidden) {
+      const words = card ? `Signed in as ${card.title}.` : "Signed out. You are a guest here.";
+      return queueMicrotask(() => controls.say(words));
+    }
+    asWho.classList.toggle("plain", !card);
+    asWho.classList.add("shown");
+    clearTimeout(asTimer);
+    asTimer = setTimeout(() => asWho.classList.remove("shown"), AS_SHOWN_MS);
+  };
   const draw = () => {
     const view = controls.view();
     const t = view.theme;
@@ -746,6 +816,7 @@ function mountHud(controls, opts = {}) {
     if (key && view.keys.menu) key.textContent = view.keys.menu.toUpperCase();
     title.textContent = view.title;
     address.textContent = view.address;
+    sayWho(view.sections.find((section2) => section2.id === "you")?.card ?? null);
     const shown = [view.target, ...view.detail].join("\n");
     if (target.dataset.shown !== shown) {
       target.dataset.shown = shown;
@@ -947,6 +1018,7 @@ function mountHud(controls, opts = {}) {
     },
     remove() {
       clearInterval(tick);
+      clearTimeout(asTimer);
       tabsWatch?.disconnect();
       clearTimeout(peekTimer);
       clearTimeout(goingTimer);
