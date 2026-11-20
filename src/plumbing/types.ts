@@ -15,6 +15,12 @@ export interface WorldConfig {
   owner?: string;
   /** The Airlock a visitor is sent through when they arrived without one of their own. */
   airlock: string;
+  /**
+   * Where a visitor signs in who opened this world's address themselves, with no client to say where theirs is:
+   * an https address. Left out, BitLogin's, so that signing in is the same in every world. "" for none. A
+   * visitor a client brought signs in where that client says, whatever is here.
+   */
+  signer?: string;
   relays: string[];
   /** Where visitors can arrive. `main-entrance` is the default. Positions are metres; yaw is degrees, 0 facing −Z. */
   entryPoints: Record<string, { position: [number, number, number]; yaw: number }>;

@@ -95,7 +95,14 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   const brought = somethingBrought() ? takeBrought() : null;
   watchBrought();
   const config = configJson as unknown as WorldConfig;
+  // The same sign-in however a visitor came (NSWP-10, "One sign-in"): someone who opened this address themselves
+  // is offered the signer this world names, which is BitLogin's unless world.json says another, or "" for none.
   configure({ defaultAirlock: config.airlock });
+  try {
+    configure({ defaultSigner: config.signer === undefined ? "https://bitlogin.network/" : config.signer || null });
+  } catch {
+    // Not an https address: no signer is offered. `npm run check` says so.
+  }
 
   const emulate = new URLSearchParams(location.search).get("xr") === "emulate";
   const state: Record<string, unknown> = { ready: false, world: config.world.title, arrival: context, arrivalWarnings: warnings, emulate, xr: "idle", leaving: false };

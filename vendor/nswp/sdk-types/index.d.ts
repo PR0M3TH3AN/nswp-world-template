@@ -18,6 +18,12 @@ export type { Pose, Transform } from "@nswp/core";
 export { dropBrought, somethingBrought, takeBrought, watchBrought, type Brought } from "./bring.js";
 export declare function configure(opts: {
     defaultAirlock?: string;
+    /**
+     * Where the signer is that this world offers someone who opened its address themselves, with no client to
+     * say where theirs is: an https address with `signer/` and `connect/` under it. Null or "" for none. A
+     * visitor a client brought is never given this one: their client's word stands, whatever it was.
+     */
+    defaultSigner?: string | null;
 }): void;
 export declare const arrival: {
     /**
@@ -64,8 +70,12 @@ export declare const arrival: {
      */
     atHome(): boolean;
     /**
-     * Where the visitor's client said their signer is, or undefined: then it
-     * is beside the Airlock (protocol/10-identity.md, "Signing from a world").
+     * Where the visitor's signer is. Their client's word first. A client that
+     * brought them and named none keeps its own beside its Airlock
+     * (protocol/10-identity.md, "Signing from a world"): undefined. And for
+     * someone no client brought, who opened this world's address themselves,
+     * the one this world offers (`configure({ defaultSigner })`), so that
+     * signing in is the same however they came ("One sign-in").
      */
     signer(): string | undefined;
     returnAirlock(): string | undefined;

@@ -7,7 +7,7 @@ import {
   room,
   sha256,
   startingForm
-} from "./shared-ETHSPJMD.js";
+} from "./shared-ACIYJK32.js";
 import {
   FEED_LIMITS,
   ICONS,
