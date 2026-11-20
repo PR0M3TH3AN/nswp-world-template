@@ -34,7 +34,6 @@ import {
   addRoomControls,
   addSoundControls,
   addViewControls,
-  askWell,
   byName,
   canRecord,
   capturePanorama,
@@ -70,7 +69,6 @@ import {
   identityWords,
   isIntense,
   keyIn,
-  learnFrom,
   lookAfter,
   lookScale,
   onDeskChange,
@@ -80,10 +78,8 @@ import {
   readPad,
   readProfile,
   recordClip,
-  relaysWell,
   saveFile,
   seekPass,
-  sendWell,
   setLookScale,
   setVisitorFov,
   signerAction,
@@ -102,7 +98,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-NI4JJGKG.js";
+} from "./shared-Q3KYCGNU.js";
 import {
   currentForm,
   deviceForms,
@@ -115,11 +111,19 @@ import {
 } from "./shared-K6U46VNY.js";
 import {
   PICTURE_LIMITS,
+  askWell,
+  foundRelays,
+  learnFrom,
   loadPicture,
   onPicturesChange,
+  publishBacked,
+  queryBacked,
+  relayBackup,
+  relaysWell,
+  sendWell,
   setShowsPictures,
   showsPictures
-} from "./shared-7H776IPK.js";
+} from "./shared-6V73JIXO.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -210,6 +214,7 @@ export {
   dotsBetween,
   figureAction,
   formFor,
+  foundRelays,
   freshAction,
   fullscreenWaiting,
   heldKey,
@@ -229,11 +234,14 @@ export {
   onPicturesChange,
   panoramaTexture,
   prefersFullscreen,
+  publishBacked,
+  queryBacked,
   reachOf,
   readPad,
   readProfile,
   recordClip,
   recordVoice,
+  relayBackup,
   relaysWell,
   reportSettings,
   resumeFullscreen,

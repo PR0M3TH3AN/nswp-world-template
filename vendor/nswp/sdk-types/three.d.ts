@@ -387,6 +387,7 @@ export { loadPicture, onPicturesChange, PICTURE_LIMITS, setShowsPictures, showsP
 export { addDeskControls, FOV_STEPS, LOOK_STEPS, lookScale, onDeskChange, setLookScale, setVisitorFov, visitorFov, watchFov } from "./desk.js";
 export { byName, figureAction, hereAs, identityAction, identityHost, identitySection, identityWords, onHereAs, seekPass, signerAction, signerNamed, worldPeople, worldSaves, worldSigner, youCard, type Leaving } from "./ui/identity.js";
 export { createSaves, type Saved, type SaveResult, type Saves, type SavesOptions } from "./saves.js";
+export { foundRelays, publishBacked, queryBacked, relayBackup } from "./relay-book.js";
 export { createMessages, type Conversation, type MessageHand, type Messages, type MessagesOptions, type MessagesState } from "./messages.js";
 export { addMessagingControls, type Messaging, type MessagingHand, type MessagingOptions } from "./messaging.js";
 export { addFollowingControls, keyIn, type Following, type FollowingHand, type FollowingOptions } from "./following.js";

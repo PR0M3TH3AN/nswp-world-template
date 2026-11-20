@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.42.2";
+var KIT_VERSION = "0.43.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4276,6 +4276,18 @@ async function publishEvent(relays, event, timeoutMs = 6e3) {
   })));
   return { relays: status };
 }
+
+// packages/core/dist/relay-discovery.js
+var DISCOVERY = {
+  /** A finding older than this says nothing about now, in seconds. */
+  freshSec: 3 * 86400,
+  /** A relay is taken only where this many different monitors found it working. */
+  agree: 2,
+  /** No more than this many are offered as a backup. */
+  most: 6,
+  /** A relay slower to open than this, by every monitor's count, is no backup, in milliseconds. */
+  slowMs: 2500
+};
 
 // packages/core/dist/nip44.js
 var SALT = utf8ToBytes("nip44-v2");

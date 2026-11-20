@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.42.2";
+var KIT_VERSION = "0.43.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -5450,6 +5450,63 @@ async function publishEvent(relays, event, timeoutMs = 6e3) {
   return { relays: status };
 }
 
+// packages/core/src/relay-discovery.ts
+var RELAY_DISCOVERY_KIND = 30166;
+var DISCOVERY_RELAYS = ["wss://relay.nostr.watch", "wss://relaypag.es", "wss://monitorlizard.nostr1.com"];
+var DISCOVERY = {
+  /** A finding older than this says nothing about now, in seconds. */
+  freshSec: 3 * 86400,
+  /** A relay is taken only where this many different monitors found it working. */
+  agree: 2,
+  /** No more than this many are offered as a backup. */
+  most: 6,
+  /** A relay slower to open than this, by every monitor's count, is no backup, in milliseconds. */
+  slowMs: 2500
+};
+function readRelayFinding(event) {
+  if (!event || event.kind !== RELAY_DISCOVERY_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
+  const url = cleanRelayUrl(getTags(event, "d")[0]?.[1]);
+  const network = getTags(event, "n")[0]?.[1];
+  if (!url || network !== void 0 && network !== "clearnet") return null;
+  const said = (name) => {
+    const values = getTags(event, "R").map((t) => t[1]);
+    return values.includes(name) ? true : values.includes(`!${name}`) ? false : null;
+  };
+  const ms = Number(getTags(event, "rtt-open")[0]?.[1]);
+  const wrote = Number(getTags(event, "rtt-write")[0]?.[1]);
+  const refuses = getTags(event, "k").map((t) => t[1] ?? "").filter((k) => /^!\d{1,5}$/.test(k)).map((k) => Number(k.slice(1)));
+  return { url, monitor: event.pubkey, at: Number.isInteger(event.created_at) ? event.created_at : 0, auth: said("auth"), payment: said("payment"), restricted: said("writes"), pow: said("pow"), rttOpen: Number.isFinite(ms) && ms > 0 ? ms : null, rttWrite: Number.isFinite(wrote) && wrote > 0 ? wrote : null, refuses };
+}
+function pickDiscovered(events, o) {
+  const newest = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    const f = readRelayFinding(event);
+    if (!f || f.at > o.now + 600 || o.now - f.at > DISCOVERY.freshSec) continue;
+    const key = `${f.url} ${f.monitor}`;
+    const had = newest.get(key);
+    if (!had || had.at < f.at) newest.set(key, f);
+  }
+  const byRelay = /* @__PURE__ */ new Map();
+  for (const f of newest.values()) byRelay.set(f.url, [...byRelay.get(f.url) ?? [], f]);
+  const not = new Set(o.not ?? []);
+  const open = [];
+  const closed = [];
+  for (const [url, found] of byRelay) {
+    const shut = found.some((f) => f.auth === true || f.payment === true);
+    if (shut) closed.push(url);
+    if (shut || not.has(url) || found.length < DISCOVERY.agree) continue;
+    if (found.some((f) => f.restricted === true || f.pow === true || o.kind !== void 0 && f.refuses.includes(o.kind))) continue;
+    const times = found.map((f) => f.rttOpen).filter((n) => n !== null).sort((a, b) => a - b);
+    const rtt = times.length ? times[Math.floor(times.length / 2)] : DISCOVERY.slowMs;
+    if (times.length && times[0] > DISCOVERY.slowMs) continue;
+    const sure = found.filter((f) => f.auth === false && f.payment === false).length;
+    const wrote = found.filter((f) => f.rttWrite !== null).length;
+    open.push({ url, monitors: found.length, sure, wrote, rtt });
+  }
+  open.sort((a, b) => Math.min(b.sure, 4) - Math.min(a.sure, 4) || Math.min(b.wrote, 2) - Math.min(a.wrote, 2) || Math.min(b.monitors, 6) - Math.min(a.monitors, 6) || a.rtt - b.rtt || (a.url < b.url ? -1 : 1));
+  return { open: open.slice(0, o.most ?? DISCOVERY.most).map((r) => r.url), closed: closed.sort() };
+}
+
 // node_modules/@noble/ciphers/utils.js
 /*! noble-ciphers - MIT License (c) 2023 Paul Miller (paulmillr.com) */
 function isBytes4(a) {
@@ -7266,6 +7323,8 @@ export {
   CURATION_SET_KIND,
   Collector,
   DEFAULT_RELAYS,
+  DISCOVERY,
+  DISCOVERY_RELAYS,
   ENTRY_ASSERTION_KIND,
   FOLLOWS_KIND,
   FOLLOW_LIMITS,
@@ -7304,6 +7363,7 @@ export {
   PREVIEW_TYPES,
   RATING_KIND,
   RATING_LIMITS,
+  RELAY_DISCOVERY_KIND,
   RELAY_LIST_KIND,
   RELAY_PICK,
   ROOM_LIMITS,
@@ -7458,6 +7518,7 @@ export {
   parseSay,
   parseSpeechControl,
   parseWorldEvent,
+  pickDiscovered,
   pickRelays,
   portalTarget,
   prepareForWorld,
@@ -7469,6 +7530,7 @@ export {
   readHandoffMessage,
   readMessage,
   readMessageRelays,
+  readRelayFinding,
   readRelayList,
   readSeal,
   readSignerReply,

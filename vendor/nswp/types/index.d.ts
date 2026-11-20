@@ -8,6 +8,7 @@ export * from "./manifest.js";
 export * from "./arrival.js";
 export * from "./portal.js";
 export * from "./relay.js";
+export * from "./relay-discovery.js";
 export * from "./nip44.js";
 export * from "./room.js";
 export * from "./chat.js";
