@@ -21,6 +21,7 @@ export * from "./item.js";
 export * from "./bag.js";
 export * from "./play.js";
 export * from "./item-box.js";
+export * from "./glb.js";
 export * from "./people.js";
 export * from "./message.js";
 export * from "./layout.js";

@@ -526,11 +526,11 @@ function buildBody(b, look, main, accent, omit, proven = false) {
     b.box([wide, wide, 0.02], [x, y, z - facing2 * 8e-3], { color: DARK, bevel: 6e-3 });
     if (proven) {
       const [half, band, zz] = [wide / 2 + cell * 0.55, cell * 0.38, z + facing2 * 25e-4];
-      const bar2 = (x0, y0, x1, y1) => b.quad([x + x0, y + y0, zz], [x + x1, y + y0, zz], [x + x1, y + y1, zz], [x + x0, y + y1, zz], { glow: 1 }, [0, 0, facing2]);
-      bar2(-half, half - band, half, half);
-      bar2(-half, -half, half, -half + band);
-      bar2(-half, -half + band, -half + band, half - band);
-      bar2(half - band, -half + band, half, half - band);
+      const bar = (x0, y0, x1, y1) => b.quad([x + x0, y + y0, zz], [x + x1, y + y0, zz], [x + x1, y + y1, zz], [x + x0, y + y1, zz], { glow: 1 }, [0, 0, facing2]);
+      bar(-half, half - band, half, half);
+      bar(-half, -half, half, -half + band);
+      bar(-half, -half + band, -half + band, half - band);
+      bar(half - band, -half + band, half, half - band);
     }
     markGrid(look.mark).forEach(
       (row, r) => row.forEach((on, c) => {
@@ -1681,18 +1681,14 @@ function freshAction(controls, opts = {}) {
 }
 
 // packages/sdk/src/items.ts
-import { DEFAULT_RELAYS, ITEM_KIND, itemCoordinate, parseItem, queryRelays, SCRIPT_LIMITS, verifyEvent } from "@nswp/core";
+import { tintSlot } from "@nswp/core";
 import * as THREE6 from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
+// packages/sdk/src/item-store.ts
+import { DEFAULT_RELAYS, ITEM_KIND, itemCoordinate, MODEL_BUDGET, parseItem, queryRelays, readGlb, SCRIPT_LIMITS, verifyEvent } from "@nswp/core";
 var ITEM_BUDGET = {
-  /** The most a model file may weigh, in bytes. */
-  bytes: 2e6,
-  /** The most triangles, meshes and materials a model may have. */
-  triangles: 2e4,
-  meshes: 40,
-  materials: 16,
-  /** The longest side of any picture a model's surfaces may use, in pixels. */
-  texture: 1024,
+  ...MODEL_BUDGET,
   /** The most one of an item's sounds may weigh, in bytes. */
   sound: 15e4
 };
@@ -1741,6 +1737,72 @@ async function fetchWithin(url, most) {
     return null;
   }
 }
+function createItemStore(opts = {}) {
+  const query = opts.query ?? queryRelays;
+  const now = opts.now ?? (() => Date.now());
+  const fetchBytes = opts.fetchBytes ?? ((url) => fetchWithin(url, ITEM_BUDGET.bytes));
+  const described = /* @__PURE__ */ new Map();
+  const settled = /* @__PURE__ */ new Map();
+  const files2 = /* @__PURE__ */ new Map();
+  const models = /* @__PURE__ */ new Map();
+  const file = (named, most) => {
+    let got = files2.get(named.sha256);
+    if (!got) {
+      got = fetchBytes(named.url).then((bytes) => bytes && bytes.length <= most && bytesToHex(sha256(bytes)) === named.sha256 ? bytes : null).catch(() => null);
+      files2.set(named.sha256, got);
+    }
+    return got;
+  };
+  return {
+    describe(coordinateIn) {
+      const coordinate = itemCoordinate(coordinateIn);
+      if (!coordinate) return Promise.resolve(null);
+      let found = described.get(coordinate);
+      if (!found) {
+        const [, maker, ...rest] = coordinate.split(":");
+        found = askWell({ kinds: [ITEM_KIND], authors: [maker], "#d": [rest.join(":")], limit: 4 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS, query, timeoutMs: 4e3, now }).then((got) => {
+          const newest = got.events.filter((e) => e.kind === ITEM_KIND && e.pubkey === maker && verifyEvent(e)).sort((a, b) => b.created_at - a.created_at)[0];
+          const item = newest ? parseItem(newest) : null;
+          return item && item.id === coordinate ? item : null;
+        }).catch(() => null).then((item) => {
+          settled.set(coordinate, item);
+          if (!item) described.delete(coordinate);
+          return item;
+        });
+        described.set(coordinate, found);
+      }
+      return found;
+    },
+    known: (coordinate) => settled.get(itemCoordinate(coordinate)) ?? null,
+    modelBytes(named) {
+      if (!showsItems()) return Promise.resolve(null);
+      let got = models.get(named.model.sha256);
+      if (!got) {
+        got = file(named.model, ITEM_BUDGET.bytes).then((bytes) => {
+          const read = bytes ? readGlb(bytes) : null;
+          return bytes && read?.ok ? { bytes, count: read.count } : null;
+        });
+        models.set(named.model.sha256, got);
+      }
+      return got;
+    },
+    async sound(item, name) {
+      const named = item.sounds[name];
+      return named && showsItems() ? file(named, ITEM_BUDGET.sound) : null;
+    },
+    async script(item) {
+      if (!item.script || !showsItems()) return null;
+      const bytes = await file(item.script, SCRIPT_LIMITS.bytes);
+      try {
+        return bytes ? new TextDecoder("utf-8", { fatal: true }).decode(bytes) : null;
+      } catch {
+        return null;
+      }
+    }
+  };
+}
+
+// packages/sdk/src/items.ts
 function applyTints(root, item, tints = {}) {
   root.traverse((o) => {
     const mesh = o;
@@ -1762,7 +1824,7 @@ function tinted(root, item, tints) {
     const mesh = o;
     if (!mesh.isMesh) return;
     const own = (material) => {
-      const slot = /^tint:([a-z][a-z0-9-]{0,23})$/.exec(material.name)?.[1];
+      const slot = tintSlot(material.name);
       if (!slot || !item.tints.some((t) => t.slot === slot)) return material;
       const copy = material.clone();
       copy.userData = { ...copy.userData, nswpTint: slot, nswpGlows: (material.emissive?.getHex() ?? 0) !== 0 };
@@ -1809,22 +1871,9 @@ function fitToSize(root, size) {
   return holder;
 }
 function createItems(opts = {}) {
-  const query = opts.query ?? queryRelays;
-  const now = opts.now ?? (() => Date.now());
-  const fetchBytes = opts.fetchBytes ?? ((url) => fetchWithin(url, ITEM_BUDGET.bytes));
-  const described = /* @__PURE__ */ new Map();
-  const settled = /* @__PURE__ */ new Map();
-  const models = /* @__PURE__ */ new Map();
+  const store = createItemStore(opts);
+  const made = /* @__PURE__ */ new Map();
   const clipsOf = /* @__PURE__ */ new Map();
-  const files2 = /* @__PURE__ */ new Map();
-  const file = (named, most) => {
-    let got = files2.get(named.sha256);
-    if (!got) {
-      got = fetchBytes(named.url).then((bytes) => bytes && bytes.length <= most && bytesToHex(sha256(bytes)) === named.sha256 ? bytes : null).catch(() => null);
-      files2.set(named.sha256, got);
-    }
-    return got;
-  };
   const marker = (item) => {
     const [w, h, d] = item.size;
     const box = new THREE6.Mesh(new THREE6.BoxGeometry(w, h, d), new THREE6.MeshBasicMaterial({ color: 10135476, wireframe: true }));
@@ -1833,13 +1882,14 @@ function createItems(opts = {}) {
     holder.add(box);
     return holder;
   };
-  const load2 = (item) => {
-    const key = `${item.model.sha256}:${item.size.join(",")}`;
-    let made = models.get(key);
-    if (!made) {
-      made = (async () => {
-        const bytes = await fetchBytes(item.model.url);
-        if (!bytes || bytes.length > ITEM_BUDGET.bytes || bytesToHex(sha256(bytes)) !== item.model.sha256) return null;
+  const load2 = (named) => {
+    const key = `${named.model.sha256}:${named.size.join(",")}`;
+    let got = made.get(key);
+    if (!got) {
+      got = (async () => {
+        const checked = await store.modelBytes(named);
+        if (!checked) return null;
+        const { bytes } = checked;
         try {
           const read = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), "");
           const extra = [];
@@ -1849,62 +1899,30 @@ function createItems(opts = {}) {
           for (const o of extra) o.removeFromParent();
           if (!withinBudget(read.scene)) return null;
           clipsOf.set(key, (read.animations ?? []).slice(0, 8));
-          return fitToSize(read.scene, item.size);
+          return fitToSize(read.scene, named.size);
         } catch {
           return null;
         }
       })();
-      models.set(key, made);
+      made.set(key, got);
     }
-    return made;
+    return got;
   };
   return {
-    describe(coordinateIn) {
-      const coordinate = itemCoordinate(coordinateIn);
-      if (!coordinate) return Promise.resolve(null);
-      let found = described.get(coordinate);
-      if (!found) {
-        const [, maker, ...rest] = coordinate.split(":");
-        found = askWell({ kinds: [ITEM_KIND], authors: [maker], "#d": [rest.join(":")], limit: 4 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS, query, timeoutMs: 4e3, now }).then((got) => {
-          const newest = got.events.filter((e) => e.kind === ITEM_KIND && e.pubkey === maker && verifyEvent(e)).sort((a, b) => b.created_at - a.created_at)[0];
-          const item = newest ? parseItem(newest) : null;
-          return item && item.id === coordinate ? item : null;
-        }).catch(() => null).then((item) => {
-          settled.set(coordinate, item);
-          if (!item) described.delete(coordinate);
-          return item;
-        });
-        described.set(coordinate, found);
-      }
-      return found;
-    },
-    known: (coordinate) => settled.get(itemCoordinate(coordinate)) ?? null,
+    ...store,
     async model(item, tints) {
       if (!showsItems()) return marker(item);
-      const made = await load2(item);
-      return made ? tinted(made.clone(true), item, tints) : marker(item);
+      const got = await load2(item);
+      return got ? tinted(got.clone(true), item, tints) : marker(item);
     },
     marker,
     clips: (item) => clipsOf.get(`${item.model.sha256}:${item.size.join(",")}`) ?? [],
     async sent(item, name, tints) {
-      const send = item.sends.find((s) => s.name === name);
+      const send = item.sends.find((x) => x.name === name);
       if (!send) return marker({ size: [0.03, 0.03, 0.1] });
       if (!showsItems()) return marker(send);
-      const made = await load2(send);
-      return made ? tinted(made.clone(true), item, tints) : marker(send);
-    },
-    async sound(item, name) {
-      const named = item.sounds[name];
-      return named && showsItems() ? file(named, ITEM_BUDGET.sound) : null;
-    },
-    async script(item) {
-      if (!item.script || !showsItems()) return null;
-      const bytes = await file(item.script, SCRIPT_LIMITS.bytes);
-      try {
-        return bytes ? new TextDecoder("utf-8", { fatal: true }).decode(bytes) : null;
-      } catch {
-        return null;
-      }
+      const got = await load2(send);
+      return got ? tinted(got.clone(true), item, tints) : marker(send);
     }
   };
 }
@@ -2009,6 +2027,21 @@ function allowScript(sha2562) {
   } catch {
   }
 }
+function mayHold(described, o) {
+  if (cleanItemsRule(o.rule) === "none") return { ok: false, said: "Nothing carried is drawn or works in this place." };
+  if (!showsItems()) return { ok: false, said: "You have items turned off. Turn them on to hold one." };
+  if (!described) return { ok: false, said: "That item's description couldn't be found." };
+  if (!(described.behaviors.includes("holdable") || described.fits.includes("hand-right") || described.fits.includes("hand-left"))) return { ok: false, said: `${described.title} isn't something to hold.` };
+  if (described.use === "granted") return { ok: false, said: `${described.title} has to be granted by its maker, which can't be checked here yet.` };
+  if (described.script && o.scripts && !scriptAllowed(described.script.sha256)) {
+    if (o.asked.sha !== described.script.sha256) {
+      o.asked.sha = described.script.sha256;
+      return { ok: false, said: `${described.title} does things of its own, with code written by its maker (${described.maker.slice(0, 8)}\u2026). It runs shut away on your device: it can't reach the network, your account or anything of this world. Press Hold again to let it.` };
+    }
+    allowScript(described.script.sha256);
+  }
+  return { ok: true };
+}
 function drawn(width, height, paint) {
   if (typeof document === "undefined") {
     const blank = new THREE7.Sprite(new THREE7.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
@@ -2038,7 +2071,7 @@ var repaint = (sprite, paint) => {
   map.needsUpdate = true;
 };
 var WARN = "#ff5d52";
-var bar = (g, w, h, o) => {
+var paintHealth = (g, w, h, o) => {
   const low = o.value <= Math.ceil(o.full / 3);
   const ink = o.down || low ? WARN : o.accent;
   g.fillStyle = "rgba(10,12,16,0.8)";
@@ -2111,7 +2144,7 @@ function createPlay(o) {
   const muted = (pubkey) => cleanItemsRule(o.rule()) === "allowed" && !!o.itemsMuted?.(pubkey);
   const hud = new THREE7.Group();
   hud.userData.nswpNoHit = true;
-  o.camera.add(hud);
+  if (!o.deferred) o.camera.add(hud);
   const cross = drawn(64, 64, (g) => {
     g.strokeStyle = "rgba(255,255,255,0.9)";
     g.lineWidth = 3;
@@ -2142,7 +2175,7 @@ function createPlay(o) {
   const accent = () => o.theme?.().accent ?? "#7be495";
   const lively = () => (o.theme?.().motion ?? true) && !isPresenting();
   const own = { value: HEALTH.full, full: HEALTH.full, struckAt: -1e9, downUntil: 0, shownUntil: 0, regenAt: 0, flash: 0, painted: -1, shown: 0 };
-  const ownBar = drawn(384, 64, (g) => bar(g, 384, 64, { value: own.value, full: own.full, accent: accent() }));
+  const ownBar = drawn(384, 64, (g) => paintHealth(g, 384, 64, { value: own.value, full: own.full, accent: accent() }));
   ownBar.scale.set(0.3, 0.05, 1);
   ownBar.material.opacity = 0;
   ownBar.visible = false;
@@ -2173,7 +2206,7 @@ function createPlay(o) {
   const paintOwn = () => {
     const down = own.downUntil > 0;
     const growing = own.regenAt ? (clock - own.regenAt) / HEALTH.regenSeconds : 0;
-    repaint(ownBar, (g, cw, ch) => bar(g, cw, ch, { value: own.value, full: own.full, accent: accent(), growing, down }));
+    repaint(ownBar, (g, cw, ch) => paintHealth(g, cw, ch, { value: own.value, full: own.full, accent: accent(), growing, down }));
     own.painted = clock;
   };
   const sayState = () => {
@@ -2216,7 +2249,9 @@ function createPlay(o) {
       o.sounds.playForeign(sound, { distance, pan });
     });
   };
-  const animate = (item2, model2, name) => {
+  let clipsSaid = [];
+  const animate = (item2, model2, name, who = "") => {
+    if (o.deferred && clipsSaid.length < 16) clipsSaid.push({ who, name });
     if (!model2) return;
     const clip = o.items.clips(item2).find((c) => c.name === name);
     if (!clip) return;
@@ -2262,7 +2297,7 @@ function createPlay(o) {
     o.scene.attach(thing.object);
     thing.state = "falling";
     thing.fall = 0;
-    thing.floor = floorUnder(thing.object.getWorldPosition(new THREE7.Vector3()));
+    thing.floor = o.deferred ? o.rig.getWorldPosition(new THREE7.Vector3()).y : floorUnder(thing.object.getWorldPosition(new THREE7.Vector3()));
   };
   const TRAIL_STEPS = 14;
   const TRAIL_WIDTH = 0.026;
@@ -2341,7 +2376,7 @@ function createPlay(o) {
     while (things.length >= PLAY_LIMITS.flown) gone(things[0]);
     const trailSeconds = send.trail ?? 0;
     const trailColor = tints[send.name] ?? item2.tints.find((t) => t.slot === send.name)?.color ?? "#ffffff";
-    const thing = { by, shot, send, item: item2, object, t: 0, state: "flying", on: "", agreeBy: null, agreed: false, until: 0, fall: 0, floor: 0, trail: trailSeconds > 0 ? makeTrail(trailColor) : null, trailSeconds, landedAt: null };
+    const thing = { by, shot, send, item: item2, object, t: 0, state: "flying", on: "", agreeBy: null, agreed: false, until: 0, fall: 0, floor: 0, trail: trailSeconds > 0 ? makeTrail(trailColor) : null, trailSeconds, landedAt: null, tints, steps: [], stepNo: 0, late: null, ref: "", flooredAt: false };
     things.push(thing);
     pending.delete(`${by}:${shot.id}`);
     const late = Math.min(PLAY_LIMITS.life, clock - born);
@@ -2386,7 +2421,16 @@ function createPlay(o) {
     const length = step.length();
     let first = 1.0001;
     let done = null;
-    if (length > 1e-6) {
+    if (o.deferred && thing.late) {
+      const late = thing.late;
+      thing.late = null;
+      thing.landedAt = late.t;
+      thing.ref = late.ref;
+      stick(thing, late.point, null, "world");
+      hear(thing.item, thing.send.lands, late.point);
+      return;
+    }
+    if (!o.deferred && length > 1e-6) {
       ray.set(a, step.clone().divideScalar(length));
       ray.far = length;
       const hit = ray.intersectObjects(worldShapes(), false)[0];
@@ -2600,7 +2644,7 @@ function createPlay(o) {
         shown2.full = Math.min(state.full, 12);
         shown2.until = clock + (state.value < state.full ? 30 : 2);
         person.over.add(shown2.sprite);
-        repaint(shown2.sprite, (g, cw, ch) => bar(g, cw, ch, { value: Math.min(shown2.value, shown2.full), full: shown2.full, accent: accent(), down: shown2.value === 0, heart: false }));
+        repaint(shown2.sprite, (g, cw, ch) => paintHealth(g, cw, ch, { value: Math.min(shown2.value, shown2.full), full: shown2.full, accent: accent(), down: shown2.value === 0, heart: false }));
         return;
       }
       const hit = parseHit(said);
@@ -2636,7 +2680,7 @@ function createPlay(o) {
       const does = (holding) => {
         if (!holding) return;
         if (did?.kind === "sound") hear(holding, holding.sounds[did.name] ? did.name : void 0, person.head);
-        else if (did) animate(holding, person.held, did.name);
+        else if (did) animate(holding, person.held, did.name, from);
         else if (shot) void launch(from, holding, shot);
       };
       const known = o.items.known(person.holding);
@@ -2721,10 +2765,15 @@ function createPlay(o) {
       for (const thing of [...things]) {
         if (thing.state === "flying") {
           let left = Math.min(dt, 0.5);
+          const from = thing.t;
           while (left > 1e-6 && thing.state === "flying" && things.includes(thing)) {
             const step = Math.min(0.03, left);
             fly(thing, step);
             left -= step;
+          }
+          if (o.deferred && thing.state === "flying" && thing.t > from) {
+            thing.steps.push({ n: ++thing.stepNo, t0: from, t1: thing.t });
+            if (thing.steps.length > 6) thing.steps.shift();
           }
           drawTrail(thing);
         } else if (thing.state === "stuck") {
@@ -2751,6 +2800,69 @@ function createPlay(o) {
           if (thing.until <= 0) gone(thing);
         }
       }
+    },
+    snapshot() {
+      const clips = clipsSaid;
+      clipsSaid = [];
+      const q = new THREE7.Quaternion();
+      const at = new THREE7.Vector3();
+      const three = (x) => [x.x, x.y, x.z];
+      return {
+        things: things.map((t) => {
+          t.object.getWorldPosition(at);
+          t.object.getWorldQuaternion(q);
+          const last = t.state === "flying" ? t.steps[t.steps.length - 1] : void 0;
+          return {
+            key: `${t.by}:${t.shot.id}`,
+            model: t.send.model.sha256,
+            size: t.send.size,
+            tints: t.tints,
+            state: t.state,
+            on: t.on,
+            ref: t.ref,
+            at: three(at),
+            turn: [q.x, q.y, q.z, q.w],
+            scale: t.object.scale.x,
+            test: last ? { step: last.n, a: shotAt(t.shot, last.t0), b: shotAt(t.shot, last.t1) } : null,
+            down: t.state === "falling" && !t.flooredAt
+          };
+        }),
+        trails: things.flatMap((t) => {
+          const mesh = t.trail;
+          if (!mesh || !mesh.visible) return [];
+          const position = mesh.geometry.getAttribute("position");
+          const color = mesh.geometry.getAttribute("color");
+          const base = mesh.userData.base;
+          const most = Math.max(base.r, base.g, base.b, 1e-6);
+          const points = [];
+          for (let i = 0; i < position.count; i += 2) {
+            points.push([(position.getX(i) + position.getX(i + 1)) / 2, (position.getY(i) + position.getY(i + 1)) / 2, (position.getZ(i) + position.getZ(i + 1)) / 2, Math.max(color.getX(i), color.getY(i), color.getZ(i)) / most]);
+          }
+          return [{ key: `${t.by}:${t.shot.id}`, color: `#${base.getHexString()}`, width: TRAIL_WIDTH, points }];
+        }),
+        own: {
+          cross: cross.visible,
+          mark: mark.visible,
+          health: { value: own.value, full: own.full, growing: own.regenAt ? Math.min(1, (clock - own.regenAt) / HEALTH.regenSeconds) : 0, down: own.downUntil > 0, shown: own.shown },
+          red: edge.visible ? edge.material.opacity : 0,
+          glitch: glitch.visible,
+          words
+        },
+        clips
+      };
+    },
+    met(key, step, fraction, point, ref = "") {
+      const thing = things.find((t) => `${t.by}:${t.shot.id}` === key);
+      const tested = thing?.steps.find((s) => s.n === step);
+      if (!thing || !tested || thing.state !== "flying" || thing.late || !point.every((x) => Number.isFinite(x))) return;
+      const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0;
+      thing.late = { t: tested.t0 + (tested.t1 - tested.t0) * f, point: new THREE7.Vector3().fromArray(point), ref: String(ref).slice(0, 120) };
+    },
+    floored(key, y) {
+      const thing = things.find((t) => `${t.by}:${t.shot.id}` === key);
+      if (!thing || !Number.isFinite(y) || thing.flooredAt) return;
+      thing.flooredAt = true;
+      thing.floor = y;
     },
     info() {
       const count = (state) => things.filter((t) => t.state === state).length;
@@ -5939,8 +6051,8 @@ function createPanels(o) {
     group.name = `panel:${id}`;
     const body = flat(null);
     body.name = `${id}:body`;
-    const bar2 = flat(barTexture(source.title || (source.kind === "note" ? "Note" : source.kind === "picture" ? "Picture" : source.kind === "video" ? "Video" : ""), ink), 1, BAR);
-    bar2.name = `${id}:bar`;
+    const bar = flat(barTexture(source.title || (source.kind === "note" ? "Note" : source.kind === "picture" ? "Picture" : source.kind === "video" ? "Video" : ""), ink), 1, BAR);
+    bar.name = `${id}:bar`;
     const frame = new THREE12.Mesh(frameShape, metal);
     frame.name = "frame";
     frame.raycast = () => {
@@ -5960,7 +6072,7 @@ function createPanels(o) {
     const dark = { value: 1 };
     seeThroughDark(body.material, dark);
     if (source.kind === "video") button("play", "play");
-    group.add(frame, body, bar2);
+    group.add(frame, body, bar);
     root.add(group);
     const p = {
       id,
@@ -5968,7 +6080,7 @@ function createPanels(o) {
       source,
       record: null,
       body,
-      bar: bar2,
+      bar,
       buttons,
       video: null,
       aspect: 16 / 9,
@@ -6068,7 +6180,7 @@ function createPanels(o) {
     setPlace(p, given);
     if (given.yaw === void 0) turnToFace(p);
     if (o.input) {
-      p.release = o.input.grabbable(bar2, {
+      p.release = o.input.grabbable(bar, {
         reach: 0.12,
         pull: false,
         onGrab: () => {
@@ -6076,7 +6188,7 @@ function createPanels(o) {
         },
         onRelease: () => {
           p.held = false;
-          group.add(bar2);
+          group.add(bar);
           layout(p);
           turnToFace(p);
           if (p.pinAt) p.pinAt = pinFrom(p);
@@ -9074,7 +9186,7 @@ function createPresence(d) {
   const sayTints = () => {
     if (mine) session?.tellPlay(buildTints(mineTints));
   };
-  let askedScript = "";
+  const askedScript = { sha: "" };
   const itemMutes = /* @__PURE__ */ new Set();
   const hand = () => {
     if (!d.renderer.xr.isPresenting || !d.controllers.length) return -1;
@@ -9628,19 +9740,10 @@ function createPresence(d) {
         put();
         return { ok: true, said: had ? "Put away." : "You are holding nothing." };
       }
-      if (!d.items || itemsRule() === "none") return { ok: false, said: "Nothing carried is drawn or works in this place." };
-      if (!showsItems()) return { ok: false, said: "You have items turned off. Turn them on to hold one." };
-      const described = await d.items.describe(item);
-      if (!described) return { ok: false, said: "That item's description couldn't be found." };
-      if (!canBeHeld(described)) return { ok: false, said: `${described.title} isn't something to hold.` };
-      if (described.use === "granted") return { ok: false, said: `${described.title} has to be granted by its maker, which can't be checked here yet.` };
-      if (described.script && d.itemScripts && !scriptAllowed(described.script.sha256)) {
-        if (askedScript !== described.script.sha256) {
-          askedScript = described.script.sha256;
-          return { ok: false, said: `${described.title} does things of its own, with code written by its maker (${described.maker.slice(0, 8)}\u2026). It runs shut away on your device: it can't reach the network, your account or anything of this world. Press Hold again to let it.` };
-        }
-        allowScript(described.script.sha256);
-      }
+      if (!d.items) return { ok: false, said: "Nothing carried is drawn or works in this place." };
+      const described = itemsRule() === "none" || !showsItems() ? null : await d.items.describe(item);
+      const may = mayHold(described, { rule: itemsRule(), scripts: !!d.itemScripts, asked: askedScript });
+      if (!may.ok || !described) return may.ok ? { ok: false, said: "That item's description couldn't be found." } : may;
       mineTints = cleanTints(described, tints ?? {});
       const model = await d.items.model(described, mineTints);
       put();
@@ -11132,6 +11235,8 @@ export {
   runInBox,
   scriptAllowed,
   allowScript,
+  mayHold,
+  paintHealth,
   createPlay,
   readProfile,
   createProfiles,

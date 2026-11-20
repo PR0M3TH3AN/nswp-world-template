@@ -1,10 +1,11 @@
 import type { Bag } from "./bag.js";
-import { type Items } from "./items.js";
+import { type ItemStore } from "./item-store.js";
 import type { Keyboard } from "./keyboard.js";
 import type { Controls } from "./ui/model.js";
 export interface BaggingOptions {
     bag: Bag;
-    items: Items;
+    /** What looks items up: only their descriptions are needed here, so nothing that draws. */
+    items: Pick<ItemStore, "known" | "describe">;
     /** The visitor's key here, or null: a guest carries nothing, and has no tab. */
     me(): string | null;
     /** What this place does with items: "none", "allowed" or "play". */

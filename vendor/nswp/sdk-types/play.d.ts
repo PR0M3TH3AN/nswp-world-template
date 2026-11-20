@@ -20,7 +20,7 @@
 import { type Item } from "@nswp/core";
 import * as THREE from "three";
 import { type ItemBoxOptions } from "./item-box.js";
-import { type Items } from "./items.js";
+import type { Items } from "./items.js";
 import type { Sounds } from "./sound.js";
 /** Someone else in the room, as this needs them: where they are, what to stick things to, what they hold. */
 export interface PlayPerson {
@@ -81,6 +81,13 @@ export interface PlayOptions {
     /** Whether they are aiming along their item's sight now: then its own mark is what they aim by, and no ring is drawn. */
     sighting?: () => boolean;
     /**
+     * The world is drawn by something else (another engine), which is the one that knows its shapes. Then nothing
+     * here looks for what a thing ran into: each frame `snapshot()` says where each thing went, whatever draws the
+     * world tests that, and says what it met with `met()` and where the floor is with `floored()`, a frame later.
+     * Everything else is exactly as it is for a world drawn here: one flight, one set of rules.
+     */
+    deferred?: boolean;
+    /**
      * The colours someone chose for what they hold: the visitor's own for their own key (or null, outside a room),
      * anyone else's as they said them. Left out, everything is the colour its maker gave it.
      */
@@ -114,6 +121,12 @@ export interface Play {
     update(dt: number): void;
     /** For tests: what is in the air, stuck and lying, and what has happened. */
     info(): PlayInfo;
+    /** Everything there is to draw this frame, as plain numbers: for a world drawn by another engine (`deferred`). */
+    snapshot(): PlaySnapshot;
+    /** A thing met a shape of the world, part of the way along a step `snapshot()` asked to have tested. */
+    met(key: string, step: number, fraction: number, point: [number, number, number], ref?: string): void;
+    /** Where the floor is under a thing that has let go. */
+    floored(key: string, y: number): void;
     dispose(): void;
 }
 export interface PlayInfo {
@@ -149,7 +162,88 @@ export interface PlayInfo {
         full: number;
     }>;
 }
+/** What there is to draw, with nothing of any renderer in it. Distances are metres; a turn is x, y, z, w. */
+export interface PlaySnapshot {
+    things: {
+        key: string;
+        /** Which model: the hash its file is named by, and its box. */
+        model: string;
+        size: [number, number, number];
+        /** The colours whoever sent it chose. */
+        tints: Record<string, string>;
+        state: "flying" | "stuck" | "falling" | "lying";
+        /** What it is stuck to: "world", a person's key, or "". And what the engine said it met, where it said. */
+        on: string;
+        ref: string;
+        at: [number, number, number];
+        turn: [number, number, number, number];
+        scale: number;
+        /** A step to test against the world's shapes: from `a` to `b`. Null where there is nothing to test. */
+        test: {
+            step: number;
+            a: [number, number, number];
+            b: [number, number, number];
+        } | null;
+        /** It has let go and is falling: where is the floor under it? */
+        down: boolean;
+    }[];
+    /** A streak of light behind a thing: points along its middle, each with how bright it is there, from 0 to 1. */
+    trails: {
+        key: string;
+        color: string;
+        width: number;
+        points: [number, number, number, number][];
+    }[];
+    own: {
+        /** The ring that says where a thing will go, and the mark that says one reached someone. */
+        cross: boolean;
+        mark: boolean;
+        /** How they are, and how much of the bar to show, from 0 to 1. */
+        health: {
+            value: number;
+            full: number;
+            growing: number;
+            down: boolean;
+            shown: number;
+        };
+        /** How red the edge of the view is, from 0 to 1, and whether the view is breaking up. */
+        red: number;
+        glitch: boolean;
+        /** What their item shows of itself. */
+        words: string;
+    };
+    /** Animations of an item's own that began since the last snapshot: whose ("" for the visitor's own), and which. */
+    clips: {
+        who: string;
+        name: string;
+    }[];
+}
 /** Whether this visitor has let an item's script run: by its hash, so a changed script is asked about again. */
 export declare function scriptAllowed(sha256: string): boolean;
 export declare function allowScript(sha256: string): void;
+/**
+ * Whether a thing may be taken in hand here, and the words for it where it may not: the same rules and the same
+ * words whatever draws the world. `asked` remembers the script the visitor was last told about, so that a second
+ * press on the same item is their yes to it.
+ */
+export declare function mayHold(described: Item | null, o: {
+    rule: string;
+    scripts: boolean;
+    asked: {
+        sha: string;
+    };
+}): {
+    ok: true;
+} | {
+    ok: false;
+    said: string;
+};
+export declare const paintHealth: (g: CanvasRenderingContext2D, w: number, h: number, o: {
+    value: number;
+    full: number;
+    accent: string;
+    growing?: number;
+    down?: boolean;
+    heart?: boolean;
+}) => void;
 export declare function createPlay(o: PlayOptions): Play;

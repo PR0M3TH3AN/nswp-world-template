@@ -891,7 +891,17 @@ var require_cjs = __commonJS({
 });
 
 // packages/cli/src/index.ts
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+
+// node_modules/@noble/hashes/_u64.js
+var fromNumH = (n) => n / 2 ** 32 | 0;
+var fromNumL = (n) => n >>> 0;
+function setU64FromNum(view, byteOffset, n, isLE) {
+  const h = fromNumH(n);
+  const l = fromNumL(n);
+  view.setUint32(byteOffset, isLE ? l : h, isLE);
+  view.setUint32(byteOffset + 4, isLE ? h : l, isLE);
+}
 
 // node_modules/@noble/hashes/utils.js
 function isBytes(a) {
@@ -1059,16 +1069,6 @@ var oidNist = (suffix) => ({
   // Larger suffix values would need base-128 OID encoding and a different length byte.
   oid: Uint8Array.from([6, 9, 96, 134, 72, 1, 101, 3, 4, 2, suffix])
 });
-
-// node_modules/@noble/hashes/_u64.js
-var fromNumH = (n) => n / 2 ** 32 | 0;
-var fromNumL = (n) => n >>> 0;
-function setU64FromNum(view, byteOffset, n, isLE) {
-  const h = fromNumH(n);
-  const l = fromNumL(n);
-  view.setUint32(byteOffset, isLE ? l : h, isLE);
-  view.setUint32(byteOffset + 4, isLE ? h : l, isLE);
-}
 
 // node_modules/@noble/hashes/_md.js
 function Chi(a, b, c) {
@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.53.0";
+var KIT_VERSION = "0.54.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4771,6 +4771,199 @@ var ITEM_BOX_HTML = `<!doctype html>
 </script>
 `;
 
+// packages/core/dist/glb.js
+function tintSlot(name) {
+  return typeof name === "string" ? /^tint[:_]([a-z][a-z0-9-]{0,23})$/.exec(name)?.[1] ?? "" : "";
+}
+var MODEL_BUDGET = {
+  /** The most a model file may weigh, in bytes. */
+  bytes: 2e6,
+  /** The most triangles, meshes and materials a model may have. */
+  triangles: 2e4,
+  meshes: 40,
+  materials: 16,
+  /** The longest side of any picture a model's surfaces may use, in pixels. */
+  texture: 1024
+};
+var u32 = (b, at) => (b[at] | b[at + 1] << 8 | b[at + 2] << 16 | b[at + 3] << 24) >>> 0;
+function pictureSize(b) {
+  if (b.length >= 24 && b[0] === 137 && b[1] === 80 && b[2] === 78 && b[3] === 71) {
+    const be = (at) => (b[at] << 24 | b[at + 1] << 16 | b[at + 2] << 8 | b[at + 3]) >>> 0;
+    return [be(16), be(20)];
+  }
+  if (b.length >= 4 && b[0] === 255 && b[1] === 216) {
+    for (let at = 2; at + 9 < b.length; ) {
+      if (b[at] !== 255)
+        return null;
+      const marker = b[at + 1];
+      const length = b[at + 2] << 8 | b[at + 3];
+      if (marker >= 192 && marker <= 207 && marker !== 196 && marker !== 200 && marker !== 204)
+        return [b[at + 7] << 8 | b[at + 8], b[at + 5] << 8 | b[at + 6]];
+      if (length < 2)
+        return null;
+      at += 2 + length;
+    }
+    return null;
+  }
+  if (b.length >= 30 && b[0] === 82 && b[1] === 73 && b[2] === 70 && b[3] === 70 && b[8] === 87 && b[9] === 69 && b[10] === 66 && b[11] === 80) {
+    const kind = String.fromCharCode(b[12], b[13], b[14], b[15]);
+    if (kind === "VP8X")
+      return [1 + (b[24] | b[25] << 8 | b[26] << 16), 1 + (b[27] | b[28] << 8 | b[29] << 16)];
+    if (kind === "VP8 ")
+      return [(b[26] | b[27] << 8) & 16383, (b[28] | b[29] << 8) & 16383];
+    if (kind === "VP8L")
+      return [1 + ((b[22] & 63) << 8 | b[21]), 1 + ((b[24] & 15) << 10 | b[23] << 2 | (b[22] & 192) >> 6)];
+  }
+  return null;
+}
+function measureGlb(bytes) {
+  const read = readGlb(bytes);
+  if (!read.ok)
+    return null;
+  const json = JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + u32(bytes, 12))));
+  const list = (name) => Array.isArray(json[name]) ? json[name] : [];
+  const nodes = list("nodes");
+  const meshes = list("meshes");
+  const accessors = list("accessors");
+  const one = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  const times = (a, b) => {
+    const o = new Array(16).fill(0);
+    for (let c = 0; c < 4; c++)
+      for (let r = 0; r < 4; r++)
+        for (let k = 0; k < 4; k++)
+          o[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k];
+    return o;
+  };
+  const own = (n) => {
+    if (Array.isArray(n.matrix) && n.matrix.length === 16)
+      return n.matrix;
+    const [x, y, z, w] = Array.isArray(n.rotation) && n.rotation.length === 4 ? n.rotation : [0, 0, 0, 1];
+    const [sx, sy, sz] = Array.isArray(n.scale) && n.scale.length === 3 ? n.scale : [1, 1, 1];
+    const [tx, ty, tz] = Array.isArray(n.translation) && n.translation.length === 3 ? n.translation : [0, 0, 0];
+    return [
+      (1 - 2 * (y * y + z * z)) * sx,
+      2 * (x * y + z * w) * sx,
+      2 * (x * z - y * w) * sx,
+      0,
+      2 * (x * y - z * w) * sy,
+      (1 - 2 * (x * x + z * z)) * sy,
+      2 * (y * z + x * w) * sy,
+      0,
+      2 * (x * z + y * w) * sz,
+      2 * (y * z - x * w) * sz,
+      (1 - 2 * (x * x + y * y)) * sz,
+      0,
+      tx,
+      ty,
+      tz,
+      1
+    ];
+  };
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  const walk = (index, above, depth) => {
+    const node = nodes[index];
+    if (!node || depth > 32)
+      return;
+    const here = times(above, own(node));
+    const mesh = typeof node.mesh === "number" ? meshes[node.mesh] : void 0;
+    for (const p of Array.isArray(mesh?.primitives) ? mesh.primitives : []) {
+      const a = accessors[p.attributes?.POSITION ?? -1];
+      const [min, max] = [a?.min, a?.max];
+      if (!Array.isArray(min) || !Array.isArray(max) || min.length !== 3 || max.length !== 3)
+        continue;
+      for (let corner = 0; corner < 8; corner++) {
+        const c = [corner & 1 ? max[0] : min[0], corner & 2 ? max[1] : min[1], corner & 4 ? max[2] : min[2]];
+        for (let i = 0; i < 3; i++) {
+          const v = here[i] * c[0] + here[4 + i] * c[1] + here[8 + i] * c[2] + here[12 + i];
+          lo[i] = Math.min(lo[i], v);
+          hi[i] = Math.max(hi[i], v);
+        }
+      }
+    }
+    for (const child of Array.isArray(node.children) ? node.children : [])
+      walk(child, here, depth + 1);
+  };
+  const scenes = list("scenes");
+  const roots = scenes[typeof json.scene === "number" ? json.scene : 0]?.nodes ?? nodes.map((_, i) => i);
+  for (const root of roots)
+    walk(root, one, 0);
+  if (!lo.every(Number.isFinite) || !hi.every(Number.isFinite))
+    return null;
+  const mm = (x) => Math.max(1e-3, Math.round(x * 1e3) / 1e3);
+  const hex = (c) => Math.round(Math.min(1, Math.max(0, c <= 31308e-7 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055)) * 255).toString(16).padStart(2, "0");
+  const tints = [];
+  for (const m of list("materials")) {
+    const slot = tintSlot(m.name);
+    const base = m.pbrMetallicRoughness?.baseColorFactor;
+    const [r, g, b] = Array.isArray(base) && base.length >= 3 ? base : [1, 1, 1];
+    if (slot && !tints.some((t) => t.slot === slot))
+      tints.push({ slot, color: `#${hex(r)}${hex(g)}${hex(b)}` });
+  }
+  return { size: [mm(hi[0] - lo[0]), mm(hi[1] - lo[1]), mm(hi[2] - lo[2])], tints: tints.slice(0, 4), count: read.count };
+}
+function readGlb(bytes, budget = MODEL_BUDGET) {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 20 || u32(bytes, 0) !== 1179937895 || u32(bytes, 4) !== 2)
+    return { ok: false, why: "not-glb" };
+  if (bytes.length > budget.bytes)
+    return { ok: false, why: "too-big" };
+  const total = u32(bytes, 8);
+  const jsonLength = u32(bytes, 12);
+  if (total > bytes.length || u32(bytes, 16) !== 1313821514 || 20 + jsonLength > bytes.length)
+    return { ok: false, why: "not-glb" };
+  let json;
+  try {
+    json = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(20, 20 + jsonLength)));
+  } catch {
+    return { ok: false, why: "unreadable" };
+  }
+  if (!json || typeof json !== "object")
+    return { ok: false, why: "unreadable" };
+  const binAt = 20 + jsonLength;
+  const bin = binAt + 8 <= bytes.length && u32(bytes, binAt + 4) === 5130562 ? bytes.subarray(binAt + 8, Math.min(bytes.length, binAt + 8 + u32(bytes, binAt))) : new Uint8Array(0);
+  const list = (name) => Array.isArray(json[name]) ? json[name].filter((x) => !!x && typeof x === "object") : [];
+  if (list("buffers").some((b) => b.uri !== void 0) || list("images").some((i) => i.uri !== void 0))
+    return { ok: false, why: "outside" };
+  if (Array.isArray(json.extensionsRequired) && json.extensionsRequired.length > 0)
+    return { ok: false, why: "needs-more" };
+  const accessors = list("accessors");
+  const views = list("bufferViews");
+  const meshes = list("meshes");
+  let triangles = 0;
+  let parts = 0;
+  for (const mesh of meshes) {
+    for (const p of Array.isArray(mesh.primitives) ? mesh.primitives : []) {
+      parts++;
+      const mode = typeof p.mode === "number" ? p.mode : 4;
+      const from = typeof p.indices === "number" ? p.indices : p.attributes?.POSITION;
+      const count2 = typeof from === "number" && typeof accessors[from]?.count === "number" ? accessors[from].count : 0;
+      triangles += mode === 4 ? Math.floor(count2 / 3) : mode === 5 || mode === 6 ? Math.max(0, count2 - 2) : Math.ceil(count2 / 3);
+    }
+  }
+  let texture = 0;
+  for (const image of list("images")) {
+    const view = typeof image.bufferView === "number" ? views[image.bufferView] : void 0;
+    const at = typeof view?.byteOffset === "number" ? view.byteOffset : 0;
+    const length = typeof view?.byteLength === "number" ? view.byteLength : 0;
+    const size = view && at + length <= bin.length ? pictureSize(bin.subarray(at, at + length)) : null;
+    if (!size)
+      return { ok: false, why: "needs-more" };
+    texture = Math.max(texture, size[0], size[1]);
+  }
+  const materials = list("materials");
+  const count = {
+    triangles,
+    // What a renderer makes a mesh of is each part of each mesh.
+    meshes: parts,
+    materials: materials.length,
+    texture,
+    animations: list("animations").map((a) => typeof a.name === "string" ? a.name : "").filter(Boolean).slice(0, 8),
+    materialNames: materials.map((m) => typeof m.name === "string" ? m.name : "")
+  };
+  const within2 = parts > 0 && parts <= budget.meshes && triangles <= budget.triangles && count.materials <= budget.materials && texture <= budget.texture;
+  return within2 ? { ok: true, count } : { ok: false, why: "over-budget" };
+}
+
 // packages/core/dist/list.js
 var LIST_LIMITS = { worlds: 200, titleChars: 200, descriptionChars: 1e3 };
 function buildListEvent(l) {
@@ -5031,6 +5224,75 @@ function keygen(path) {
   console.log(`  pubkey ${getPublicKey(sk)}`);
   return 0;
 }
+function makeItem(path) {
+  const title = flag("title");
+  const host = flag("host");
+  if (!title || !host) {
+    console.log(`${BAD} --title and --host are required: what it is called, and the https address its files will be served from (ending in /)`);
+    return 1;
+  }
+  let bytes;
+  try {
+    bytes = new Uint8Array(readFileSync(path));
+  } catch {
+    console.log(`${BAD} ${path} couldn't be read`);
+    return 1;
+  }
+  const read = readGlb(bytes);
+  const measured = measureGlb(bytes);
+  if (!read.ok || !measured) {
+    const why = {
+      "not-glb": "it isn't a binary glTF (.glb). Export it as one: in Godot, Scene \u2192 Export As \u2192 glTF 2.0, with the .glb ending; in Blender, File \u2192 Export \u2192 glTF 2.0, Format: glTF Binary",
+      "too-big": `it is over ${MODEL_BUDGET.bytes / 1e6} MB`,
+      outside: "it names a file outside itself (a buffer or a picture at an address). Export it with everything packed inside",
+      "needs-more": "it needs something a plain reader doesn't have (a compression such as Draco or Meshopt, or a picture that isn't PNG, JPEG or WebP). Export it without",
+      "over-budget": `it is over the budget every world counts a carried model against: ${MODEL_BUDGET.triangles} triangles, ${MODEL_BUDGET.meshes} meshes, ${MODEL_BUDGET.materials} materials, pictures ${MODEL_BUDGET.texture} on a side`,
+      unreadable: "its contents couldn't be read"
+    };
+    console.log(`${BAD} ${path} can't be an item's model: ${read.ok ? "it has no shape to measure" : why[read.why]}.`);
+    return 1;
+  }
+  if (measured.size.some((side) => side > 4)) {
+    console.log(`${BAD} it is ${measured.size.join(" \xD7 ")} metres, and no side of an item may be longer than 4. Scale it down where you made it: one unit is one metre.`);
+    return 1;
+  }
+  const hash = bytesToHex(sha256(bytes));
+  const base = host.endsWith("/") ? host : `${host}/`;
+  const d = flag("d") ?? title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+  const summary = flag("summary");
+  const [w, h, depth] = measured.size;
+  const input = {
+    d,
+    title,
+    ...summary ? { summary } : {},
+    model: { url: `${base}${hash}.glb`, sha256: hash },
+    size: measured.size,
+    colliders: [{ shape: "box", centre: [0, Math.round(h / 2 * 1e3) / 1e3, 0], size: [w, h, depth] }],
+    behaviors: ["holdable"],
+    fits: ["place", "hand-left", "hand-right"],
+    // A material named tint:<slot> is a colour left to whoever holds it: it starts as the colour the material has.
+    ...measured.tints.length ? { tints: measured.tints.map((t) => ({ slot: t.slot, label: t.slot[0].toUpperCase() + t.slot.slice(1), color: t.color })) } : {}
+  };
+  if (!buildItem({ ...input, now: 0 })) {
+    console.log(`${BAD} that doesn't make an item: its name must be lower-case letters, digits and hyphens, and --host an https address.`);
+    return 1;
+  }
+  const files = flag("files");
+  if (files) {
+    mkdirSync(files, { recursive: true });
+    copyFileSync(path, `${files.replace(/\/$/, "")}/${hash}.glb`);
+  }
+  const text = `${JSON.stringify(input, null, 2)}
+`;
+  const outPath = flag("out");
+  if (outPath) writeFileSync(outPath, text);
+  else process.stdout.write(text);
+  const say = outPath ? console.log : console.error;
+  say(`${OK} ${title}: ${measured.size.join(" \xD7 ")} m, ${measured.count.triangles} triangles, ${measured.count.meshes} meshes, ${measured.count.materials} materials${measured.count.animations.length ? `, animations: ${measured.count.animations.join(", ")}` : ""}${measured.tints.length ? `, colours a holder may choose: ${measured.tints.map((t) => t.slot).join(", ")}` : ""}`);
+  say(`  Its file must be served at ${input.model.url}${files ? ` (copied to ${files}/${hash}.glb)` : ""}, with Access-Control-Allow-Origin: * so that any world can fetch it.`);
+  say(`  Then: nswp sign-item ${outPath ?? "<this description>"} --key-file <your key>, and nswp publish. Edit the description first if it sits, is worn or does something.`);
+  return 0;
+}
 function signItem(inputPath) {
   const keyFile = flag("key-file");
   if (!keyFile) {
@@ -5200,6 +5462,9 @@ async function main() {
     case "sign-list":
       if (arg) return signList(arg);
       break;
+    case "make-item":
+      if (arg) return makeItem(arg);
+      break;
     case "sign-item":
       if (arg) return signItem(arg);
       break;
@@ -5222,6 +5487,8 @@ async function main() {
   nswp keygen <key-file>                                  create a publisher key (hex, mode 600)
   nswp sign-world <input.json> --key-file <f> [--out f]   sign a world announcement from a WorldInput file
   nswp sign-list <input.json> --key-file <f> [--out f]    sign a list of worlds: { "d", "title", "description", "worlds": [addresses] }
+  nswp make-item <model.glb> --title <name> --host <https://\u2026/> [--d name] [--summary words] [--out f] [--files dir]
+                                                          describe an item from a model made in any tool (NSWP-17)
   nswp sign-item <input.json> --key-file <f> [--out f | --out-dir d]
                                                           sign an item's description, or a list of them (NSWP-17)
   nswp worlds [--verify] [--not-on <list.json>] [--json]  every world announced on the relays, newest first
