@@ -32,6 +32,7 @@ import {
   addMessagingControls,
   addPanelControls,
   addRoomControls,
+  addScoreControls,
   addSoundControls,
   addViewControls,
   byName,
@@ -53,6 +54,7 @@ import {
   createPresence,
   createProfiles,
   createSaves,
+  createScores,
   createSounds,
   createStepPace,
   createStroll,
@@ -98,7 +100,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-Q3KYCGNU.js";
+} from "./shared-YT2S4R7R.js";
 import {
   currentForm,
   deviceForms,
@@ -175,6 +177,7 @@ export {
   addMessagingControls,
   addPanelControls,
   addRoomControls,
+  addScoreControls,
   addSoundControls,
   addViewControls,
   arriveWith,
@@ -201,6 +204,7 @@ export {
   createPresence,
   createProfiles,
   createSaves,
+  createScores,
   createSounds,
   createStay,
   createStepPace,

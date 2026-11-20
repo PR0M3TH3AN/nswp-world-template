@@ -133,6 +133,8 @@ var STANDARD = [
   { id: "following", label: "Following", icon: "list" },
   // Their private messages (messaging.ts). Empty, and not shown, for a guest.
   { id: "messages", label: "Messages", icon: "chat" },
+  // A world's boards, where it keeps score (scoring.ts). Added by the world; empty, and not shown, otherwise.
+  { id: "scores", label: "Scores", icon: "list" },
   { id: "camera", label: "Camera", icon: "camera" },
   { id: "panels", label: "Panels", icon: "panel" },
   { id: "view", label: "View", icon: "vr" },

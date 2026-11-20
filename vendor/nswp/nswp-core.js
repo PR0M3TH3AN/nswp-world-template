@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.43.1";
+var KIT_VERSION = "0.44.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6439,6 +6439,157 @@ function buildMessageRelays(relays, now) {
   return { kind: MESSAGE_RELAYS_KIND, created_at: Math.floor(now), tags: clean3.map((url) => ["relay", url]), content: "" };
 }
 
+// packages/core/src/rating.ts
+var RATING_KIND = 37305;
+var RATING_LIMITS = {
+  /** Stars run from 1 to this. */
+  most: 5,
+  /** The longest the words may be, in characters. A review longer than that is a comment (NIP-22), not a rating. */
+  words: 280
+};
+var SITE_MARKS = ["nswp:world", "bitlogin:site"];
+function worldCoordinate(input) {
+  if (typeof input !== "string" || input.length > 200) return "";
+  const c = parseCoordinate(input);
+  return c && c.kind === WORLD_KIND && isHex64(c.pubkey) && c.identifier !== "" ? `${WORLD_KIND}:${c.pubkey}:${c.identifier}` : "";
+}
+function cleanStars(input) {
+  const n = typeof input === "string" && /^[1-5]$/.test(input) ? Number(input) : input;
+  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= RATING_LIMITS.most ? n : 0;
+}
+function buildRating(o) {
+  const world = worldCoordinate(o.world);
+  const stars = cleanStars(o.stars);
+  if (!world || !stars) return null;
+  return {
+    kind: RATING_KIND,
+    created_at: Math.floor(o.now),
+    tags: [
+      ["d", world],
+      ["a", world, ...o.relay ? [o.relay] : []],
+      ["rating", String(stars)],
+      ["alt", `A rating of a world: ${stars} of ${RATING_LIMITS.most}`]
+    ],
+    content: cleanLine(o.words ?? "", RATING_LIMITS.words)
+  };
+}
+function parseRating(event) {
+  if (!event || event.kind !== RATING_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
+  const world = worldCoordinate(getTags(event, "d")[0]?.[1]);
+  const stars = cleanStars(getTags(event, "rating")[0]?.[1]);
+  if (!world || !stars || getTags(event, "a")[0]?.[1] !== world) return null;
+  const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
+  return { by: event.pubkey, world, stars, words: cleanLine(typeof event.content === "string" ? event.content : "", RATING_LIMITS.words), at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
+}
+function tallyRatings(events, o) {
+  const world = worldCoordinate(o.world);
+  const counted = new Set(o.counted);
+  if (o.me) counted.add(o.me);
+  const publisher = world.split(":")[1];
+  const own = cleanOrigin(o.worldUrl);
+  const newest = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    const r = parseRating(event);
+    if (!r || r.world !== world || !counted.has(r.by) || r.by === publisher) continue;
+    if (own && r.askedAt.includes(own)) continue;
+    const had = newest.get(r.by);
+    if (had && had.at >= r.at) continue;
+    if (!verifyEvent(event)) continue;
+    newest.set(r.by, r);
+  }
+  const ratings = [...newest.values()].sort((a, b) => b.at - a.at);
+  const sum = ratings.reduce((n, r) => n + r.stars, 0);
+  return { count: ratings.length, average: ratings.length ? Math.round(sum / ratings.length * 10) / 10 : 0, mine: o.me && newest.get(o.me)?.stars || 0, ratings };
+}
+function tallyWords(tally) {
+  return tally.count ? `${tally.average.toFixed(1)} of ${RATING_LIMITS.most}, from ${tally.count}` : "";
+}
+
+// packages/core/src/score.ts
+var SCORE_KIND = 37306;
+var SCORE_LIMITS = {
+  /** A world may have no more than this many scores signed in `perMs`, and in an hour. */
+  burst: 6,
+  perMs: 6e4,
+  hourly: 60,
+  /** The most a score may be. A whole number from 0 to this: what it counts is the board's to say. */
+  most: 9007199254740991
+};
+var BOARD = /^[a-z0-9][a-z0-9-]{0,31}$/;
+function cleanBoard(input) {
+  return typeof input === "string" && BOARD.test(input) ? input : "";
+}
+function cleanScore(input) {
+  const n = typeof input === "string" && /^\d{1,16}$/.test(input) ? Number(input) : input;
+  return typeof n === "number" && Number.isSafeInteger(n) && n >= 0 && n <= SCORE_LIMITS.most ? n : null;
+}
+function scoreWords(board, score) {
+  if (board.format !== "time") return String(score).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const tenths = Math.round(score / 100);
+  const minutes = Math.floor(tenths / 600);
+  const seconds = tenths % 600 / 10;
+  return minutes ? `${minutes} min ${seconds.toFixed(1)} s` : `${seconds.toFixed(1)} s`;
+}
+function buildScore(o) {
+  const world = worldCoordinate(o.world);
+  const board = cleanBoard(o.board);
+  const score = cleanScore(o.score);
+  if (!world || !board || score === null) return null;
+  return {
+    kind: SCORE_KIND,
+    created_at: Math.floor(o.now),
+    tags: [
+      ["d", `${world}/${board}`],
+      ["a", world, ...o.relay ? [o.relay] : []],
+      ["board", board],
+      ["score", String(score)],
+      ["alt", `A score in a world: ${score}`]
+    ],
+    content: ""
+  };
+}
+function scoreForWorld(o) {
+  const origin = cleanOrigin(o.origin);
+  const made = typeof o.world === "string" && typeof o.board === "string" && cleanScore(o.score) !== null ? buildScore({ world: o.world, board: o.board, score: cleanScore(o.score), now: o.now }) : null;
+  if (!origin || !made) return null;
+  return { ...made, tags: [...made.tags, [SITE_MARKS[0], origin]] };
+}
+function parseScore(event) {
+  if (!event || event.kind !== SCORE_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
+  const world = worldCoordinate(getTags(event, "a")[0]?.[1]);
+  const board = cleanBoard(getTags(event, "board")[0]?.[1]);
+  const score = cleanScore(getTags(event, "score")[0]?.[1]);
+  if (!world || !board || score === null || getTags(event, "d")[0]?.[1] !== `${world}/${board}`) return null;
+  const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
+  return { by: event.pubkey, world, board, score, at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
+}
+function isScoreAsked(signed, o) {
+  if (!o.pubkey || !verifyEvent(signed) || signed.pubkey !== o.pubkey) return false;
+  const s = parseScore(signed);
+  return !!s && s.world === worldCoordinate(o.world) && s.board === o.board && s.score === o.score && s.askedAt.includes(cleanOrigin(o.origin));
+}
+function rankScores(events, o) {
+  const world = worldCoordinate(o.world);
+  const own = cleanOrigin(o.worldUrl);
+  const counted = new Set(o.counted ?? []);
+  if (o.me) counted.add(o.me);
+  const newest = /* @__PURE__ */ new Map();
+  if (world && own) {
+    for (const event of events) {
+      const s = parseScore(event);
+      if (!s || s.world !== world || s.board !== o.board || !s.askedAt.includes(own)) continue;
+      const had = newest.get(s.by);
+      if (had && had.at >= s.at) continue;
+      if (!verifyEvent(event)) continue;
+      newest.set(s.by, s);
+    }
+  }
+  const all = [...newest.values()].sort((a, b) => (o.order === "low" ? a.score - b.score : b.score - a.score) || a.at - b.at || (a.by < b.by ? -1 : 1));
+  const ranked = all.map((s, i) => ({ by: s.by, score: s.score, at: s.at, rank: i + 1, known: counted.has(s.by) }));
+  const most = o.most ?? 20;
+  return { known: ranked.filter((s) => s.known).slice(0, most), others: ranked.filter((s) => !s.known).slice(0, most), mine: ranked.find((s) => s.by === o.me) ?? null, count: ranked.length };
+}
+
 // packages/core/src/signing.ts
 var SIGNER_PROTOCOL = "nswp-signer";
 var SIGNER_VERSION = 1;
@@ -6552,6 +6703,7 @@ function readSignerRequest(data) {
   if (d.t === "find" && cleanSlot(d.slot)) return { t: "find", id: d.id, slot: cleanSlot(d.slot) };
   if (d.t === "open" && d.event && typeof d.event === "object") return { t: "open", id: d.id, event: d.event };
   if (d.t === "want" && Array.isArray(d.more)) return { t: "want", id: d.id, more: cleanMore(d.more) };
+  if (d.t === "score" && worldCoordinate(d.world) && cleanBoard(d.board) && cleanScore(d.score) !== null) return { t: "score", id: d.id, world: worldCoordinate(d.world), board: cleanBoard(d.board), score: cleanScore(d.score) };
   if (d.t === "seal" && isHex64(d.to) && cleanMessage(d.text)) return { t: "seal", id: d.id, to: d.to, text: cleanMessage(d.text) };
   if (d.t === "unwrap" && d.event && typeof d.event === "object") return { t: "unwrap", id: d.id, event: d.event };
   if (d.t === "reach" && Array.isArray(d.relays) && d.relays.length <= 8 && d.relays.every((r) => typeof r === "string" && r.length <= 200)) return { t: "reach", id: d.id, relays: d.relays };
@@ -6609,72 +6761,6 @@ function readHandoffMessage(data) {
   }
   if (d.t === "done" && typeof d.ok === "boolean") return { t: "done", nonce: d.nonce, ok: d.ok };
   return null;
-}
-
-// packages/core/src/rating.ts
-var RATING_KIND = 37305;
-var RATING_LIMITS = {
-  /** Stars run from 1 to this. */
-  most: 5,
-  /** The longest the words may be, in characters. A review longer than that is a comment (NIP-22), not a rating. */
-  words: 280
-};
-var SITE_MARKS = ["nswp:world", "bitlogin:site"];
-function worldCoordinate(input) {
-  if (typeof input !== "string" || input.length > 200) return "";
-  const c = parseCoordinate(input);
-  return c && c.kind === WORLD_KIND && isHex64(c.pubkey) && c.identifier !== "" ? `${WORLD_KIND}:${c.pubkey}:${c.identifier}` : "";
-}
-function cleanStars(input) {
-  const n = typeof input === "string" && /^[1-5]$/.test(input) ? Number(input) : input;
-  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= RATING_LIMITS.most ? n : 0;
-}
-function buildRating(o) {
-  const world = worldCoordinate(o.world);
-  const stars = cleanStars(o.stars);
-  if (!world || !stars) return null;
-  return {
-    kind: RATING_KIND,
-    created_at: Math.floor(o.now),
-    tags: [
-      ["d", world],
-      ["a", world, ...o.relay ? [o.relay] : []],
-      ["rating", String(stars)],
-      ["alt", `A rating of a world: ${stars} of ${RATING_LIMITS.most}`]
-    ],
-    content: cleanLine(o.words ?? "", RATING_LIMITS.words)
-  };
-}
-function parseRating(event) {
-  if (!event || event.kind !== RATING_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
-  const world = worldCoordinate(getTags(event, "d")[0]?.[1]);
-  const stars = cleanStars(getTags(event, "rating")[0]?.[1]);
-  if (!world || !stars || getTags(event, "a")[0]?.[1] !== world) return null;
-  const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
-  return { by: event.pubkey, world, stars, words: cleanLine(typeof event.content === "string" ? event.content : "", RATING_LIMITS.words), at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
-}
-function tallyRatings(events, o) {
-  const world = worldCoordinate(o.world);
-  const counted = new Set(o.counted);
-  if (o.me) counted.add(o.me);
-  const publisher = world.split(":")[1];
-  const own = cleanOrigin(o.worldUrl);
-  const newest = /* @__PURE__ */ new Map();
-  for (const event of events) {
-    const r = parseRating(event);
-    if (!r || r.world !== world || !counted.has(r.by) || r.by === publisher) continue;
-    if (own && r.askedAt.includes(own)) continue;
-    const had = newest.get(r.by);
-    if (had && had.at >= r.at) continue;
-    if (!verifyEvent(event)) continue;
-    newest.set(r.by, r);
-  }
-  const ratings = [...newest.values()].sort((a, b) => b.at - a.at);
-  const sum = ratings.reduce((n, r) => n + r.stars, 0);
-  return { count: ratings.length, average: ratings.length ? Math.round(sum / ratings.length * 10) / 10 : 0, mine: o.me && newest.get(o.me)?.stars || 0, ratings };
-}
-function tallyWords(tally) {
-  return tally.count ? `${tally.average.toFixed(1)} of ${RATING_LIMITS.most}, from ${tally.count}` : "";
 }
 
 // packages/core/src/people.ts
@@ -7374,6 +7460,8 @@ export {
   SAVE_LIMITS,
   SAVE_SLOT,
   SCHEMAS,
+  SCORE_KIND,
+  SCORE_LIMITS,
   SEAL_KIND,
   SETTINGS_LINK_LIMIT,
   SIGNER_MORE,
@@ -7408,6 +7496,7 @@ export {
   buildRating,
   buildRoomPass,
   buildSay,
+  buildScore,
   buildSignal,
   buildWayUrl,
   buildWorldEvent,
@@ -7420,6 +7509,7 @@ export {
   checkPreviewBytes,
   claimsKey,
   cleanAbout,
+  cleanBoard,
   cleanChat,
   cleanKeys,
   cleanLine,
@@ -7431,6 +7521,7 @@ export {
   cleanPicture,
   cleanRead,
   cleanRelayUrl,
+  cleanScore,
   cleanSettings,
   cleanSize,
   cleanSlot,
@@ -7478,6 +7569,7 @@ export {
   isPlainObject,
   isPublicKey,
   isReachAsked,
+  isScoreAsked,
   isSealAsked,
   isWhatWasAsked,
   isWssUrl,
@@ -7516,6 +7608,7 @@ export {
   parsePortal,
   parseRating,
   parseSay,
+  parseScore,
   parseSpeechControl,
   parseWorldEvent,
   pickDiscovered,
@@ -7526,6 +7619,7 @@ export {
   publishEvent,
   queryRelays,
   randomNonce,
+  rankScores,
   readBrought,
   readHandoffMessage,
   readMessage,
@@ -7538,6 +7632,8 @@ export {
   relayScore,
   roomTopic,
   saveAddress,
+  scoreForWorld,
+  scoreWords,
   sealMessage,
   sealSave,
   sealTemplate,
@@ -7565,6 +7661,7 @@ export {
   verifyWorldGrant,
   wayWithoutDestination,
   wellKnownUrl,
+  worldCoordinate,
   wrapSeal,
   writeRelaysFor,
   writtenWith

@@ -42,7 +42,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE14 from "three";
-import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS5, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub5, spawnOffset, verifyEvent as verifyEvent5 } from "@nswp/core";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS6, encodeNpub as encodeNpub3, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, shortNpub as shortNpub6, spawnOffset, verifyEvent as verifyEvent5 } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -2348,9 +2348,9 @@ function addMessagingControls(controls, opts) {
     }
     add({ id: "messages-look", icon: "turn", label: "Look for new messages", short: "Look", act: () => void m.load(true).then(refresh) });
     const row = (c) => ({
+      // A row each, in order: the people they would expect, then, under their own heading, anyone else.
       id: `messages-${c.with.slice(0, 16)}`,
-      kind: "swatch",
-      color: `#${c.with.slice(0, 6)}`,
+      icon: "chat",
       on: () => withWhom === c.with,
       label: () => `${nameOf(c.with)}${c.unread ? `, ${c.unread} new` : ""}`,
       act: () => open(c.with)
@@ -2623,7 +2623,7 @@ function createSaves(opts = {}) {
 }
 
 // packages/sdk/src/signer.ts
-import { cleanMessage, cleanMore, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex644, isReachAsked, isSealAsked, looksLikeWrap as looksLikeWrap2, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent4, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { cleanMessage, cleanMore, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex644, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap as looksLikeWrap2, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent4, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -2651,6 +2651,7 @@ var NONE = {
   seal: async () => null,
   unwrap: async () => null,
   reach: async () => null,
+  score: async () => null,
   onChange: () => () => {
   },
   whenAnswered: async () => {
@@ -2922,6 +2923,10 @@ function createWorldSigner(opts) {
     reach(relays) {
       if (state !== "unlocked" || !frame || !more.includes("messages")) return Promise.resolve(null);
       return askAbout({ t: "reach", id: `m${++n}`, relays: [...relays] }, (reply) => reply.t === "signed" && isReachAsked(reply.event, { pubkey, relays }) ? reply.event : null);
+    },
+    score(world, board, score) {
+      if (state !== "unlocked" || !frame) return Promise.resolve(null);
+      return askAbout({ t: "score", id: `c${++n}`, world, board, score }, (reply) => reply.t === "signed" && isScoreAsked(reply.event, { pubkey, world, board, score, origin: location.origin }) ? reply.event : null);
     },
     onChange(fn) {
       watchers2.add(fn);
@@ -5672,6 +5677,217 @@ function viewScale(metres, opts) {
   return Math.min(most, Math.max(least, metres / opts.at));
 }
 
+// packages/sdk/src/scores.ts
+import { cleanBoard, cleanScore, DEFAULT_RELAYS as DEFAULT_RELAYS5, publishEvent as publishEvent4, queryRelays as queryRelays5, rankScores, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, SCORE_KIND, scoreWords, worldCoordinate } from "@nswp/core";
+function createScores(opts) {
+  const world = worldCoordinate(opts.world);
+  const now = opts.now ?? (() => Date.now());
+  const query = opts.query ?? queryRelays5;
+  const publish = opts.publish ?? publishEvent4;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS5;
+  const boards = opts.boards.filter((b) => cleanBoard(b.id));
+  const boardOf = (id) => boards.find((b) => b.id === id) ?? null;
+  const better = (b, a, than) => than === null || (b.order === "low" ? a < than : a > than);
+  const store = (() => {
+    if (opts.storage !== void 0) return opts.storage;
+    try {
+      return globalThis.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const watchers2 = /* @__PURE__ */ new Set();
+  const changed = () => {
+    for (const fn of watchers2) fn();
+  };
+  const keyFor = (who) => `nswp:scores:${world}:${who ?? "guest"}`;
+  const read = (who) => {
+    try {
+      const kept2 = JSON.parse(store?.getItem(keyFor(who)) ?? "{}");
+      return kept2 && typeof kept2 === "object" && !Array.isArray(kept2) ? kept2 : {};
+    } catch {
+      return {};
+    }
+  };
+  const write = (who, kept2) => {
+    try {
+      store?.setItem(keyFor(who), JSON.stringify(kept2));
+    } catch {
+    }
+  };
+  const held = /* @__PURE__ */ new Map();
+  const of = (who) => {
+    const k = keyFor(who);
+    if (!held.has(k)) held.set(k, read(who));
+    return held.get(k);
+  };
+  const best = (id) => {
+    const b = boardOf(id);
+    if (!b) return null;
+    const mine = cleanScore(of(opts.hand.pubkey())[id]?.best);
+    const guest = opts.hand.pubkey() ? cleanScore(of(null)[id]?.best) : null;
+    if (mine === null) return guest;
+    return guest !== null && better(b, guest, mine) ? guest : mine;
+  };
+  let relaysKept = null;
+  const ownRelays = (key) => {
+    if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
+    const found = askWell({ kinds: [RELAY_LIST_KIND4], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList4(got.events, key)?.write ?? []).catch(() => []);
+    relaysKept = { key, at: now(), found };
+    return found;
+  };
+  let events = [];
+  let asked = 0;
+  let answered = false;
+  const fetchAll = async (fresh) => {
+    if (!fresh && asked && now() - asked < 6e4) return;
+    asked = now();
+    const got = await askWell({ kinds: [SCORE_KIND], "#a": [world], limit: 500 }, { own: [], usual: usual(), query, timeoutMs: 4e3, now }).catch(() => null);
+    answered = !!got && Object.values(got.relays).some((said) => said === "eose");
+    const byId = new Map([...events, ...got?.events ?? []].map((e) => [e.id, e]));
+    events = [...byId.values()];
+  };
+  return {
+    boards,
+    best,
+    posted: (id) => cleanScore(of(opts.hand.pubkey())[id]?.posted),
+    record(id, score) {
+      const b = boardOf(id);
+      const made = cleanScore(score);
+      if (!world || !b || made === null || !better(b, made, best(id))) return false;
+      const who = opts.hand.pubkey();
+      const kept2 = of(who);
+      kept2[id] = { ...kept2[id], best: made };
+      write(who, kept2);
+      changed();
+      return true;
+    },
+    async post(id) {
+      const b = boardOf(id);
+      const who = opts.hand.pubkey();
+      if (!world || !b) return { ok: false, said: "This world has no such board." };
+      if (!who) return { ok: false, said: "Sign in here to post a score: it is under You." };
+      const mine = best(id);
+      if (mine === null) return { ok: false, said: "You have no score here yet." };
+      const kept2 = of(who);
+      const had = cleanScore(kept2[id]?.posted);
+      if (had !== null && !better(b, mine, had)) return { ok: true, said: `Your best, ${scoreWords(b, mine)}, is already on the board.` };
+      const signed = await opts.hand.sign(world, id, mine).catch(() => null);
+      if (!signed) return { ok: false, said: "It couldn't be signed, so nothing was posted. Your best is still kept on this device." };
+      const sent = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
+      if (!sent || sent.took === 0) return { ok: false, said: "No relay took it. Your best is still kept on this device: try again in a moment." };
+      kept2[id] = { best: mine, posted: mine };
+      write(who, kept2);
+      events = [...events.filter((e) => e.id !== signed.id), signed];
+      changed();
+      return { ok: true, said: `${scoreWords(b, mine)} is on the board, as yours. Anyone can see it.` };
+    },
+    async standings(id, fresh = false) {
+      const b = boardOf(id);
+      if (!world || !b) return null;
+      await fetchAll(fresh);
+      if (!answered && events.length === 0) return null;
+      return rankScores(events, { world, board: id, order: b.order, worldUrl: opts.worldUrl, counted: opts.counted?.() ?? [], me: opts.hand.pubkey() });
+    },
+    words: (id, score) => {
+      const b = boardOf(id);
+      return b ? scoreWords(b, score) : String(score);
+    },
+    onChange(fn) {
+      watchers2.add(fn);
+      return () => void watchers2.delete(fn);
+    }
+  };
+}
+
+// packages/sdk/src/scoring.ts
+import { shortNpub as shortNpub5 } from "@nswp/core";
+function addScoreControls(controls, opts) {
+  const { scores } = opts;
+  let shown = [];
+  const read = /* @__PURE__ */ new Map();
+  const looking = /* @__PURE__ */ new Set();
+  const nameOf = (pubkey) => opts.profiles?.get(pubkey)?.name || shortNpub5(pubkey);
+  const look = (board, fresh = false) => {
+    if (looking.has(board)) return;
+    looking.add(board);
+    void scores.standings(board, fresh).catch(() => null).then((got) => {
+      looking.delete(board);
+      read.set(board, got);
+      const people = [...got?.known ?? [], ...got?.others ?? []].map((s) => s.by);
+      if (people.length) void opts.profiles?.fetch(people);
+      refresh();
+    });
+  };
+  const refresh = () => {
+    for (const id of shown) controls.remove(id);
+    shown = [];
+    if (scores.boards.length === 0) return;
+    const add = (...actions) => {
+      for (const a of actions) shown.push(a.id);
+      controls.add(...actions.map((a) => ({ section: "scores", ...a })));
+    };
+    controls.addSection({
+      id: "scores",
+      label: "Scores",
+      icon: "list",
+      note: () => "A score here is what someone says they made: nothing checks it. People you follow are listed first. Posting yours says publicly that you were here, and how you did."
+    });
+    for (const b of scores.boards) {
+      const best = scores.best(b.id);
+      const posted = scores.posted(b.id);
+      const many = scores.boards.length > 1 ? `${b.title}: ` : "";
+      add({
+        id: `scores-post-${b.id}`,
+        icon: "check",
+        tone: best !== null && best !== posted ? "primary" : "normal",
+        label: () => best === null ? `${many}No score of yours yet` : !opts.signedIn() ? `${many}Your best: ${scores.words(b.id, best)}. Sign in to post it` : best === posted ? `${many}Your best, ${scores.words(b.id, best)}, is on the board` : `${many}Post my best to the board: ${scores.words(b.id, best)}`,
+        short: "Post",
+        act: async () => {
+          if (best === null) return controls.say("Make a score first: it is kept on this device until you post it.");
+          const done = await scores.post(b.id);
+          controls.say(done.said);
+          if (done.ok) look(b.id, true);
+          refresh();
+        }
+      });
+      const got = read.get(b.id);
+      if (got === void 0) {
+        look(b.id);
+        continue;
+      }
+      add({ id: `scores-look-${b.id}`, icon: "turn", label: got === null ? `${many}The board couldn't be reached. Look again` : `${many}Look again`, short: "Look", act: () => look(b.id, true) });
+      if (!got) continue;
+      const row = (s) => ({
+        // A row each, in order: a board is read from the top down, and who is known is told from who isn't by
+        // where they stand in it.
+        id: `scores-${b.id}-${s.by.slice(0, 16)}`,
+        icon: "you",
+        label: () => `${s.rank}. ${nameOf(s.by)}: ${scores.words(b.id, s.score)}`,
+        act: () => opts.choose ? opts.choose(s.by) : controls.say(`${nameOf(s.by)}: ${scores.words(b.id, s.score)}, as they say.`)
+      });
+      add(...got.known.map(row));
+      if (got.others.length) {
+        add({ id: `scores-others-${b.id}`, icon: "people", label: `${many}${got.known.length ? "Everyone else" : "Everyone"} (${got.count - got.known.length})`, act: () => controls.say("These are people you don't follow. A score is only what its owner says it is.") });
+        add(...got.others.map(row));
+      }
+    }
+  };
+  let drawing = false;
+  const soon2 = () => {
+    if (drawing) return;
+    drawing = true;
+    queueMicrotask(() => {
+      drawing = false;
+      refresh();
+    });
+  };
+  scores.onChange(soon2);
+  opts.profiles?.onChange(soon2);
+  refresh();
+  return { refresh };
+}
+
 // packages/sdk/src/sound.ts
 var GAP2 = { step: 0.14, hover: 0.08, bump: 0.5, land: 0.2, notice: 0.25, chat: 0.3 };
 var STRIDE = 0.75;
@@ -7908,7 +8124,7 @@ function addRoomControls(controls, presence, opts = {}) {
           tag: who2.guest ? "Guest" : "By name",
           proven: !who2.guest,
           // A name is not unique and a picture can be copied: the key behind them is what tells two people apart.
-          sub: who2.identity ? shortNpub5(who2.identity) : "Nobody has vouched for who they are.",
+          sub: who2.identity ? shortNpub6(who2.identity) : "Nobody has vouched for who they are.",
           copy: who2.identity ? encodeNpub3(who2.identity) : "",
           text: who2.guest ? "" : who2.about ?? "",
           picture: !who2.guest && showsPictures() ? who2.picture ?? "" : "",
@@ -8214,12 +8430,12 @@ function addRoomControls(controls, presence, opts = {}) {
     pubkey: () => worldSigner().pubkey,
     who: () => hereAs()?.name || worldSigner().name
   };
-  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS5;
+  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS6;
   let relaysKept = null;
   const ownRelays = (key) => {
     if (!key) return Promise.resolve([]);
     if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND4], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList4(got.events, key)?.write ?? []).catch(() => []);
+    const found = askWell({ kinds: [RELAY_LIST_KIND5], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList5(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: Date.now(), found };
     return found;
   };
@@ -8259,7 +8475,7 @@ function addRoomControls(controls, presence, opts = {}) {
       controls.feed.detach();
       return closeFeedPanel();
     }
-    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub5(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts });
+    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub6(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts });
   };
   const drawFeedPanel = () => {
     if (!feedPanel) return;
@@ -8829,6 +9045,8 @@ export {
   createJump,
   addJump,
   viewScale,
+  createScores,
+  addScoreControls,
   createSounds,
   addSoundControls,
   CHAMBER_ORDER,

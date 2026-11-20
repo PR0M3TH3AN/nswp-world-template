@@ -26,6 +26,8 @@ export interface Rating {
     /** The sites a signer says asked for it, as origins. Empty when no signer said. */
     askedAt: string[];
 }
+/** A world's coordinate as a rating may name it, or "". */
+export declare function worldCoordinate(input: unknown): string;
 /** Whole stars, 1 to 5, or 0 for anything else. */
 export declare function cleanStars(input: unknown): number;
 /**
