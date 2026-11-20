@@ -63,6 +63,23 @@ walls and furniture of dark metal.
 A portal is an arched doorway with a sign above it. The sign's second line is
 always the address it leads to.
 
+A doorway looks into the world it leads to: a 360° picture of that world,
+seen through the arch, which turns as you walk past. The two doors the
+template starts with have theirs. For a door you add, fetch its picture:
+
+```bash
+npm run doors
+```
+
+It asks your relays for each door's announcement, fetches the picture the
+world announced, checks it against the hash in that announcement, and keeps
+it in `doors/`. The next build ships it from your own site, so a visitor's
+browser asks nobody else for it, and a world you link to learns nothing
+until someone goes there. A world that announced no picture keeps a field of
+light in its doorway. Run it again when a world you link to has a new look.
+A portal your own code adds (`ctx.addPortal`) is named on the command line:
+`npm run doors -- 37300:<key>:<name>`.
+
 ### Your own scene (`src/scene.ts`)
 
 `src/scene.ts` is one line that picks a scene. Two come with the template:
@@ -359,6 +376,7 @@ their game through, so look yourself before you publish.
 | `vendor/nswp/` | The NSWP library and SDK, copied in with a record of their hashes. Don't edit |
 | `signed/` | Your signed announcement and home layout. Public, and safe to commit |
 | `previews/` | Your world's preview picture |
+| `doors/` | The pictures your doors show, fetched by `npm run doors` |
 | `dist/` | The built site. Made by `npm run build`, not committed |
 
 ## The protocol

@@ -5162,6 +5162,7 @@ var BAYS = 10;
 var DOOR_W = 1.04;
 var DOOR_H = 2.2;
 var CHAMBER_ORDER = 1e4;
+var SHUT_ORDER = CHAMBER_ORDER + 1e6;
 function signTexture(lines, color) {
   const canvas = document.createElement("canvas");
   canvas.width = 1024;
@@ -5228,7 +5229,22 @@ function createChamber(accent, opts = {}) {
   clear.frustumCulled = false;
   clear.renderOrder = CHAMBER_ORDER;
   clear.onBeforeRender = (renderer) => renderer.clearDepth();
-  for (const part of [floor, walls, lid, ...leaves, sign]) part.renderOrder = CHAMBER_ORDER + 1;
+  for (const part of [floor, walls, lid, ...leaves]) part.renderOrder = CHAMBER_ORDER + 1;
+  sign.renderOrder = CHAMBER_ORDER + 1.3;
+  const depthOnly = (depth, o) => new THREE11.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE11.AlwaysDepth, depthWrite: true, side: THREE11.DoubleSide, ...o });
+  const nearest2 = depthOnly("0.0", {});
+  const farthest = depthOnly("1.0", { transparent: true });
+  const real = new THREE11.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE11.DoubleSide });
+  const shutOut = [];
+  for (const part of [floor, walls, lid, ...leaves]) {
+    for (const [material, order] of [[nearest2, SHUT_ORDER], [farthest, CHAMBER_ORDER + 1.1], [real, CHAMBER_ORDER + 1.2]]) {
+      const pass = new THREE11.Mesh(part.geometry, material);
+      pass.renderOrder = order;
+      pass.frustumCulled = false;
+      part.add(pass);
+      shutOut.push(pass);
+    }
+  }
   const group = new THREE11.Group();
   group.add(clear, floor, rising, lid);
   let door = 0;
@@ -5275,6 +5291,8 @@ function createChamber(accent, opts = {}) {
       group.removeFromParent();
       for (const mesh of [floor, walls, lid, ...leaves, clear]) mesh.geometry.dispose();
       clear.material.dispose();
+      for (const material of [nearest2, farthest, real]) material.dispose();
+      shutOut.length = 0;
       metal.dispose();
       sign.geometry.dispose();
       sign.material.map?.dispose();

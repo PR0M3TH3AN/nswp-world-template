@@ -27,6 +27,12 @@ import * as THREE from "three";
  * through its walls and standing in its floor. So it is drawn last, on a
  * cleared depth: whatever is inside its walls, or behind them, is painted
  * over, and its own parts still hide each other as they should.
+ *
+ * That alone covers what a world draws solid. What it draws see-through (a
+ * doorway's field of light, a glow, a lamp's beam, a pane) is drawn later in
+ * a frame than anything solid, whatever its turn, so a doorway the room came
+ * up round showed through the walls from inside. So the room also shuts those
+ * out, wherever it is in the view (`shutOut`, below).
  */
 export declare const CHAMBER_ORDER = 10000;
 export interface Chamber {

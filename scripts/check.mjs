@@ -7,8 +7,8 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { KIT_VERSION, parseManifest, parseWorldEvent, verifyOrigin } from "../vendor/nswp/nswp-core.js";
-import { dist, readConfig, readSigned, root, templates, upToDate, validate } from "./lib.mjs";
+import { KIT_VERSION, parseManifest, parseWorldEvent, portalTarget, verifyOrigin } from "../vendor/nswp/nswp-core.js";
+import { dist, readConfig, readDoors, readSigned, root, templates, upToDate, validate } from "./lib.mjs";
 
 let failed = 0;
 const ok = (msg) => console.log(`✔ ${msg}`);
@@ -122,6 +122,16 @@ if (!signed.world) {
       else for (const c of result.checks.filter((c) => !c.ok)) bad(`Not verified: ${c.message}`);
     }
   }
+}
+
+// 5b. What the doors show (scripts/doors.mjs). A door with no picture works; it is only plainer.
+{
+  const shown = readDoors();
+  for (const text of shown.problems) bad(text);
+  const doors = (files.written.items ?? []).filter((item) => item.type === "portal").map((item) => portalTarget(String(item.args?.[0] ?? ""))).filter((t) => t && "pubkey" in t);
+  const without = doors.filter((t) => !shown.doors[`37300:${t.pubkey}:${t.d}`]);
+  if (doors.length && !without.length && !shown.problems.length) ok(`every door in home.json has the picture it shows (${doors.length})`);
+  else if (without.length) warn(`${without.length} of the doors in home.json ${without.length === 1 ? "has" : "have"} no picture to show. To fetch what their worlds announced: npm run doors`);
 }
 
 // 6. The preview, if there is one.
