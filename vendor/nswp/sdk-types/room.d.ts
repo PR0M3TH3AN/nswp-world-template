@@ -114,6 +114,8 @@ export declare class RoomSession {
     private pass;
     /** The item this visitor says they are holding, by its coordinate, or "". */
     private held;
+    /** The colours this visitor chose for what they hold, as they are said ("tint:…"), or "". */
+    private tints;
     private passUntil;
     private recordingTimer;
     /** This visitor's shared screen, while they share one. */

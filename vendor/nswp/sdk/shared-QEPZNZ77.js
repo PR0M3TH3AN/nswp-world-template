@@ -2240,7 +2240,7 @@ import {
   createRate,
   itemCoordinate
 } from "@nswp/core";
-var PLAY_WORD = /^(shot|hit|did|st):/;
+var PLAY_WORD = /^(shot|hit|did|st|tint):/;
 var PLAY_SAID = { burst: 24, perSecond: 16 };
 var DEFAULT_ICE = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
 var HELLO_EVERY_MS = 2e4;
@@ -2297,6 +2297,8 @@ var RoomSession = class {
   pass = null;
   /** The item this visitor says they are holding, by its coordinate, or "". */
   held = "";
+  /** The colours this visitor chose for what they hold, as they are said ("tint:…"), or "". */
+  tints = "";
   passUntil = 0;
   recordingTimer;
   /** This visitor's shared screen, while they share one. */
@@ -2669,6 +2671,7 @@ var RoomSession = class {
         if (this.look) ch.send(`look:${this.look}`);
         if (this.pass) ch.send(`id:${this.pass}`);
         if (this.held) ch.send(`hold:${this.held}`);
+        if (this.held && this.tints) ch.send(this.tints);
       } catch {
       }
       if (--left > 0) setTimeout(say, 1500);
@@ -2919,6 +2922,7 @@ var RoomSession = class {
    */
   tellPlay(said) {
     if (this.closed || typeof said !== "string" || said.length > 200 || !PLAY_WORD.test(said)) return;
+    if (said.startsWith("tint:")) this.tints = said;
     this.tellAll(said);
   }
   setRecording(on) {

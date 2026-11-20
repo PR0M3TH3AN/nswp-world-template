@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.51.1";
+var KIT_VERSION = "0.52.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -7024,8 +7024,13 @@ var ITEM_LIMITS = {
   sounds: 12,
   sends: 4,
   /** The most letters on one of its buttons. */
-  label: 16
+  label: 16,
+  /** How many of its colours a holder may choose. */
+  tints: 4,
+  /** The longest a trail behind a thing sent out may be, in seconds of its flight. */
+  trail: 0.6
 };
+var HEX = /^#[0-9a-f]{6}$/;
 var PLAIN = /^[a-z][a-z0-9-]{0,23}$/;
 var ITEM_BEHAVIORS = ["holdable", "sittable", "touchable", "readable", "wearable"];
 var ITEM_FITS = ["place", "head", "back", "hand-left", "hand-right", "side"];
@@ -7077,6 +7082,10 @@ function readSend(t) {
   for (const word of t.slice(6)) {
     const [moment, sound] = word.split("=");
     if (SEND_MOMENTS.includes(moment ?? "") && sound && PLAIN.test(sound)) send[moment] = sound;
+    if (moment === "trail") {
+      const seconds = Number(sound);
+      if (seconds > 0 && seconds <= ITEM_LIMITS.trail) send.trail = seconds;
+    }
   }
   return send;
 }
@@ -7127,7 +7136,8 @@ function buildItem(o) {
     if (!s || !PLAIN.test(s.name) || !model2 || !Array.isArray(s.size) || s.size.length !== 3 || !s.size.every(within)) return null;
     const when = SEND_MOMENTS.filter((m) => s[m] !== void 0);
     if (when.some((m) => !PLAIN.test(s[m]))) return null;
-    tags.push(["sends", s.name, model2.url, "glb", model2.sha256, said(s.size), ...when.map((m) => `${m}=${s[m]}`)]);
+    if (s.trail !== void 0 && !(typeof s.trail === "number" && s.trail > 0 && s.trail <= ITEM_LIMITS.trail)) return null;
+    tags.push(["sends", s.name, model2.url, "glb", model2.sha256, said(s.size), ...when.map((m) => `${m}=${s[m]}`), ...s.trail === void 0 ? [] : [`trail=${said([s.trail])}`]]);
   }
   for (const e of (o.effects ?? []).slice(0, ITEM_LIMITS.sends)) {
     if (!e || !PLAIN.test(e.of) || e.state !== "health" || !Number.isInteger(e.take) || e.take < 1 || e.take > 5) return null;
@@ -7136,6 +7146,11 @@ function buildItem(o) {
   for (const press of ["use", "second"]) {
     const label = cleanLine(o.does?.[press] ?? "", ITEM_LIMITS.label);
     if (label) tags.push(["does", press, label]);
+  }
+  for (const t of (o.tints ?? []).slice(0, ITEM_LIMITS.tints)) {
+    const label = cleanLine(t?.label ?? "", ITEM_LIMITS.label);
+    if (!t || !PLAIN.test(t.slot) || !label || !HEX.test(t.color)) return null;
+    tags.push(["tint", t.slot, label, t.color]);
   }
   const license = cleanLine(o.license ?? "", 40);
   if (license) tags.push(["license", license]);
@@ -7186,6 +7201,7 @@ function parseItem(event) {
     does: Object.fromEntries(
       getTags(event, "does").filter((t) => t[1] === "use" || t[1] === "second").map((t) => [t[1], cleanLine(t[2], ITEM_LIMITS.label)]).filter((d2) => d2[1])
     ),
+    tints: getTags(event, "tint").slice(0, ITEM_LIMITS.tints).map((t) => ({ slot: t[1] ?? "", label: cleanLine(t[2], ITEM_LIMITS.label), color: t[3] ?? "" })).filter((t, i, all) => PLAIN.test(t.slot) && t.label !== "" && HEX.test(t.color) && all.findIndex((x) => x.slot === t.slot) === i),
     license: cleanLine(tag("license")?.[1], 40),
     at: Number.isInteger(event.created_at) ? event.created_at : 0
   };
@@ -7218,6 +7234,38 @@ function bagIn(event) {
 function newestBag(events, pubkey) {
   return events.filter((e) => e.kind === BAG_KIND && e.pubkey === pubkey && Array.isArray(e.tags) && e.tags.some((t) => t[0] === "d" && t[1] === BAG_D)).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0] ?? null;
 }
+function bagTints(event) {
+  const out = {};
+  if (!event || !Array.isArray(event.tags)) return out;
+  const has = new Set(bagIn(event));
+  for (const t of event.tags) {
+    if (!Array.isArray(t) || t[0] !== "tint") continue;
+    const item = itemCoordinate(t[1]);
+    if (!item || !has.has(item) || out[item]) continue;
+    const tints = {};
+    for (const word of t.slice(2, 6)) {
+      const [slot, color] = typeof word === "string" ? word.split("=") : [];
+      if (slot && /^[a-z][a-z0-9-]{0,23}$/.test(slot) && /^#[0-9a-f]{6}$/.test(color ?? "")) tints[slot] = color;
+    }
+    out[item] = tints;
+  }
+  return out;
+}
+function tintBag(newest, change) {
+  if (!newest || newest.kind !== BAG_KIND || !Array.isArray(newest.tags)) return null;
+  const item = itemCoordinate(change.item);
+  if (!item || !bagIn(newest).includes(item)) return null;
+  const words = Object.entries(change.tints ?? {}).filter(([slot, color]) => /^[a-z][a-z0-9-]{0,23}$/.test(slot) && /^#[0-9a-f]{6}$/.test(color)).slice(0, 4).map(([slot, color]) => `${slot}=${color}`);
+  const was = bagTints(newest)[item] ?? {};
+  if (JSON.stringify(Object.entries(was).map(([s, c]) => `${s}=${c}`)) === JSON.stringify(words)) return null;
+  const kept = newest.tags.filter((t) => Array.isArray(t) && t.every((x) => typeof x === "string") && !SITE_MARKS.includes(t[0] ?? "") && t[0] !== "d" && t[0] !== "alt" && !(t[0] === "tint" && itemCoordinate(t[1]) === item)).map((t) => [...t]);
+  return {
+    kind: BAG_KIND,
+    created_at: Math.max(Math.floor(change.now), newest.created_at + 1),
+    tags: [["d", BAG_D], ...kept, ...words.length ? [["tint", item, ...words]] : [], ["alt", "A bag: the items this person has"]],
+    content: ""
+  };
+}
 function changeBag(newest, change) {
   if (newest && (newest.kind !== BAG_KIND || !Array.isArray(newest.tags))) return null;
   if (!newest && !change.fromNothing) return null;
@@ -7230,7 +7278,7 @@ function changeBag(newest, change) {
   const has = had.some(names);
   if (add ? has : !has) return null;
   if (add && bagIn({ tags: had }).length >= BAG_LIMITS.items) return null;
-  const kept = add ? [...had.map((t) => [...t]), ["a", add, ...change.relay ? [change.relay] : []]] : had.filter((t) => !names(t)).map((t) => [...t]);
+  const kept = add ? [...had.map((t) => [...t]), ["a", add, ...change.relay ? [change.relay] : []]] : had.filter((t) => !names(t) && !(t[0] === "tint" && itemCoordinate(t[1]) === which)).map((t) => [...t]);
   return {
     kind: BAG_KIND,
     created_at: Math.max(Math.floor(change.now), newest ? newest.created_at + 1 : 0),
@@ -7310,6 +7358,41 @@ function parseDid(text) {
   const at = text.indexOf(",");
   const did = { kind: text.slice(4, at), name: text.slice(at + 1) };
   return at > 0 && buildDid(did) ? did : null;
+}
+var TINT_PALETTE = [
+  { name: "Orange", color: "#f2691c" },
+  { name: "Red", color: "#e8362c" },
+  { name: "Pink", color: "#f04f9a" },
+  { name: "Purple", color: "#8b5cf6" },
+  { name: "Blue", color: "#2f7df6" },
+  { name: "Cyan", color: "#35f0e0" },
+  { name: "Green", color: "#46d95a" },
+  { name: "Lime", color: "#b6ea2e" },
+  { name: "Yellow", color: "#f8c62c" },
+  { name: "White", color: "#f4f1ea" }
+];
+function cleanTints(item, chosen) {
+  const out = {};
+  if (!item || !chosen || typeof chosen !== "object" || Array.isArray(chosen)) return out;
+  for (const { slot } of item.tints) {
+    const color = chosen[slot];
+    if (typeof color === "string" && /^#[0-9a-f]{6}$/.test(color)) out[slot] = color;
+  }
+  return out;
+}
+function buildTints(chosen) {
+  const parts = Object.entries(chosen ?? {}).filter(([slot, color]) => NAME4.test(slot) && /^#[0-9a-f]{6}$/.test(color)).slice(0, 4).map(([slot, color]) => `${slot}=${color.slice(1)}`);
+  return `tint:${parts.join(",")}`;
+}
+function parseTints(text) {
+  if (typeof text !== "string" || !text.startsWith("tint:") || text.length > 120) return null;
+  const out = {};
+  for (const part of text.slice(5).split(",").filter(Boolean).slice(0, 4)) {
+    const [slot, color] = part.split("=");
+    if (!slot || !NAME4.test(slot) || !/^[0-9a-f]{6}$/.test(color ?? "")) return null;
+    out[slot] = `#${color}`;
+  }
+  return out;
 }
 var HEALTH = {
   /** How much someone has when nothing has reached them. */
@@ -8028,6 +8111,7 @@ export {
   GRAVITY,
   HANDOFF_PROTOCOL,
   HEALTH,
+  HEX,
   HOME_CAPABILITY,
   HOME_LAYOUT_KIND,
   INPUTS,
@@ -8093,6 +8177,7 @@ export {
   SIGN_LIMITS,
   SITE_MARKS,
   STATUSES,
+  TINT_PALETTE,
   VERSION,
   WELL_KNOWN_PATH,
   WORLD_GRANT_LIMITS,
@@ -8106,6 +8191,7 @@ export {
   assertManifest,
   audienceOf,
   bagIn,
+  bagTints,
   bridgeTopic,
   bubbleSeconds,
   buildAchievement,
@@ -8130,6 +8216,7 @@ export {
   buildShot,
   buildSignal,
   buildState,
+  buildTints,
   buildWayUrl,
   buildWorldEvent,
   buildWorldGrant,
@@ -8163,6 +8250,7 @@ export {
   cleanSlot,
   cleanSpeechText,
   cleanStars,
+  cleanTints,
   cleanWorldOrigin,
   coordinate,
   createChatGate,
@@ -8258,6 +8346,7 @@ export {
   parseShot,
   parseSpeechControl,
   parseState,
+  parseTints,
   parseWorldEvent,
   pickDiscovered,
   pickRelays,
@@ -8301,6 +8390,7 @@ export {
   tallyMark,
   tallyRatings,
   tallyWords,
+  tintBag,
   toHex,
   toLocal,
   unpackPose,

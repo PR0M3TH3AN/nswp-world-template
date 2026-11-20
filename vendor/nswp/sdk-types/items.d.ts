@@ -58,19 +58,25 @@ export interface Items {
      * Something to draw for an item: its own model where every check passes, and a plain marker of its size where
      * one doesn't, or where the visitor has items turned off. Each call gives a copy of its own.
      */
-    model(item: Item): Promise<THREE.Object3D>;
+    model(item: Item, tints?: Record<string, string>): Promise<THREE.Object3D>;
     /** A plain marker of an item's size. */
     marker(item: Pick<Item, "size">): THREE.Object3D;
     /** The animations an item's own model brings, by name. Empty until its model has been made, and for a marker. */
     clips(item: Item): THREE.AnimationClip[];
     /** Something to draw for one of the things an item sends out: checked and counted like its model, or a marker. */
-    sent(item: Item, name: string): Promise<THREE.Object3D>;
+    sent(item: Item, name: string, tints?: Record<string, string>): Promise<THREE.Object3D>;
     /** One of an item's own sounds, as its bytes: fetched and checked against its hash. Null if there is none, or it failed. */
     sound(item: Item, name: string): Promise<Uint8Array | null>;
     /** An item's script, as its text: fetched and checked against its hash. Null if it has none, or it failed. */
     script(item: Item): Promise<string | null>;
 }
 /** Count what a loaded model holds, and say whether it is within what may be drawn. */
+/**
+ * Colour the parts of a drawn item that its holder may choose (protocol/17-items.md, "A holder's own colours"):
+ * every material named `tint:<slot>` takes the colour chosen for that tint, or the one its maker gave it. A part
+ * that glows, glows in that colour. Call it again to change them. Nothing else about the model is touched.
+ */
+export declare function applyTints(root: THREE.Object3D, item: Pick<Item, "tints">, tints?: Record<string, string>): void;
 export declare function withinBudget(root: THREE.Object3D): boolean;
 /** Scale and place a model so that it stands inside the box its description gives, on that box's floor. */
 export declare function fitToSize(root: THREE.Object3D, size: readonly [number, number, number]): THREE.Object3D;

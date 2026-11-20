@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.51.1";
+var KIT_VERSION = "0.52.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4407,8 +4407,13 @@ var ITEM_LIMITS = {
   sounds: 12,
   sends: 4,
   /** The most letters on one of its buttons. */
-  label: 16
+  label: 16,
+  /** How many of its colours a holder may choose. */
+  tints: 4,
+  /** The longest a trail behind a thing sent out may be, in seconds of its flight. */
+  trail: 0.6
 };
+var HEX = /^#[0-9a-f]{6}$/;
 var PLAIN = /^[a-z][a-z0-9-]{0,23}$/;
 var ITEM_BEHAVIORS = ["holdable", "sittable", "touchable", "readable", "wearable"];
 var ITEM_FITS = ["place", "head", "back", "hand-left", "hand-right", "side"];
@@ -4471,6 +4476,11 @@ function readSend(t) {
     const [moment, sound] = word.split("=");
     if (SEND_MOMENTS.includes(moment ?? "") && sound && PLAIN.test(sound))
       send[moment] = sound;
+    if (moment === "trail") {
+      const seconds = Number(sound);
+      if (seconds > 0 && seconds <= ITEM_LIMITS.trail)
+        send.trail = seconds;
+    }
   }
   return send;
 }
@@ -4535,7 +4545,9 @@ function buildItem(o) {
     const when = SEND_MOMENTS.filter((m) => s[m] !== void 0);
     if (when.some((m) => !PLAIN.test(s[m])))
       return null;
-    tags.push(["sends", s.name, model2.url, "glb", model2.sha256, said(s.size), ...when.map((m) => `${m}=${s[m]}`)]);
+    if (s.trail !== void 0 && !(typeof s.trail === "number" && s.trail > 0 && s.trail <= ITEM_LIMITS.trail))
+      return null;
+    tags.push(["sends", s.name, model2.url, "glb", model2.sha256, said(s.size), ...when.map((m) => `${m}=${s[m]}`), ...s.trail === void 0 ? [] : [`trail=${said([s.trail])}`]]);
   }
   for (const e of (o.effects ?? []).slice(0, ITEM_LIMITS.sends)) {
     if (!e || !PLAIN.test(e.of) || e.state !== "health" || !Number.isInteger(e.take) || e.take < 1 || e.take > 5)
@@ -4546,6 +4558,12 @@ function buildItem(o) {
     const label = cleanLine(o.does?.[press] ?? "", ITEM_LIMITS.label);
     if (label)
       tags.push(["does", press, label]);
+  }
+  for (const t of (o.tints ?? []).slice(0, ITEM_LIMITS.tints)) {
+    const label = cleanLine(t?.label ?? "", ITEM_LIMITS.label);
+    if (!t || !PLAIN.test(t.slot) || !label || !HEX.test(t.color))
+      return null;
+    tags.push(["tint", t.slot, label, t.color]);
   }
   const license = cleanLine(o.license ?? "", 40);
   if (license)
@@ -4596,6 +4614,7 @@ function parseItem(event) {
       return typeof t[1] === "string" && PLAIN.test(t[1]) && t[2] === "health" && Number.isInteger(take) && take >= 1 && take <= 5 ? { of: t[1], state: "health", take } : null;
     }).filter((e) => e !== null),
     does: Object.fromEntries(getTags(event, "does").filter((t) => t[1] === "use" || t[1] === "second").map((t) => [t[1], cleanLine(t[2], ITEM_LIMITS.label)]).filter((d2) => d2[1])),
+    tints: getTags(event, "tint").slice(0, ITEM_LIMITS.tints).map((t) => ({ slot: t[1] ?? "", label: cleanLine(t[2], ITEM_LIMITS.label), color: t[3] ?? "" })).filter((t, i, all) => PLAIN.test(t.slot) && t.label !== "" && HEX.test(t.color) && all.findIndex((x) => x.slot === t.slot) === i),
     license: cleanLine(tag("license")?.[1], 40),
     at: Number.isInteger(event.created_at) ? event.created_at : 0
   };

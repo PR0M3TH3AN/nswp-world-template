@@ -71,6 +71,11 @@ export interface PlayOptions {
     onChange?: () => void;
     /** Whether they are in a headset now: there, a thing goes where the hand points, and no ring is drawn. */
     presenting?: () => boolean;
+    /**
+     * The colours someone chose for what they hold: the visitor's own for their own key (or null, outside a room),
+     * anyone else's as they said them. Left out, everything is the colour its maker gave it.
+     */
+    tintsOf?: (pubkey: string | null) => Record<string, string>;
 }
 export interface Play {
     /** This visitor took an item in hand, with what is drawn for it; or put it away, with nulls. */

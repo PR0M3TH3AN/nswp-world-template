@@ -31,6 +31,21 @@ export declare function newestBag(events: readonly NostrEvent[], pubkey: string)
  * no change asked for, something that isn't an item, one already there, one that isn't, or no bag to change
  * unless `fromNothing` says the person truly has none. Everything else in it is kept as it was.
  */
+/**
+ * The colours a person chose for the things in their bag, where they chose any: for each item, its tints by name.
+ * They are part of how they carry it, so they are in the bag: a `tint` line naming the item, then
+ * `<slot>=#rrggbb` for each. Only for items that are in the bag.
+ */
+export declare function bagTints(event: Pick<NostrEvent, "tags"> | null | undefined): Record<string, Record<string, string>>;
+/**
+ * A bag with the colours of one thing in it changed, ready to be signed by its owner. Null when there is nothing
+ * to sign: no bag, a thing that isn't in it, or the colours it already has. Everything else is kept as it was.
+ */
+export declare function tintBag(newest: Pick<NostrEvent, "kind" | "created_at" | "tags"> | null, change: {
+    item: string;
+    tints: Record<string, string>;
+    now: number;
+}): EventTemplate | null;
 export declare function changeBag(newest: Pick<NostrEvent, "kind" | "created_at" | "tags"> | null, change: {
     add?: string;
     remove?: string;
