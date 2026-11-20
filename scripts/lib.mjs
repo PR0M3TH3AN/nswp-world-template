@@ -283,8 +283,17 @@ function writeStatic({ config, signed, pictures }) {
     ["Permissions-Policy", "xr-spatial-tracking=(self), microphone=(self)"],
   ];
   const open = [["Access-Control-Allow-Origin", "*"]];
+  // Always the latest (NSWP-09, "They always get the latest"): a browser asks before it uses a copy of the page or
+  // a script it kept, so an update reaches everyone on their next load. Said for each file that isn't named by its
+  // hash, and not left to a host's habit: some hosts keep a page for ten minutes or more if nothing is said.
+  const fresh = [["Cache-Control", "no-cache"]];
   const rules = [
     ["/*", "/(.*)", all],
+    ["/", "/", fresh],
+    ["/index.html", "/index.html", fresh],
+    ["/app.js", "/app.js", fresh],
+    ["/chunks/*", "/chunks/(.*)", fresh],
+    ["/sounds/*", "/sounds/(.*)", fresh],
     ["/.well-known/nswp.json", "/.well-known/nswp.json", [...open, ["Content-Type", "application/json; charset=utf-8"], ["Cache-Control", "public, max-age=300"]]],
     ["/previews/*", "/previews/(.*)", [...open, ["Cache-Control", "public, max-age=31536000, immutable"]]],
     // What this world's own doors show: named by their hash, so a file never changes. Not opened to other sites.

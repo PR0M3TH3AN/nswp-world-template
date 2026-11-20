@@ -53,6 +53,7 @@ import {
   createXrInput,
   dotsBetween,
   figureAction,
+  freshAction,
   heldKey,
   hereAs,
   identityAction,
@@ -83,9 +84,10 @@ import {
   viewScale,
   visitorFov,
   watchFov,
+  watchFresh,
   worldSigner,
   youCard
-} from "./shared-D5ZP3Q7W.js";
+} from "./shared-W5TCKQ4W.js";
 import {
   currentForm,
   deviceForms,
@@ -185,6 +187,7 @@ export {
   dotsBetween,
   figureAction,
   formFor,
+  freshAction,
   fullscreenWaiting,
   heldKey,
   hereAs,
@@ -228,6 +231,7 @@ export {
   visitorFov,
   wasRefreshed,
   watchFov,
+  watchFresh,
   worldSigner,
   youCard
 };

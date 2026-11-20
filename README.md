@@ -239,6 +239,16 @@ sending the header `Access-Control-Allow-Origin: *` for that file and for
 GitHub Pages sends that header for every file already. On any other host, set
 it yourself. `npm run check:live` tells you if it is missing.
 
+The same two files tell your host to send `Cache-Control: no-cache` for your
+page and scripts, so a browser asks for the latest each time and an update
+reaches everyone on their next load. A world owes its visitors that
+([NSWP-09](https://github.com/PR0M3TH3AN/Nostr-Spatial-Web-Protocol--NSWP-/blob/main/protocol/09-what-a-world-owes.md)).
+GitHub Pages lets nobody set it and keeps a page for ten minutes: an update
+there takes that long to reach people. `npm run check:live` says what your
+host is sending. A visitor whose page was already open is told by the menu
+when your world has been updated, and you never need to clear anything of
+theirs.
+
 ## Working on it from inside it
 
 **It moves the way people expect.** Casual, which a visitor gets: click
