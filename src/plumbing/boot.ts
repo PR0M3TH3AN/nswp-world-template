@@ -774,7 +774,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // What this world does with the things visitors carry (NSWP-17): `"items": "allowed"` or `"play"` in
     // world.json. Left out, nothing carried is drawn here and no model is fetched from anywhere.
     const itemsRule = cleanItemsRule((config.world as { items?: unknown }).items);
-    const items = createItems({ relays: config.relays, ...(itemsRule === "none" ? { fetchBytes: async () => null } : {}) });
+    // A bag shows the things in it, each drawn from its own model (NSWP-17, "A bag shows the things themselves"):
+    // so a model is fetched for the Bag tab in a world with no items too, and for nothing else there.
+    const items = createItems({ relays: config.relays });
     // Where items are drawn, an item's own logic runs too, in its locked box (`item-box.html`, written by the build).
     const presence = createPresence({ scene, camera, rig, renderer, controllers, ...(itemsRule === "none" ? {} : { items, itemsRule: () => itemsRule, itemScripts: true, sounds, theme: () => ({ accent: controls.theme.accent, motion: controls.theme.motion }) }), labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => (refresh(), itemControls?.refresh()) });
     // What is in their hand, pressed: on the bar, by the mouse and R at a desk, by the trigger in a headset.
@@ -792,6 +794,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
         items,
         me,
         rule: () => itemsRule,
+        place: () => config.world.title,
         holding: () => presence.holding,
         hold: async (item, tints) => {
           const done = await presence.setHolding(item, tints);

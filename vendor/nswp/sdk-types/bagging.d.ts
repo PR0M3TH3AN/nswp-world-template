@@ -1,11 +1,22 @@
 import type { Bag } from "./bag.js";
+import { type ItemPreviews } from "./item-preview.js";
 import { type ItemStore } from "./item-store.js";
+import type { Items } from "./items.js";
 import type { Keyboard } from "./keyboard.js";
 import type { Controls } from "./ui/model.js";
 export interface BaggingOptions {
     bag: Bag;
-    /** What looks items up: only their descriptions are needed here, so nothing that draws. */
-    items: Pick<ItemStore, "known" | "describe">;
+    /**
+     * What looks items up. Their descriptions are all that is needed; where it can also give a model (items.ts),
+     * each thing is shown as itself, drawn from that model. Without, each is shown by its first letter.
+     */
+    items: Pick<ItemStore, "known" | "describe"> & Partial<Pick<Items, "model">>;
+    /** What draws each thing's picture. Left out, one is made from `items.model`, where there is one. `null` for none. */
+    previews?: ItemPreviews | null;
+    /** Whether things may move for this visitor: off, the chosen thing is shown still. Left out, as the menu's own setting says. */
+    motion?: () => boolean;
+    /** What this place is called, for saying where a thing can't be held. */
+    place?: () => string;
     /** The visitor's key here, or null: a guest carries nothing, and has no tab. */
     me(): string | null;
     /** What this place does with items: "none", "allowed" or "play". */

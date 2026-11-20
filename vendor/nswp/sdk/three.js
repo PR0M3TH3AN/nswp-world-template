@@ -124,7 +124,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-ERMLWODO.js";
+} from "./shared-DEBE7VKU.js";
 import {
   currentForm,
   deviceForms,
