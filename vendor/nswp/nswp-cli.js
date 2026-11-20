@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.35.0";
+var KIT_VERSION = "0.36.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -3000,6 +3000,7 @@ var CAPABILITIES = [
   "home"
 ];
 var AUDIENCES = ["kids", "general", "adult"];
+var CATEGORIES = ["game", "experience", "social", "app", "site"];
 var COMFORT = {
   locomotion: ["stationary", "teleport", "smooth", "vehicle"],
   intensity: ["low", "medium", "high"],
@@ -3648,6 +3649,8 @@ function buildWorldEvent(w) {
     tags.push(warning === true ? ["content-warning"] : ["content-warning", warning]);
   if (w.audience)
     tags.push(["audience", w.audience]);
+  if (w.category)
+    tags.push(["category", w.category]);
   if (w.status)
     tags.push(["status", w.status]);
   if (w.manifest)
@@ -3825,6 +3828,14 @@ function parseWorldEvent(input, opts = {}) {
     else
       c.warn("unknown_audience", "tags.audience", `Unknown audience "${said}"; treated as not stated.`);
   }
+  let category;
+  const kindOfPlace = getTags({ tags }, "category")[0]?.[1];
+  if (kindOfPlace !== void 0) {
+    if (CATEGORIES.includes(kindOfPlace))
+      category = kindOfPlace;
+    else
+      c.warn("unknown_category", "tags.category", `Unknown category "${kindOfPlace}"; treated as not stated.`);
+  }
   if (audience === "adult" && contentWarning === void 0)
     c.warn("adult_without_warning", "tags.audience", "An adult world should also carry a content-warning, which other clients read.");
   if (audience === "kids" && contentWarning !== void 0)
@@ -3884,6 +3895,8 @@ function parseWorldEvent(input, opts = {}) {
     world.contentWarning = contentWarning;
   if (audience)
     world.audience = audience;
+  if (category)
+    world.category = category;
   if (manifest)
     world.manifest = manifest;
   if (access)

@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.35.0";
+var KIT_VERSION = "0.36.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -34,6 +34,11 @@ var CAPABILITIES = [
   "home"
 ];
 var AUDIENCES = ["kids", "general", "adult"];
+var CATEGORIES = ["game", "experience", "social", "app", "site"];
+var CATEGORY_WORDS = { game: "A game", experience: "An experience", social: "A place to meet", app: "An app", site: "A site" };
+function categoryWords(category) {
+  return typeof category === "string" && CATEGORIES.includes(category) ? CATEGORY_WORDS[category] : null;
+}
 var COMFORT = {
   locomotion: ["stationary", "teleport", "smooth", "vehicle"],
   intensity: ["low", "medium", "high"],
@@ -4251,6 +4256,15 @@ function normalizeUrl(v) {
     return null;
   }
 }
+function cleanOrigin(input) {
+  if (typeof input !== "string" || input.length > 300) return "";
+  try {
+    const u = new URL(input);
+    return (u.protocol === "https:" || u.protocol === "http:") && u.origin !== "null" ? u.origin : "";
+  } catch {
+    return "";
+  }
+}
 
 // packages/core/src/world.ts
 function audienceOf(w) {
@@ -4285,6 +4299,7 @@ function buildWorldEvent(w) {
   const warning = w.contentWarning ?? (w.audience === "adult" ? "adult" : void 0);
   if (warning !== void 0) tags.push(warning === true ? ["content-warning"] : ["content-warning", warning]);
   if (w.audience) tags.push(["audience", w.audience]);
+  if (w.category) tags.push(["category", w.category]);
   if (w.status) tags.push(["status", w.status]);
   if (w.manifest) tags.push(["manifest", w.manifest]);
   for (const p of w.coCreators ?? []) tags.push(["p", p, "", "co-creator"]);
@@ -4434,6 +4449,12 @@ function parseWorldEvent(input, opts = {}) {
     if (AUDIENCES.includes(said)) audience = said;
     else c.warn("unknown_audience", "tags.audience", `Unknown audience "${said}"; treated as not stated.`);
   }
+  let category;
+  const kindOfPlace = getTags({ tags }, "category")[0]?.[1];
+  if (kindOfPlace !== void 0) {
+    if (CATEGORIES.includes(kindOfPlace)) category = kindOfPlace;
+    else c.warn("unknown_category", "tags.category", `Unknown category "${kindOfPlace}"; treated as not stated.`);
+  }
   if (audience === "adult" && contentWarning === void 0) c.warn("adult_without_warning", "tags.audience", "An adult world should also carry a content-warning, which other clients read.");
   if (audience === "kids" && contentWarning !== void 0) c.warn("kids_with_warning", "tags.audience", "A world for kids carries a content warning. One of the two is wrong.");
   const manifest = single(c, tags, "manifest", false);
@@ -4479,6 +4500,7 @@ function parseWorldEvent(input, opts = {}) {
   if (perf) world.perf = perf;
   if (contentWarning !== void 0) world.contentWarning = contentWarning;
   if (audience) world.audience = audience;
+  if (category) world.category = category;
   if (manifest) world.manifest = manifest;
   if (access) world.access = access;
   return c.result(world);
@@ -6105,6 +6127,67 @@ function verifyRoomPass(event, opts) {
   return c.result({ pubkey: event.pubkey, session: session ?? "", name, picture, about, expiresAt, id: event.id });
 }
 
+// packages/core/src/save.ts
+var SAVE_KIND = 37304;
+var SAVE_LIMITS = {
+  /** The most a save may hold, in bytes of UTF-8. It has to fit in one note that any relay will take. */
+  dataBytes: 32768,
+  /** A world may write no more than this many saves in `perMs`, and in an hour: often enough to keep up with a game, not to flood. */
+  burst: 6,
+  perMs: 6e4,
+  hourly: 60
+};
+var SAVE_SLOT = "main";
+var SLOT = /^[a-z0-9][a-z0-9-]{0,31}$/;
+function cleanSlot(input) {
+  return typeof input === "string" && SLOT.test(input) ? input : "";
+}
+function fitsInSave(data) {
+  return typeof data === "string" && utf8ToBytes(data).length <= SAVE_LIMITS.dataBytes;
+}
+function saveAddress(conversationKey, world, slot) {
+  const origin = cleanOrigin(world);
+  const name = cleanSlot(slot);
+  if (!origin || !name) return "";
+  return bytesToHex(hmac(sha256, conversationKey, utf8ToBytes(`nswp-save
+${origin}
+${name}`)));
+}
+function sealSave(o) {
+  const origin = cleanOrigin(o.world);
+  const slot = cleanSlot(o.slot);
+  const d = saveAddress(o.conversationKey, origin, slot);
+  if (!d || !fitsInSave(o.data)) return null;
+  const inside = JSON.stringify({ v: 1, world: origin, slot, data: o.data });
+  return {
+    kind: SAVE_KIND,
+    created_at: Math.floor(o.now),
+    tags: [
+      ["d", d],
+      ["alt", "Something a world keeps for its visitor. Only they can read it."]
+    ],
+    content: nip44Encrypt(inside, o.conversationKey, o.nonce)
+  };
+}
+function openSave(event, o) {
+  const origin = cleanOrigin(o.world);
+  if (!origin || !event || event.kind !== SAVE_KIND || !isHex64(o.pubkey) || event.pubkey !== o.pubkey || typeof event.content !== "string") return null;
+  let inside;
+  try {
+    inside = JSON.parse(nip44Decrypt(event.content, o.conversationKey));
+  } catch {
+    return null;
+  }
+  if (!inside || typeof inside !== "object" || inside.v !== 1 || inside.world !== origin) return null;
+  const slot = cleanSlot(inside.slot);
+  if (!slot || !fitsInSave(inside.data)) return null;
+  if (getTags(event, "d")[0]?.[1] !== saveAddress(o.conversationKey, origin, slot)) return null;
+  return { slot, data: inside.data, at: Number.isInteger(event.created_at) ? event.created_at : 0 };
+}
+function looksLikeSave(event, pubkey) {
+  return !!event && event.kind === SAVE_KIND && !!pubkey && event.pubkey === pubkey && typeof event.content === "string" && isHex64(getTags(event, "d")[0]?.[1]);
+}
+
 // packages/core/src/signing.ts
 var SIGNER_PROTOCOL = "nswp-signer";
 var SIGNER_VERSION = 1;
@@ -6137,15 +6220,6 @@ function signClass(kind) {
   return "careful";
 }
 var WORLD_TAG = "nswp:world";
-function cleanOrigin(input) {
-  if (typeof input !== "string" || input.length > 300) return "";
-  try {
-    const u = new URL(input);
-    return (u.protocol === "https:" || u.protocol === "http:") && u.origin !== "null" ? u.origin : "";
-  } catch {
-    return "";
-  }
-}
 function prepareForWorld(input, world, now) {
   const origin = cleanOrigin(world);
   if (!origin || !input || typeof input !== "object") return null;
@@ -6218,6 +6292,9 @@ function readSignerRequest(data) {
   if (d.t === "lock") return { t: "lock", id: d.id };
   if (d.t === "sign" && d.event && typeof d.event === "object") return { t: "sign", id: d.id, event: d.event };
   if (d.t === "pass" && isHex64(d.session)) return { t: "pass", id: d.id, session: d.session };
+  if (d.t === "save" && cleanSlot(d.slot) && fitsInSave(d.data)) return { t: "save", id: d.id, slot: cleanSlot(d.slot), data: d.data };
+  if (d.t === "find" && cleanSlot(d.slot)) return { t: "find", id: d.id, slot: cleanSlot(d.slot) };
+  if (d.t === "open" && d.event && typeof d.event === "object") return { t: "open", id: d.id, event: d.event };
   return null;
 }
 function readSignerReply(data) {
@@ -6243,6 +6320,8 @@ function readSignerReply(data) {
   if (typeof d.id !== "string" || !ID.test(d.id)) return null;
   if (d.t === "refused") return { t: "refused", id: d.id };
   if (d.t === "signed" && d.event && typeof d.event === "object") return { t: "signed", id: d.id, event: d.event };
+  if (d.t === "found" && isHex64(d.d)) return { t: "found", id: d.id, d: d.d };
+  if (d.t === "opened" && cleanSlot(d.slot) && fitsInSave(d.data) && typeof d.at === "number" && Number.isFinite(d.at)) return { t: "opened", id: d.id, slot: cleanSlot(d.slot), data: d.data, at: d.at };
   return null;
 }
 var HANDOFF_PROTOCOL = "nswp-handoff";
@@ -6857,6 +6936,7 @@ export {
   BRIDGE_WORLD_GRANT_KIND,
   BUILTIN_ITEMS,
   CAPABILITIES,
+  CATEGORIES,
   CHAT_LIMITS,
   COMFORT,
   CURATION_SET_KIND,
@@ -6897,6 +6977,9 @@ export {
   ROOM_PASS_KIND,
   ROOM_SIGNAL_KIND,
   ROOM_TEMPLATES,
+  SAVE_KIND,
+  SAVE_LIMITS,
+  SAVE_SLOT,
   SCHEMAS,
   SETTINGS_LINK_LIMIT,
   SIGNER_PROTOCOL,
@@ -6929,6 +7012,7 @@ export {
   buildWayUrl,
   buildWorldEvent,
   buildWorldGrant,
+  categoryWords,
   chatId,
   checkDestination,
   checkPictureBytes,
@@ -6945,6 +7029,7 @@ export {
   cleanRelayUrl,
   cleanSettings,
   cleanSize,
+  cleanSlot,
   cleanSpeechText,
   cleanWorldOrigin,
   coordinate,
@@ -6963,6 +7048,7 @@ export {
   encodeSettings,
   fetchManifest,
   finalizeEvent,
+  fitsInSave,
   fragmentSaysImmersive,
   fromLocal,
   generatedLook,
@@ -6990,6 +7076,7 @@ export {
   localMap,
   lookFromTags,
   lookToTags,
+  looksLikeSave,
   mapFromLocal,
   mapToLocal,
   markFor,
@@ -7000,6 +7087,7 @@ export {
   nowSeconds,
   onLocalHost,
   openBridgeSignal,
+  openSave,
   openSignal,
   packBrought,
   packPose,
@@ -7027,6 +7115,8 @@ export {
   readSignerReply,
   readSignerRequest,
   roomTopic,
+  saveAddress,
+  sealSave,
   serializeEvent,
   servedFresh,
   setLocalMap,

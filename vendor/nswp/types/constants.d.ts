@@ -19,7 +19,7 @@ export declare const WELL_KNOWN_PATH = "/.well-known/nswp.json";
  * client can tell how old a world's controls are without loading the world
  * (protocol/01-worlds.md, "Which kit a world was built with").
  */
-export declare const KIT_VERSION = "0.35.0";
+export declare const KIT_VERSION = "0.36.0";
 /** A version as three numbers, or null for anything that isn't one. */
 export declare function parseKitVersion(v: unknown): [number, number, number] | null;
 /**
@@ -39,6 +39,17 @@ export declare const CAPABILITIES: readonly ["webxr", "rooms", "multiplayer", "v
  */
 export declare const AUDIENCES: readonly ["kids", "general", "adult"];
 export type Audience = (typeof AUDIENCES)[number];
+/**
+ * What kind of place a world is, as its maker says: one word from a short closed list, so that a door, a list and
+ * the Airlock can all say it the same way.
+ *
+ * `game`: there is something to win, beat or finish. `experience`: a place to walk through and look at. `social`:
+ * made for meeting other people. `app`: a tool that does a job. `site`: mostly words and pictures to read.
+ */
+export declare const CATEGORIES: readonly ["game", "experience", "social", "app", "site"];
+export type Category = (typeof CATEGORIES)[number];
+/** A category as words for a visitor: "A game". Null for none, or one this doesn't know. */
+export declare function categoryWords(category: unknown): string | null;
 export declare const COMFORT: {
     readonly locomotion: readonly ["stationary", "teleport", "smooth", "vehicle"];
     readonly intensity: readonly ["low", "medium", "high"];

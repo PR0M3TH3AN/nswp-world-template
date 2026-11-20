@@ -353,6 +353,7 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   `ctx.renderer.xr.getController(0)` and `(1)`. Use only `select`: controllers,
   hand pinches and gaze-and-pinch all send it, so the world works on every
   headset. Don't read controller buttons or thumbsticks for anything essential.
+- **Saves.** `worldSaves()` from `nswp-sdk/three` keeps a visitor's progress: `load(slot?)`, `save(text, slot?)`, `clear(slot?)`. On their device at once, and with their account when they are signed in here. Use it in place of `localStorage` for anything a visitor would want on their next device. Never put a key, a password or anything about another person in a save, and never try to read where one is kept: the visitor's signer decides that.
 - **Text.** `textSprite(text, color, widthInMetres)` from `nswp-sdk/three`.
   In a headset the page around the scene is gone, so anything a visitor must
   read belongs in the scene. Put it on a sign where they will look. For
@@ -423,6 +424,7 @@ understands:
 | `comfort.seated` | `supported`, `required`, `unsupported` | |
 | `inputs` | `controllers`, `hands`, `gaze`, `keyboard-mouse`, `touch`, `gamepad` | Only what really works |
 | `perf` | `mobile`, `standalone`, `desktop` | The weakest device that runs it well: a phone, a standalone headset, or a computer |
+| `category` | `game`, `experience`, `social`, `app`, `site` | What kind of place it is: one, or leave it out. `game`: something to win, beat or finish. `experience`: a place to walk through and look at. `social`: for meeting people. `app`: a tool. `site`: mostly words and pictures. Doors that lead here say it. Pick what a visitor would expect at the door |
 | `audience` | `kids`, `general`, `adult` | Who the world is for. `kids`: made for children. `general`: not made for kids. `adult`: NSFW. It is the owner's word, and it must be true: ask them rather than guess, and if what you are building for them is plainly adult, say that it needs `adult`. Never set `kids` or `general` to get a world listed |
 | `topics` | Hashtags, lowercase, without `#` | How people find the world by subject. A few true ones; not a list of every popular word |
 | `owner` | The owner's own public key, `npub1…` | Beside `world`, not inside it. Lets the site admit the key the owner signs in with, so they can show the world is theirs and make it their home. Only ever a public key: if the owner pastes something starting `nsec`, stop and tell them it is their secret key and must not be put in any file |

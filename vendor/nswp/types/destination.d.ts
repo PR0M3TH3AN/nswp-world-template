@@ -27,3 +27,5 @@ export declare function isHttpsUrl(v: unknown): v is string;
 export declare function isWssUrl(v: unknown): v is string;
 /** Normalized href for comparisons, or null if not a URL. */
 export declare function normalizeUrl(v: string): string | null;
+/** A place as it may be named in a tag or shown to someone: an http(s) origin, or "". */
+export declare function cleanOrigin(input: unknown): string;

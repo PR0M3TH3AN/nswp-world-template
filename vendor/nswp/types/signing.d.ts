@@ -55,8 +55,6 @@ export declare const NEVER_KINDS: readonly number[];
 export declare function signClass(kind: unknown): SignClass;
 /** The tag a signer puts on every note it signs for a world: which world asked. A world can't leave it off. */
 export declare const WORLD_TAG = "nswp:world";
-/** A place as it may be named in a tag or shown to someone: an http(s) origin, or "". */
-export declare function cleanOrigin(input: unknown): string;
 /**
  * What a world asked to have signed, as it may be signed for that world: an
  * ordinary kind, its words within the limit, its tags tidied, and marked with
@@ -125,6 +123,28 @@ export type SignerRequest = {
     t: "pass";
     id: string;
     session: string;
+}
+/**
+ * Keep this for me (protocol/12-saves.md). The world gives a slot's name and the words to keep, and nothing
+ * else: the signer works out where it is kept from the world's own address, encrypts it, and signs it.
+ */
+ | {
+    t: "save";
+    id: string;
+    slot: string;
+    data: string;
+}
+/** Where is my save in this slot kept? So the world can ask a relay for it. */
+ | {
+    t: "find";
+    id: string;
+    slot: string;
+}
+/** Open this save, which a relay gave me. Opened only if it is this world's. */
+ | {
+    t: "open";
+    id: string;
+    event: NostrEvent;
 };
 /**
  * From the signer. `ready` is said once, unasked, when it has loaded. `state`
@@ -147,6 +167,20 @@ export type SignerReply = {
     t: "signed";
     id: string;
     event: NostrEvent;
+}
+/** Answers `find`: the `d` of this world's save in that slot. */
+ | {
+    t: "found";
+    id: string;
+    d: string;
+}
+/** Answers `open`: what was kept, in which slot, and when. */
+ | {
+    t: "opened";
+    id: string;
+    slot: string;
+    data: string;
+    at: number;
 } | {
     t: "refused";
     id: string;

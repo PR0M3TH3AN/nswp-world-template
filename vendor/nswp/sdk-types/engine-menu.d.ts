@@ -43,6 +43,18 @@ export declare function menu(options?: string): string;
  * event says so, with the same fields. A name is theirs only while they are signed in here.
  */
 export declare function who(): string;
+/**
+ * Keep this for the visitor (protocol/12-saves.md): text, the world's own, in a slot ("main" when none is named).
+ * It is kept on this device at once, and with their account if they are signed in here. A `saved` event says
+ * where it was kept: `{"type":"saved","slot":...,"kept":"account"|"device"|"nowhere","said":...}`.
+ */
+export declare function save(data: string, slot?: string): void;
+/**
+ * Ask for what was kept in a slot. The answer is a `loaded` event: `{"type":"loaded","slot":...,"found":true,
+ * "data":...,"at":...,"from":"account"|"device"}`, or `"found":false` when there is nothing. The newer of this
+ * device's and their account's is given.
+ */
+export declare function load(slot?: string): void;
 /** What happened since the engine last asked, as a JSON list, oldest first. Ask every frame. */
 export declare function events(): string;
 /** Play one of the kit's cues by name (`kit().cues`): the world's own sound for it, or the default. */

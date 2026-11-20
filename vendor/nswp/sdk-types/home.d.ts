@@ -17,6 +17,11 @@ import { type Layout, type PortalDestination } from "@nswp/core";
 export interface PortalGateOptions {
     /** First line of the sign above the portal. The address is always shown beneath it. */
     label?: string;
+    /**
+     * What kind of place it leads to, as that place's own announcement says: one of the core's `CATEGORIES`. The
+     * sign then reads "A game at example.com". Left out, or anything else, and the sign says only the address.
+     */
+    category?: string | null;
     color?: THREE.ColorRepresentation;
     textColor?: string;
 }
@@ -29,6 +34,8 @@ export interface PortalGate {
     /** 1 while a visitor is aiming at the portal, 0 otherwise. The glow follows it. */
     aimed: number;
     setLabel(label: string): void;
+    /** Say what kind of place it leads to, on the sign: one of the core's `CATEGORIES`. Anything else says nothing. */
+    setCategory(category: string | null | undefined): void;
     /** Show a preview of the destination through the portal (spec §5.8). Returns the window, for a world that needs to hide it while it photographs itself. */
     showThrough(pano: THREE.Texture): THREE.Mesh;
     update(t: number, dt: number): void;

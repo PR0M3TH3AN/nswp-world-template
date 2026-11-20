@@ -46,6 +46,7 @@ import {
   createPanels,
   createPortalWindow,
   createPresence,
+  createSaves,
   createSounds,
   createStepPace,
   createStroll,
@@ -85,9 +86,10 @@ import {
   visitorFov,
   watchFov,
   watchFresh,
+  worldSaves,
   worldSigner,
   youCard
-} from "./shared-W5TCKQ4W.js";
+} from "./shared-7A6ZT7RE.js";
 import {
   currentForm,
   deviceForms,
@@ -174,6 +176,7 @@ export {
   createPanels,
   createPortalWindow,
   createPresence,
+  createSaves,
   createSounds,
   createStay,
   createStepPace,
@@ -232,6 +235,7 @@ export {
   wasRefreshed,
   watchFov,
   watchFresh,
+  worldSaves,
   worldSigner,
   youCard
 };

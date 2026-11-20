@@ -74,6 +74,20 @@ export interface WorldSigner {
      * that makes none, or what came back isn't a pass by the key it holds, for this site and that session.
      */
     pass(session: string): Promise<NostrEvent | null>;
+    /**
+     * Ask for something to be kept for this world, in a slot (protocol/12-saves.md). What comes back is a signed
+     * save that only the visitor can read: this page sends it to their relays. Null if it is locked, or it
+     * refused, or it is a signer that keeps nothing, or what came back isn't a save by the key it holds.
+     */
+    save(slot: string, data: string): Promise<NostrEvent | null>;
+    /** Where this world's save in a slot is kept: the `d` to ask a relay for. Null as for `save`. */
+    find(slot: string): Promise<string | null>;
+    /** Have a save opened. Null if it isn't this world's, or isn't theirs, or as for `save`. */
+    open(event: NostrEvent): Promise<{
+        slot: string;
+        data: string;
+        at: number;
+    } | null>;
     /** Be told when its state changes. Returns how to stop. */
     onChange(fn: () => void): () => void;
     /**
