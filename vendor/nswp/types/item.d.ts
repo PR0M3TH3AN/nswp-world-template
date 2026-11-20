@@ -62,6 +62,15 @@ export interface ItemEffect {
     /** How much is taken. A whole number from 1 to 5. */
     take: number;
 }
+/**
+ * How an item is aimed, where it has a sight to aim by: the point of the sight, in the item's own space as it is
+ * drawn (metres from the middle of its base, with its front toward -z), and how much narrower the holder sees
+ * while they aim (1 is no narrower; 0.45 is the narrowest a renderer goes). It asks; the renderer decides.
+ */
+export interface ItemAim {
+    at: [number, number, number];
+    zoom: number;
+}
 /** What its two presses are called, for the buttons a visitor is shown: "Fire", "Reload". */
 export interface ItemDoes {
     use?: string;
@@ -126,6 +135,7 @@ export interface ItemInput {
     effects?: ItemEffect[];
     does?: ItemDoes;
     tints?: ItemTint[];
+    aim?: ItemAim;
     license?: string;
 }
 export interface Item extends Required<Pick<ItemInput, "d" | "title" | "model" | "size">> {
@@ -146,6 +156,7 @@ export interface Item extends Required<Pick<ItemInput, "d" | "title" | "model" |
     effects: ItemEffect[];
     does: ItemDoes;
     tints: ItemTint[];
+    aim: ItemAim | null;
     license: string;
     /** When its maker last described it, in seconds. */
     at: number;

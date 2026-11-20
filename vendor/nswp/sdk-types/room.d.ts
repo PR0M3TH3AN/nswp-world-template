@@ -237,8 +237,7 @@ export declare class RoomSession {
     setHolding(item: string): void;
     /**
      * Say something of an item in play to everyone: a thing sent out, a hit, a sound, this visitor's state
-     * (`buildShot`, `buildHit`, `buildDid`, `buildState` in the core). Sent once: these are moments, and a late one
-     * is a wrong one. Anything that isn't one of those is not sent.
+     * (`buildShot`, `buildHit`, `buildDid`, `buildState` in the core). Anything that isn't one of those is not sent.
      */
     tellPlay(said: string): void;
     setRecording(on: boolean): void;

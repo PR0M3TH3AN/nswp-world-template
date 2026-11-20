@@ -10,6 +10,8 @@ export declare const LOOK_STEPS: readonly {
 export declare const FOV_STEPS: readonly (number | null)[];
 /** How much faster or slower than the kit's own speed the view turns under their hand. */
 export declare const lookScale: () => number;
+export declare const aimScale: () => number;
+export declare const setAimScale: (k: number) => void;
 export declare const setLookScale: (v: number) => void;
 /** How wide they have asked to see, in degrees top to bottom, or null for each world's own. Only ever at a desk. */
 export declare const visitorFov: () => number | null;

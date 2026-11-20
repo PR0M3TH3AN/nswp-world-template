@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.52.0";
+var KIT_VERSION = "0.53.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4465,6 +4465,11 @@ function readCollider(t) {
   const height = numbers(t[4], 1)?.[0];
   return t[1] === "capsule" && height !== void 0 && within(height) ? { shape: "capsule", centre, radius, height } : null;
 }
+function readAim(t) {
+  const at = numbers(t?.[1], 3);
+  const zoom = Number(t?.[2]);
+  return at && at.every((x) => Math.abs(x) <= ITEM_LIMITS.metres) && zoom > 0 && zoom <= 1 ? { at, zoom } : null;
+}
 var SEND_MOMENTS = ["lands", "drops", "strikes", "tells"];
 function readSend(t) {
   const model = t[3] === "glb" ? cleanFile(t[2], t[4]) : null;
@@ -4559,6 +4564,12 @@ function buildItem(o) {
     if (label)
       tags.push(["does", press, label]);
   }
+  if (o.aim) {
+    const ok = Array.isArray(o.aim.at) && o.aim.at.length === 3 && o.aim.at.every((x) => Number.isFinite(x) && Math.abs(x) <= ITEM_LIMITS.metres) && typeof o.aim.zoom === "number" && o.aim.zoom > 0 && o.aim.zoom <= 1;
+    if (!ok)
+      return null;
+    tags.push(["aim", said(o.aim.at), said([o.aim.zoom])]);
+  }
   for (const t of (o.tints ?? []).slice(0, ITEM_LIMITS.tints)) {
     const label = cleanLine(t?.label ?? "", ITEM_LIMITS.label);
     if (!t || !PLAIN.test(t.slot) || !label || !HEX.test(t.color))
@@ -4614,6 +4625,7 @@ function parseItem(event) {
       return typeof t[1] === "string" && PLAIN.test(t[1]) && t[2] === "health" && Number.isInteger(take) && take >= 1 && take <= 5 ? { of: t[1], state: "health", take } : null;
     }).filter((e) => e !== null),
     does: Object.fromEntries(getTags(event, "does").filter((t) => t[1] === "use" || t[1] === "second").map((t) => [t[1], cleanLine(t[2], ITEM_LIMITS.label)]).filter((d2) => d2[1])),
+    aim: readAim(tag("aim")),
     tints: getTags(event, "tint").slice(0, ITEM_LIMITS.tints).map((t) => ({ slot: t[1] ?? "", label: cleanLine(t[2], ITEM_LIMITS.label), color: t[3] ?? "" })).filter((t, i, all) => PLAIN.test(t.slot) && t.label !== "" && HEX.test(t.color) && all.findIndex((x) => x.slot === t.slot) === i),
     license: cleanLine(tag("license")?.[1], 40),
     at: Number.isInteger(event.created_at) ? event.created_at : 0

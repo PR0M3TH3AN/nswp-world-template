@@ -2241,7 +2241,7 @@ import {
   itemCoordinate
 } from "@nswp/core";
 var PLAY_WORD = /^(shot|hit|did|st|tint):/;
-var PLAY_SAID = { burst: 24, perSecond: 16 };
+var PLAY_SAID = { burst: 40, perSecond: 30 };
 var DEFAULT_ICE = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
 var HELLO_EVERY_MS = 2e4;
 var RECORDING_HOLD_MS = 6e3;
@@ -2917,13 +2917,13 @@ var RoomSession = class {
   }
   /**
    * Say something of an item in play to everyone: a thing sent out, a hit, a sound, this visitor's state
-   * (`buildShot`, `buildHit`, `buildDid`, `buildState` in the core). Sent once: these are moments, and a late one
-   * is a wrong one. Anything that isn't one of those is not sent.
+   * (`buildShot`, `buildHit`, `buildDid`, `buildState` in the core). Anything that isn't one of those is not sent.
    */
   tellPlay(said) {
     if (this.closed || typeof said !== "string" || said.length > 200 || !PLAY_WORD.test(said)) return;
     if (said.startsWith("tint:")) this.tints = said;
     this.tellAll(said);
+    if (!said.startsWith("did:")) setTimeout(() => !this.closed && this.tellAll(said), 90);
   }
   setRecording(on) {
     if (on === this.self.recording) return;
