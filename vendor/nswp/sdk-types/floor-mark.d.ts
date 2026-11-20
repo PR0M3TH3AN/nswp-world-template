@@ -7,7 +7,9 @@
  *   is never further off than one press reaches, so it also shows how far
  *   that is.
  * - A **dot** where they are headed, once they have pressed.
- * - A **dotted line** from their feet to it, which they walk along.
+ * - A **dotted line** from their feet to it, which they walk along. A path
+ *   tapped out in several presses is drawn whole: the line through every
+ *   spot, a small mark at each turn, and the dot where it ends.
  *
  * They are drawn for this visitor alone. Nothing about them is sent to
  * anyone else in the room: other people see someone walking, as before.
@@ -22,17 +24,23 @@
 import * as THREE from "three";
 export interface FloorMarks {
     group: THREE.Group;
+    /**
+     * `path` is the way they are going, each spot in order (a stroll's `path`). `to` is the same for one spot, and
+     * is what this took before paths: either may be given.
+     */
     update(o: {
         hover: readonly [number, number] | null;
         from: readonly [number, number];
-        to: readonly [number, number] | null;
+        to?: readonly [number, number] | null;
+        path?: readonly (readonly [number, number])[] | null;
         t: number;
     }): void;
-    /** How many dots the line has now, and what is showing. For tests. */
+    /** How many dots the line has now, how many turns are marked, and what is showing. For tests. */
     info(): {
         ring: [number, number] | null;
         dot: [number, number] | null;
         dots: number;
+        turns: number;
     };
     dispose(): void;
 }

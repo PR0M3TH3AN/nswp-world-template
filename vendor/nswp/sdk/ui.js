@@ -405,19 +405,20 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .row.warn { color: rgb(var(--warn)); }
 .row.primary { background: rgba(var(--accent), .16); border-color: rgba(var(--accent), .75); }
 /* Who a section is about: a face, a name, how they are known, and what they say of themselves, set apart as theirs. */
-.card { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; align-items: center; padding: 12px; border-radius: 16px 16px 8px 8px;
+/* A person: the card at the head of a section. Its own name, so it is never taken for the card about what is pointed at. */
+.person { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; align-items: center; padding: 12px; border-radius: 16px 16px 8px 8px;
   border: 1px solid rgba(var(--accent), .45); background: rgba(var(--accent), .07); }
-.card .face { grid-row: span 2; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+.person .face { grid-row: span 2; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
   background: var(--c, rgba(var(--ink), .2)); color: rgb(var(--glass)); font-weight: 700; font-size: 1.5em; }
-.card .face canvas { width: 100%; height: 100%; display: block; }
-.card h3 { margin: 0; font-size: 1.15em; font-weight: 650; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; overflow-wrap: anywhere; }
-.card .tag { font-size: .76em; font-weight: 500; padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(var(--ink), .3); color: rgba(var(--ink), .75); white-space: nowrap; }
-.card .tag.proven { border-color: rgba(var(--accent), .8); color: rgb(var(--accent)); }
-.card .keyline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: rgba(var(--ink), .7); font-size: .9em; }
-.card .keyline button { padding: 2px 10px; border-radius: 7px; border: 1px solid rgba(var(--ink), .25); color: rgb(var(--ink)); }
-.card .keyline button:hover { border-color: rgb(var(--accent)); color: rgb(var(--accent)); }
-.card blockquote { grid-column: 1 / -1; margin: 7px 0 0; padding: 1px 0 1px 10px; border-left: 2px solid rgba(var(--accent), .6); overflow-wrap: anywhere; }
-.card .now { grid-column: 1 / -1; margin: 5px 0 0; font-size: .9em; color: rgb(var(--accent)); }
+.person .face canvas { width: 100%; height: 100%; display: block; }
+.person h3 { margin: 0; font-size: 1.15em; font-weight: 650; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; overflow-wrap: anywhere; }
+.person .tag { font-size: .76em; font-weight: 500; padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(var(--ink), .3); color: rgba(var(--ink), .75); white-space: nowrap; }
+.person .tag.proven { border-color: rgba(var(--accent), .8); color: rgb(var(--accent)); }
+.person .keyline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: rgba(var(--ink), .7); font-size: .9em; }
+.person .keyline button { padding: 2px 10px; border-radius: 7px; border: 1px solid rgba(var(--ink), .25); color: rgb(var(--ink)); }
+.person .keyline button:hover { border-color: rgb(var(--accent)); color: rgb(var(--accent)); }
+.person blockquote { grid-column: 1 / -1; margin: 7px 0 0; padding: 1px 0 1px 10px; border-left: 2px solid rgba(var(--accent), .6); overflow-wrap: anywhere; }
+.person .now { grid-column: 1 / -1; margin: 5px 0 0; font-size: .9em; color: rgb(var(--accent)); }
 
 .note { margin: 0; padding: 4px 12px 0 12px; color: rgba(var(--ink), .78); border-left: 2px solid rgba(var(--accent), .6); margin-left: 12px; font-size: .95em; }
 .note:empty { display: none; }
@@ -608,7 +609,7 @@ function mountHud(controls, opts = {}) {
     });
     return el(
       "div",
-      { class: "card", role: "group", "aria-label": `About ${card.title}` },
+      { class: "person", role: "group", "aria-label": `About ${card.title}` },
       face,
       el("h3", {}, card.title, card.tag && el("span", { class: card.proven ? "tag proven" : "tag" }, card.tag)),
       el("div", { class: "keyline" }, el("span", { class: card.copy ? "mono" : "" }, card.sub), copyKey),
@@ -1007,7 +1008,7 @@ function mountHud(controls, opts = {}) {
       if (host.hidden || controls.presence !== "full") return { top: 0, bottom: 0 };
       const low = hotbar.getBoundingClientRect();
       const high = id.getBoundingClientRect();
-      return { top: Math.round(high.bottom), bottom: Math.round(innerHeight - Math.min(low.top, target.getBoundingClientRect().top)) };
+      return { top: Math.round(high.bottom), bottom: Math.round(innerHeight - low.top) };
     },
     setHidden(hidden) {
       host.hidden = hidden;

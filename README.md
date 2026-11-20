@@ -103,6 +103,9 @@ export async function buildScene(ctx) {
 Visitors move with W, A, S, D, or by pointing at the floor and clicking,
 tapping, or pulling the trigger to step there. A scene says where they may not
 stand by returning `canStand(x, z)`.
+A click while they are walking adds to the path from where the last click
+ended, so a path is clicked out as it is walked, and the view turns to face
+the way they are going. Two clicks close together are a run straight there.
 
 ### The controls
 

@@ -2024,6 +2024,8 @@ var RUN = 1.75;
 var TOP_SPEED = WALK_SPEED * RUN;
 var DOUBLE_TAP = 400;
 var TAP_REACH = 6;
+var PATH_MOST = 12;
+var FACE_RATE = 2.8;
 var DRAG_LOOK = 5e-3;
 function reachOf(fromX, fromZ, toX, toZ, reach = TAP_REACH) {
   const dx = toX - fromX;
@@ -2067,59 +2069,102 @@ function createStepPace(o = {}) {
 }
 function createStroll(o) {
   const speed = o.speed ?? WALK_SPEED;
+  const reach = o.reach ?? TAP_REACH;
   const now = o.now ?? (() => performance.now());
-  let target = null;
+  let path = [];
   let running = false;
   let asked = -Infinity;
+  let heading = null;
+  const aim = (fx, fz, tx, tz) => {
+    const dx = tx - fx;
+    const dz = tz - fz;
+    if (Math.hypot(dx, dz) > 0.3) heading = Math.atan2(-dx, -dz);
+  };
+  const halt = () => {
+    path = [];
+    running = false;
+    heading = null;
+  };
   return {
     to(x, z, run) {
       const t = now();
       const again = t - asked <= DOUBLE_TAP;
       asked = t;
-      const wasRunning = target !== null && running;
-      target = Number.isFinite(x) && Number.isFinite(z) ? [x, z] : null;
-      running = target !== null && (run === true || again || wasRunning);
+      const wasRunning = path.length > 0 && running;
+      if (!Number.isFinite(x) || !Number.isFinite(z)) return halt();
+      path = [[x, z]];
+      running = run === true || again || wasRunning;
+      aim(...o.where(), x, z);
     },
-    stop() {
-      target = null;
-      running = false;
+    tap(x, z) {
+      const t = now();
+      const again = t - asked <= DOUBLE_TAP;
+      asked = t;
+      if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+      const [hx, hz] = o.where();
+      if (again || path.length === 0) {
+        const wasRunning = path.length > 0 && running;
+        path = [reachOf(hx, hz, x, z, reach)];
+        running = again || wasRunning;
+        aim(hx, hz, path[0][0], path[0][1]);
+        return;
+      }
+      const end = path[path.length - 1];
+      const next = reachOf(end[0], end[1], x, z, reach);
+      if (path.length < PATH_MOST && Math.hypot(next[0] - end[0], next[1] - end[1]) > 0.3) path.push(next);
     },
+    reach(x, z) {
+      const from = path.length ? path[path.length - 1] : o.where();
+      return reachOf(from[0], from[1], x, z, reach);
+    },
+    stop: halt,
     update(dt) {
-      if (!target) return;
+      const next = path[0];
+      if (!next) return;
       const [x, z] = o.where();
-      const dx = target[0] - x;
-      const dz = target[1] - z;
+      const dx = next[0] - x;
+      const dz = next[1] - z;
       const far = Math.hypot(dx, dz);
+      aim(x, z, next[0], next[1]);
       const step = Math.min(far, speed * (running ? RUN : 1) * Math.min(Math.max(dt, 0), 0.1));
+      const arrived = () => {
+        path.shift();
+        if (path.length === 0) halt();
+      };
       if (far < 0.02 || step <= 0) {
-        if (far < 0.02) {
-          target = null;
-          running = false;
-        }
+        if (far < 0.02) arrived();
         return;
       }
       const sx = dx / far * step;
       const sz = dz / far * step;
       if (!o.canStand(x + sx, z + sz)) {
-        target = null;
-        running = false;
+        halt();
         o.onBlocked?.();
         return;
       }
       o.move(sx, sz);
-      if (far - step < 0.02) {
-        target = null;
-        running = false;
-      }
+      if (far - step < 0.02) arrived();
+    },
+    face(yaw, dt) {
+      if (heading === null || !(dt > 0)) return yaw;
+      const turn2 = ((heading - yaw + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+      const most = FACE_RATE * Math.min(dt, 0.1);
+      return yaw + Math.max(-most, Math.min(most, turn2 * Math.min(1, dt * 7)));
     },
     get going() {
-      return target !== null;
+      return path.length > 0;
     },
     get running() {
       return running;
     },
     get target() {
-      return target;
+      return path.length ? path[path.length - 1] : null;
+    },
+    get path() {
+      return path;
+    },
+    get heading() {
+      return heading;
     }
   };
 }
@@ -4043,7 +4088,8 @@ function addPanelControls(controls, panels, o) {
 
 // packages/sdk/src/floor-mark.ts
 import * as THREE10 from "three";
-var MOST = 40;
+var MOST = 140;
+var TURNS = 16;
 function createFloorMarks(accent, opts = {}) {
   const y = opts.height ?? 0.02;
   const group = new THREE10.Group();
@@ -4064,41 +4110,55 @@ function createFloorMarks(accent, opts = {}) {
   const line = flat(new THREE10.InstancedMesh(new THREE10.CircleGeometry(0.07, 14), paint(0.8), MOST));
   line.rotation.x = 0;
   line.frustumCulled = false;
+  const knots = flat(new THREE10.InstancedMesh(new THREE10.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
+  knots.rotation.x = 0;
+  knots.frustumCulled = false;
   const place = new THREE10.Matrix4();
   const lie = new THREE10.Quaternion().setFromEuler(new THREE10.Euler(-Math.PI / 2, 0, 0));
   const at = new THREE10.Vector3();
   const one = new THREE10.Vector3(1, 1, 1);
-  let shown = { ring: null, dot: null, dots: 0 };
+  let shown = { ring: null, dot: null, dots: 0, turns: 0 };
   return {
     group,
     update(o) {
       ring.visible = !!o.hover;
       if (o.hover) ring.position.set(o.hover[0], y, o.hover[1]);
-      const going2 = !!o.to;
-      dot.visible = going2;
-      halo.visible = going2;
+      const way = o.path?.length ? o.path : o.to ? [o.to] : [];
+      const end = way[way.length - 1] ?? null;
+      dot.visible = !!end;
+      halo.visible = !!end;
       let dots = 0;
-      if (o.to) {
-        dot.position.set(o.to[0], y, o.to[1]);
+      let turns = 0;
+      if (end) {
+        dot.position.set(end[0], y, end[1]);
         halo.position.copy(dot.position);
         const pulse = o.t * 0.9 % 1;
         halo.scale.setScalar(1 + pulse * 0.9);
         halo.material.opacity = 0.7 * (1 - pulse);
-        const spots = dotsBetween(o.from[0], o.from[1], o.to[0], o.to[1], { most: MOST });
-        dots = spots.length;
-        spots.forEach(([x, z], i) => {
-          place.compose(at.set(x, y, z), lie, one);
-          line.setMatrixAt(i, place);
+        let from = o.from;
+        way.forEach((spot, leg) => {
+          for (const [x, z] of dotsBetween(from[0], from[1], spot[0], spot[1], { most: MOST - dots, clear: leg === 0 ? 0.45 : 0.32, short: leg === way.length - 1 ? 0.3 : 0.32 })) {
+            place.compose(at.set(x, y, z), lie, one);
+            line.setMatrixAt(dots++, place);
+          }
+          if (leg < way.length - 1 && turns < TURNS) {
+            place.compose(at.set(spot[0], y, spot[1]), lie, one);
+            knots.setMatrixAt(turns++, place);
+          }
+          from = spot;
         });
         line.instanceMatrix.needsUpdate = true;
+        knots.instanceMatrix.needsUpdate = true;
       }
       line.count = dots;
       line.visible = dots > 0;
-      shown = { ring: o.hover ? [o.hover[0], o.hover[1]] : null, dot: o.to ? [o.to[0], o.to[1]] : null, dots };
+      knots.count = turns;
+      knots.visible = turns > 0;
+      shown = { ring: o.hover ? [o.hover[0], o.hover[1]] : null, dot: end ? [end[0], end[1]] : null, dots, turns };
     },
     info: () => shown,
     dispose() {
-      for (const o of [ring, dot, halo, line]) {
+      for (const o of [ring, dot, halo, line, knots]) {
         o.geometry.dispose();
         o.material.dispose();
       }
@@ -7473,6 +7533,8 @@ export {
   TOP_SPEED,
   DOUBLE_TAP,
   TAP_REACH,
+  PATH_MOST,
+  FACE_RATE,
   DRAG_LOOK,
   reachOf,
   dotsBetween,
