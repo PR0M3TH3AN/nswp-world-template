@@ -86,10 +86,12 @@ import {
   keyIn,
   lookAfter,
   lookScale,
+  mayHold,
   onDeskChange,
   onHereAs,
   onItemsChange,
   ordinal,
+  paintHealth,
   panoramaTexture,
   reachOf,
   readPad,
@@ -122,7 +124,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-5PCOENWY.js";
+} from "./shared-TK7DJYIY.js";
 import {
   currentForm,
   deviceForms,
@@ -268,11 +270,13 @@ export {
   loadPicture,
   lookAfter,
   lookScale,
+  mayHold,
   onDeskChange,
   onHereAs,
   onItemsChange,
   onPicturesChange,
   ordinal,
+  paintHealth,
   panoramaTexture,
   prefersFullscreen,
   publishBacked,

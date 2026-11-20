@@ -456,7 +456,7 @@ export { addScoreControls, type Scoring, type ScoringOptions } from "./scoring.j
 export { createItems, fitToSize, ITEM_BUDGET, onItemsChange, setShowsItems, showsItems, withinBudget, type Items, type ItemsOptions } from "./items.js";
 export { createBag, type Bag, type BagHand, type BagOptions, type BagResult } from "./bag.js";
 export { addBagControls, itemIn, type Bagging, type BaggingOptions } from "./bagging.js";
-export { allowScript, createPlay, scriptAllowed, type Play, type PlayInfo, type PlayOptions, type PlayPerson } from "./play.js";
+export { allowScript, createPlay, mayHold, paintHealth, scriptAllowed, type Play, type PlayInfo, type PlayOptions, type PlayPerson, type PlaySnapshot } from "./play.js";
 export { runInBox, type BoxAsk, type BoxRun, type ItemBoxOptions } from "./item-box.js";
 export { addItemControls, TAP_MS, type ItemControls, type ItemControlsOptions } from "./item-controls.js";
 export { createDoorRatings, type DoorRatings, type DoorRatingsOptions } from "./door-ratings.js";

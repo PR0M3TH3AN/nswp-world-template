@@ -1,6 +1,14 @@
+import { type Sounds } from "./sound.js";
+import { type Controls } from "./ui/model.js";
 declare const tell: (event: Record<string, unknown>) => void;
 /** For the rest of the engine's script to tell the engine something the same way. */
 export declare const tellEngine: typeof tell;
+/** The menu and the sounds, once the world has asked for them: for the rest of the engine's script to add to. */
+export declare const engineParts: () => {
+    controls: Controls;
+    sounds: Sounds;
+    presenting: boolean;
+} | null;
 export declare const onMenu: (fn: (look: {
     title: string;
     accent?: string;
