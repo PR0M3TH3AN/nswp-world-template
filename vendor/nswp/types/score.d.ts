@@ -8,6 +8,8 @@ export declare const SCORE_LIMITS: {
     readonly hourly: 60;
     /** The most a score may be. A whole number from 0 to this: what it counts is the board's to say. */
     readonly most: 9007199254740991;
+    /** The longest a board's title may be, in characters. */
+    readonly title: 60;
 };
 /** One of a world's boards, as the world describes it. */
 export interface Board {
@@ -34,6 +36,8 @@ export declare function buildScore(o: {
     world: string;
     board: string;
     score: number;
+    title?: string;
+    format?: Board["format"];
     relay?: string;
     now: number;
 }): EventTemplate | null;
@@ -45,6 +49,8 @@ export declare function scoreForWorld(o: {
     world: unknown;
     board: unknown;
     score: unknown;
+    title?: unknown;
+    format?: unknown;
     origin: string;
     now: number;
 }): EventTemplate | null;
@@ -55,6 +61,10 @@ export interface Score {
     world: string;
     board: string;
     score: number;
+    /** What the board is called, as the score says, or "". The poster's word for what the world called it. */
+    title: string;
+    /** How the board counts, as the score says: a plain number where it doesn't say. */
+    format: Board["format"];
     /** When it was posted, in seconds. */
     at: number;
     /** The sites a signer says asked for it, as origins. Empty when no signer said. */
@@ -71,6 +81,8 @@ export declare function isScoreAsked(signed: unknown, o: {
     world: string;
     board: string;
     score: number;
+    title?: string;
+    format?: Board["format"];
     origin: string;
 }): signed is NostrEvent;
 /** Someone's place on a board. */

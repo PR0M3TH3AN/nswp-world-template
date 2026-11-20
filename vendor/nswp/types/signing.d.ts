@@ -199,6 +199,8 @@ export type SignerRequest = {
     world: string;
     board: string;
     score: number;
+    title?: string;
+    format?: "number" | "time";
 }
 /**
  * Sign that my visitor holds one of my achievements (protocol/16-achievements.md). The world gives its own

@@ -48,6 +48,11 @@ export interface Achievements {
     }>;
     /** Who holds each, from relays: asked again only after a minute, unless `fresh`. Null where no relay answered. */
     holders(fresh?: boolean): Promise<Map<string, AchievementHolders> | null>;
+    /**
+     * Which of this world's achievements someone shows, from what was last read: for saying so on their card.
+     * Nothing is asked of a relay by this.
+     */
+    heldBy(pubkey: string): Achievement[];
     onChange(fn: () => void): () => void;
     /** Be told when they earn one that is new to them. */
     onEarn(fn: (achievement: Achievement) => void): () => void;

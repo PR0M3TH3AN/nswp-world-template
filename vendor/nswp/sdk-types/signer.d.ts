@@ -132,7 +132,10 @@ export interface WorldSigner {
      * comes back is for this page to send to relays. Null if it is locked, or it refused, or it is a signer that
      * signs no scores, or what came back isn't that score, by the key it holds, marked for this site.
      */
-    score(world: string, board: string, score: number): Promise<NostrEvent | null>;
+    score(world: string, board: string, score: number, said?: {
+        title?: string;
+        format?: "number" | "time";
+    }): Promise<NostrEvent | null>;
     /**
      * Have it signed that the visitor holds one of this world's achievements (protocol/16-achievements.md). Any
      * world its visitor has unlocked may ask; it is public, so ask only when the visitor has said to show it. Null

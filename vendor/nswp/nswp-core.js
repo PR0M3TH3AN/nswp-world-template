@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.45.0";
+var KIT_VERSION = "0.46.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6513,7 +6513,9 @@ var SCORE_LIMITS = {
   perMs: 6e4,
   hourly: 60,
   /** The most a score may be. A whole number from 0 to this: what it counts is the board's to say. */
-  most: 9007199254740991
+  most: 9007199254740991,
+  /** The longest a board's title may be, in characters. */
+  title: 60
 };
 var BOARD = /^[a-z0-9][a-z0-9-]{0,31}$/;
 function cleanBoard(input) {
@@ -6535,22 +6537,23 @@ function buildScore(o) {
   const board = cleanBoard(o.board);
   const score = cleanScore(o.score);
   if (!world || !board || score === null) return null;
+  const title = cleanLine(o.title ?? "", SCORE_LIMITS.title);
   return {
     kind: SCORE_KIND,
     created_at: Math.floor(o.now),
     tags: [
       ["d", `${world}/${board}`],
       ["a", world, ...o.relay ? [o.relay] : []],
-      ["board", board],
-      ["score", String(score)],
-      ["alt", `A score in a world: ${score}`]
+      ["board", board, ...title ? [title] : []],
+      ["score", String(score), ...o.format === "time" ? ["time"] : []],
+      ["alt", `A score in a world: ${title ? `${title}: ` : ""}${scoreWords({ format: o.format === "time" ? "time" : "number" }, score)}`]
     ],
     content: ""
   };
 }
 function scoreForWorld(o) {
   const origin = cleanOrigin(o.origin);
-  const made = typeof o.world === "string" && typeof o.board === "string" && cleanScore(o.score) !== null ? buildScore({ world: o.world, board: o.board, score: cleanScore(o.score), now: o.now }) : null;
+  const made = typeof o.world === "string" && typeof o.board === "string" && cleanScore(o.score) !== null ? buildScore({ world: o.world, board: o.board, score: cleanScore(o.score), ...typeof o.title === "string" ? { title: o.title } : {}, ...o.format === "time" ? { format: "time" } : {}, now: o.now }) : null;
   if (!origin || !made) return null;
   return { ...made, tags: [...made.tags, [SITE_MARKS[0], origin]] };
 }
@@ -6561,12 +6564,15 @@ function parseScore(event) {
   const score = cleanScore(getTags(event, "score")[0]?.[1]);
   if (!world || !board || score === null || getTags(event, "d")[0]?.[1] !== `${world}/${board}`) return null;
   const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
-  return { by: event.pubkey, world, board, score, at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
+  const title = cleanLine(getTags(event, "board")[0]?.[2] ?? "", SCORE_LIMITS.title);
+  const format = getTags(event, "score")[0]?.[2] === "time" ? "time" : "number";
+  return { by: event.pubkey, world, board, score, title, format, at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
 }
 function isScoreAsked(signed, o) {
   if (!o.pubkey || !verifyEvent(signed) || signed.pubkey !== o.pubkey) return false;
   const s = parseScore(signed);
-  return !!s && s.world === worldCoordinate(o.world) && s.board === o.board && s.score === o.score && s.askedAt.includes(cleanOrigin(o.origin));
+  if (!s || s.world !== worldCoordinate(o.world) || s.board !== o.board || s.score !== o.score || !s.askedAt.includes(cleanOrigin(o.origin))) return false;
+  return s.title === cleanLine(o.title ?? "", SCORE_LIMITS.title) && s.format === (o.format === "time" ? "time" : "number");
 }
 function rankScores(events, o) {
   const world = worldCoordinate(o.world);
@@ -6783,7 +6789,10 @@ function readSignerRequest(data) {
   if (d.t === "find" && cleanSlot(d.slot)) return { t: "find", id: d.id, slot: cleanSlot(d.slot) };
   if (d.t === "open" && d.event && typeof d.event === "object") return { t: "open", id: d.id, event: d.event };
   if (d.t === "want" && Array.isArray(d.more)) return { t: "want", id: d.id, more: cleanMore(d.more) };
-  if (d.t === "score" && worldCoordinate(d.world) && cleanBoard(d.board) && cleanScore(d.score) !== null) return { t: "score", id: d.id, world: worldCoordinate(d.world), board: cleanBoard(d.board), score: cleanScore(d.score) };
+  if (d.t === "score" && worldCoordinate(d.world) && cleanBoard(d.board) && cleanScore(d.score) !== null) {
+    const title = cleanLine(d.title, SCORE_LIMITS.title);
+    return { t: "score", id: d.id, world: worldCoordinate(d.world), board: cleanBoard(d.board), score: cleanScore(d.score), ...title ? { title } : {}, ...d.format === "time" ? { format: "time" } : {} };
+  }
   if (d.t === "achieve" && worldCoordinate(d.world) && cleanAchievementId(d.achievement) && cleanLine(d.title, ACHIEVEMENT_LIMITS.title)) {
     return { t: "achieve", id: d.id, world: worldCoordinate(d.world), achievement: cleanAchievementId(d.achievement), title: cleanLine(d.title, ACHIEVEMENT_LIMITS.title) };
   }

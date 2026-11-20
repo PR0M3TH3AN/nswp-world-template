@@ -20,6 +20,7 @@ export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
 import type { Controls } from "./ui/model.js";
 import { type Following, type FollowingHand } from "./following.js";
+import type { PersonLines } from "./person-lines.js";
 import { type Messaging, type MessagingHand } from "./messaging.js";
 import type { GoOptions } from "./index.js";
 import type { Panels } from "./panels.js";
@@ -332,6 +333,11 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
      * page's own signer, once the visitor has let this world do so. A visitor's own client gives its own.
      */
     messages?: MessagingHand;
+    /**
+     * A few lines about someone, for their card in People and in Following: where they stand on this world's
+     * boards, which of its achievements they show (person-lines.ts). Left out, a card says nothing of that.
+     */
+    about?: PersonLines | null;
     /** Whether the visitor is in a headset: a window that opens can't be seen from in there. */
     presenting?: () => boolean;
 }): {
@@ -390,6 +396,7 @@ export { createSaves, type Saved, type SaveResult, type Saves, type SavesOptions
 export { foundRelays, publishBacked, queryBacked, relayBackup } from "./relay-book.js";
 export { createScores, type ScoreHand, type Scores, type ScoresOptions } from "./scores.js";
 export { addScoreControls, type Scoring, type ScoringOptions } from "./scoring.js";
+export { ordinal, someOf, worldPersonLines, type PersonLines } from "./person-lines.js";
 export { createAchievements, type AchievementHand, type Achievements, type AchievementsOptions } from "./achievements.js";
 export { addAchievementControls, type Achieving, type AchievingOptions } from "./achieving.js";
 export { createMessages, type Conversation, type MessageHand, type Messages, type MessagesOptions, type MessagesState } from "./messages.js";

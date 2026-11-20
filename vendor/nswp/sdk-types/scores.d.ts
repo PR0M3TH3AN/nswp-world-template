@@ -16,8 +16,11 @@ import { publishEvent, queryRelays, type Board, type NostrEvent, type Standings 
 export interface ScoreHand {
     /** Who is signed in here, or null for a guest. */
     pubkey(): string | null;
-    /** Have a score signed for this world. Null if it couldn't be. */
-    sign(world: string, board: string, score: number): Promise<NostrEvent | null>;
+    /** Have a score signed for this world, saying what the board is called and how it counts. Null if it couldn't be. */
+    sign(world: string, board: string, score: number, said: {
+        title: string;
+        format: Board["format"];
+    }): Promise<NostrEvent | null>;
 }
 export interface ScoresOptions {
     /** This world's own coordinate: `37300:<publisher>:<d>`. */
@@ -51,6 +54,15 @@ export interface Scores {
     standings(board: string, fresh?: boolean): Promise<Standings | null>;
     /** A score in the board's own words: "42.5 s". */
     words(board: string, score: number): string;
+    /**
+     * Where someone stands on a board, from what was last read of it: for saying so on their card. Null where they
+     * aren't on it, or it hasn't been read. Nothing is asked of a relay by this.
+     */
+    standingOf(board: string, pubkey: string): {
+        score: number;
+        rank: number;
+        of: number;
+    } | null;
     onChange(fn: () => void): () => void;
 }
 export declare function createScores(opts: ScoresOptions): Scores;
