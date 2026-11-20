@@ -2670,6 +2670,7 @@ var NONE = {
   remembered: null,
   host: null,
   more: [],
+  offers: null,
   unanswered: false,
   asking: false,
   retry: () => false,
@@ -2726,6 +2727,7 @@ function createWorldSigner(opts) {
   let about = null;
   let remembered = null;
   let more = [];
+  let offers = null;
   let origin = "";
   let windowAt = "";
   let frame = null;
@@ -2782,6 +2784,7 @@ function createWorldSigner(opts) {
       about = reply.unlocked ? reply.about ?? null : null;
       remembered = reply.unlocked ? reply.remembered ?? null : null;
       more = reply.unlocked ? cleanMore(reply.more) : [];
+      if (reply.offers) offers = reply.offers;
       for (const go of [...firstAnswer]) go();
       return changed();
     }
@@ -2853,6 +2856,9 @@ function createWorldSigner(opts) {
     },
     get more() {
       return more;
+    },
+    get offers() {
+      return offers;
     },
     get unanswered() {
       return named && waited && state === "none" && !disposed;
@@ -2930,7 +2936,7 @@ function createWorldSigner(opts) {
       return askAbout({ t: "open", id: `o${++n}`, event }, (reply) => reply.t === "opened" ? { slot: reply.slot, data: reply.data, at: reply.at } : null);
     },
     want(asked) {
-      const wanted = cleanMore([...asked]);
+      const wanted = cleanMore([...asked]).filter((name2) => !offers || offers.includes(name2));
       if (state === "none" || !frame || wanted.length === 0) return false;
       tell({ t: "want", id: `w${++n}`, more: wanted });
       return true;
@@ -7747,6 +7753,7 @@ function addRoomControls(controls, presence, opts = {}) {
       });
     }
     const where = signer.host ?? "your sign-in address";
+    if (signer.offers && !signer.offers.includes(what)) return `${where} doesn't let a world ${to} yet. It can be done at your home.`;
     if (opts.presenting?.()) return `This world needs your say before it can ${to}, once, in a window of ${where} that can't be seen from in here. Step out of the headset and press this again.`;
     waitingFor.set(what, { then, at: Date.now() });
     signer.want([...signer.more, what]);
