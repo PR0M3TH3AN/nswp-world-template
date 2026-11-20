@@ -85,7 +85,7 @@ import {
   watchFov,
   worldSigner,
   youCard
-} from "./shared-J6FMBJVZ.js";
+} from "./shared-D5ZP3Q7W.js";
 import {
   currentForm,
   deviceForms,
@@ -102,7 +102,7 @@ import {
   onPicturesChange,
   setShowsPictures,
   showsPictures
-} from "./shared-OFCNLGVT.js";
+} from "./shared-7H776IPK.js";
 import {
   arriveWith,
   arrivedSettings,

@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.32.1";
+var KIT_VERSION = "0.33.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4702,6 +4702,8 @@ function assertManifest(input) {
 }
 
 // packages/core/src/settings.ts
+var PINS_MOST = 4;
+var PIN_NAME = /^[a-z][a-z0-9-]{0,11}$/;
 var LOOK_RANGE = [0.25, 3];
 var FOV_RANGE = [50, 110];
 var SETTINGS_LINK_LIMIT = 400;
@@ -4733,6 +4735,7 @@ function cleanSettings(input) {
   if (typeof s.fov === "number" && Number.isFinite(s.fov)) out.fov = Math.round(Math.min(FOV_RANGE[1], Math.max(FOV_RANGE[0], s.fov)));
   if (typeof s.pictures === "boolean") out.pictures = s.pictures;
   if (typeof s.chat === "boolean") out.chat = s.chat;
+  if (Array.isArray(s.pins)) out.pins = [...new Set(s.pins.filter((name) => typeof name === "string" && PIN_NAME.test(name)))].slice(0, PINS_MOST);
   return out;
 }
 var hasSettings = (s) => !!s && Object.keys(s).length > 0;
@@ -4750,7 +4753,12 @@ function encodeSettings(settings) {
   const clean3 = cleanSettings(settings);
   if (!hasSettings(clean3)) return "";
   const text = toBase64Url(JSON.stringify(clean3));
-  return text.length <= SETTINGS_LINK_LIMIT ? text : "";
+  if (text.length <= SETTINGS_LINK_LIMIT) return text;
+  if (clean3.pins) {
+    const { pins: _left, ...rest } = clean3;
+    return encodeSettings(rest);
+  }
+  return "";
 }
 function decodeSettings(text) {
   if (typeof text !== "string" || !text || text.length > SETTINGS_LINK_LIMIT || !/^[A-Za-z0-9_-]+$/.test(text)) return {};
@@ -6865,6 +6873,7 @@ export {
   ORDINARY_KINDS,
   PASS_LIMITS,
   PERF_TIERS,
+  PINS_MOST,
   POSE_BYTES,
   PREVIEW_LIMITS,
   PREVIEW_TYPES,
