@@ -9298,6 +9298,16 @@ function createItemPreviews(o) {
     void o.model(item, tints).then(
       (object) => {
         if (!ready.has(key)) return;
+        let frames = 0;
+        let solids = 0;
+        object.traverse((part) => {
+          const mesh = part;
+          if (!mesh.isMesh) return;
+          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          if (materials.every((m) => m.wireframe === true)) frames++;
+          else solids++;
+        });
+        if (frames > 0 && solids === 0) return;
         const box = new THREE16.Box3().setFromObject(object);
         const ball = box.getBoundingSphere(new THREE16.Sphere());
         if (!Number.isFinite(ball.radius) || ball.radius <= 0) return void ready.delete(key);
