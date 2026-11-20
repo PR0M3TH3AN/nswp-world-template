@@ -745,7 +745,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     const presence = createPresence({ scene, camera, rig, renderer, controllers, labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => refresh() });
     roomPresence = presence;
     // A visitor who was in the room where they came from stays joined here: their own client says so (NSWP-03).
-    ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context, panels, sounds, ...(config.sharedMusic === false ? { sharedMusic: false } : {}) }));
+    ({ refresh, travelling } = addRoomControls(controls, presence, { onState: (s) => (state.room = s), arrived: context, panels, sounds, presenting: () => renderer.xr.isPresenting, ...(config.sharedMusic === false ? { sharedMusic: false } : {}) }));
     // Shut in the crossing's room, nobody else is in it with the visitor, wherever they happen to be standing.
     presenceUpdate = (dt) => {
       presence.setHidden(crossing.state !== "none");

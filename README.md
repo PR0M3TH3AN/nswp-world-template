@@ -82,6 +82,12 @@ example.com". Run it again when a world you link to has a new look.
 A portal your own code adds (`ctx.addPortal`) is named on the command line:
 `npm run doors -- 37300:<key>:<name>`.
 
+### People can follow each other
+
+A person's card in your world's room has **Follow** on it, for someone who came by name, when your visitor is signed
+in. You add nothing: it comes with the room. It changes their own Nostr follow list. The first time in your world,
+their sign-in address asks them whether your world may change who they follow.
+
 ### Your own scene (`src/scene.ts`)
 
 `src/scene.ts` is one line that picks a scene. Two come with the template:

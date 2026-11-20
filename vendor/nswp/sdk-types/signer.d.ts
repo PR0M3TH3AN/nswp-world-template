@@ -15,7 +15,7 @@
  * refusal. Nothing is asked of the visitor here. The window that unlocks it
  * is the client's own page, which this page can't read.
  */
-import { type NostrEvent } from "@nswp/core";
+import { type NostrEvent, type SignerMore } from "@nswp/core";
 /** "none": the visitor has no client here that offers one. "locked": there is one, and it hasn't been unlocked for this world. */
 export type SignerState = "none" | "locked" | "unlocked";
 export interface WorldSigner {
@@ -35,6 +35,11 @@ export interface WorldSigner {
     readonly remembered: boolean | null;
     /** The visitor's client, as a host to name in words, or null. */
     readonly host: string | null;
+    /**
+     * What the visitor let this world do beyond a note and a reaction (protocol/10-identity.md, "Asking for more"):
+     * "follows", or nothing. Empty while it is locked, and from a signer that offers none of it.
+     */
+    readonly more: readonly SignerMore[];
     /**
      * True when a signer was named for this visitor (in the arrival, or
      * outright) and has had time to answer, and hasn't: it couldn't be
@@ -88,6 +93,23 @@ export interface WorldSigner {
         data: string;
         at: number;
     } | null>;
+    /**
+     * Say what this world would like to be let do. It approves nothing: the signer remembers it for its own window,
+     * so call `unlock()` after it, from the same press, for the visitor to be shown it. False where there is no
+     * signer to tell.
+     */
+    want(more: readonly SignerMore[]): boolean;
+    /**
+     * Follow or unfollow one person, for a visitor who let this world do so (protocol/14-people-and-messages.md).
+     * `list` is the newest follow list of theirs that could be found, or null where they have said they follow
+     * nobody yet. What comes back is their new list, signed, for this page to send to their relays. Null if it is
+     * locked, or they haven't allowed it, or it refused, or what came back isn't that list with that one change.
+     */
+    follow(list: NostrEvent | null, change: {
+        add: string;
+    } | {
+        remove: string;
+    }): Promise<NostrEvent | null>;
     /** Be told when its state changes. Returns how to stop. */
     onChange(fn: () => void): () => void;
     /**

@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.39.0";
+var KIT_VERSION = "0.40.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6327,6 +6327,11 @@ function signerAt(base) {
     return null;
   }
 }
+var SIGNER_MORE = ["follows"];
+function cleanMore(input) {
+  if (!Array.isArray(input)) return [];
+  return SIGNER_MORE.filter((name) => input.includes(name));
+}
 var ID = /^[0-9a-z-]{1,40}$/i;
 var wrapped = (data) => {
   if (!data || typeof data !== "object") return null;
@@ -6344,6 +6349,10 @@ function readSignerRequest(data) {
   if (d.t === "save" && cleanSlot(d.slot) && fitsInSave(d.data)) return { t: "save", id: d.id, slot: cleanSlot(d.slot), data: d.data };
   if (d.t === "find" && cleanSlot(d.slot)) return { t: "find", id: d.id, slot: cleanSlot(d.slot) };
   if (d.t === "open" && d.event && typeof d.event === "object") return { t: "open", id: d.id, event: d.event };
+  if (d.t === "want" && Array.isArray(d.more)) return { t: "want", id: d.id, more: cleanMore(d.more) };
+  if (d.t === "follow" && (d.list === null || d.list && typeof d.list === "object") && isHex64(d.add) !== isHex64(d.remove)) {
+    return { t: "follow", id: d.id, list: d.list, ...isHex64(d.add) ? { add: d.add } : { remove: d.remove } };
+  }
   return null;
 }
 function readSignerReply(data) {
@@ -6363,7 +6372,9 @@ function readSignerReply(data) {
       ...pubkey && cleanAbout(d.about) ? { about: cleanAbout(d.about) } : {},
       ...typeof d.until === "number" && Number.isFinite(d.until) ? { until: d.until } : {},
       // Whether the signer will still be unlocked for this world on their next visit, where it says.
-      ...pubkey && d.unlocked && typeof d.remembered === "boolean" ? { remembered: d.remembered } : {}
+      ...pubkey && d.unlocked && typeof d.remembered === "boolean" ? { remembered: d.remembered } : {},
+      // What the visitor let this world do beyond a note and a reaction. Nothing, from a signer that doesn't say.
+      ...pubkey && d.unlocked && cleanMore(d.more).length ? { more: cleanMore(d.more) } : {}
     };
   }
   if (typeof d.id !== "string" || !ID.test(d.id)) return null;
@@ -6480,13 +6491,27 @@ function changeFollows(newest, change) {
   if (add === "" === (remove === "")) return null;
   const who = add || remove;
   if (!isHex64(who) || add && newest?.pubkey === add) return null;
-  const had = newest ? newest.tags.filter((t) => Array.isArray(t) && t.every((item) => typeof item === "string")) : [];
+  const had = newest ? newest.tags.filter((t) => Array.isArray(t) && t.every((item) => typeof item === "string") && !SITE_MARKS.includes(t[0] ?? "")) : [];
   const names = (t) => t[0] === "p" && typeof t[1] === "string" && t[1].toLowerCase() === who;
   const follows = had.some(names);
   if (add ? follows : !follows) return null;
   const tags = add ? [...had.map((t) => [...t]), ["p", add, ...change.relay ? [change.relay] : []]] : had.filter((t) => !names(t)).map((t) => [...t]);
   const created_at = Math.max(Math.floor(change.now), newest ? newest.created_at + 1 : 0);
   return { kind: FOLLOWS_KIND, created_at, tags, content: typeof newest?.content === "string" ? newest.content : "" };
+}
+var FOLLOW_LIMITS = { burst: 6, perMs: 6e4, hourly: 60 };
+function followForWorld(o) {
+  const change = { ...typeof o.add === "string" ? { add: o.add } : {}, ...typeof o.remove === "string" ? { remove: o.remove } : {}, now: o.now };
+  if (o.list === null || o.list === void 0) return o.seen ? null : changeFollows(null, { ...change, fromNothing: true });
+  if (!verifyEvent(o.list) || o.list.kind !== FOLLOWS_KIND || o.list.pubkey !== o.pubkey) return null;
+  if (o.seen && o.list.created_at < o.seen) return null;
+  return changeFollows(o.list, change);
+}
+function isFollowAsked(signed, o) {
+  if (!o.pubkey || !verifyEvent(signed) || signed.kind !== FOLLOWS_KIND || signed.pubkey !== o.pubkey) return false;
+  const want = changeFollows(o.list, { ...o.add ? { add: o.add } : {}, ...o.remove ? { remove: o.remove } : {}, now: signed.created_at, fromNothing: o.list === null });
+  if (!want || signed.content !== want.content || o.list && signed.created_at <= o.list.created_at) return false;
+  return JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(want.tags);
 }
 
 // packages/core/src/message.ts
@@ -7205,6 +7230,7 @@ export {
   DEFAULT_RELAYS,
   ENTRY_ASSERTION_KIND,
   FOLLOWS_KIND,
+  FOLLOW_LIMITS,
   FOV_RANGE,
   FRESH_HEADER,
   HANDOFF_PROTOCOL,
@@ -7251,6 +7277,7 @@ export {
   SCHEMAS,
   SEAL_KIND,
   SETTINGS_LINK_LIMIT,
+  SIGNER_MORE,
   SIGNER_PROTOCOL,
   SIGNER_VERSION,
   SIGN_LIMITS,
@@ -7299,6 +7326,7 @@ export {
   cleanLine,
   cleanLocalMap,
   cleanMessage,
+  cleanMore,
   cleanName,
   cleanOrigin,
   cleanPicture,
@@ -7326,6 +7354,7 @@ export {
   fetchManifest,
   finalizeEvent,
   fitsInSave,
+  followForWorld,
   followsIn,
   fragmentSaysImmersive,
   fromLocal,
@@ -7341,6 +7370,7 @@ export {
   handoffMessage,
   hasEventShape,
   hasSettings,
+  isFollowAsked,
   isForm,
   isHex64,
   isHttpsUrl,

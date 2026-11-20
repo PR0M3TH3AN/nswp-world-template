@@ -9,8 +9,9 @@
  * here is always made to the newest list that could be found, keeps everything in it that this file doesn't
  * understand, and is refused when there is no list to change unless the caller says the person truly has none.
  *
- * Nothing here signs anything or talks to a relay. A world never has a follow list signed (signing.ts: it is
- * "careful"): this is for the visitor's own client.
+ * Nothing here signs anything or talks to a relay. A world can't have a follow list of its own making signed
+ * (signing.ts: the kind is "careful", and `sign` refuses it). A world its visitor has let follow for them hands
+ * the signer their newest list and one change, and the signer makes it: `followForWorld`, below.
  */
 import { type EventTemplate, type NostrEvent } from "./event.js";
 /** Who someone follows: NIP-02. A relay keeps the newest. */
@@ -46,3 +47,39 @@ export interface FollowChange {
  * written with, tags of other kinds, and the content, where older clients keep their relays.
  */
 export declare function changeFollows(newest: Pick<NostrEvent, "kind" | "pubkey" | "created_at" | "tags" | "content"> | null, change: FollowChange): EventTemplate | null;
+/**
+ * A world may be let change who its visitor follows (protocol/14-people-and-messages.md, "From inside a world").
+ * How often: the pace of a person pressing a button, never of a script.
+ */
+export declare const FOLLOW_LIMITS: {
+    readonly burst: 6;
+    readonly perMs: 60000;
+    readonly hourly: 60;
+};
+/**
+ * What a signer does when a world it was allowed to asks for one person to be followed or unfollowed: the
+ * world hands over the newest follow list it found, and the one change. The list must be the visitor's own, with
+ * a real signature, so a world can't have a list of its own making signed: only one that the visitor signed
+ * before, with one line changed. Null for anything else.
+ *
+ * `list` null is "they have none yet". A signer that has seen a list of theirs before should refuse that, and
+ * refuse one older than the newest it has seen: pass that list's time as `seen`.
+ */
+export declare function followForWorld(o: {
+    list: unknown;
+    add?: unknown;
+    remove?: unknown;
+    pubkey: string;
+    now: number;
+    seen?: number;
+}): EventTemplate | null;
+/**
+ * Whether a follow list a signer handed back is the one that was asked for: the visitor's own, really signed,
+ * and exactly the list that was handed over with that one change. A world checks this before it sends it on.
+ */
+export declare function isFollowAsked(signed: unknown, o: {
+    list: NostrEvent | null;
+    add?: string;
+    remove?: string;
+    pubkey: string | null;
+}): signed is NostrEvent;
