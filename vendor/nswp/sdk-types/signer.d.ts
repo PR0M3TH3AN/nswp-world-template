@@ -126,6 +126,13 @@ export interface WorldSigner {
     unwrap(wrap: NostrEvent): Promise<Message | null>;
     /** Have the list of where their private messages reach them signed. Null as for `seal`. */
     reach(relays: readonly string[]): Promise<NostrEvent | null>;
+    /**
+     * Have the visitor's score signed (protocol/15-scores.md): for this world, on one of its boards. Any world its
+     * visitor has unlocked may ask; a score is public, so ask only when the visitor has said to post it. What
+     * comes back is for this page to send to relays. Null if it is locked, or it refused, or it is a signer that
+     * signs no scores, or what came back isn't that score, by the key it holds, marked for this site.
+     */
+    score(world: string, board: string, score: number): Promise<NostrEvent | null>;
     /** Be told when its state changes. Returns how to stop. */
     onChange(fn: () => void): () => void;
     /**

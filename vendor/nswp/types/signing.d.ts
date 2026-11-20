@@ -188,6 +188,17 @@ export type SignerRequest = {
     t: "reach";
     id: string;
     relays: string[];
+}
+/**
+ * Sign my visitor's score (protocol/15-scores.md). The world gives its own coordinate, the board and the score,
+ * and nothing else: the signer writes the note and marks it with the site that asked.
+ */
+ | {
+    t: "score";
+    id: string;
+    world: string;
+    board: string;
+    score: number;
 };
 /**
  * What a world may ask its visitor to let it do, beyond a note and a reaction. A closed list: each is a thing a

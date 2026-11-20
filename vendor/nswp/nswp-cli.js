@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.43.1";
+var KIT_VERSION = "0.44.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4638,7 +4638,7 @@ function signWorld(inputPath) {
   printIssues([], r.warnings);
   return 0;
 }
-function worldCoordinate(s) {
+function worldCoordinate2(s) {
   if (s.startsWith("naddr1")) {
     const p = decodeNaddr(s);
     if (p.kind !== WORLD_KIND) throw new Error(`${s.slice(0, 24)}\u2026 is not a world (kind ${p.kind})`);
@@ -4657,7 +4657,7 @@ function signList(inputPath) {
     console.log(`${BAD} A list needs "d", "title" and "worlds" (an array of world addresses).`);
     return 1;
   }
-  const worlds2 = input.worlds.map(worldCoordinate);
+  const worlds2 = input.worlds.map(worldCoordinate2);
   const event = finalizeEvent(buildListEvent({ ...input, worlds: worlds2 }), readKey(keyFile));
   const r = parseListEvent(event, { requireSigned: true });
   if (!r.ok) {
