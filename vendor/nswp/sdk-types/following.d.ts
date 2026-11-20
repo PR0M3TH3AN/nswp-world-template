@@ -1,5 +1,6 @@
 import type { Keyboard } from "./keyboard.js";
 import type { People } from "./people.js";
+import type { PersonLines } from "./person-lines.js";
 import { type Profiles } from "./profiles.js";
 import type { Controls, UiAction } from "./ui/model.js";
 /** What follows and unfollows someone for the visitor (three.ts gives a world's; a visitor's own client gives its own). */
@@ -27,6 +28,8 @@ export interface FollowingOptions {
     }) => UiAction[];
     /** Read what the visitor copied. For tests; left out, the browser's own. */
     copied?: () => Promise<string>;
+    /** A few lines about someone, for their card: what they have done here, say (person-lines.ts). */
+    about?: PersonLines | null;
 }
 export interface Following {
     /** Draw it again: who is signed in, or what they allowed, changed. */

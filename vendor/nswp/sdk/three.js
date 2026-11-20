@@ -77,6 +77,7 @@ import {
   lookScale,
   onDeskChange,
   onHereAs,
+  ordinal,
   panoramaTexture,
   reachOf,
   readPad,
@@ -88,6 +89,7 @@ import {
   setVisitorFov,
   signerAction,
   signerNamed,
+  someOf,
   speechSprite,
   strideOf,
   takePicture,
@@ -99,10 +101,11 @@ import {
   watchFov,
   watchFresh,
   worldPeople,
+  worldPersonLines,
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-EOPGRZ5X.js";
+} from "./shared-RGBID5EZ.js";
 import {
   currentForm,
   deviceForms,
@@ -127,7 +130,7 @@ import {
   sendWell,
   setShowsPictures,
   showsPictures
-} from "./shared-6V73JIXO.js";
+} from "./shared-F6F6TMXL.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -240,6 +243,7 @@ export {
   onDeskChange,
   onHereAs,
   onPicturesChange,
+  ordinal,
   panoramaTexture,
   prefersFullscreen,
   publishBacked,
@@ -262,6 +266,7 @@ export {
   showsPictures,
   signerAction,
   signerNamed,
+  someOf,
   speechSprite,
   startingForm,
   strideOf,
@@ -277,6 +282,7 @@ export {
   watchFov,
   watchFresh,
   worldPeople,
+  worldPersonLines,
   worldSaves,
   worldSigner,
   youCard
