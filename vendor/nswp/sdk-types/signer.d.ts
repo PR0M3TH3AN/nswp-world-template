@@ -41,6 +41,11 @@ export interface WorldSigner {
      */
     readonly more: readonly SignerMore[];
     /**
+     * What this signer can be asked for at all, as it says ("Asking for more"), or null where it doesn't say. A
+     * name that is missing has no question in its window: asking would open a window that says nothing of it.
+     */
+    readonly offers: readonly SignerMore[] | null;
+    /**
      * True when a signer was named for this visitor (in the arrival, or
      * outright) and has had time to answer, and hasn't: it couldn't be
      * loaded, or the browser kept it out. Then there is something to say.

@@ -218,6 +218,7 @@ export type SignerReply = {
     until?: number;
     remembered?: boolean;
     more?: SignerMore[];
+    offers?: SignerMore[];
 } | {
     t: "signed";
     id: string;

@@ -102,7 +102,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-A76RO72F.js";
+} from "./shared-NI4JJGKG.js";
 import {
   currentForm,
   deviceForms,
