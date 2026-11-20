@@ -276,6 +276,11 @@ export interface RoomNotes {
     pubkey?(): string | null;
     /** What to call them over their feed: their name, or null for the short form of their key. */
     who?(): string | null;
+    /**
+     * The site each post is marked with by whatever signs it, as a host to name, or null for none. A client whose
+     * sign-in marks what it signs says so here, and the visitor is told where they write.
+     */
+    marked?(): string | null;
 }
 export declare function addRoomControls(controls: Controls, presence: Presence, opts?: {
     search?: string;

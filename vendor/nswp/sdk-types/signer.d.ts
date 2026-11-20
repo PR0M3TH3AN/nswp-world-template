@@ -41,6 +41,8 @@ export interface WorldSigner {
      * loaded, or the browser kept it out. Then there is something to say.
      */
     readonly unanswered: boolean;
+    /** True while it is being asked again because the visitor pressed for it (`retry`), and hasn't answered yet. */
+    readonly asking: boolean;
     /**
      * Where the signer is being asked for on this page, when that is a
      * development server's copy and not the real address: something to name
@@ -53,6 +55,11 @@ export interface WorldSigner {
      * if there is no signer, or no window could be opened.
      */
     unlock(): boolean;
+    /**
+     * Load the signer again and ask it once more: for one that was named and said nothing. False if there is nothing
+     * to ask again (none was named, or it has answered).
+     */
+    retry(): boolean;
     /** Lock it again for this world. The visitor's own doing, from the world's menu. */
     lock(): void;
     /** Ask for a note to be signed. Null if it is locked, or it refused, or what came back wasn't what was asked. */

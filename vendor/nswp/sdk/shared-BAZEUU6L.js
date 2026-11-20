@@ -1570,6 +1570,8 @@ var NONE = {
   remembered: null,
   host: null,
   unanswered: false,
+  asking: false,
+  retry: () => false,
   copy: null,
   unlock: () => false,
   lock() {
@@ -1611,10 +1613,29 @@ function createWorldSigner(opts) {
   let disposed = false;
   const named = !!opts.at || !!signerAt(opts.under);
   let waited = false;
-  setTimeout(() => {
-    waited = true;
-    if (state === "none") changed();
-  }, 1e4);
+  let asking = false;
+  let again = 0;
+  let waiting;
+  let signerUrl = "";
+  const reload = () => {
+    if (frame && signerUrl) frame.src = signerUrl;
+  };
+  const wait = () => {
+    waited = false;
+    clearTimeout(waiting);
+    waiting = setTimeout(() => {
+      if (state !== "none" || disposed) return;
+      if (again === 0) {
+        again = 1;
+        reload();
+        return wait();
+      }
+      waited = true;
+      asking = false;
+      changed();
+    }, 1e4);
+  };
+  wait();
   let answered = false;
   const firstAnswer = /* @__PURE__ */ new Set();
   let n = 0;
@@ -1627,12 +1648,14 @@ function createWorldSigner(opts) {
     const reply = readSignerReply(e.data);
     if (!reply) return;
     if (reply.t === "ready") {
+      asking = false;
       if (state === "none") state = "locked";
       tell({ t: "state", id: `s${++n}` });
       return changed();
     }
     if (reply.t === "state") {
       answered = true;
+      asking = false;
       state = reply.unlocked ? "unlocked" : "locked";
       pubkey = reply.unlocked ? reply.pubkey ?? null : null;
       name = reply.unlocked ? reply.name ?? null : null;
@@ -1642,24 +1665,24 @@ function createWorldSigner(opts) {
       for (const go of [...firstAnswer]) go();
       return changed();
     }
-    const waiting = pending.get(reply.id);
-    if (!waiting) return;
+    const waiting2 = pending.get(reply.id);
+    if (!waiting2) return;
     pending.delete(reply.id);
-    clearTimeout(waiting.timer);
-    if (reply.t === "refused") return waiting.done(null);
+    clearTimeout(waiting2.timer);
+    if (reply.t === "refused") return waiting2.done(null);
     const signed = reply.event;
-    if (waiting.session) {
-      const checked = verifyRoomPass(signed, { origin: location.origin, session: waiting.session });
-      return waiting.done(checked.ok && checked.value.pubkey === pubkey ? signed : null);
+    if (waiting2.session) {
+      const checked = verifyRoomPass(signed, { origin: location.origin, session: waiting2.session });
+      return waiting2.done(checked.ok && checked.value.pubkey === pubkey ? signed : null);
     }
-    if (!waiting.asked) return waiting.done(null);
+    if (!waiting2.asked) return waiting2.done(null);
     const marked = Array.isArray(signed?.tags) && signed.tags.some((t) => t[0] === WORLD_TAG && t[1] === cleanOrigin(location.origin));
-    waiting.done(verifyEvent(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting.asked, signed) ? signed : null);
+    waiting2.done(verifyEvent(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting2.asked, signed) ? signed : null);
   };
   void (async () => {
     try {
       const there = opts.at ? async (address) => address : toLocal;
-      const signerUrl = await there(real.signer);
+      signerUrl = await there(real.signer);
       windowAt = await there(real.window);
       origin = new URL(signerUrl).origin;
       if (disposed) return;
@@ -1704,6 +1727,18 @@ function createWorldSigner(opts) {
     },
     get unanswered() {
       return named && waited && state === "none" && !disposed;
+    },
+    get asking() {
+      return asking && state === "none" && !disposed;
+    },
+    retry() {
+      if (!named || state !== "none" || disposed || !frame) return false;
+      again++;
+      asking = true;
+      reload();
+      wait();
+      changed();
+      return true;
     },
     get copy() {
       return origin && origin !== real.origin ? origin : null;
@@ -1772,6 +1807,7 @@ function createWorldSigner(opts) {
     dispose() {
       disposed = true;
       for (const go of [...firstAnswer]) go();
+      clearTimeout(waiting);
       removeEventListener("message", onMessage);
       frame?.remove();
       frame = null;
@@ -1905,7 +1941,7 @@ function identityAction(controls, leaving = () => ({})) {
 }
 function unansweredWords(signer) {
   const host = signer.host ?? "your signer";
-  const copy = signer.copy ? ` On this development server its copy is at ${signer.copy}: open that address once in a tab, so your browser accepts its certificate, then reload this page.` : " Reloading the page tries again.";
+  const copy = signer.copy ? ` On this development server its copy is at ${signer.copy}: open that address once in a tab, so your browser accepts its certificate, then reload this page.` : " Press this again to ask once more, or reload the page.";
   return `This world asked ${host} for your sign-in and got no answer. It may be unreachable from here, or your browser may have kept it out.${copy} Nothing is wrong with your sign-in.`;
 }
 var shared = null;
@@ -1922,6 +1958,7 @@ function worldSigner() {
 function signerAction(controls, opts = {}) {
   const signer = worldSigner();
   let was = signer.state;
+  let wasAsking = false;
   const short = () => shortNpub2(signer.pubkey ?? "");
   signer.onChange(() => {
     if (signer.state === "unlocked" && was !== "unlocked") {
@@ -1934,6 +1971,9 @@ function signerAction(controls, opts = {}) {
       });
     }
     if (signer.state === "locked" && was === "unlocked") controls.say("You are signed out here. Everyone sees a guest, and nothing more can be signed as you.");
+    if (wasAsking && !signer.asking && signer.unanswered) controls.say(unansweredWords(signer));
+    if (wasAsking && !signer.asking && signer.state === "locked") controls.say(`${signer.host ?? "Your sign-in address"} answered. You can sign in now.`);
+    wasAsking = signer.asking;
     was = signer.state;
     controls.signal("signer");
   });
@@ -1943,16 +1983,18 @@ function signerAction(controls, opts = {}) {
     section: "you",
     icon: "key",
     // Signed out, it says whose window will open, before anything is pressed: an address to recognise.
-    label: () => signer.state === "unlocked" ? `Signed in as ${hereAs()?.name || signer.name || short()}. Sign out here` : signer.unanswered ? `Signing in isn't available: ${signer.host ?? "your signer"} didn't answer` : `Sign in${signer.host ? `, at ${signer.host}` : ""}`,
+    label: () => signer.state === "unlocked" ? `Signed in as ${hereAs()?.name || signer.name || short()}. Sign out here` : signer.asking ? `Asking ${signer.host ?? "your signer"} again\u2026` : signer.unanswered ? `${signer.host ?? "Your signer"} didn't answer. Press to ask again` : `Sign in${signer.host ? `, at ${signer.host}` : ""}`,
     short: () => signer.state === "unlocked" ? "Sign out" : "Sign in",
     on: () => signer.state === "unlocked",
     // Nothing to offer where no signer was named. One that was named and doesn't answer is said so, not hidden:
     // a row that isn't there can't be asked about.
-    hidden: () => signer.state === "none" && !signer.unanswered,
+    hidden: () => signer.state === "none" && !signer.unanswered && !signer.asking,
     act: () => {
       if (signer.state === "unlocked") return signer.lock();
       const host = signer.host ?? "your own client";
+      if (signer.asking) return;
       if (signer.unanswered) {
+        if (signer.retry()) return controls.say(`Asking ${host} again. It has ten seconds to answer.`);
         return controls.say(unansweredWords(signer));
       }
       if (opts.presenting?.()) return controls.say(`A window from ${host} is needed for this, and none can open in a headset. Leave the headset view for a moment, sign in, and come back in.`);
@@ -6898,7 +6940,7 @@ function addRoomControls(controls, presence, opts = {}) {
       controls.feed.detach();
       return closeFeedPanel();
     }
-    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub3(key) : "you"), marked: opts.notes ? "" : location.host, send: postNote, load: loadPosts });
+    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub3(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts });
   };
   const drawFeedPanel = () => {
     if (!feedPanel) return;
