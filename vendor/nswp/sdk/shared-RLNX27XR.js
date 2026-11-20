@@ -6252,6 +6252,7 @@ function addBagControls(controls, opts) {
     }
     const has = me ? bag.items() : null;
     const rule = opts.rule();
+    const offers = () => has && bag.canChange() ? [...new Set((opts.offered?.() ?? []).map((i) => itemCoordinate3(i)).filter((i) => i && !has.includes(i)))].slice(0, 12) : [];
     const add = (...actions) => {
       for (const a of actions) shown2.push(a.id);
       controls.add(...actions.map((a) => ({ section: "bag", ...a })));
@@ -6264,13 +6265,13 @@ function addBagControls(controls, opts) {
         const here = rule === "play" ? "Items are part of play here: what people hold can reach you." : rule === "allowed" ? "Items work here." : "Nothing carried is drawn or works in this place.";
         if (!me) return "Sign in to keep a bag.";
         if (has === null) return looked ? "Your bag couldn't be looked for just now." : "Looking for your bag.";
-        if (has.length === 0) return `Your bag is empty. ${bag.canChange() ? "Put an item in by its address: copy it from the place that keeps the item." : "Things are put in it at your home."} ${here}`;
+        if (has.length === 0) return `Your bag is empty. ${bag.canChange() ? offers().length ? "Take one of the things offered here, or put an item in by its address." : "Put an item in by its address: copy it from the place that keeps the item." : "Things are put in it at your home."} ${here}`;
         return `${has.length === 1 ? "1 thing" : `${has.length} things`} in your bag. Anyone can see what is in it. ${here}`;
       },
       card: () => {
         const item = chosen ? items.known(chosen) : null;
         if (!item) return null;
-        return { title: item.title, tag: opts.holding() === item.id ? "In your hand" : "In your bag", proven: false, sub: `Made by ${item.maker.slice(0, 8)}\u2026`, copy: item.id, text: item.summary, picture: "", color: "", now: [] };
+        return { title: item.title, tag: opts.holding() === item.id ? "In your hand" : has?.includes(item.id) ? "In your bag" : "Offered here", proven: false, sub: `Made by ${item.maker.slice(0, 8)}\u2026`, copy: item.id, text: item.summary, picture: "", color: "", now: [] };
       }
     });
     if (!me) return;
@@ -6321,6 +6322,9 @@ function addBagControls(controls, opts) {
         });
       }
       if (bag.canChange()) add({ id: "bag-remove", icon: "close", label: `Take ${titleOf(item)} out of my bag`, act: () => change2(item, false) });
+    } else if (chosen && offers().includes(chosen)) {
+      const item = chosen;
+      add({ id: "bag-take", icon: "save", tone: "primary", label: `Put ${titleOf(item)} in my bag`, act: () => change2(item, true) });
     }
     const listed = has.slice(0, pages * PAGE2);
     for (const item of listed) if (!items.known(item)) void items.describe(item).then((found) => found && soon2());
@@ -6331,6 +6335,22 @@ function addBagControls(controls, opts) {
           icon: "save",
           on: () => chosen === item,
           label: () => `${titleOf(item)}${opts.holding() === item ? ", in your hand" : ""}`,
+          act: () => {
+            chosen = chosen === item ? null : item;
+            refresh();
+          }
+        })
+      )
+    );
+    const offered = offers();
+    for (const item of offered) if (!items.known(item)) void items.describe(item).then((found) => found && soon2());
+    add(
+      ...offered.map(
+        (item) => ({
+          id: `bag-offer-${item.split(":")[1].slice(0, 8)}-${item.split(":")[2]}`.slice(0, 60),
+          icon: "save",
+          on: () => chosen === item,
+          label: () => `${titleOf(item)}, offered here`,
           act: () => {
             chosen = chosen === item ? null : item;
             refresh();
