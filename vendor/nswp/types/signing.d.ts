@@ -145,7 +145,37 @@ export type SignerRequest = {
     t: "open";
     id: string;
     event: NostrEvent;
+}
+/**
+ * This world would like to be let do more than a note and a reaction (protocol/10-identity.md, "Asking for
+ * more"). It approves nothing: the signer remembers it for its own window, where the visitor is shown it.
+ */
+ | {
+    t: "want";
+    id: string;
+    more: SignerMore[];
+}
+/**
+ * Follow or unfollow one person (protocol/14-people-and-messages.md). The world hands over the newest follow
+ * list it found for the visitor, or null where they have none, and the one change. The signer makes the change.
+ */
+ | {
+    t: "follow";
+    id: string;
+    list: NostrEvent | null;
+    add?: string;
+    remove?: string;
 };
+/**
+ * What a world may ask its visitor to let it do, beyond a note and a reaction. A closed list: each is a thing a
+ * visitor can be asked in a few plain words, and none is "sign whatever I hand you".
+ *
+ * - "follows": follow and unfollow people for them, one at a time (the `follow` message).
+ */
+export declare const SIGNER_MORE: readonly ["follows"];
+export type SignerMore = (typeof SIGNER_MORE)[number];
+/** What was asked for or allowed, as it may be used: only names on the list, each once. */
+export declare function cleanMore(input: unknown): SignerMore[];
 /**
  * From the signer. `ready` is said once, unasked, when it has loaded. `state`
  * answers a request and is said again whenever it changes. A refusal never
@@ -163,6 +193,7 @@ export type SignerReply = {
     about?: string;
     until?: number;
     remembered?: boolean;
+    more?: SignerMore[];
 } | {
     t: "signed";
     id: string;

@@ -19,6 +19,7 @@ import { type JoinOptions, type Member, type RoomSession } from "./room.js";
 export { turnVisitor } from "./turn.js";
 export { createConsole, type XrConsole } from "./console.js";
 import type { Controls } from "./ui/model.js";
+import type { People } from "./people.js";
 import type { GoOptions } from "./index.js";
 import type { Panels } from "./panels.js";
 import type { Sounds } from "./sound.js";
@@ -282,6 +283,16 @@ export interface RoomNotes {
      */
     marked?(): string | null;
 }
+/** What follows and unfollows someone for the visitor, from a person's card in a room (protocol/14-people-and-messages.md). */
+export interface RoomFollows {
+    people: People;
+    /** The visitor's key here, or null: nobody is followed for a guest. */
+    pubkey(): string | null;
+    /** Whether the visitor has let this place change who they follow. */
+    allowed(): boolean;
+    /** From a press: have the visitor asked. Returns what to say meanwhile; `then` is run once they have allowed it. */
+    ask(then: () => void): string;
+}
 export declare function addRoomControls(controls: Controls, presence: Presence, opts?: {
     search?: string;
     onState?: (state: Record<string, unknown> | null) => void;
@@ -318,6 +329,13 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
      * visitor's own client, in a room of its own where they are already signed in, gives its own.
      */
     notes?: RoomNotes;
+    /**
+     * What follows and unfollows someone when the visitor asks (protocol/14-people-and-messages.md). Left out,
+     * the page's own signer, once the visitor has let this world do so. A visitor's own client gives its own.
+     */
+    follows?: RoomFollows;
+    /** Whether the visitor is in a headset: a window that opens can't be seen from in there. */
+    presenting?: () => boolean;
 }): {
     refresh(): void;
     travelling(): Travelling;
@@ -367,8 +385,9 @@ export { arrivedSettings, arriveWith, currentSettings, reportSettings, type Trav
 export { fullscreenWaiting, prefersFullscreen, resumeFullscreen } from "./ui/fullscreen.js";
 export { loadPicture, onPicturesChange, PICTURE_LIMITS, setShowsPictures, showsPictures } from "./picture.js";
 export { addDeskControls, FOV_STEPS, LOOK_STEPS, lookScale, onDeskChange, setLookScale, setVisitorFov, visitorFov, watchFov } from "./desk.js";
-export { byName, figureAction, hereAs, identityAction, identityHost, identitySection, identityWords, onHereAs, seekPass, signerAction, signerNamed, worldSaves, worldSigner, youCard, type Leaving } from "./ui/identity.js";
+export { byName, figureAction, hereAs, identityAction, identityHost, identitySection, identityWords, onHereAs, seekPass, signerAction, signerNamed, worldPeople, worldSaves, worldSigner, youCard, type Leaving } from "./ui/identity.js";
 export { createSaves, type Saved, type SaveResult, type Saves, type SavesOptions } from "./saves.js";
+export { createPeople, type FollowHand, type FollowResult, type FollowWhy, type People, type PeopleOptions } from "./people.js";
 export { askWell, learnFrom, relaysWell, sendWell, type SentWell } from "./relay-book.js";
 export { createWorldSigner, type SignerState, type WorldSigner } from "./signer.js";
 export { currentForm, deviceForms, formFor, startingForm, usedForm, type DeviceForms, type Form } from "./form.js";

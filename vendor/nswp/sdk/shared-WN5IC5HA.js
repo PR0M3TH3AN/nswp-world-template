@@ -37,7 +37,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE13 from "three";
-import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS2, encodeNpub as encodeNpub2, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, shortNpub as shortNpub3, spawnOffset, verifyEvent as verifyEvent3 } from "@nswp/core";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS3, encodeNpub as encodeNpub2, readRelayList as readRelayList3, RELAY_LIST_KIND as RELAY_LIST_KIND3, shortNpub as shortNpub3, spawnOffset, verifyEvent as verifyEvent4 } from "@nswp/core";
 
 // packages/sdk/src/relay-book.ts
 import { learnRelays, pickRelays, publishEvent, queryRelays } from "@nswp/core";
@@ -1723,13 +1723,138 @@ function freshAction(controls, opts = {}) {
 // packages/sdk/src/ui/identity.ts
 import { encodeNpub, getPublicKey, shortNpub as shortNpub2, signerAt as signerAt2 } from "@nswp/core";
 
-// packages/sdk/src/saves.ts
-import { cleanSlot, DEFAULT_RELAYS, fitsInSave, publishEvent as publishEvent2, queryRelays as queryRelays2, readRelayList, RELAY_LIST_KIND, SAVE_KIND, SAVE_SLOT, verifyEvent } from "@nswp/core";
-function createSaves(opts = {}) {
+// packages/sdk/src/people.ts
+import { DEFAULT_RELAYS, FOLLOWS_KIND, followsIn, isFollowAsked, isHex64, newestFollows, publishEvent as publishEvent2, queryRelays as queryRelays2, readRelayList, RELAY_LIST_KIND, verifyEvent } from "@nswp/core";
+var KEPT_MOST = 4e5;
+var FRESH_MS = 6e4;
+function createPeople(opts) {
+  const { hand } = opts;
   const now = opts.now ?? (() => Date.now());
   const query = opts.query ?? queryRelays2;
   const publish = opts.publish ?? publishEvent2;
   const usual = () => opts.relays ?? DEFAULT_RELAYS;
+  const store = (() => {
+    if (opts.storage !== void 0) return opts.storage;
+    try {
+      return globalThis.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const watchers2 = /* @__PURE__ */ new Set();
+  const changed = () => {
+    for (const fn of watchers2) fn();
+  };
+  const keyFor = (who) => `nswp:follows:${who}`;
+  const readKept = (who) => {
+    try {
+      const kept2 = JSON.parse(store?.getItem(keyFor(who)) ?? "null");
+      return verifyEvent(kept2) && kept2.kind === FOLLOWS_KIND && kept2.pubkey === who ? kept2 : null;
+    } catch {
+      return null;
+    }
+  };
+  const keep2 = (list) => {
+    try {
+      const text = JSON.stringify(list);
+      if (text.length <= KEPT_MOST) store?.setItem(keyFor(list.pubkey), text);
+      else store?.removeItem(keyFor(list.pubkey));
+    } catch {
+    }
+  };
+  let relaysKept = null;
+  const ownRelays = (key) => {
+    if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
+    const found = askWell({ kinds: [RELAY_LIST_KIND], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList(got.events, key)?.write ?? []).catch(() => []);
+    relaysKept = { key, at: now(), found };
+    return found;
+  };
+  let known = null;
+  let looking = null;
+  let offered = null;
+  const look = async (who) => {
+    const kept2 = readKept(who);
+    const own = await ownRelays(who);
+    const got = await askWell({ kinds: [FOLLOWS_KIND], authors: [who], limit: 4 }, { own, usual: usual(), query, timeoutMs: 4e3, now }).catch(() => null);
+    const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
+    const found = newestFollows((got?.events ?? []).filter((e) => verifyEvent(e)), who);
+    const list = found && kept2 ? kept2.created_at > found.created_at ? kept2 : found : found ?? kept2;
+    if (kept2 && list === kept2 && answered && (!found || found.id !== kept2.id)) void sendWell(kept2, { own, usual: usual(), publish, now }).catch(() => null);
+    if (list && list !== kept2) keep2(list);
+    if (hand.pubkey() !== who) return;
+    known = { who, list, answered, at: now() };
+    changed();
+  };
+  const load2 = async (fresh = false) => {
+    const who = hand.pubkey();
+    if (!who) {
+      if (known) {
+        known = null;
+        changed();
+      }
+      return null;
+    }
+    if (known && known.who !== who) known = null;
+    if (!fresh && known && now() - known.at < FRESH_MS) return followsIn(known.list);
+    looking ??= look(who).finally(() => {
+      looking = null;
+    });
+    await looking;
+    return known && known.who === who ? followsIn(known.list) : null;
+  };
+  const change2 = async (pubkey, adding, name) => {
+    const who = hand.pubkey();
+    const them = name || "them";
+    if (!who) return { ok: false, why: "signed-out", said: "Sign in to follow people." };
+    if (!isHex64(pubkey) || pubkey === who) return { ok: false, why: "refused", said: "That isn't someone who can be followed." };
+    if (!hand.ready()) return { ok: false, why: "not-allowed", said: "This place hasn't been let change who you follow." };
+    await load2(true);
+    const at = known && known.who === who ? known : null;
+    if (!at) return { ok: false, why: "unreachable", said: "Your follow list couldn't be looked for. Nothing was changed." };
+    const list = at.list;
+    if (!list) {
+      if (!at.answered) return { ok: false, why: "unreachable", said: "No relay could be reached to find who you follow, so nothing was changed. Try again in a moment." };
+      if (!adding) return { ok: false, why: "already", said: `You don't follow ${them}.` };
+      if (!offered || offered.who !== pubkey || now() - offered.at > 12e4) {
+        offered = { who: pubkey, at: now() };
+        return { ok: false, why: "no-list", said: `No follow list of yours was found. If you follow nobody yet, press again to start one with ${them}.` };
+      }
+    }
+    offered = null;
+    const follows = followsIn(list).includes(pubkey);
+    if (adding === follows) return { ok: true, why: "already", said: adding ? `You already follow ${them}.` : `You don't follow ${them}.` };
+    const asked = adding ? { add: pubkey } : { remove: pubkey };
+    const signed = await hand.change(list, asked).catch(() => null);
+    if (!signed || !isFollowAsked(signed, { list, ...asked, pubkey: who })) return { ok: false, why: "refused", said: "It couldn't be signed. Who you follow is as it was." };
+    keep2(signed);
+    known = { who, list: signed, answered: true, at: now() };
+    changed();
+    const sent = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, now }).catch(() => null);
+    if (!sent || sent.took === 0) return { ok: false, why: "not-sent", said: `Signed, but no relay took it. It is kept on this device and will be sent again.` };
+    return { ok: true, said: adding ? `You follow ${them}. Anyone can see who you follow.` : `You no longer follow ${them}.` };
+  };
+  return {
+    follows: () => known && known.who === hand.pubkey() ? followsIn(known.list) : null,
+    isFollowing(pubkey) {
+      return known && known.who === hand.pubkey() && (known.list || known.answered) ? followsIn(known.list).includes(pubkey) : null;
+    },
+    load: load2,
+    follow: (pubkey, name = "") => change2(pubkey, true, name),
+    unfollow: (pubkey, name = "") => change2(pubkey, false, name),
+    onChange(fn) {
+      watchers2.add(fn);
+      return () => void watchers2.delete(fn);
+    }
+  };
+}
+
+// packages/sdk/src/saves.ts
+import { cleanSlot, DEFAULT_RELAYS as DEFAULT_RELAYS2, fitsInSave, publishEvent as publishEvent3, queryRelays as queryRelays3, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, SAVE_KIND, SAVE_SLOT, verifyEvent as verifyEvent2 } from "@nswp/core";
+function createSaves(opts = {}) {
+  const now = opts.now ?? (() => Date.now());
+  const query = opts.query ?? queryRelays3;
+  const publish = opts.publish ?? publishEvent3;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS2;
   const signer = () => (typeof opts.signer === "function" ? opts.signer() : opts.signer) ?? null;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
@@ -1760,7 +1885,7 @@ function createSaves(opts = {}) {
   let relaysKept = null;
   const ownRelays = (key) => {
     if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList(got.events, key)?.write ?? []).catch(() => []);
+    const found = askWell({ kinds: [RELAY_LIST_KIND2], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList2(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: now(), found };
     return found;
   };
@@ -1771,7 +1896,7 @@ function createSaves(opts = {}) {
     const d = await s.find(slot);
     if (!d) return null;
     const got = await askWell({ kinds: [SAVE_KIND], authors: [who], "#d": [d], limit: 4 }, { own: await ownRelays(who), usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
-    const newest = (got?.events ?? []).filter((e) => e.kind === SAVE_KIND && e.pubkey === who && e.tags.some((t) => t[0] === "d" && t[1] === d) && verifyEvent(e)).sort((a, b) => b.created_at - a.created_at)[0];
+    const newest = (got?.events ?? []).filter((e) => e.kind === SAVE_KIND && e.pubkey === who && e.tags.some((t) => t[0] === "d" && t[1] === d) && verifyEvent2(e)).sort((a, b) => b.created_at - a.created_at)[0];
     if (!newest) return null;
     const opened = await s.open(newest);
     return opened && opened.slot === slot ? { data: opened.data, at: opened.at } : null;
@@ -1816,7 +1941,7 @@ function createSaves(opts = {}) {
 }
 
 // packages/sdk/src/signer.ts
-import { cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent2, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { cleanMore, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex642, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent3, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -1825,6 +1950,7 @@ var NONE = {
   about: null,
   remembered: null,
   host: null,
+  more: [],
   unanswered: false,
   asking: false,
   retry: () => false,
@@ -1837,6 +1963,8 @@ var NONE = {
   save: async () => null,
   find: async () => null,
   open: async () => null,
+  want: () => false,
+  follow: async () => null,
   onChange: () => () => {
   },
   whenAnswered: async () => {
@@ -1875,6 +2003,7 @@ function createWorldSigner(opts) {
   let picture = null;
   let about = null;
   let remembered = null;
+  let more = [];
   let origin = "";
   let windowAt = "";
   let frame = null;
@@ -1930,6 +2059,7 @@ function createWorldSigner(opts) {
       picture = reply.unlocked ? reply.picture ?? null : null;
       about = reply.unlocked ? reply.about ?? null : null;
       remembered = reply.unlocked ? reply.remembered ?? null : null;
+      more = reply.unlocked ? cleanMore(reply.more) : [];
       for (const go of [...firstAnswer]) go();
       return changed();
     }
@@ -1951,7 +2081,7 @@ function createWorldSigner(opts) {
     }
     if (!waiting2.asked) return waiting2.done(null);
     const marked = Array.isArray(signed?.tags) && signed.tags.some((t) => t[0] === WORLD_TAG && t[1] === cleanOrigin(location.origin));
-    waiting2.done(verifyEvent2(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting2.asked, signed) ? signed : null);
+    waiting2.done(verifyEvent3(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting2.asked, signed) ? signed : null);
   };
   void (async () => {
     try {
@@ -1998,6 +2128,9 @@ function createWorldSigner(opts) {
     },
     get remembered() {
       return remembered;
+    },
+    get more() {
+      return more;
     },
     get unanswered() {
       return named && waited && state === "none" && !disposed;
@@ -2064,15 +2197,27 @@ function createWorldSigner(opts) {
     },
     save(slot, data) {
       if (state !== "unlocked" || !frame || !cleanSlot2(slot) || !fitsInSave2(data)) return Promise.resolve(null);
-      return askAbout({ t: "save", id: `s${++n}`, slot, data }, (reply) => reply.t === "signed" && verifyEvent2(reply.event) && looksLikeSave(reply.event, pubkey) ? reply.event : null);
+      return askAbout({ t: "save", id: `s${++n}`, slot, data }, (reply) => reply.t === "signed" && verifyEvent3(reply.event) && looksLikeSave(reply.event, pubkey) ? reply.event : null);
     },
     find(slot) {
       if (state !== "unlocked" || !frame || !cleanSlot2(slot)) return Promise.resolve(null);
       return askAbout({ t: "find", id: `f${++n}`, slot }, (reply) => reply.t === "found" ? reply.d : null);
     },
     open(event) {
-      if (state !== "unlocked" || !frame || !verifyEvent2(event) || !looksLikeSave(event, pubkey)) return Promise.resolve(null);
+      if (state !== "unlocked" || !frame || !verifyEvent3(event) || !looksLikeSave(event, pubkey)) return Promise.resolve(null);
       return askAbout({ t: "open", id: `o${++n}`, event }, (reply) => reply.t === "opened" ? { slot: reply.slot, data: reply.data, at: reply.at } : null);
+    },
+    want(asked) {
+      const wanted = cleanMore([...asked]);
+      if (state === "none" || !frame || wanted.length === 0) return false;
+      tell({ t: "want", id: `w${++n}`, more: wanted });
+      return true;
+    },
+    follow(list, change2) {
+      const add = "add" in change2 ? change2.add : void 0;
+      const remove = "remove" in change2 ? change2.remove : void 0;
+      if (state !== "unlocked" || !frame || !more.includes("follows") || !isHex642(add ?? remove)) return Promise.resolve(null);
+      return askAbout({ t: "follow", id: `w${++n}`, list, ...add ? { add } : { remove } }, (reply) => reply.t === "signed" && isFollowAsked2(reply.event, { list, ...add ? { add } : { remove }, pubkey }) ? reply.event : null);
     },
     onChange(fn) {
       watchers2.add(fn);
@@ -2249,6 +2394,17 @@ function worldSigner() {
 var kept = null;
 function worldSaves() {
   return kept ??= createSaves({ signer: () => signerNamed() ? worldSigner() : null });
+}
+var followed = null;
+function worldPeople() {
+  const signer = () => signerNamed() ? worldSigner() : null;
+  return followed ??= createPeople({
+    hand: {
+      pubkey: () => signer()?.state === "unlocked" ? signer().pubkey : null,
+      ready: () => !!signer()?.more.includes("follows"),
+      change: (list, change2) => signer()?.follow(list, change2) ?? Promise.resolve(null)
+    }
+  });
 }
 function signerAction(controls, opts = {}) {
   const signer = worldSigner();
@@ -6840,6 +6996,45 @@ function addRoomControls(controls, presence, opts = {}) {
     const as = s.self.guest ? "" : ` You are here as ${s.self.name}.`;
     return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${as}${presence.micOn ? " Your microphone is on." : ""}${presence.musicOn ? ` Your music is offered to people near you: ${presence.musicListeners === 0 ? "nobody is hearing it" : presence.musicListeners === 1 ? "1 person is hearing it" : `${presence.musicListeners} people are hearing it`}.` : ""}${presence.screenOn ? ` You are sharing your screen: ${presence.screenViewers === 0 ? "nobody is watching" : presence.screenViewers === 1 ? "1 person is watching" : `${presence.screenViewers} people are watching`}.` : ""}`;
   };
+  const worldFollows = () => {
+    let waiting = null;
+    let watched = false;
+    return {
+      people: worldPeople(),
+      pubkey: () => signerNamed() && worldSigner().state === "unlocked" ? worldSigner().pubkey : null,
+      allowed: () => worldSigner().more.includes("follows"),
+      ask(then) {
+        const signer = worldSigner();
+        if (!watched) {
+          watched = true;
+          signer.onChange(() => {
+            const was = waiting;
+            if (!was || !signer.more.includes("follows")) return;
+            waiting = null;
+            if (Date.now() - was.at < 3e5) was.then();
+          });
+        }
+        const where = signer.host ?? "your sign-in address";
+        if (opts.presenting?.()) return `This world needs your say before it can change who you follow, once, in a window of ${where} that can't be seen from in here. Step out of the headset and press this again.`;
+        waiting = { then, at: Date.now() };
+        signer.want(["follows"]);
+        return signer.unlock() ? `This world needs your say before it can change who you follow: once, in the window of ${where} that has opened.` : `The window of ${where} couldn't be opened. Allow this site to open windows, and press again.`;
+      }
+    };
+  };
+  let followsKept = null;
+  const follows = () => followsKept ??= opts.follows ?? worldFollows();
+  const followPress = (key, name, adding) => {
+    const f = follows();
+    const now = async () => {
+      const done = await (adding ? f.people.follow(key, name) : f.people.unfollow(key, name));
+      controls.say(done.said);
+      refresh();
+    };
+    if (!f.pubkey()) return controls.say("Sign in to follow people: it is under You.");
+    if (f.allowed()) return void now();
+    controls.say(f.ask(() => void now()));
+  };
   const refresh = () => {
     const s = presence.session;
     opts.onState?.(
@@ -6971,7 +7166,7 @@ function addRoomControls(controls, presence, opts = {}) {
       id: "people",
       label: "People",
       icon: "people",
-      note: () => `${blockedNote()}${!presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : here.some((m) => m.pubkey === chosen) ? "What they say about themselves is their own words. Muting and blocking are yours alone: nobody is told." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one, or press the picture over their head, to see who they are, and to mute their voice or their music, or block them.`}`,
+      note: () => `${blockedNote()}${!presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : here.some((m) => m.pubkey === chosen) ? "What they say about themselves is their own words. Muting and blocking are yours alone: nobody is told. Who you follow is public." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one, or press the picture over their head, to see who they are, and to mute their voice or their music, or block them.`}`,
       // Whoever was chosen, at the head of the section: who they are here, and what they say of themselves.
       card: () => {
         const who2 = here.find((m) => m.pubkey === chosen);
@@ -7030,6 +7225,21 @@ function addRoomControls(controls, presence, opts = {}) {
           else controls.say(`${who.name}'s screen can't be shown here.`);
           refresh();
         }
+      });
+    }
+    const me = follows().pubkey();
+    if (who?.identity && me && who.identity !== me) {
+      const them = who.identity;
+      const people2 = follows().people;
+      if (follows().allowed() && people2.follows() === null) void people2.load().then(() => refresh());
+      extras.push("person-follow");
+      controls.add({
+        id: "person-follow",
+        section: "people",
+        icon: "check",
+        on: () => people2.isFollowing(them) === true,
+        label: () => people2.isFollowing(them) ? `Unfollow ${who.name}` : `Follow ${who.name}`,
+        act: () => followPress(them, who.name, !people2.isFollowing(them))
       });
     }
     if (who) {
@@ -7267,19 +7477,19 @@ function addRoomControls(controls, presence, opts = {}) {
     pubkey: () => worldSigner().pubkey,
     who: () => hereAs()?.name || worldSigner().name
   };
-  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS2;
+  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS3;
   let relaysKept = null;
   const ownRelays = (key) => {
     if (!key) return Promise.resolve([]);
     if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND2], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList2(got.events, key)?.write ?? []).catch(() => []);
+    const found = askWell({ kinds: [RELAY_LIST_KIND3], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList3(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: Date.now(), found };
     return found;
   };
   let wantsFeed = false;
   const postNote = async (words) => {
     const signed = await notes2.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
-    const note = signed && verifyEvent3(signed) && signed.kind === 1 && signed.content === words ? signed : null;
+    const note = signed && verifyEvent4(signed) && signed.kind === 1 && signed.content === words ? signed : null;
     if (!note) return { ok: false, said: "That wasn't sent: your sign-in said no." };
     const to = await sendWell(note, { own: await ownRelays(note.pubkey), usual: usualRelays() }).catch(() => null);
     const kept3 = to?.took ?? 0;
@@ -7815,6 +8025,7 @@ export {
   watchFov,
   watchFresh,
   freshAction,
+  createPeople,
   createSaves,
   createWorldSigner,
   signerNamed,
@@ -7829,6 +8040,7 @@ export {
   identityAction,
   worldSigner,
   worldSaves,
+  worldPeople,
   signerAction,
   figureAction,
   WALK_SPEED,

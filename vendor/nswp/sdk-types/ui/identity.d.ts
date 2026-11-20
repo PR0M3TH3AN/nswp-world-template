@@ -14,6 +14,7 @@
  */
 import { type NostrEvent } from "@nswp/core";
 import { arrival, type GoOptions } from "../index.js";
+import { type People } from "../people.js";
 import { type Saves } from "../saves.js";
 import { type WorldSigner } from "../signer.js";
 import type { Controls, UiAction, UiCard, UiSection } from "./model.js";
@@ -83,6 +84,12 @@ export declare function worldSigner(): WorldSigner;
  * visitor who is signed in here. One for the page, using the page's one signer.
  */
 export declare function worldSaves(): Saves;
+/**
+ * Who this world's visitor follows, and following for them (people.ts, protocol/14-people-and-messages.md): for a
+ * visitor who is signed in here and has let this world do so. One for the page, using the page's one signer.
+ * Nothing is asked of a relay about them until this is used.
+ */
+export declare function worldPeople(): People;
 /**
  * The control that unlocks the visitor's signer for this world, and locks it
  * again (protocol/10-identity.md, "Signing from a world"). Unlocking opens a

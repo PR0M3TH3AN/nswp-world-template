@@ -45,6 +45,7 @@ import {
   createKeyboard,
   createLibrary,
   createPanels,
+  createPeople,
   createPortalWindow,
   createPresence,
   createSaves,
@@ -90,10 +91,11 @@ import {
   visitorFov,
   watchFov,
   watchFresh,
+  worldPeople,
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-QXKQNGYM.js";
+} from "./shared-WN5IC5HA.js";
 import {
   currentForm,
   deviceForms,
@@ -179,6 +181,7 @@ export {
   createKeyboard,
   createLibrary,
   createPanels,
+  createPeople,
   createPortalWindow,
   createPresence,
   createSaves,
@@ -243,6 +246,7 @@ export {
   wasRefreshed,
   watchFov,
   watchFresh,
+  worldPeople,
   worldSaves,
   worldSigner,
   youCard
