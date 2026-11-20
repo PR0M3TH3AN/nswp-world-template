@@ -69,11 +69,13 @@ for (const key of wanted.keys()) {
     console.log(`  ?  ${short}: no relay had its announcement.${kept[key] ? " Keeping the picture from before." : ""}`);
     continue;
   }
-  // What kind of place it says it is goes on the door's sign, picture or no picture.
-  const said = world.category ? { category: world.category } : {};
+  // What kind of place it says it is goes on the door's sign, picture or no picture. And where it is: a door that
+  // shows what people thought of the place needs its address, to leave out a rating the place asked for itself.
+  const said = { ...(world.category ? { category: world.category } : {}), ...(world.url ? { url: world.url } : {}) };
+  const noted = Object.keys(said).length > 0;
   const preview = world.previews.find((p) => p.type === "pano");
   if (!preview) {
-    if (world.category) index[key] = { title: world.title, ...said };
+    if (noted) index[key] = { title: world.title, ...said };
     console.log(`  -  ${world.title}: it has announced no 360° picture. Its door keeps its field of light.`);
     continue;
   }
@@ -92,7 +94,7 @@ for (const key of wanted.keys()) {
     } catch (e) {
       console.log(`  ✘  ${world.title}: the picture couldn't be fetched (${e.message}).${kept[key] ? " Keeping the one from before." : ""}`);
       if (kept[key]) index[key] = kept[key];
-      else if (world.category) index[key] = { title: world.title, ...said };
+      else if (noted) index[key] = { title: world.title, ...said };
       continue;
     }
   }
@@ -100,7 +102,7 @@ for (const key of wanted.keys()) {
   const checked = checkPreviewBytes(preview, new Uint8Array(bytes));
   if (!checked.ok) {
     console.log(`  ✘  ${world.title}: the picture isn't what its announcement promised (${checked.message}). Not kept.`);
-    if (world.category) index[key] = { title: world.title, ...said };
+    if (noted) index[key] = { title: world.title, ...said };
     continue;
   }
   mkdirSync(dir, { recursive: true });

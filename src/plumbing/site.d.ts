@@ -9,6 +9,8 @@ declare module "virtual:site" {
     doors: Record<string, string>;
     /** What kind of place each door leads to, by the door's coordinate: one of the protocol's categories, as that world's own announcement said. */
     kinds: Record<string, string>;
+    /** Where each door leads, by the door's coordinate: its address, as that world's own announcement said. */
+    places: Record<string, string>;
   };
   export default site;
 }

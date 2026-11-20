@@ -42,7 +42,7 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE14 from "three";
-import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS7, encodeNpub as encodeNpub3, readRelayList as readRelayList6, RELAY_LIST_KIND as RELAY_LIST_KIND6, shortNpub as shortNpub6, spawnOffset, verifyEvent as verifyEvent5 } from "@nswp/core";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS8, encodeNpub as encodeNpub3, readRelayList as readRelayList6, RELAY_LIST_KIND as RELAY_LIST_KIND6, shortNpub as shortNpub6, spawnOffset, verifyEvent as verifyEvent5 } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -5902,6 +5902,64 @@ function addScoreControls(controls, opts) {
   return { refresh };
 }
 
+// packages/sdk/src/door-ratings.ts
+import { DEFAULT_RELAYS as DEFAULT_RELAYS6, queryRelays as queryRelays6, RATING_KIND, tallyMark, tallyRatings, worldCoordinate as worldCoordinate2 } from "@nswp/core";
+var FRESH_MS4 = 5 * 6e4;
+function createDoorRatings(opts) {
+  const now = opts.now ?? (() => Date.now());
+  const query = opts.query ?? queryRelays6;
+  const doors = new Map(opts.doors.map((d) => [worldCoordinate2(d.world), d.url]).filter(([world]) => world));
+  const watchers2 = /* @__PURE__ */ new Set();
+  let events = [];
+  let asked = 0;
+  let askedFor = null;
+  const tally = (worldIn) => {
+    const world = worldCoordinate2(worldIn);
+    const me = opts.me();
+    const url = doors.get(world);
+    if (!me || !url || events.length === 0) return null;
+    const got = tallyRatings(events, { world, counted: opts.counted() ?? [], me, worldUrl: url });
+    return got.count ? got : null;
+  };
+  return {
+    async load(fresh = false) {
+      const me = opts.me();
+      if (!me || doors.size === 0) {
+        if (events.length || askedFor) {
+          events = [];
+          askedFor = null;
+          asked = 0;
+          for (const fn of watchers2) fn();
+        }
+        return;
+      }
+      if (!fresh && askedFor === me && now() - asked < FRESH_MS4) return;
+      asked = now();
+      askedFor = me;
+      const got = await askWell({ kinds: [RATING_KIND], "#a": [...doors.keys()], limit: 500 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS6, query, timeoutMs: 4e3, now }).catch(() => null);
+      if (opts.me() !== me) return;
+      const byId = new Map((got?.events ?? []).filter((e) => e.kind === RATING_KIND).map((e) => [e.id, e]));
+      events = [...byId.values()];
+      for (const fn of watchers2) fn();
+    },
+    tally,
+    mark: (world) => tallyMark(tally(world)),
+    words(world) {
+      const t = tally(world);
+      if (!t) return "";
+      const others = t.count - (t.mine ? 1 : 0);
+      const stars = `${t.average.toFixed(1)} of 5`;
+      if (t.mine && others === 0) return `You gave it ${t.mine} of 5`;
+      const them = `${others} ${others === 1 ? "person" : "people"} you follow`;
+      return `Rated ${stars}, by ${t.mine ? `you and ${them}` : them}`;
+    },
+    onChange(fn) {
+      watchers2.add(fn);
+      return () => void watchers2.delete(fn);
+    }
+  };
+}
+
 // packages/sdk/src/person-lines.ts
 function ordinal(n) {
   const tens = n % 100;
@@ -5949,13 +6007,13 @@ function worldPersonLines(o) {
 }
 
 // packages/sdk/src/achievements.ts
-import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS6, publishEvent as publishEvent5, queryRelays as queryRelays6, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate2 } from "@nswp/core";
+import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS7, publishEvent as publishEvent5, queryRelays as queryRelays7, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate3 } from "@nswp/core";
 function createAchievements(opts) {
-  const world = worldCoordinate2(opts.world);
+  const world = worldCoordinate3(opts.world);
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays6;
+  const query = opts.query ?? queryRelays7;
   const publish = opts.publish ?? publishEvent5;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS6;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS7;
   const list = opts.list.filter((a) => cleanAchievementId(a.id) && a.title);
   const one = (id) => list.find((a) => a.id === id) ?? null;
   const store = (() => {
@@ -8702,7 +8760,7 @@ function addRoomControls(controls, presence, opts = {}) {
     pubkey: () => worldSigner().pubkey,
     who: () => hereAs()?.name || worldSigner().name
   };
-  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS7;
+  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS8;
   let relaysKept = null;
   const ownRelays = (key) => {
     if (!key) return Promise.resolve([]);
@@ -9319,6 +9377,7 @@ export {
   viewScale,
   createScores,
   addScoreControls,
+  createDoorRatings,
   ordinal,
   someOf,
   worldPersonLines,

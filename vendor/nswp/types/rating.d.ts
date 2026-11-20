@@ -68,5 +68,7 @@ export declare function tallyRatings(events: readonly NostrEvent[], o: {
     me?: string | null;
     worldUrl?: string | null;
 }): Tally;
+/** A tally as a door's sign says it: "★ 4.5 from 12". "" when nobody counted has rated it: never "0 stars". */
+export declare function tallyMark(tally: Pick<Tally, "count" | "average"> | null | undefined): string;
 /** A tally as a few words: "4.5 of 5, from 12". "" when nobody counted has rated it. */
 export declare function tallyWords(tally: Pick<Tally, "count" | "average">): string;

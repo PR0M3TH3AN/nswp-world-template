@@ -82,6 +82,13 @@ example.com". Run it again when a world you link to has a new look.
 A portal your own code adds (`ctx.addPortal`) is named on the command line:
 `npm run doors -- 37300:<key>:<name>`.
 
+### Doors say what people thought
+
+A door's sign can say what the people your visitor follows thought of where it leads: "★ 4.5 from 3". You add
+nothing. It shows for a visitor who is signed in: their own rating, and the ratings of people they follow once they
+have let your world see who that is. Run `npm run doors` again so each door's address is noted; a door without one
+shows no rating.
+
 ### People can follow and write to each other
 
 A person's card in your world's room has **Follow** and **Write to them, privately** on it, for someone who came by

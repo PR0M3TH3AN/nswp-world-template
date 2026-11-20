@@ -2,11 +2,13 @@
   "37300:546f9f791aba0984777051d93605b66e87ce0dc88fb0053fbe8475eec19aa00c:nswp-reference-world-a": {
     "sha256": "3f6cfd9b33bc230696e03b6b03113e11d7cccdf183070566fb38fd3fd578f31e",
     "title": "The Gallery",
-    "category": "experience"
+    "category": "experience",
+    "url": "https://gallery.bitblocks.network/"
   },
   "37300:546f9f791aba0984777051d93605b66e87ce0dc88fb0053fbe8475eec19aa00c:nswp-reference-world-b": {
     "sha256": "9342a7bca85354f743f269b9f99199094949568c1a2a6c3ad75ee4ca074c1971",
     "title": "The Grove",
-    "category": "social"
+    "category": "social",
+    "url": "https://grove.bitblocks.network/"
   }
 }
