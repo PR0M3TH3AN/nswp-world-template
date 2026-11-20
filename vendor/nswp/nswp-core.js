@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.36.0";
+var KIT_VERSION = "0.38.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -5307,6 +5307,55 @@ function writeRelaysFor(list, fallback) {
   }
   return { relays, own: own.length };
 }
+var RELAY_PICK = {
+  /** A person's own relays are used up to this many. */
+  most: 6,
+  /** There should be this many that are thought to be working, their own or not. */
+  least: 3,
+  /** Below this, a relay is thought not to be working. One nothing is known of scores 0.5. */
+  working: 0.34,
+  /** What is remembered of a relay fades: past this many tries, the counts are halved, so lately counts for more. */
+  remembered: 8,
+  /** A relay that hasn't been tried for this long is given another chance: what was known of it is forgotten. */
+  staleMs: 7 * 24 * 3600 * 1e3,
+  /** No more relays than this are remembered. */
+  kept: 40
+};
+function relayScore(note, now) {
+  if (!note || now - note.at > RELAY_PICK.staleMs) return 0.5;
+  return (note.ok + 1) / (note.ok + note.failed + 2);
+}
+function learnRelays(notes, results, now) {
+  const next = { ...notes };
+  for (const [url, said] of Object.entries(results)) {
+    const clean3 = cleanRelayUrl(url);
+    if (!clean3) continue;
+    const had = next[clean3] && now - next[clean3].at <= RELAY_PICK.staleMs ? next[clean3] : { ok: 0, failed: 0, at: now };
+    let { ok, failed } = had;
+    if (said === "ok" || said === "eose") ok++;
+    else failed++;
+    if (ok + failed > RELAY_PICK.remembered) {
+      ok = Math.round(ok / 2);
+      failed = Math.round(failed / 2);
+    }
+    next[clean3] = { ok, failed, at: now };
+  }
+  const kept = Object.entries(next).sort((a, b) => b[1].at - a[1].at).slice(0, RELAY_PICK.kept);
+  return Object.fromEntries(kept);
+}
+function pickRelays(o) {
+  const score = (url) => relayScore(o.notes[url], o.now);
+  const best = (urls) => urls.map((url, i) => ({ url, i, s: score(url) })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.url);
+  const own = best([...new Set(o.own.map(cleanRelayUrl).filter(Boolean))]).slice(0, RELAY_PICK.most);
+  const working = own.filter((url) => score(url) >= RELAY_PICK.working).length;
+  const added = [];
+  for (const url of best([...new Set(o.usual.map(cleanRelayUrl).filter(Boolean))].filter((u) => !own.includes(u)))) {
+    if (working + added.length >= RELAY_PICK.least) break;
+    if (score(url) < RELAY_PICK.working && added.length > 0) continue;
+    added.push(url);
+  }
+  return { relays: [...own, ...added], own: own.length, added };
+}
 async function queryRelays(relays, filter, timeoutMs = 4e3) {
   const byId = /* @__PURE__ */ new Map();
   const status = {};
@@ -6342,6 +6391,72 @@ function readHandoffMessage(data) {
   return null;
 }
 
+// packages/core/src/rating.ts
+var RATING_KIND = 37305;
+var RATING_LIMITS = {
+  /** Stars run from 1 to this. */
+  most: 5,
+  /** The longest the words may be, in characters. A review longer than that is a comment (NIP-22), not a rating. */
+  words: 280
+};
+var SITE_MARKS = ["nswp:world", "bitlogin:site"];
+function worldCoordinate(input) {
+  if (typeof input !== "string" || input.length > 200) return "";
+  const c = parseCoordinate(input);
+  return c && c.kind === WORLD_KIND && isHex64(c.pubkey) && c.identifier !== "" ? `${WORLD_KIND}:${c.pubkey}:${c.identifier}` : "";
+}
+function cleanStars(input) {
+  const n = typeof input === "string" && /^[1-5]$/.test(input) ? Number(input) : input;
+  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= RATING_LIMITS.most ? n : 0;
+}
+function buildRating(o) {
+  const world = worldCoordinate(o.world);
+  const stars = cleanStars(o.stars);
+  if (!world || !stars) return null;
+  return {
+    kind: RATING_KIND,
+    created_at: Math.floor(o.now),
+    tags: [
+      ["d", world],
+      ["a", world, ...o.relay ? [o.relay] : []],
+      ["rating", String(stars)],
+      ["alt", `A rating of a world: ${stars} of ${RATING_LIMITS.most}`]
+    ],
+    content: cleanLine(o.words ?? "", RATING_LIMITS.words)
+  };
+}
+function parseRating(event) {
+  if (!event || event.kind !== RATING_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
+  const world = worldCoordinate(getTags(event, "d")[0]?.[1]);
+  const stars = cleanStars(getTags(event, "rating")[0]?.[1]);
+  if (!world || !stars || getTags(event, "a")[0]?.[1] !== world) return null;
+  const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
+  return { by: event.pubkey, world, stars, words: cleanLine(typeof event.content === "string" ? event.content : "", RATING_LIMITS.words), at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
+}
+function tallyRatings(events, o) {
+  const world = worldCoordinate(o.world);
+  const counted = new Set(o.counted);
+  if (o.me) counted.add(o.me);
+  const publisher = world.split(":")[1];
+  const own = cleanOrigin(o.worldUrl);
+  const newest = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    const r = parseRating(event);
+    if (!r || r.world !== world || !counted.has(r.by) || r.by === publisher) continue;
+    if (own && r.askedAt.includes(own)) continue;
+    const had = newest.get(r.by);
+    if (had && had.at >= r.at) continue;
+    if (!verifyEvent(event)) continue;
+    newest.set(r.by, r);
+  }
+  const ratings = [...newest.values()].sort((a, b) => b.at - a.at);
+  const sum = ratings.reduce((n, r) => n + r.stars, 0);
+  return { count: ratings.length, average: ratings.length ? Math.round(sum / ratings.length * 10) / 10 : 0, mine: o.me && newest.get(o.me)?.stars || 0, ratings };
+}
+function tallyWords(tally) {
+  return tally.count ? `${tally.average.toFixed(1)} of ${RATING_LIMITS.most}, from ${tally.count}` : "";
+}
+
 // packages/core/src/layout.ts
 var HOME_LAYOUT_KIND = 37302;
 var ITEM_KIND = 37303;
@@ -6972,7 +7087,10 @@ export {
   POSE_BYTES,
   PREVIEW_LIMITS,
   PREVIEW_TYPES,
+  RATING_KIND,
+  RATING_LIMITS,
   RELAY_LIST_KIND,
+  RELAY_PICK,
   ROOM_LIMITS,
   ROOM_PASS_KIND,
   ROOM_SIGNAL_KIND,
@@ -6985,6 +7103,7 @@ export {
   SIGNER_PROTOCOL,
   SIGNER_VERSION,
   SIGN_LIMITS,
+  SITE_MARKS,
   STATUSES,
   VERSION,
   WELL_KNOWN_PATH,
@@ -7006,6 +7125,7 @@ export {
   buildHello,
   buildLayoutEvent,
   buildListEvent,
+  buildRating,
   buildRoomPass,
   buildSay,
   buildSignal,
@@ -7031,6 +7151,7 @@ export {
   cleanSize,
   cleanSlot,
   cleanSpeechText,
+  cleanStars,
   cleanWorldOrigin,
   coordinate,
   createChatGate,
@@ -7073,6 +7194,7 @@ export {
   isWssUrl,
   kitAge,
   latestAddressable,
+  learnRelays,
   localMap,
   lookFromTags,
   lookToTags,
@@ -7100,9 +7222,11 @@ export {
   parseListEvent,
   parseManifest,
   parsePortal,
+  parseRating,
   parseSay,
   parseSpeechControl,
   parseWorldEvent,
+  pickRelays,
   portalTarget,
   prepareForWorld,
   previewOnWorldOrigin,
@@ -7114,6 +7238,7 @@ export {
   readRelayList,
   readSignerReply,
   readSignerRequest,
+  relayScore,
   roomTopic,
   saveAddress,
   sealSave,
@@ -7128,6 +7253,8 @@ export {
   signerMessage,
   spawnOffset,
   stripArrivalParam,
+  tallyRatings,
+  tallyWords,
   toHex,
   toLocal,
   unpackPose,

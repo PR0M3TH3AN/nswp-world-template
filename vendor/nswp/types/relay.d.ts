@@ -47,6 +47,53 @@ export declare function writeRelaysFor(list: RelayList | null, fallback: string[
     relays: string[];
     own: number;
 };
+/** What is remembered of one relay: how often it answered and how often it didn't, lately, and when it was last tried. */
+export interface RelayNote {
+    ok: number;
+    failed: number;
+    /** When it was last tried, in milliseconds. */
+    at: number;
+}
+export type RelayNotes = Record<string, RelayNote>;
+export declare const RELAY_PICK: {
+    /** A person's own relays are used up to this many. */
+    readonly most: 6;
+    /** There should be this many that are thought to be working, their own or not. */
+    readonly least: 3;
+    /** Below this, a relay is thought not to be working. One nothing is known of scores 0.5. */
+    readonly working: 0.34;
+    /** What is remembered of a relay fades: past this many tries, the counts are halved, so lately counts for more. */
+    readonly remembered: 8;
+    /** A relay that hasn't been tried for this long is given another chance: what was known of it is forgotten. */
+    readonly staleMs: number;
+    /** No more relays than this are remembered. */
+    readonly kept: 40;
+};
+/** How far a relay can be counted on, 0 to 1, from what is remembered of it. Nothing known is 0.5. */
+export declare function relayScore(note: RelayNote | undefined, now: number): number;
+/**
+ * What is remembered, after some relays were asked or sent to: `results` is what `queryRelays` or `publishEvent`
+ * said of each. "ok" and "eose" are an answer; anything else is none, or a refusal.
+ */
+export declare function learnRelays(notes: RelayNotes, results: Record<string, string>, now: number): RelayNotes;
+/**
+ * Where to send something of a person's, and where to look for it.
+ *
+ * Their own relays come first, always: it is where they said they write, and where anyone looking for them will
+ * look. They are put in order of how well they have been answering. If fewer than `least` of them are thought to
+ * be working, the best of the usual relays are added, so that what is sent is kept somewhere that is up.
+ * `own` is how many of the result are the person's own; `added` is which were added.
+ */
+export declare function pickRelays(o: {
+    own: string[];
+    usual: string[];
+    notes: RelayNotes;
+    now: number;
+}): {
+    relays: string[];
+    own: number;
+    added: string[];
+};
 export interface QueryResult {
     events: NostrEvent[];
     /** Per relay: "eose", "timeout", or an error message. */

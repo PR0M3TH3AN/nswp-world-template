@@ -37,7 +37,57 @@ import {
 
 // packages/sdk/src/three.ts
 import * as THREE13 from "three";
-import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS2, encodeNpub as encodeNpub2, publishEvent as publishEvent2, queryRelays as queryRelays2, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, shortNpub as shortNpub3, spawnOffset, verifyEvent as verifyEvent3, writeRelaysFor as writeRelaysFor2 } from "@nswp/core";
+import { bubbleSeconds, CHAT_LIMITS, decodeLook, DEFAULT_RELAYS as DEFAULT_RELAYS2, encodeNpub as encodeNpub2, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, shortNpub as shortNpub3, spawnOffset, verifyEvent as verifyEvent3 } from "@nswp/core";
+
+// packages/sdk/src/relay-book.ts
+import { learnRelays, pickRelays, publishEvent, queryRelays } from "@nswp/core";
+var KEY = "nswp:relays";
+var notes = null;
+var read = () => {
+  if (notes) return notes;
+  try {
+    const kept2 = JSON.parse(globalThis.localStorage?.getItem(KEY) ?? "{}");
+    notes = kept2 && typeof kept2 === "object" && !Array.isArray(kept2) ? kept2 : {};
+  } catch {
+    notes = {};
+  }
+  return notes;
+};
+function learnFrom(results, now = Date.now()) {
+  notes = learnRelays(read(), results, now);
+  try {
+    globalThis.localStorage?.setItem(KEY, JSON.stringify(notes));
+  } catch {
+  }
+}
+function relaysWell(o, now = Date.now()) {
+  return pickRelays({ ...o, notes: read(), now });
+}
+async function sendWell(event, o) {
+  const publish = o.publish ?? publishEvent;
+  const now = o.now ?? (() => Date.now());
+  const first = relaysWell(o, now());
+  const sent = await publish(first.relays, event).catch(() => ({ relays: Object.fromEntries(first.relays.map((r) => [r, "error: not sent"])) }));
+  learnFrom(sent.relays, now());
+  let took = Object.values(sent.relays).filter((said) => said === "ok").length;
+  const tried = [...first.relays];
+  if (took === 0) {
+    const rest = o.usual.filter((r) => !tried.includes(r));
+    if (rest.length) {
+      const again = await publish(rest, event).catch(() => ({ relays: Object.fromEntries(rest.map((r) => [r, "error: not sent"])) }));
+      learnFrom(again.relays, now());
+      took = Object.values(again.relays).filter((said) => said === "ok").length;
+      tried.push(...rest);
+    }
+  }
+  return { took, relays: tried, own: first.own };
+}
+async function askWell(filter, o) {
+  const now = o.now ?? (() => Date.now());
+  const got = await (o.query ?? queryRelays)(relaysWell(o, now()).relays, filter, o.timeoutMs ?? 4e3);
+  learnFrom(got.relays, now());
+  return got;
+}
 
 // packages/sdk/src/figure.ts
 import * as THREE3 from "three";
@@ -589,7 +639,7 @@ function createFigure(look, style = {}, facts = {}) {
 // packages/sdk/src/blocks.ts
 import { cleanName, shortNpub } from "@nswp/core";
 var BLOCK_LIMIT = 500;
-var KEY = "nswp:blocked";
+var KEY2 = "nswp:blocked";
 var HEX = /^[0-9a-f]{64}$/;
 function cleanBlocked(input) {
   if (!Array.isArray(input)) return [];
@@ -622,15 +672,15 @@ var local = () => {
 };
 function loadBlocked(storage = local()) {
   try {
-    return cleanBlocked(JSON.parse(storage?.getItem(KEY) ?? "[]"));
+    return cleanBlocked(JSON.parse(storage?.getItem(KEY2) ?? "[]"));
   } catch {
     return [];
   }
 }
 function storeBlocked(list, storage = local()) {
   try {
-    if (list.length) storage?.setItem(KEY, JSON.stringify(cleanBlocked(list)));
-    else storage?.removeItem(KEY);
+    if (list.length) storage?.setItem(KEY2, JSON.stringify(cleanBlocked(list)));
+    else storage?.removeItem(KEY2);
   } catch {
   }
 }
@@ -1674,11 +1724,11 @@ function freshAction(controls, opts = {}) {
 import { encodeNpub, getPublicKey, shortNpub as shortNpub2, signerAt as signerAt2 } from "@nswp/core";
 
 // packages/sdk/src/saves.ts
-import { cleanSlot, DEFAULT_RELAYS, fitsInSave, publishEvent, queryRelays, readRelayList, RELAY_LIST_KIND, SAVE_KIND, SAVE_SLOT, verifyEvent, writeRelaysFor } from "@nswp/core";
+import { cleanSlot, DEFAULT_RELAYS, fitsInSave, publishEvent as publishEvent2, queryRelays as queryRelays2, readRelayList, RELAY_LIST_KIND, SAVE_KIND, SAVE_SLOT, verifyEvent } from "@nswp/core";
 function createSaves(opts = {}) {
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays;
-  const publish = opts.publish ?? publishEvent;
+  const query = opts.query ?? queryRelays2;
+  const publish = opts.publish ?? publishEvent2;
   const usual = () => opts.relays ?? DEFAULT_RELAYS;
   const signer = () => (typeof opts.signer === "function" ? opts.signer() : opts.signer) ?? null;
   const store = (() => {
@@ -1708,9 +1758,9 @@ function createSaves(opts = {}) {
     }
   };
   let relaysKept = null;
-  const relaysFor = (key) => {
+  const ownRelays = (key) => {
     if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = query(usual(), { kinds: [RELAY_LIST_KIND], authors: [key], limit: 4 }, 2500).then((got) => writeRelaysFor(readRelayList(got.events, key), usual()).relays).catch(() => usual());
+    const found = askWell({ kinds: [RELAY_LIST_KIND], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: now(), found };
     return found;
   };
@@ -1720,7 +1770,7 @@ function createSaves(opts = {}) {
     if (!s || !who) return null;
     const d = await s.find(slot);
     if (!d) return null;
-    const got = await query(await relaysFor(who), { kinds: [SAVE_KIND], authors: [who], "#d": [d], limit: 4 }, 3500).catch(() => null);
+    const got = await askWell({ kinds: [SAVE_KIND], authors: [who], "#d": [d], limit: 4 }, { own: await ownRelays(who), usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
     const newest = (got?.events ?? []).filter((e) => e.kind === SAVE_KIND && e.pubkey === who && e.tags.some((t) => t[0] === "d" && t[1] === d) && verifyEvent(e)).sort((a, b) => b.created_at - a.created_at)[0];
     if (!newest) return null;
     const opened = await s.open(newest);
@@ -1748,8 +1798,8 @@ function createSaves(opts = {}) {
     const signed = await s.save(slot, data).catch(() => null);
     if (!signed) return false;
     writeLocal(who, slot, { data, at: signed.created_at });
-    const sent = await publish(await relaysFor(who), signed).catch(() => null);
-    return !!sent && Object.values(sent.relays).some((said) => said === "ok");
+    const sent = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, now }).catch(() => null);
+    return !!sent && sent.took > 0;
   };
   const save = async (data, slotIn) => {
     const slot = cleanSlot(slotIn ?? SAVE_SLOT);
@@ -1811,12 +1861,12 @@ function createWorldSigner(opts) {
   const watchers2 = /* @__PURE__ */ new Set();
   const pending = /* @__PURE__ */ new Map();
   const kept2 = /* @__PURE__ */ new Map();
-  const askAbout = (request, read) => new Promise((done) => {
+  const askAbout = (request, read2) => new Promise((done) => {
     const timer = setTimeout(() => {
       kept2.delete(request.id);
       done(null);
     }, 8e3);
-    kept2.set(request.id, { answer: (reply) => done(reply ? read(reply) : null), timer });
+    kept2.set(request.id, { answer: (reply) => done(reply ? read2(reply) : null), timer });
     tell(request);
   });
   let state = "none";
@@ -2467,17 +2517,17 @@ function cleanComfort(input) {
   if (c.moveHand === "left" || c.moveHand === "right") out.moveHand = c.moveHand;
   return out;
 }
-var KEY2 = "nswp:comfort";
+var KEY3 = "nswp:comfort";
 function loadComfort() {
   try {
-    return { ...DEFAULT_COMFORT, ...cleanComfort(JSON.parse(globalThis.localStorage?.getItem(KEY2) ?? "{}")) };
+    return { ...DEFAULT_COMFORT, ...cleanComfort(JSON.parse(globalThis.localStorage?.getItem(KEY3) ?? "{}")) };
   } catch {
     return { ...DEFAULT_COMFORT };
   }
 }
 function saveComfort(comfort) {
   try {
-    globalThis.localStorage?.setItem(KEY2, JSON.stringify(cleanComfort(comfort)));
+    globalThis.localStorage?.setItem(KEY3, JSON.stringify(cleanComfort(comfort)));
   } catch {
   }
 }
@@ -2827,7 +2877,7 @@ function createXrInput(opts) {
     );
   }
   let aiming = [];
-  const read = () => slots.flatMap((s, index) => kindOf(s) === "controller" && s.source?.gamepad ? [{ index, hand: handOf(s), pad: readPad(s.source.gamepad) }] : []);
+  const read2 = () => slots.flatMap((s, index) => kindOf(s) === "controller" && s.source?.gamepad ? [{ index, hand: handOf(s), pad: readPad(s.source.gamepad) }] : []);
   const update = (dt) => {
     const presenting = renderer.xr.isPresenting;
     if (!presenting) {
@@ -2836,7 +2886,7 @@ function createXrInput(opts) {
       vignette.visible = false;
       for (const slot of [...held.keys()]) release(slot);
     } else {
-      const pads = read();
+      const pads = read2();
       const intent = loco.frame(dt, pads, comfort);
       if (intent.turn !== 0) {
         turnVisitor(rig, camera, intent.turn);
@@ -2903,7 +2953,7 @@ function createXrInput(opts) {
     claimed: (slot) => held.get(slot)?.by === "pinch",
     pulse,
     info() {
-      const pads = renderer.xr.isPresenting ? read() : [];
+      const pads = renderer.xr.isPresenting ? read2() : [];
       return {
         comfort,
         slots: slots.map((s, i) => ({ hand: handOf(s), kind: kindOf(s), pad: pads.find((p) => p.index === i)?.pad ?? NO_PAD })),
@@ -4771,7 +4821,7 @@ function createSounds(o = {}) {
   const theme = cleanTheme(o.theme, base);
   const levelsKey = o.keep?.levels ?? "nswp:sound";
   const songsKey = o.keep?.songs ?? "nswp:jukebox";
-  const read = (key) => {
+  const read2 = (key) => {
     try {
       return JSON.parse(localStorage.getItem(key) ?? "null");
     } catch {
@@ -4785,8 +4835,8 @@ function createSounds(o = {}) {
     }
   };
   const came = arrivedSettings().sound;
-  let levels = cleanLevels({ ...read(levelsKey), ...came });
-  let songs = cleanSongs(read(songsKey));
+  let levels = cleanLevels({ ...read2(levelsKey), ...came });
+  let songs = cleanSongs(read2(songsKey));
   let disposed = false;
   if (came) write(levelsKey, levels);
   const stopReporting = reportSettings("sound", () => ({ sound: { off: levels.off, effects: levels.effects, music: levels.music, voices: levels.voices, hum: levels.hum } }));
@@ -6428,8 +6478,8 @@ function createPresence(d) {
     selfLook() {
       if (session) return session.self.look;
       const mine = typeof d.look === "function" ? d.look() : d.look;
-      const read = mine ? decodeLook(mine) : null;
-      return read?.ok ? read.value.look : plainSeed ??= `plain-${Math.random().toString(36).slice(2, 12)}`;
+      const read2 = mine ? decodeLook(mine) : null;
+      return read2?.ok ? read2.value.look : plainSeed ??= `plain-${Math.random().toString(36).slice(2, 12)}`;
     },
     personAt(raycaster) {
       const badges = [...avatars.values()].filter((a) => a.picture && a.root.visible).map((a) => a.picture);
@@ -7206,7 +7256,7 @@ function addRoomControls(controls, presence, opts = {}) {
     if (!showsChat()) closeChatPanel();
     refresh();
   });
-  const notes = opts.notes ?? {
+  const notes2 = opts.notes ?? {
     ready: () => worldSigner().state === "unlocked",
     sign: (n) => worldSigner().sign(n),
     onChange: (fn) => worldSigner().onChange(fn),
@@ -7219,30 +7269,29 @@ function addRoomControls(controls, presence, opts = {}) {
   };
   const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS2;
   let relaysKept = null;
-  const relaysFor = (key) => {
-    if (!key) return Promise.resolve(writeRelaysFor2(null, usualRelays()));
+  const ownRelays = (key) => {
+    if (!key) return Promise.resolve([]);
     if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = queryRelays2(usualRelays(), { kinds: [RELAY_LIST_KIND2], authors: [key], limit: 4 }, 2500).then((got) => writeRelaysFor2(readRelayList2(got.events, key), usualRelays())).catch(() => writeRelaysFor2(null, usualRelays()));
+    const found = askWell({ kinds: [RELAY_LIST_KIND2], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList2(got.events, key)?.write ?? []).catch(() => []);
     relaysKept = { key, at: Date.now(), found };
     return found;
   };
   let wantsFeed = false;
   const postNote = async (words) => {
-    const signed = await notes.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
+    const signed = await notes2.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
     const note = signed && verifyEvent3(signed) && signed.kind === 1 && signed.content === words ? signed : null;
     if (!note) return { ok: false, said: "That wasn't sent: your sign-in said no." };
-    const to = await relaysFor(note.pubkey);
-    const sent = await publishEvent2(to.relays, note).catch(() => null);
-    const kept3 = sent ? Object.values(sent.relays).filter((said) => said === "ok").length : 0;
-    const n = to.relays.length;
-    const where = to.own === n ? `${kept3} of your ${n} relays` : to.own ? `${kept3} of ${n} relays: yours, and the usual ones because your own list is short` : `${kept3} of the ${n} usual relays: you have published no relay list of your own`;
+    const to = await sendWell(note, { own: await ownRelays(note.pubkey), usual: usualRelays() }).catch(() => null);
+    const kept3 = to?.took ?? 0;
+    const n = to?.relays.length ?? 0;
+    const own = to?.own ?? 0;
+    const where = own === n ? `${kept3} of your ${n} relays` : own ? `${kept3} of ${n} relays: yours, and the usual ones because too few of your own were answering` : `${kept3} of the ${n} usual relays: you have published no relay list of your own`;
     return kept3 ? { ok: true, said: `Sent out, to ${where}. Anyone can read it now.` } : { ok: false, said: "Signed, but no relay took it. It wasn't sent." };
   };
   const loadPosts = async () => {
-    const key = notes.pubkey?.();
+    const key = notes2.pubkey?.();
     if (!key) return [];
-    const from = await relaysFor(key);
-    const got = await queryRelays2(from.relays, { kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, 5e3);
+    const got = await askWell({ kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, { own: await ownRelays(key), usual: usualRelays(), timeoutMs: 5e3 });
     if (!got.events.length && !Object.values(got.relays).some((said) => said === "eose")) return null;
     return got.events.filter((e) => e.pubkey === key && e.kind === 1 && !e.tags.some((t) => t[0] === "e")).map((e) => ({ id: e.id, text: e.content, at: e.created_at }));
   };
@@ -7256,14 +7305,14 @@ function addRoomControls(controls, presence, opts = {}) {
     was?.panel.close();
   };
   const tendFeed = () => {
-    const key = notes.ready() ? notes.pubkey?.() ?? "" : null;
+    const key = notes2.ready() ? notes2.pubkey?.() ?? "" : null;
     if (key === feedFor) return;
     feedFor = key;
     if (key === null) {
       controls.feed.detach();
       return closeFeedPanel();
     }
-    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub3(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts });
+    controls.feed.attach({ who: () => notes2.who?.() || (key ? shortNpub3(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts });
   };
   const drawFeedPanel = () => {
     if (!feedPanel) return;
@@ -7370,9 +7419,9 @@ function addRoomControls(controls, presence, opts = {}) {
     if (presence.presenting && opts.panels) return feedPanel ? closeFeedPanel() : openFeedPanel();
     controls.signal("toggle:feed");
   };
-  notes.onChange?.(() => {
+  notes2.onChange?.(() => {
     tendFeed();
-    if (notes.ready() && wantsFeed) {
+    if (notes2.ready() && wantsFeed) {
       wantsFeed = false;
       openFeed();
     }
@@ -7435,19 +7484,19 @@ function addRoomControls(controls, presence, opts = {}) {
       // It is here whenever there is something to post with, signed in or not: a row that isn't there can't be
       // found. Signed out, it says what comes first, and pressing it starts that.
       label: () => {
-        if (notes.ready()) return "Send out a post";
-        const host = notes.host?.() ?? "your sign-in address";
-        return notes.unanswered?.() ? `Sending out a post isn't available: ${host} didn't answer` : `Send out a post: sign in at ${host} first`;
+        if (notes2.ready()) return "Send out a post";
+        const host = notes2.host?.() ?? "your sign-in address";
+        return notes2.unanswered?.() ? `Sending out a post isn't available: ${host} didn't answer` : `Send out a post: sign in at ${host} first`;
       },
       short: "Post",
-      hidden: () => !(notes.ready() || notes.locked?.() || notes.unanswered?.()),
+      hidden: () => !(notes2.ready() || notes2.locked?.() || notes2.unanswered?.()),
       act: () => {
-        if (notes.ready()) return openFeed();
-        const why = notes.unanswered?.();
+        if (notes2.ready()) return openFeed();
+        const why = notes2.unanswered?.();
         if (why) return tell(why);
-        const host = notes.host?.() ?? "your sign-in address";
+        const host = notes2.host?.() ?? "your sign-in address";
         if (presence.presenting) return tell(`A window from ${host} is needed first, and none can open in a headset. Leave the headset view for a moment, press this again, and come back in.`);
-        wantsFeed = !!notes.unlock?.();
+        wantsFeed = !!notes2.unlock?.();
         tell(
           wantsFeed ? `A window from ${host} has opened. Sign in there if it asks, and say yes. Then your public feed opens here.` : `Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`
         );
@@ -7744,6 +7793,10 @@ async function addViewControls(controls, d) {
 }
 
 export {
+  learnFrom,
+  relaysWell,
+  sendWell,
+  askWell,
   SKY_GLSL,
   createAlloy,
   MeshBuilder,
