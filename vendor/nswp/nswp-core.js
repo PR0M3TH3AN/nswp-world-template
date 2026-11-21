@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.65.0";
+var KIT_VERSION = "0.66.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -7074,6 +7074,7 @@ function signerAt(base) {
   }
 }
 var PROPOSE_KINDS = [0, 5, 10002];
+var DELETION_KIND = 5;
 function cleanWalletUri(input) {
   return typeof input === "string" && input.length <= 2e3 && /^nostr\+walletconnect:\/\/[0-9a-f]{64}\?[\x21-\x7e]+$/.test(input) ? input : "";
 }
@@ -8393,6 +8394,7 @@ export {
   CURATION_SET_KIND,
   Collector,
   DEFAULT_RELAYS,
+  DELETION_KIND,
   DISCOVERY,
   DISCOVERY_RELAYS,
   ENTRY_ASSERTION_KIND,

@@ -34,7 +34,7 @@ import {
   setShowsPictures,
   showsChat,
   showsPictures
-} from "./shared-HK3BOLS5.js";
+} from "./shared-5VG5FJL2.js";
 import {
   arrivedSettings,
   onClientSignIn,
@@ -499,7 +499,9 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .chat li.letter.failed small { color: rgb(var(--warn)); opacity: 1; }
 .chat li.letter small, .chat li.post small { display: block; margin-top: 3px; font-size: .86em; color: rgba(var(--ink), .55); }
 .chat li.post.failed small { color: rgb(var(--warn)); }
-.chat li.post.sending { opacity: .7; }
+.chat li.post.sending, .chat li.post.removing { opacity: .7; }
+.chat li.post .post-remove { font: inherit; color: rgba(var(--ink), .8); text-decoration: underline; text-underline-offset: 3px; padding: 6px 2px; margin: -6px 0; pointer-events: auto; }
+.chat li.post .post-remove:hover { color: rgb(var(--warn)); }
 .chat[data-state="peek"] :is(header, form, .hint, .empty, .lead, .said) { display: none; }
 .chat[data-state="peek"] ol { padding: 0; overflow: hidden; justify-items: end; }
 .chat[data-state="peek"] li { padding: 7px 12px; border-radius: 12px 4px 4px 12px; border-right: 2px solid rgb(var(--accent)); max-width: 100%;
@@ -898,7 +900,20 @@ function mountHud(controls, opts = {}) {
       feedLead.textContent = f.lead;
       feedSaid.textContent = f.said;
       const nowSec = Math.floor(Date.now() / 1e3);
-      chatLines.replaceChildren(...f.posts.map((p) => el("li", { class: `post ${p.state}` }, p.text, el("small", {}, p.state === "sending" ? "Sending\u2026" : p.state === "failed" ? "Not sent" : ago(p.at, nowSec)))));
+      chatLines.replaceChildren(
+        ...f.posts.map((p) => {
+          const when = el("small", {}, p.state === "sending" ? "Sending\u2026" : p.state === "failed" ? "Not sent" : p.state === "removing" ? "Deleting\u2026" : ago(p.at, nowSec));
+          if (f.removable && p.id && p.state === "out") {
+            const remove = el("button", { type: "button", class: "post-remove" }, "Delete");
+            remove.addEventListener("click", () => {
+              const trouble = controls.feed.remove(p.key);
+              if (trouble) controls.say(trouble);
+            });
+            when.append(" \xB7 ", remove);
+          }
+          return el("li", { class: `post ${p.state}` }, p.text, when);
+        })
+      );
       chatEmpty.textContent = f.loading ? "Fetching your posts\u2026" : "Nothing here yet. What you send out appears here, and on Nostr for anyone to read.";
       chatEmpty.hidden = f.posts.length > 0;
       chatLines.hidden = f.posts.length === 0;

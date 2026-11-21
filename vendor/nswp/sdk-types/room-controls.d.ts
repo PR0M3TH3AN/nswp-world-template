@@ -32,6 +32,15 @@ export interface RoomNotes {
     unlock?(): boolean;
     /** Whether that is a panel in the visitor's client rather than a window (signer.ts, `panel`). */
     panel?(): boolean;
+    /**
+     * Put a note of a careful kind to the visitor themselves, at their sign-in address (signer.ts, `propose`): what
+     * deleting a post takes. Left out where nothing can ask them, and then no post offers to be deleted.
+     */
+    propose?(note: {
+        kind: number;
+        content: string;
+        tags: string[][];
+    }): Promise<NostrEvent | null>;
     /** Where that happens, as an address to name, or null. */
     host?(): string | null;
     /** A signer was named and didn't answer: then what to say about it. Null when that isn't so. */
