@@ -14,6 +14,7 @@
  */
 import { type NostrEvent } from "@nswp/core";
 import { arrival, type GoOptions } from "../index.js";
+import { type PaidGate, type PaidGateOptions } from "../front-room.js";
 import { type People } from "../people.js";
 import { type Saves } from "../saves.js";
 import { type WorldSigner } from "../signer.js";
@@ -84,6 +85,11 @@ export declare function worldSigner(): WorldSigner;
  * visitor who is signed in here. One for the page, using the page's one signer.
  */
 export declare function worldSaves(): Saves;
+/**
+ * A gate for a paid world (front-room.ts; protocol/10-identity.md, "The front room"), using the page's one signer
+ * and the world's own manifest. A world puts it where it likes and reads `open`.
+ */
+export declare function worldGate(opts?: Omit<PaidGateOptions, "signer">): PaidGate;
 /**
  * Who this world's visitor follows, and following for them (people.ts, protocol/14-people-and-messages.md): for a
  * visitor who is signed in here and has let this world do so. One for the page, using the page's one signer.

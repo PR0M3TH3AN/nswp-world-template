@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.72.0";
+var KIT_VERSION = "0.73.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -3616,6 +3616,22 @@ function normalizeUrl(v) {
   }
 }
 
+// packages/core/dist/receipt.js
+var RECEIPT_ISSUERS = Object.freeze([
+  Object.freeze({ name: "BitUnlock", service: "https://api.bitunlock.network", pubkey: "66be61cf5b8d286391f7b1a72ffa7c799ec2dc49eff0830c40df1cc964e6787d" })
+]);
+function cleanListing(input) {
+  if (typeof input !== "string" || input.length > 400)
+    return "";
+  return /^30078:[0-9a-f]{64}:[^:\r\n][^\r\n]{0,255}$/.test(input) ? input : "";
+}
+function listingSeller(listing) {
+  return cleanListing(listing).slice(6, 70);
+}
+
+// packages/core/dist/listing.js
+var ACCESS_MOST = 8;
+
 // packages/core/dist/world.js
 function buildWorldEvent(w) {
   const tags = [
@@ -3665,8 +3681,8 @@ function buildWorldEvent(w) {
     tags.push(["manifest", w.manifest]);
   for (const p of w.coCreators ?? [])
     tags.push(["p", p, "", "co-creator"]);
-  if (w.access)
-    tags.push(["a", w.access, "", "access"]);
+  for (const listing of [w.access ?? []].flat())
+    tags.push(["a", listing, "", "access"]);
   tags.push(["alt", `Spatial world listing: ${w.title}`]);
   return { kind: WORLD_KIND, created_at: w.createdAt ?? nowSeconds(), tags, content: w.description ?? "" };
 }
@@ -3873,14 +3889,21 @@ function parseWorldEvent(input, opts = {}) {
     else
       c.warn("invalid_pubkey", "tags.p", "Ignoring a p tag that is not a 64-character hex pubkey.");
   }
-  let access;
+  const access = [];
   for (const t of getTags({ tags }, "a")) {
     if (t[3] !== "access")
       continue;
-    if (t[1] && parseCoordinate(t[1]))
-      access = t[1];
+    const listing = cleanListing(t[1]);
+    if (!listing)
+      c.warn("invalid_coordinate", "tags.a", "Ignoring an access tag that is not a listing's coordinate (30078:<pubkey>:<name>).");
+    else if (pubkey && listingSeller(listing) !== pubkey)
+      c.warn("access_not_own", "tags.a", "Ignoring an access listing that is sold by another key: a world is sold only by the key that announces it.");
+    else if (access.includes(listing))
+      continue;
+    else if (access.length >= ACCESS_MOST)
+      c.warn("too_many_listings", "tags.a", `Only the first ${ACCESS_MOST} access listings are used.`);
     else
-      c.warn("invalid_coordinate", "tags.a", "Ignoring an access tag that is not an event coordinate.");
+      access.push(listing);
   }
   const world = {
     d: d ?? "",
@@ -3919,7 +3942,7 @@ function parseWorldEvent(input, opts = {}) {
     world.items = items;
   if (manifest)
     world.manifest = manifest;
-  if (access)
+  if (access.length)
     world.access = access;
   return c.result(world);
 }
@@ -4037,6 +4060,28 @@ function parseManifest(input, opts = {}) {
           w.airlock = raw.airlock;
         else
           c.warn("url_not_https", `${p}.airlock`, "airlock must be an https URL; ignored.");
+      }
+      if (raw.access !== void 0) {
+        if (!stringArray(raw.access))
+          c.warn("invalid_field", `${p}.access`, "access must be an array of listing coordinates; ignored.");
+        else {
+          const access = [];
+          for (const said2 of raw.access) {
+            const listing2 = cleanListing(said2);
+            if (!listing2)
+              c.warn("invalid_listing", `${p}.access`, "Ignoring an access entry that is not a listing's coordinate (30078:<pubkey>:<name>).");
+            else if (!publishers[listingSeller(listing2)]?.worlds.includes(id))
+              c.warn("access_not_own", `${p}.access`, "Ignoring an access listing sold by a key that isn't a publisher of this world.");
+            else if (access.includes(listing2))
+              continue;
+            else if (access.length >= ACCESS_MOST)
+              c.warn("too_many_listings", `${p}.access`, `Only the first ${ACCESS_MOST} access listings are used.`);
+            else
+              access.push(listing2);
+          }
+          if (access.length)
+            w.access = access;
+        }
       }
       worlds2[id] = w;
     }
@@ -4398,11 +4443,6 @@ var FILE_LIMITS = {
   /** The most characters in its name. */
   name: 120
 };
-
-// packages/core/dist/receipt.js
-var RECEIPT_ISSUERS = Object.freeze([
-  Object.freeze({ name: "BitUnlock", service: "https://api.bitunlock.network", pubkey: "66be61cf5b8d286391f7b1a72ffa7c799ec2dc49eff0830c40df1cc964e6787d" })
-]);
 
 // packages/core/dist/signing.js
 var SIGN_LIMITS = {
