@@ -8974,6 +8974,36 @@ var PORTAL_HEIGHT = 2.1;
 var PORTAL_SPRING = PORTAL_HEIGHT - PORTAL_WIDTH / 2;
 var PORTAL_SIGN_HEIGHT = PORTAL_HEIGHT + 0.72;
 var DOOR_REACH = 3.05;
+var DOOR_SPACING = 2.5;
+
+// packages/sdk/src/door-layout.ts
+var SLACK = 1e-6;
+function doorRow(count, apart = DOOR_SPACING) {
+  const step = Math.max(apart, DOOR_SPACING);
+  const n = Math.max(0, Math.floor(count));
+  return Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * step);
+}
+function doorArcStep(radius) {
+  if (!(radius > DOOR_SPACING / 2)) return Math.PI;
+  return 2 * Math.asin(DOOR_SPACING / (2 * radius));
+}
+function doorsOnArc(radius, span) {
+  if (!(span >= 0) || !(radius > 0)) return 0;
+  return Math.floor(span / doorArcStep(radius) + SLACK) + 1;
+}
+var xz = (p) => "x" in p ? [p.x, p.z] : [p[0], p[2]];
+function doorsTooClose(doors) {
+  const close = [];
+  for (let a = 0; a < doors.length; a++) {
+    const [ax, az] = xz(doors[a]);
+    for (let b = a + 1; b < doors.length; b++) {
+      const [bx, bz] = xz(doors[b]);
+      const apart = Math.hypot(ax - bx, az - bz);
+      if (apart < DOOR_SPACING - SLACK) close.push({ a, b, apart });
+    }
+  }
+  return close;
+}
 
 // packages/sdk/src/fps.ts
 var LOOK_SPEED = 22e-4;
@@ -12015,6 +12045,11 @@ export {
   PORTAL_SPRING,
   PORTAL_SIGN_HEIGHT,
   DOOR_REACH,
+  DOOR_SPACING,
+  doorRow,
+  doorArcStep,
+  doorsOnArc,
+  doorsTooClose,
   LOOK_SPEED,
   PITCH_LIMIT,
   SPRINT,

@@ -15,3 +15,10 @@ export declare const PORTAL_SIGN_HEIGHT: number;
  * door at the far end of it. Walking into a doorway always goes through.
  */
 export declare const DOOR_REACH = 3.05;
+/**
+ * The least distance between the middles of two doors, in metres: a door's own width and a clear metre of wall.
+ * Nearer than this, two doors' frames, signs and marks run into each other, and someone pointing from across a
+ * room can't tell which one they have. Every way of laying doors out goes by it (`door-layout.ts`), in every
+ * engine. (The owner, 2026-11-21: "Let's make sure there is a minimum distance separation between each door.")
+ */
+export declare const DOOR_SPACING = 2.5;
