@@ -19,7 +19,8 @@
  *
  * - the client says so in the same answer: `signIn`, the sign-in address the panel is for.
  * - the world, at the visitor's press: `{ nswp: "sign-in", mode, menu? }`. `mode` is what the panel is for ("ask":
- *   let this world sign; "switch": another account; "account": the account's own pages). `menu` is where the
+ *   let this world sign; "switch": another account; "account": the account's own pages; "files": their own
+ *   files; "wallet": their own wallet). `menu` is where the
  *   world's menu is on the screen, so the panel can be drawn in its place.
  * - the client, as the panel comes and goes: `{ nswp: "sign-in", open }`, with `failed` if it never came up, and
  *   `allowed` as it goes if the sign-in address said the visitor allowed this world.
@@ -33,7 +34,7 @@
 /** Whether this page is inside another. */
 export declare const framed: () => boolean;
 /** What a panel can be asked for. */
-export type ClientPanelMode = "ask" | "switch" | "account";
+export type ClientPanelMode = "ask" | "switch" | "account" | "files" | "wallet";
 /** Where the world's menu is on the screen, in CSS pixels: its left edge, its width, and how far its foot is from the bottom. */
 export interface MenuPlace {
     left: number;

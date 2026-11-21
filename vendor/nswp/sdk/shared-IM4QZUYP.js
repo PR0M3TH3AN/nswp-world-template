@@ -1838,6 +1838,23 @@ function accountAction(controls, opts = {}) {
     }
   };
 }
+function filesAction(controls, opts = {}) {
+  const signer = worldSigner();
+  onClientScreen(() => controls.signal("signer"));
+  return {
+    id: "files",
+    section: "you",
+    icon: "list",
+    label: () => `Your files, at ${signer.host ?? "your sign-in address"}`,
+    short: "Files",
+    hidden: () => !signer.panel,
+    act: () => {
+      const host = signer.host ?? "your sign-in address";
+      if (opts.presenting?.()) return controls.say(`${host} shows your files itself, and that can't be seen from inside a headset. Leave the headset view for a moment and press this again.`);
+      if (!askClientForSignIn("files")) controls.say(`${host} couldn't be shown here just now.`);
+    }
+  };
+}
 function figureAction(controls, leaving = () => ({})) {
   return {
     id: "figure",
@@ -11801,7 +11818,7 @@ async function addViewControls(controls, d) {
   if (!controls.has("identity") && identityHost()) {
     const leaving = async (to) => ({ ...await d.leaving?.(to), xrSession: d.renderer.xr.getSession() });
     controls.addSection(identitySection());
-    controls.add(figureAction(controls, leaving), identityAction(controls, leaving), signerAction(controls, { presenting: () => d.renderer.xr.isPresenting }), accountAction(controls, { presenting: () => d.renderer.xr.isPresenting }));
+    controls.add(figureAction(controls, leaving), identityAction(controls, leaving), signerAction(controls, { presenting: () => d.renderer.xr.isPresenting }), accountAction(controls, { presenting: () => d.renderer.xr.isPresenting }), filesAction(controls, { presenting: () => d.renderer.xr.isPresenting }));
   }
   document.addEventListener("fullscreenchange", () => controls.setTarget(""));
   controls.addSection({
