@@ -15,7 +15,7 @@
  * and gaze-and-pinch all produce, so nothing here is specific to one headset.
  */
 import * as THREE from "three";
-import { checkPreviewBytes, cleanItemsRule, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination } from "@nswp/core";
+import { checkPreviewBytes, cleanItemsRule, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination, ITEM_RULES, worldOffers, type ItemsRule, type Offer } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
 import { addBagControls, addItemControls, type ItemControls, createBag, createItems, createDoorRatings, signerNamed, worldPeople, worldSigner, addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
@@ -220,6 +220,12 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
         gate.setCategory(site.kinds?.[coordinate]);
         // And whether items are part of play there (NSWP-17): told on the sign, before anyone goes in.
         gate.setItems(site.carried?.[coordinate]);
+        // And what it offers (NSWP-01): the kit's tiles beside the door, lit for what its announcement said and dark
+        // for what it didn't. A door nobody has asked about has none.
+        const said = site.offered?.[coordinate];
+        const rule = site.carried?.[coordinate];
+        const items = (ITEM_RULES as readonly string[]).includes(rule ?? "") ? (rule as ItemsRule) : undefined;
+        if (said) gate.setOffers(worldOffers({ modes: said.modes, capabilities: said.capabilities, ...(items ? { items } : {}), ...(said.access ? { access: "said" as never } : {}) }));
       } catch {
         /* not an address this page can read */
       }
@@ -608,6 +614,16 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     }
   });
 
+  /** The tile beside a door that the ray is on, and whose door it is. The ray is wherever the last aim left it. A tile is pointed at, never pressed. */
+  const offerAt = (): { gate: PortalGate; offer: Offer } | null => {
+    const mine = gates.filter(shown);
+    const tile = raycaster.intersectObjects(mine.flatMap((g) => g.offers.targets), false)[0]?.object;
+    if (!tile) return null;
+    const gate = mine.find((g) => g.offers.targets.includes(tile as THREE.Mesh));
+    const offer = gate?.offers.offerOf(tile) ?? null;
+    return gate && offer ? { gate, offer } : null;
+  };
+
   // In VR: a `select` from any input source, aimed at a portal.
   const rotation = new THREE.Matrix4();
   const aimFrom = (source: THREE.Object3D): PortalGate | null => {
@@ -941,6 +957,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     movedFrom.copy(rig.position);
     rig.position.y = floorY + jump.update(dt);
     let aimed: PortalGate | null = null;
+    let tile: { gate: PortalGate; offer: Offer } | null = null;
     reticle.visible = false;
     input!.update(dt);
     panels!.update(t, dt);
@@ -957,6 +974,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       for (const c of controllers) {
         if (!c.visible) continue;
         const gate = aimFrom(c);
+        tile = offerAt() ?? tile;
         const key = panels!.keyboard.pick(raycaster);
         if (key) {
           panelAimed = key;
@@ -995,6 +1013,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       raycaster.setFromCamera(pointer, camera);
       panelAimed = panels!.pick(raycaster);
       aimed = panelAimed ? null : gateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
+      tile = panelAimed || aimed ? null : offerAt();
       // Moving the intense way, the pointer's picture is the kit's to hide: the middle of the view is what points.
       if (!fps!.enabled) renderer.domElement.style.cursor = aimed || panelAimed ? "pointer" : "grab";
       // The casual way, with a pointer that hovers: a ring on the floor where a press would take them. With a finger
@@ -1023,7 +1042,10 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     if (panels!.keyboard.open) xrConsole.group.visible = false;
     // Say what is being pointed at, in the words on its sign.
     const sign = aimed ? String(aimed.group.userData.label ?? "A doorway") : "";
-    controls.setTarget(aimed ? `${sign}${aimed.destination.url ? `, at ${new URL(aimed.destination.url).host}` : ""}` : "");
+    // A tile pointed at says what it means: in the card on a flat screen, and in front of its door in a headset.
+    for (const g of gates) g.offers.point(tile && tile.gate === g ? tile.offer : null, renderer.xr.isPresenting);
+    if (tile) controls.setTarget(`${tile.offer.name}: ${String(tile.gate.group.userData.label ?? "A doorway")}`, [tile.offer.words]);
+    else controls.setTarget(aimed ? `${sign}${aimed.destination.url ? `, at ${new URL(aimed.destination.url).host}` : ""}` : "");
     presenceUpdate(dt);
     handle.update?.(t, dt);
     renderer.render(scene, camera);

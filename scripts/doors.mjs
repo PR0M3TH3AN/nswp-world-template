@@ -73,7 +73,16 @@ for (const key of wanted.keys()) {
   // shows what people thought of the place needs its address, to leave out a rating the place asked for itself.
   // And what it does with the things visitors carry (NSWP-17): a door to a place where items are part of play
   // says so on its sign, before anyone goes in.
-  const said = { ...(world.category ? { category: world.category } : {}), ...(world.url ? { url: world.url } : {}), ...(world.items ? { items: world.items } : {}) };
+  // And what it offers (NSWP-01, "What a world offers"): the tiles beside its door are lit and dark by what its
+  // own announcement says, word for word, noted here so that a door never asks the place it leads to.
+  const said = {
+    ...(world.category ? { category: world.category } : {}),
+    ...(world.url ? { url: world.url } : {}),
+    ...(world.items ? { items: world.items } : {}),
+    modes: world.modes,
+    capabilities: world.capabilities,
+    ...(world.access ? { access: true } : {}),
+  };
   const noted = Object.keys(said).length > 0;
   const preview = world.previews.find((p) => p.type === "pano");
   if (!preview) {

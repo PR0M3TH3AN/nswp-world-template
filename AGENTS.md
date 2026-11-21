@@ -452,3 +452,5 @@ understands:
 | `status` | `live`, `beta`, `maintenance`, `retired` | |
  After any change to `world.json` or `home.json`, the owner needs to run
 `npm run sign` again; tell them.
+
+- **What a door's place offers (NSWP-01 "What a world offers"; the kit's tiles beside each doorway):** a door shows them from what `npm run doors` noted of that place's own announcement (`doors/index.json`: `modes`, `capabilities`, `items`, `access`), handed to the page by the build as `site.offered`, as a door's kind of place is. A door never asks the place it leads to, and a door nobody has asked about shows no tiles: nothing known is not nothing offered. The tiles, their order and their words are the kit's (`gate.setOffers(worldOffers(…))`): don't draw or word them here. Pointed at, a tile fills the card over the controls; it is never something to press. This world's own `world.json` says what a world made from the template does (`voice`, `avatars`, `items`): take one out if you take the thing out.
