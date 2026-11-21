@@ -98,16 +98,17 @@ their sign-in address asks them whether your world may see to each. Your code is
 
 ### Things people carry
 
-A visitor has a bag: the items they have, which are theirs and go with them from world to world. Whether anything
-from it shows in your world is yours to say, in `world.json`:
+A visitor has a bag: the items they have, which are theirs and go with them from world to world. They work in your
+world unless you turn them off, in `world.json`:
 
 ```json
-"world": { "items": "allowed" }
+"world": { "items": "none" }
 ```
 
-- **Left out:** nothing carried is drawn in your world, and no file of anyone's is fetched. The menu's **Bag** tab
-  still lets a signed-in visitor look through what they have.
-- **`"allowed"`:** a visitor can take one thing in hand, and everyone in the room sees it.
+- **Left out, or `"allowed"`:** a visitor can take one thing in hand, and everyone in the room sees it.
+- **`"none"`:** nothing carried is drawn in your world, and no file of anyone's is fetched for it. The menu's
+  **Bag** tab still lets a signed-in visitor look through what they have, and doors to your world say "No items
+  here".
 - **`"play"`:** the same today. It says items are part of the game here, and a door to your world warns people
   before they come in.
 
@@ -116,7 +117,7 @@ signed, and counts it against a size limit. One that fails is drawn as a plain b
 can't change anyone's bag, and a visitor can turn every item off for themselves in the Bag tab. Sign and announce
 again after changing this, so doors elsewhere say the same.
 
-**Some items do something:** a toy blaster that sends out foam darts. In a world that allows items:
+**Some items do something:** a toy blaster that sends out foam darts. In a world that hasn't turned items off:
 
 - **An item's own code runs only for the person carrying it,** shut in a locked box: a page of its own
   (`item-box.html`, which the build writes) that can reach nothing. It is never run in your page.

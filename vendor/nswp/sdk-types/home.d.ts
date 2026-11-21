@@ -43,8 +43,8 @@ export interface PortalGate {
     setRating(mark: string): void;
     /**
      * Say on the sign what the place does with the things visitors carry, as its own announcement says
-     * (protocol/17-items.md): "Items are part of play here". A visitor is told before they go in. Anything but
-     * `allowed` or `play` says nothing.
+     * (protocol/17-items.md): "Items are part of play here", or "No items here". A visitor is told before they go in.
+     * `allowed`, and a place that said nothing, says nothing: it is the ordinary rule.
      */
     setItems(rule: string | null | undefined): void;
     /** Show a preview of the destination through the portal (spec §5.8). Returns the window, for a world that needs to hide it while it photographs itself. */

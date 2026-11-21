@@ -88,6 +88,10 @@ var keepFull = (on) => {
   }
 };
 var prefersFullscreen = () => prefers;
+var held = false;
+var holdFullscreen = (on) => {
+  held = on;
+};
 function resumeFullscreen(presenting = () => false) {
   if (resumed || typeof document === "undefined") return;
   resumed = true;
@@ -112,7 +116,7 @@ function resumeFullscreen(presenting = () => false) {
     if (document.fullscreenElement) stop();
   };
   const onPress = (e) => {
-    if (e.code === "Escape" || presenting() || document.fullscreenElement) return;
+    if (e.code === "Escape" || held || presenting() || document.fullscreenElement) return;
     void document.documentElement.requestFullscreen().then(stop, () => {
     });
   };
@@ -123,7 +127,7 @@ var fullscreenWaiting = () => waiting;
 function fullscreenAction(controls, presenting) {
   resumeFullscreen(presenting);
   setTimeout(() => {
-    if (waiting && !presenting()) controls.say("Press any key, or click, to fill the screen again.");
+    if (waiting && !held && !presenting()) controls.say("Press any key, or click, to fill the screen again.");
   }, 600);
   return {
     id: "fullscreen",
@@ -3455,6 +3459,7 @@ export {
   currentForm,
   usedForm,
   prefersFullscreen,
+  holdFullscreen,
   resumeFullscreen,
   fullscreenWaiting,
   fullscreenAction,

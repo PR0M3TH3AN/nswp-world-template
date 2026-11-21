@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.57.1";
+var KIT_VERSION = "0.58.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -3652,7 +3652,7 @@ function buildWorldEvent(w) {
     tags.push(["audience", w.audience]);
   if (w.category)
     tags.push(["category", w.category]);
-  if (w.items && w.items !== "none")
+  if (w.items)
     tags.push(["items", w.items]);
   if (w.status)
     tags.push(["status", w.status]);
@@ -3844,8 +3844,10 @@ function parseWorldEvent(input, opts = {}) {
   if (carried !== void 0) {
     if (ITEM_RULES.includes(carried))
       items = carried;
-    else
+    else {
+      items = "none";
       c.warn("unknown_items_rule", "tags.items", `Unknown rule for items "${carried}"; treated as none.`);
+    }
   }
   if (audience === "adult" && contentWarning === void 0)
     c.warn("adult_without_warning", "tags.audience", "An adult world should also carry a content-warning, which other clients read.");
@@ -3908,7 +3910,7 @@ function parseWorldEvent(input, opts = {}) {
     world.audience = audience;
   if (category)
     world.category = category;
-  if (items && items !== "none")
+  if (items)
     world.items = items;
   if (manifest)
     world.manifest = manifest;

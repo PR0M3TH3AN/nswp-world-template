@@ -124,7 +124,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-HB47I42N.js";
+} from "./shared-CG43DQZM.js";
 import {
   currentForm,
   deviceForms,
@@ -134,7 +134,7 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-ACIYJK32.js";
+} from "./shared-7ILODBRA.js";
 import {
   PICTURE_LIMITS,
   askWell,

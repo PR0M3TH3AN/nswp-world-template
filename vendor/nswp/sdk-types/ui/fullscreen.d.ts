@@ -3,6 +3,11 @@ import type { Controls, UiAction } from "./model.js";
 export declare const FULL_KEY = "nswp:full";
 export declare const prefersFullscreen: () => boolean;
 /**
+ * Something else is waiting for the visitor's next press (the way back into a headset, ui/headset.ts). A browser
+ * gives one press to one thing, so while that is so the screen isn't filled by it.
+ */
+export declare const holdFullscreen: (on: boolean) => void;
+/**
  * A visitor who prefers the world filling their screen has it filling their
  * screen, as early as a browser allows.
  *

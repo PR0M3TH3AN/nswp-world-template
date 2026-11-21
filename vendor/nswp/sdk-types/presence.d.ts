@@ -36,7 +36,10 @@ export interface PresenceOptions {
      * (protocol/17-items.md). Left out, nothing anyone holds is drawn.
      */
     items?: Items | null;
-    /** What this world does with items: "none", "allowed" or "play". Asked each time. Left out, none. */
+    /**
+     * What this world does with items: "none", "allowed" or "play". Asked each time. Left out, allowed, as a world
+     * that says nothing is. With no `items` to fetch them with, it is always none: nothing could be drawn.
+     */
     itemsRule?: () => string;
     /**
      * Whether an item's own logic runs in this world, in its locked box (item-box.ts), and where the box's page is

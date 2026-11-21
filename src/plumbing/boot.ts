@@ -771,8 +771,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // wearing their look, or plain. Going by name means their own client signed
     // a pass for this site (NSWP-10); this world never sees their key. A scene
     // can dress everyone its own way with `figureStyle`.
-    // What this world does with the things visitors carry (NSWP-17): `"items": "allowed"` or `"play"` in
-    // world.json. Left out, nothing carried is drawn here and no model is fetched from anywhere.
+    // What this world does with the things visitors carry (NSWP-17). Left out of world.json they work here, as
+    // in any world that says nothing; `"items": "none"` turns them off, and then nothing carried is drawn here
+    // and no model is fetched for the world; `"play"` says they are the game.
     const itemsRule = cleanItemsRule((config.world as { items?: unknown }).items);
     // A bag shows the things in it, each drawn from its own model (NSWP-17, "A bag shows the things themselves"):
     // so a model is fetched for the Bag tab in a world with no items too, and for nothing else there.

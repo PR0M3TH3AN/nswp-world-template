@@ -315,9 +315,10 @@ export async function buildScene(ctx: SceneContext): Promise<SceneHandle> {
   `"sharedMusic": false` in `world.json`. You can't turn it on for anyone,
   and mustn't play one visitor's music to another any other way.
 - **Things people carry (NSWP-17).** `"items"` in `world.json` is the
-  builder's to set: left out, nothing carried is drawn and no model is
-  fetched; `"allowed"` or `"play"` and the one thing each person holds is
-  drawn. The plumbing does it all (`createItems`, `addBagControls`). Don't
+  builder's to set: left out (or `"allowed"`, or `"play"`) the one thing
+  each person holds is drawn, since a world has items unless it says
+  otherwise (kit 0.58.0); `"none"` turns them off, and then nothing
+  carried is drawn and no model is fetched for the world. The plumbing does it all (`createItems`, `addBagControls`). Don't
   draw an item any other way: every model is checked against the hash its
   maker signed and counted against a budget before it is shown, and a
   marker stands in for one that fails. A world never changes a visitor's
