@@ -846,6 +846,20 @@ function watchFov(camera, o = {}) {
 }
 
 // packages/sdk/src/fresh.ts
+function reloadAfresh() {
+  let gone = false;
+  const go = () => {
+    if (gone) return;
+    gone = true;
+    location.reload();
+  };
+  try {
+    void fetch(location.href, { cache: "reload", credentials: "same-origin" }).then(go, go);
+    setTimeout(go, 4e3);
+  } catch {
+    go();
+  }
+}
 var LEAST_MS = 3e4;
 var EVERY_MS = 10 * 6e4;
 async function markOf(url) {
@@ -867,7 +881,7 @@ async function pageStamp() {
 function watchFresh(o = {}) {
   const stamp2 = o.stamp ?? pageStamp;
   const now = o.now ?? (() => Date.now());
-  const reload = o.reload ?? (() => location.reload());
+  const reload = o.reload ?? reloadAfresh;
   let first;
   let stale = false;
   let told = false;
