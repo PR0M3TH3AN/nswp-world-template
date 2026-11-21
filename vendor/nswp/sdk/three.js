@@ -124,7 +124,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-LKFRRSCP.js";
+} from "./shared-EMQPHBPB.js";
 import {
   currentForm,
   deviceForms,
@@ -134,7 +134,7 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-BQRKL7JK.js";
+} from "./shared-F7NNH677.js";
 import {
   PICTURE_LIMITS,
   askWell,
@@ -149,13 +149,17 @@ import {
   sendWell,
   setShowsPictures,
   showsPictures
-} from "./shared-VXYHIAUE.js";
+} from "./shared-HK3BOLS5.js";
 import {
   arriveWith,
   arrivedSettings,
+  askClientForSignIn,
+  clientPanelOpen,
+  clientSignsInAt,
   currentSettings,
+  onClientSignIn,
   reportSettings
-} from "./shared-Q3D4OUDA.js";
+} from "./shared-UMAJ2QEI.js";
 import {
   browserVoice,
   computerVoice,
@@ -212,11 +216,14 @@ export {
   allowScript,
   arriveWith,
   arrivedSettings,
+  askClientForSignIn,
   askWell,
   browserVoice,
   byName,
   canRecord,
   capturePanorama,
+  clientPanelOpen,
+  clientSignsInAt,
   computerVoice,
   createAchievements,
   createBag,
@@ -271,6 +278,7 @@ export {
   lookAfter,
   lookScale,
   mayHold,
+  onClientSignIn,
   onDeskChange,
   onHereAs,
   onItemsChange,

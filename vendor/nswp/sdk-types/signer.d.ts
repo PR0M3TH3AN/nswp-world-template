@@ -1,20 +1,3 @@
-/**
- * Signing from inside a world (protocol/10-identity.md, "Signing from a
- * world").
- *
- * A world never holds its visitor's key. It embeds a hidden signer served
- * by the visitor's own client, and asks it. This is the world's side of
- * that: the embed, the question, and the check on what comes back.
- *
- *   const signer = worldSigner();
- *   signer.unlock();                                   // from a press: opens the client's own window
- *   const note = await signer.sign({ kind: 1, content: "Hello" });   // null if locked or refused
- *
- * What a world can learn from it: whether it is unlocked, and then whose key
- * it holds. What it can never get: the key, a password, or a reason for a
- * refusal. Nothing is asked of the visitor here. The window that unlocks it
- * is the client's own page, which this page can't read.
- */
 import { type NostrEvent, type Message, type SealedMessage, type SignerMore } from "@nswp/core";
 /** "none": the visitor has no client here that offers one. "locked": there is one, and it hasn't been unlocked for this world. */
 export type SignerState = "none" | "locked" | "unlocked";
@@ -62,9 +45,17 @@ export interface WorldSigner {
     /**
      * Open the client's window, where the visitor unlocks it for this world.
      * Call it from a press: a browser opens a window for nothing else. False
-     * if there is no signer, or no window could be opened.
+     * if there is no signer, or no window could be opened. Where this world
+     * is shown inside a client that draws the sign-in address's own panel
+     * over it (`panel`), that is asked for instead, and no window opens.
      */
     unlock(): boolean;
+    /**
+     * Whether `unlock()` shows a panel in the visitor's client rather than a
+     * window: this world is in the frame of a client that has one, for this
+     * signer's own address (client-frame.ts). Something to choose words by.
+     */
+    readonly panel: boolean;
     /**
      * Load the signer again and ask it once more: for one that was named and said nothing. False if there is nothing
      * to ask again (none was named, or it has answered).

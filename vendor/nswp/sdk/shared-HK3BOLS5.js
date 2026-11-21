@@ -1,7 +1,7 @@
 import {
   arrivedSettings,
   reportSettings
-} from "./shared-Q3D4OUDA.js";
+} from "./shared-UMAJ2QEI.js";
 
 // packages/sdk/src/ui/icons.ts
 var ICONS = {
