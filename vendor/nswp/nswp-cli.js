@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.66.0";
+var KIT_VERSION = "0.67.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4379,6 +4379,14 @@ var MESSAGE_LIMITS = {
   backdateSec: 2 * 24 * 3600,
   /** No more than this many relays are taken from someone's list. */
   relays: 4
+};
+
+// packages/core/dist/files.js
+var FILE_LIMITS = {
+  /** The most a file passed this way may hold: 25 MB. */
+  bytes: 25 * 1024 * 1024,
+  /** The most characters in its name. */
+  name: 120
 };
 
 // packages/core/dist/signing.js
