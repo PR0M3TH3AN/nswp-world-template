@@ -107,6 +107,15 @@ export declare function accountAction(controls: Controls, opts?: {
     presenting?: () => boolean;
 }): UiAction;
 /**
+ * Their own files, without leaving the world: the file browser of their sign-in address (folders, public and
+ * private files, the servers they keep them on), in the panel their client draws over the world. The world sees
+ * none of it: it is the sign-in address's page, and a world is handed a file only when the visitor picks one for
+ * it (`signer.pickFile`). Only where there is such a panel.
+ */
+export declare function filesAction(controls: Controls, opts?: {
+    presenting?: () => boolean;
+}): UiAction;
+/**
  * The way to change how they look. Their look is kept by their own client and
  * is the same in every world, so it is changed there: this leaves for it and
  * comes back, as signing in does.
