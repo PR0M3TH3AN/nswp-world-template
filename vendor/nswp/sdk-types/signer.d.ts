@@ -51,6 +51,26 @@ export interface WorldSigner {
      */
     unlock(): boolean;
     /**
+     * Put a note of a careful kind to the visitor themselves: their profile
+     * (0), a deletion (5) or their relay list (10002). The signer signs none
+     * of these on a world's word: the sign-in address shows the visitor what
+     * it is, in words, on its own page (its panel in a client that has one,
+     * else its window), and signs it only at their press there. Call it from
+     * a press. Resolves with the signed note, checked, or null: they said no,
+     * closed it, took longer than five minutes, or the signer doesn't do this.
+     */
+    propose(note: {
+        kind: number;
+        content: string;
+        tags?: string[][];
+    }): Promise<NostrEvent | null>;
+    /**
+     * Ask the visitor for a wallet connection for this world, the same way.
+     * Call it from a press. Resolves with a Nostr Wallet Connect address
+     * this world may spend with, within what the wallet allows, or null.
+     */
+    wallet(): Promise<string | null>;
+    /**
      * Whether `unlock()` shows a panel in the visitor's client rather than a
      * window: this world is in the frame of a client that has one, for this
      * signer's own address (client-frame.ts). Something to choose words by.

@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.63.1";
+var KIT_VERSION = "0.64.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -7033,6 +7033,10 @@ function signerAt(base) {
     return null;
   }
 }
+var PROPOSE_KINDS = [0, 5, 10002];
+function cleanWalletUri(input) {
+  return typeof input === "string" && input.length <= 2e3 && /^nostr\+walletconnect:\/\/[0-9a-f]{64}\?[\x21-\x7e]+$/.test(input) ? input : "";
+}
 var SIGNER_MORE = ["follows", "messages"];
 function cleanMore(input) {
   if (!Array.isArray(input)) return [];
@@ -7066,6 +7070,8 @@ function readSignerRequest(data) {
   if (d.t === "seal" && isHex64(d.to) && cleanMessage(d.text)) return { t: "seal", id: d.id, to: d.to, text: cleanMessage(d.text) };
   if (d.t === "unwrap" && d.event && typeof d.event === "object") return { t: "unwrap", id: d.id, event: d.event };
   if (d.t === "reach" && Array.isArray(d.relays) && d.relays.length <= 8 && d.relays.every((r) => typeof r === "string" && r.length <= 200)) return { t: "reach", id: d.id, relays: d.relays };
+  if (d.t === "propose" && d.event && typeof d.event === "object" && PROPOSE_KINDS.includes(d.event.kind)) return { t: "propose", id: d.id, event: d.event };
+  if (d.t === "wallet") return { t: "wallet", id: d.id };
   if (d.t === "follow" && (d.list === null || d.list && typeof d.list === "object") && isHex64(d.add) !== isHex64(d.remove)) {
     return { t: "follow", id: d.id, list: d.list, ...isHex64(d.add) ? { add: d.add } : { remove: d.remove } };
   }
@@ -7097,6 +7103,8 @@ function readSignerReply(data) {
   }
   if (typeof d.id !== "string" || !ID.test(d.id)) return null;
   if (d.t === "refused") return { t: "refused", id: d.id };
+  if (d.t === "asking") return { t: "asking", id: d.id };
+  if (d.t === "wallet" && cleanWalletUri(d.uri)) return { t: "wallet", id: d.id, uri: cleanWalletUri(d.uri) };
   if (d.t === "signed" && d.event && typeof d.event === "object") return { t: "signed", id: d.id, event: d.event };
   if (d.t === "found" && isHex64(d.d)) return { t: "found", id: d.id, d: d.d };
   if (d.t === "sealed" && d.message && typeof d.message === "object" && Array.isArray(d.seals) && d.seals.length === 2) return { t: "sealed", id: d.id, message: d.message, seals: d.seals };
@@ -8397,6 +8405,7 @@ export {
   POSE_BYTES,
   PREVIEW_LIMITS,
   PREVIEW_TYPES,
+  PROPOSE_KINDS,
   RATING_KIND,
   RATING_LIMITS,
   RELAY_DISCOVERY_KIND,
@@ -8496,6 +8505,7 @@ export {
   cleanSpeechText,
   cleanStars,
   cleanTints,
+  cleanWalletUri,
   cleanWorldOrigin,
   coordinate,
   createChatGate,
