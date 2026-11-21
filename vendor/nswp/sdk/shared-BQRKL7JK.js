@@ -74,6 +74,54 @@ function watch() {
   );
 }
 
+// packages/sdk/src/client-frame.ts
+var framed = () => {
+  try {
+    return typeof window !== "undefined" && window.parent !== window;
+  } catch {
+    return false;
+  }
+};
+var holds = false;
+var filled = false;
+var met = false;
+var watchers = /* @__PURE__ */ new Set();
+var clientHoldsScreen = () => holds;
+var clientScreenFilled = () => holds && filled;
+function onClientScreen(fn) {
+  watchers.add(fn);
+  return () => void watchers.delete(fn);
+}
+var say = (words) => {
+  try {
+    window.parent.postMessage({ nswp: words.nswp, ...words }, "*");
+  } catch {
+  }
+};
+function askClientForScreen(fill) {
+  if (framed()) say({ nswp: "screen", fill });
+}
+function meetClient() {
+  if (met || !framed()) return;
+  met = true;
+  addEventListener("message", (e) => {
+    if (e.source !== window.parent) return;
+    const said = e.data;
+    if (!said || typeof said !== "object" || said.nswp !== "screen" || typeof said.holds !== "boolean") return;
+    const was = `${holds}${filled}`;
+    holds = said.holds;
+    filled = said.filled === true;
+    if (was !== `${holds}${filled}`) for (const fn of watchers) fn();
+  });
+  let at = "/";
+  try {
+    at = `${location.pathname}${location.search}`.slice(0, 300);
+  } catch {
+  }
+  say({ nswp: "here", at });
+}
+meetClient();
+
 // packages/sdk/src/ui/fullscreen.ts
 var resumed = false;
 var waiting = false;
@@ -104,43 +152,58 @@ function resumeFullscreen(presenting = () => false) {
   if (came === void 0) prefers = kept;
   else keepFull(came);
   reportSettings("screen", () => ({ full: prefers }));
-  waiting = prefers && document.fullscreenEnabled && !document.fullscreenElement;
+  meetClient();
+  const mayAsk = framed();
+  waiting = prefers && (document.fullscreenEnabled && !document.fullscreenElement || mayAsk);
   if (!waiting) return;
   const presses = ["keydown", "pointerdown", "pointerup", "touchend"];
   const stop = () => {
     waiting = false;
     for (const type of presses) removeEventListener(type, onPress, true);
     document.removeEventListener("fullscreenchange", onChange);
+    forget();
   };
   const onChange = () => {
-    if (document.fullscreenElement) stop();
+    if (document.fullscreenElement || clientScreenFilled()) stop();
   };
+  const forget = onClientScreen(onChange);
   const onPress = (e) => {
     if (e.code === "Escape" || held || presenting() || document.fullscreenElement) return;
+    if (clientHoldsScreen()) return void (clientScreenFilled() ? stop() : askClientForScreen(true));
+    if (!document.fullscreenEnabled) return;
     void document.documentElement.requestFullscreen().then(stop, () => {
     });
   };
   for (const type of presses) addEventListener(type, onPress, true);
   document.addEventListener("fullscreenchange", onChange);
+  onChange();
 }
-var fullscreenWaiting = () => waiting;
+var isFilled = () => clientHoldsScreen() ? clientScreenFilled() : !!document.fullscreenElement;
+var canFill = () => clientHoldsScreen() || document.fullscreenEnabled;
+var fullscreenWaiting = () => waiting && canFill() && !isFilled();
 function fullscreenAction(controls, presenting) {
   resumeFullscreen(presenting);
   setTimeout(() => {
-    if (waiting && !held && !presenting()) controls.say("Press any key, or click, to fill the screen again.");
+    if (waiting && !held && !presenting() && canFill() && !isFilled()) controls.say("Press any key, or click, to fill the screen again.");
   }, 600);
+  onClientScreen(() => controls.setTarget(""));
   return {
     id: "fullscreen",
     section: "view",
     icon: "size",
     on: () => prefers,
     // Not every browser lets a page fill the screen (a phone's often won't), and a headset already does.
-    hidden: () => !document.fullscreenEnabled || presenting(),
+    hidden: () => !canFill() || presenting(),
     // It says what they prefer, in every world, and whether the screen is filled just now.
-    label: () => !prefers ? "Fullscreen: off" : document.fullscreenElement ? "Fullscreen: on, in every world" : "Fullscreen: on, in every world. Press to fill the screen again",
+    label: () => !prefers ? "Fullscreen: off" : isFilled() ? "Fullscreen: on, in every world" : "Fullscreen: on, in every world. Press to fill the screen again",
     act: async () => {
-      const fill = !document.fullscreenElement;
+      const fill = !isFilled();
       if (!fill) keepFull(false);
+      if (clientHoldsScreen()) {
+        if (fill) keepFull(true);
+        askClientForScreen(fill);
+        return void controls.setTarget("");
+      }
       try {
         if (fill) {
           await document.documentElement.requestFullscreen();
@@ -2670,7 +2733,7 @@ var RoomSession = class {
   introduce(ch) {
     if (!this.look && !this.pass && !this.held) return;
     let left = 4;
-    const say = () => {
+    const say2 = () => {
       if (this.closed || ch.readyState !== "open") return;
       try {
         if (this.look) ch.send(`look:${this.look}`);
@@ -2679,9 +2742,9 @@ var RoomSession = class {
         if (this.held && this.tints) ch.send(this.tints);
       } catch {
       }
-      if (--left > 0) setTimeout(say, 1500);
+      if (--left > 0) setTimeout(say2, 1500);
     };
-    say();
+    say2();
   }
   async gathered(pc) {
     if (pc.iceGatheringState !== "complete") {
@@ -2794,10 +2857,10 @@ var RoomSession = class {
     this.tune = track;
     this.self.music = !!track;
     clearInterval(this.tuneTimer);
-    const say = () => this.tellAll(this.tune ? "mus:1" : "mus:0");
-    say();
-    if (track) this.tuneTimer = setInterval(say, 2e3);
-    else setTimeout(say, 400);
+    const say2 = () => this.tellAll(this.tune ? "mus:1" : "mus:0");
+    say2();
+    if (track) this.tuneTimer = setInterval(say2, 2e3);
+    else setTimeout(say2, 400);
     await Promise.all(
       [...this.peers.values()].map(async (peer) => {
         peer.tuned = false;
@@ -2848,10 +2911,10 @@ var RoomSession = class {
     this.screen = track;
     this.self.sharing = !!track;
     clearInterval(this.screenTimer);
-    const say = () => this.tellAll(this.screen ? "scr:1" : "scr:0");
-    say();
-    if (track) this.screenTimer = setInterval(say, 2e3);
-    else setTimeout(say, 400);
+    const say2 = () => this.tellAll(this.screen ? "scr:1" : "scr:0");
+    say2();
+    if (track) this.screenTimer = setInterval(say2, 2e3);
+    else setTimeout(say2, 400);
     await Promise.all(
       [...this.peers.values()].map(async (peer) => {
         peer.fed = false;
@@ -2907,7 +2970,7 @@ var RoomSession = class {
     if (next) this.self.holding = next;
     else delete this.self.holding;
     let left = 3;
-    const say = () => {
+    const say2 = () => {
       if (this.closed || this.held !== next) return;
       for (const peer of this.peers.values()) {
         if (!peer.open || peer.pose?.readyState !== "open") continue;
@@ -2916,9 +2979,9 @@ var RoomSession = class {
         } catch {
         }
       }
-      if (--left > 0) setTimeout(say, 700);
+      if (--left > 0) setTimeout(say2, 700);
     };
-    say();
+    say2();
   }
   /**
    * Say something of an item in play to everyone: a thing sent out, a hit, a sound, this visitor's state
@@ -2934,7 +2997,7 @@ var RoomSession = class {
     if (on === this.self.recording) return;
     this.self.recording = on;
     clearInterval(this.recordingTimer);
-    const say = () => {
+    const say2 = () => {
       for (const peer of this.peers.values()) {
         if (!peer.open || peer.pose?.readyState !== "open") continue;
         try {
@@ -2943,9 +3006,9 @@ var RoomSession = class {
         }
       }
     };
-    say();
-    if (on) this.recordingTimer = setInterval(say, 2e3);
-    else setTimeout(say, 400);
+    say2();
+    if (on) this.recordingTimer = setInterval(say2, 2e3);
+    else setTimeout(say2, 400);
   }
   drop(pubkey, announce) {
     const peer = this.peers.get(pubkey);
