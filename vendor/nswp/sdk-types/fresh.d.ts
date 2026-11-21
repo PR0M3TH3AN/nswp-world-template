@@ -49,4 +49,12 @@ export interface FreshOptions {
     /** For tests: watch nothing by itself, and wait to be asked. */
     manual?: boolean;
 }
+/**
+ * Load the page again, having first asked for it afresh. A plain reload asks the site whether the page has
+ * changed, and where its HTML hasn't, the browser goes on with the copy it kept and the headers that copy came
+ * with: the page's content rules among them, however they have changed since. Asking for the page outright
+ * replaces that copy, headers and all, so the page that then loads is under the rules its site sends today.
+ * (Every page is also marked so that it changes with its rules, core `stampPage`: this is for a page that isn't.)
+ */
+export declare function reloadAfresh(): void;
 export declare function watchFresh(o?: FreshOptions): Fresh;
