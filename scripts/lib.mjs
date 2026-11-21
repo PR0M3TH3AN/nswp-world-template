@@ -97,9 +97,15 @@ export function readDoors() {
   const places = {};
   /** What each place does with the things visitors carry, where its announcement said: "allowed" or "play". */
   const carried = {};
+  /**
+   * What each place offers, as its announcement said when `npm run doors` last asked: the modes and capabilities it
+   * names, word for word, and the listings it says it is entered by. A door noted before this was kept has none,
+   * and shows no tiles until it is asked about again: nothing is known, which is not the same as nothing offered.
+   */
+  const offered = {};
   const files = [];
   const problems = [];
-  if (!existsSync(path)) return { doors, kinds, places, carried, files, problems, watch: [] };
+  if (!existsSync(path)) return { doors, kinds, places, carried, offered, files, problems, watch: [] };
   let index = {};
   try {
     index = JSON.parse(readFileSync(path, "utf8"));
@@ -111,6 +117,8 @@ export function readDoors() {
     // Whatever the place said, turned off included: a door says "No items here" too.
     if (entry?.items === "none" || entry?.items === "allowed" || entry?.items === "play") carried[coordinate] = entry.items;
     if (typeof entry?.url === "string" && /^https:\/\/[^\s]{1,300}$/.test(entry.url)) places[coordinate] = entry.url;
+    const words = (list, shape = /^[a-z0-9-]{1,40}$/) => (Array.isArray(list) ? list.filter((w) => typeof w === "string" && shape.test(w)).slice(0, 40) : null);
+    if (words(entry?.modes) && words(entry?.capabilities)) offered[coordinate] = { modes: words(entry.modes), capabilities: words(entry.capabilities), ...(words(entry.access, /^30078:[0-9a-f]{64}:[^\s]{1,200}$/)?.length ? { access: words(entry.access, /^30078:[0-9a-f]{64}:[^\s]{1,200}$/) } : {}) };
     // A door with no picture is listed only for what kind of place it leads to.
     if (entry?.sha256 === undefined) continue;
     const hash = String(entry.sha256 ?? "");
@@ -122,7 +130,7 @@ export function readDoors() {
       if (!files.includes(`${hash}.webp`)) files.push(`${hash}.webp`);
     }
   }
-  return { doors, kinds, places, carried, files, problems, watch: [path] };
+  return { doors, kinds, places, carried, offered, files, problems, watch: [path] };
 }
 
 /** Where this world's publisher key is kept. Never inside the repository. */
@@ -247,7 +255,7 @@ const nswpPlugin = {
       const shown = readDoors();
       return {
         warnings: [...state.pictures.problems, ...shown.problems].map((text) => ({ text })),
-        contents: JSON.stringify({ layout: templates(state).layout, publisher: state.signed.world?.pubkey ?? null, doors: shown.doors, kinds: shown.kinds, places: shown.places, carried: shown.carried }),
+        contents: JSON.stringify({ layout: templates(state).layout, publisher: state.signed.world?.pubkey ?? null, doors: shown.doors, kinds: shown.kinds, places: shown.places, carried: shown.carried, offered: shown.offered }),
         loader: "json",
         watchFiles: [join(root, "home.json"), join(root, "world.json"), join(root, "src", "index.html"), join(root, "signed", "world.event.json"), ...state.pictures.files.map((f) => join(PICTURES, f)), ...shown.watch],
         watchDirs: existsSync(PICTURES) ? [PICTURES] : [],
