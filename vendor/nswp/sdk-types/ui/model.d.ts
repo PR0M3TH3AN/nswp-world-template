@@ -71,6 +71,12 @@ export interface UiCard {
      * many times a second, so it may turn. Null while there is none.
      */
     draw?: () => CanvasImageSource | null;
+    /**
+     * Which of the section's own actions are about this card, by id: what to do with the thing it shows. Where
+     * there is room they are drawn inside the card, beside its picture, and not in the list under it. Whatever
+     * draws the menu may ignore this and list them as usual.
+     */
+    acts?: string[];
 }
 export interface UiSection {
     id: string;

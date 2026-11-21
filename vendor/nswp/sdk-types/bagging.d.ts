@@ -44,6 +44,8 @@ export interface BaggingOptions {
     /** Read what the visitor copied. For tests; left out, the browser's own. */
     copied?: () => Promise<string>;
 }
+/** Where a site keeps what its visitor last held there. */
+export declare const HELD_KEY = "nswp:holding";
 export interface Bagging {
     refresh(): void;
 }

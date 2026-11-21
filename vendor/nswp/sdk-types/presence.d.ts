@@ -150,6 +150,11 @@ export interface Presence {
     /** Which hand holds the item in a headset: the index of its controller, or -1 at a desk or with nothing held. */
     readonly holdingHand: number;
     /**
+     * How what they hold sways as they walk, across and up, as shares of how far off it is drawn: for another
+     * engine to add to where it draws the thing. Nought and nought while they stand, aim along it, or want no motion.
+     */
+    readonly heldBob: [number, number];
+    /**
      * Aim along the sight of what is in hand, at a desk, or stop: it is brought up to the eye, and they see as much
      * narrower as the item asks (never narrower than a little under half). Nothing happens for an item with no sight.
      */
