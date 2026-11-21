@@ -86,6 +86,42 @@ export interface WorldSigner {
         proven: boolean;
     } | null>;
     /**
+     * Offer the visitor a file to keep among their own files, kept by their
+     * sign-in address on servers they chose. Their sign-in address shows them
+     * where it would go (a folder of this world's, unless they choose
+     * another) and saves it only at their press there. `private`, the
+     * default, is sealed so that only they can read it. Call it from a
+     * press. Resolves null if they didn't save it; else with the name they
+     * saved it under, its size, whether privately, and `url`: where it is
+     * kept, only for a public file, and only if that address really names
+     * these bytes. A world can't list their files or read this one back: it
+     * asks for it with `pickFile`. At most 25 MB.
+     */
+    saveFile(file: {
+        name: string;
+        type?: string;
+        bytes: Uint8Array | ArrayBuffer;
+        private?: boolean;
+    }): Promise<{
+        name: string;
+        size: number;
+        private: boolean;
+        url: string | null;
+    } | null>;
+    /**
+     * Ask the visitor to hand this world one of their files: they browse
+     * their own files on their sign-in address's page, choose one, and say
+     * yes. Call it from a press. Resolves with the file (already opened, if
+     * it was private), or null. What comes back is a stranger's file as far
+     * as the world's code is concerned: show it, never run it.
+     */
+    pickFile(): Promise<{
+        name: string;
+        type: string;
+        bytes: Uint8Array;
+        url: string | null;
+    } | null>;
+    /**
      * Whether `unlock()` shows a panel in the visitor's client rather than a
      * window: this world is in the frame of a client that has one, for this
      * signer's own address (client-frame.ts). Something to choose words by.

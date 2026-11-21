@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.66.0";
+var KIT_VERSION = "0.67.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6983,6 +6983,43 @@ function provesPayment(invoice, preimage) {
   return !!hash && bytesToHex(sha256(hexToBytes(preimage))) === hash;
 }
 
+// packages/core/src/files.ts
+var FILE_LIMITS = {
+  /** The most a file passed this way may hold: 25 MB. */
+  bytes: 25 * 1024 * 1024,
+  /** The most characters in its name. */
+  name: 120
+};
+var hidden = (c) => c < 32 || c >= 127 && c <= 159 || c >= 8203 && c <= 8207 || c >= 8232 && c <= 8238 || c >= 8288 && c <= 8297 || c === 65279;
+function cleanFileName(input) {
+  if (typeof input !== "string") return "";
+  const tidy = Array.from(input.slice(0, 2e3), (ch) => hidden(ch.codePointAt(0) ?? 0) || ch === "/" || ch === "\\" ? " " : ch).join("").split(" ").filter(Boolean).join(" ");
+  const cut = [...tidy].slice(0, FILE_LIMITS.name).join("").trim();
+  return cut === "." || cut === ".." ? "" : cut;
+}
+function cleanFileType(input) {
+  const type = typeof input === "string" ? input.trim().toLowerCase() : "";
+  return type.length <= 100 && /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(type) ? type : "application/octet-stream";
+}
+function cleanFileBytes(input) {
+  const bytes = input instanceof Uint8Array ? input : input instanceof ArrayBuffer ? new Uint8Array(input) : null;
+  return bytes && bytes.length > 0 && bytes.length <= FILE_LIMITS.bytes ? bytes : null;
+}
+function cleanFileUrl(input) {
+  if (typeof input !== "string" || input.length > 500) return "";
+  try {
+    const u = new URL(input);
+    return u.protocol === "https:" && !u.username && !u.password && !u.search && !u.hash && /\/[0-9a-f]{64}(\.[a-z0-9]{1,10})?$/.test(u.pathname) ? u.href : "";
+  } catch {
+    return "";
+  }
+}
+function fileUrlNames(url, bytes) {
+  const clean3 = cleanFileUrl(url);
+  const named = /\/([0-9a-f]{64})(\.[a-z0-9]{1,10})?$/.exec(clean3 ? new URL(clean3).pathname : "")?.[1];
+  return !!named && named === bytesToHex(sha256(bytes));
+}
+
 // packages/core/src/signing.ts
 var SIGNER_PROTOCOL = "nswp-signer";
 var SIGNER_VERSION = 1;
@@ -7114,6 +7151,8 @@ function readSignerRequest(data) {
   if (d.t === "propose" && d.event && typeof d.event === "object" && PROPOSE_KINDS.includes(d.event.kind)) return { t: "propose", id: d.id, event: d.event };
   if (d.t === "wallet") return { t: "wallet", id: d.id };
   if (d.t === "pay" && cleanInvoice(d.invoice)) return { t: "pay", id: d.id, invoice: cleanInvoice(d.invoice) };
+  if (d.t === "file-pick") return { t: "file-pick", id: d.id };
+  if (d.t === "file-save" && cleanFileName(d.name) && cleanFileBytes(d.bytes)) return { t: "file-save", id: d.id, name: cleanFileName(d.name), type: cleanFileType(d.type), bytes: cleanFileBytes(d.bytes), private: d.private !== false };
   if (d.t === "follow" && (d.list === null || d.list && typeof d.list === "object") && isHex64(d.add) !== isHex64(d.remove)) {
     return { t: "follow", id: d.id, list: d.list, ...isHex64(d.add) ? { add: d.add } : { remove: d.remove } };
   }
@@ -7148,6 +7187,11 @@ function readSignerReply(data) {
   if (d.t === "asking") return { t: "asking", id: d.id };
   if (d.t === "wallet" && cleanWalletUri(d.uri)) return { t: "wallet", id: d.id, uri: cleanWalletUri(d.uri) };
   if (d.t === "paid") return { t: "paid", id: d.id, ...isHex64(d.preimage) ? { preimage: d.preimage } : {} };
+  if (d.t === "file-saved" && cleanFileName(d.name) && typeof d.size === "number" && Number.isSafeInteger(d.size) && d.size >= 0) {
+    const kept = d.private !== false;
+    return { t: "file-saved", id: d.id, name: cleanFileName(d.name), size: d.size, private: kept, ...!kept && cleanFileUrl(d.url) ? { url: cleanFileUrl(d.url) } : {} };
+  }
+  if (d.t === "file" && cleanFileName(d.name) && cleanFileBytes(d.bytes)) return { t: "file", id: d.id, name: cleanFileName(d.name), type: cleanFileType(d.type), bytes: cleanFileBytes(d.bytes), ...cleanFileUrl(d.url) ? { url: cleanFileUrl(d.url) } : {} };
   if (d.t === "signed" && d.event && typeof d.event === "object") return { t: "signed", id: d.id, event: d.event };
   if (d.t === "found" && isHex64(d.d)) return { t: "found", id: d.id, d: d.d };
   if (d.t === "sealed" && d.message && typeof d.message === "object" && Array.isArray(d.seals) && d.seals.length === 2) return { t: "sealed", id: d.id, message: d.message, seals: d.seals };
@@ -8398,6 +8442,7 @@ export {
   DISCOVERY,
   DISCOVERY_RELAYS,
   ENTRY_ASSERTION_KIND,
+  FILE_LIMITS,
   FOLLOWS_KIND,
   FOLLOW_LIMITS,
   FOV_RANGE,
@@ -8532,6 +8577,10 @@ export {
   cleanAsk,
   cleanBoard,
   cleanChat,
+  cleanFileBytes,
+  cleanFileName,
+  cleanFileType,
+  cleanFileUrl,
   cleanInvoice,
   cleanItemsRule,
   cleanKeys,
@@ -8570,6 +8619,7 @@ export {
   encodeNpub,
   encodeSettings,
   fetchManifest,
+  fileUrlNames,
   finalizeEvent,
   fitsInSave,
   followForWorld,

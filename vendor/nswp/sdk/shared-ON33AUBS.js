@@ -1197,7 +1197,7 @@ function createSaves(opts = {}) {
 }
 
 // packages/sdk/src/signer.ts
-import { isAchievementAsked, cleanInvoice, cleanMessage, cleanMore, cleanWalletUri, PROPOSE_KINDS, provesPayment, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex642, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent3, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { isAchievementAsked, cleanFileBytes, cleanFileName, cleanFileType, cleanInvoice, cleanMessage, fileUrlNames, cleanMore, cleanWalletUri, PROPOSE_KINDS, provesPayment, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex642, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent3, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -1216,6 +1216,8 @@ var NONE = {
   propose: () => Promise.resolve(null),
   wallet: () => Promise.resolve(null),
   pay: () => Promise.resolve(null),
+  saveFile: () => Promise.resolve(null),
+  pickFile: () => Promise.resolve(null),
   panel: false,
   lock() {
   },
@@ -1487,6 +1489,22 @@ function createWorldSigner(opts) {
     wallet() {
       if (state !== "unlocked" || !frame) return Promise.resolve(null);
       return putToThem({ t: "wallet", id: `v${++n}` }, (reply) => reply.t === "wallet" ? cleanWalletUri(reply.uri) || null : null);
+    },
+    saveFile(file) {
+      const name2 = cleanFileName(file.name);
+      const bytes = cleanFileBytes(file.bytes);
+      if (state !== "unlocked" || !frame || !name2 || !bytes) return Promise.resolve(null);
+      return putToThem(
+        { t: "file-save", id: `fs${++n}`, name: name2, type: cleanFileType(file.type), bytes, private: file.private !== false },
+        (reply) => (
+          // An address is passed on only for a public file, and only if it names exactly the bytes that were offered.
+          reply.t === "file-saved" ? { name: reply.name, size: reply.size, private: reply.private, url: !reply.private && reply.url && fileUrlNames(reply.url, bytes) ? reply.url : null } : null
+        )
+      );
+    },
+    pickFile() {
+      if (state !== "unlocked" || !frame) return Promise.resolve(null);
+      return putToThem({ t: "file-pick", id: `fp${++n}` }, (reply) => reply.t === "file" ? { name: reply.name, type: reply.type, bytes: reply.bytes, url: reply.url && fileUrlNames(reply.url, reply.bytes) ? reply.url : null } : null);
     },
     pay(invoice) {
       const asked = cleanInvoice(invoice);

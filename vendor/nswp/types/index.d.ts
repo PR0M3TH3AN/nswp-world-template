@@ -14,6 +14,7 @@ export * from "./room.js";
 export * from "./chat.js";
 export * from "./signing.js";
 export * from "./invoice.js";
+export * from "./files.js";
 export * from "./save.js";
 export * from "./rating.js";
 export * from "./score.js";

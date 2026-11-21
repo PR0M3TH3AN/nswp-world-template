@@ -240,6 +240,23 @@ export type SignerRequest = {
     t: "pay";
     id: string;
     invoice: string;
+}
+/**
+ * Offer the person a file to keep among their own files, the same way: the sign-in address shows them where it
+ * would go, and it is saved only at their press there. `private` (the default) is sealed so only they can read it.
+ */
+ | {
+    t: "file-save";
+    id: string;
+    name: string;
+    type: string;
+    bytes: Uint8Array;
+    private: boolean;
+}
+/** Ask the person to hand this world one of their files, the same way: they choose it, and say yes. */
+ | {
+    t: "file-pick";
+    id: string;
 };
 /**
  * The careful kinds a world may put to its visitor, to be signed at their own press on the sign-in address's page:
@@ -332,6 +349,27 @@ export type SignerReply = {
     t: "paid";
     id: string;
     preimage?: string;
+}
+/**
+ * Answers `file-save`, once the person has saved it: under what name, how big, and whether privately. `url` is
+ * where it is kept, only if they kept it public. Never a folder, never a server for a private file, never a key.
+ */
+ | {
+    t: "file-saved";
+    id: string;
+    name: string;
+    size: number;
+    private: boolean;
+    url?: string;
+}
+/** Answers `file-pick`, once the person has chosen one: the file itself, already opened if it was private. */
+ | {
+    t: "file";
+    id: string;
+    name: string;
+    type: string;
+    bytes: Uint8Array;
+    url?: string;
 } | {
     t: "refused";
     id: string;
