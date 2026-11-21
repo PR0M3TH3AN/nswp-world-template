@@ -71,6 +71,21 @@ export interface WorldSigner {
      */
     wallet(): Promise<string | null>;
     /**
+     * Ask the visitor to pay a Lightning invoice this world made, the same
+     * way: their sign-in address shows them the amount and pays at their
+     * press. Call it from a press. Resolves null if they didn't pay; else
+     * with the payment's `preimage` where their wallet was given one, and
+     * `proven`: whether that preimage really is this invoice's proof. A
+     * world that hands over something of value should go by `proven`, or
+     * by its own word from whoever it made the invoice with: "paid" with
+     * no proof is the sign-in address's say-so and nothing more. The world
+     * learns nothing else: no balance, no wallet, never a token.
+     */
+    pay(invoice: string): Promise<{
+        preimage: string | null;
+        proven: boolean;
+    } | null>;
+    /**
      * Whether `unlock()` shows a panel in the visitor's client rather than a
      * window: this world is in the frame of a client that has one, for this
      * signer's own address (client-frame.ts). Something to choose words by.

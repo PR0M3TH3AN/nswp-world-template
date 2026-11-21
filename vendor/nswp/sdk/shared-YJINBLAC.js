@@ -1197,7 +1197,7 @@ function createSaves(opts = {}) {
 }
 
 // packages/sdk/src/signer.ts
-import { isAchievementAsked, cleanMessage, cleanMore, cleanWalletUri, PROPOSE_KINDS, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex642, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent3, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { isAchievementAsked, cleanInvoice, cleanMessage, cleanMore, cleanWalletUri, PROPOSE_KINDS, provesPayment, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex642, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent3, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -1215,6 +1215,7 @@ var NONE = {
   unlock: () => false,
   propose: () => Promise.resolve(null),
   wallet: () => Promise.resolve(null),
+  pay: () => Promise.resolve(null),
   panel: false,
   lock() {
   },
@@ -1486,6 +1487,11 @@ function createWorldSigner(opts) {
     wallet() {
       if (state !== "unlocked" || !frame) return Promise.resolve(null);
       return putToThem({ t: "wallet", id: `v${++n}` }, (reply) => reply.t === "wallet" ? cleanWalletUri(reply.uri) || null : null);
+    },
+    pay(invoice) {
+      const asked = cleanInvoice(invoice);
+      if (state !== "unlocked" || !frame || !asked) return Promise.resolve(null);
+      return putToThem({ t: "pay", id: `y${++n}`, invoice: asked }, (reply) => reply.t === "paid" ? { preimage: reply.preimage ?? null, proven: !!reply.preimage && provesPayment(asked, reply.preimage) } : null);
     },
     lock() {
       if (state === "unlocked") tell({ t: "lock", id: `l${++n}` });

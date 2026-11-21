@@ -231,6 +231,15 @@ export type SignerRequest = {
  | {
     t: "wallet";
     id: string;
+}
+/**
+ * Ask the person to pay this Lightning invoice, the same way. The world made the invoice; the sign-in address
+ * shows them the amount and pays at their press. The world is told it was paid and nothing about their wallet.
+ */
+ | {
+    t: "pay";
+    id: string;
+    invoice: string;
 };
 /**
  * The careful kinds a world may put to its visitor, to be signed at their own press on the sign-in address's page:
@@ -315,6 +324,12 @@ export type SignerReply = {
     t: "wallet";
     id: string;
     uri: string;
+}
+/** Answers `pay`, once the person has paid: with the payment's proof, where their wallet was given one. */
+ | {
+    t: "paid";
+    id: string;
+    preimage?: string;
 } | {
     t: "refused";
     id: string;
