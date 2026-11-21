@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.69.0";
+var KIT_VERSION = "0.69.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -7028,8 +7028,8 @@ var RECEIPT_ISSUERS = Object.freeze([
   Object.freeze({ name: "BitUnlock", service: "https://api.bitunlock.network", pubkey: "66be61cf5b8d286391f7b1a72ffa7c799ec2dc49eff0830c40df1cc964e6787d" })
 ]);
 function cleanListing(input) {
-  if (typeof input !== "string" || input.length > 300) return "";
-  return /^30078:[0-9a-f]{64}:.{1,200}$/.test(input) ? input : "";
+  if (typeof input !== "string" || input.length > 400) return "";
+  return /^30078:[0-9a-f]{64}:[^:\n][^\n]{0,255}$/.test(input) ? input : "";
 }
 function listingSeller(listing) {
   return cleanListing(listing).slice(6, 70);
