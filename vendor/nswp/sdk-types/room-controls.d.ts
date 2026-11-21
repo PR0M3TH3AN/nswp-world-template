@@ -110,6 +110,22 @@ export declare function addRoomControls(controls: Controls, presence: Presence, 
     about?: PersonLines | null;
     /** Whether the visitor is in a headset: a window that opens can't be seen from in there. */
     presenting?: () => boolean;
+    /**
+     * What sends a tip when the visitor asks (docs/plans/paying-for-things.md, 7.5): a person, by their key, or
+     * with no `to` this place itself. Left out, the page's own signer, which puts it to the visitor at their
+     * sign-in address. A visitor's own client gives its own. Resolves whether it went, and never why not. Null
+     * where nothing here can send one: then no tip is offered at all.
+     */
+    tip?: ((o: {
+        to?: string;
+        sats: number;
+    }) => Promise<boolean>) | null;
+    /**
+     * Whether this place takes tips. Left out, it is read from the place's own `/.well-known/nswp.json`, which
+     * names an address for them (`tip`) if it does: the same file the visitor's sign-in address reads the address
+     * from. The address itself is never passed here. False for a place that should offer no such row.
+     */
+    tipsWorld?: boolean;
 }): {
     refresh(): void;
     travelling(): Travelling;

@@ -257,6 +257,34 @@ export type SignerRequest = {
  | {
     t: "file-pick";
     id: string;
+}
+/**
+ * Ask the person to tip someone, the same way: a person, by their key, or (with no `to`) this world itself. The
+ * world names who and how much and nothing else: the sign-in address finds where the money goes and shows it.
+ */
+ | {
+    t: "tip";
+    id: string;
+    to?: string;
+    sats: number;
+}
+/**
+ * Ask the person to buy a listing, the same way. The sign-in address reads the listing, shows what it is and
+ * what it costs, pays, and keeps the receipt. The world never signs as the buyer and never sees the wallet.
+ */
+ | {
+    t: "buy";
+    id: string;
+    listing: string;
+}
+/**
+ * Does my visitor hold a receipt for this listing? Answered at once, with no question put to them, and only
+ * for a listing that is this world's own or was bought through it.
+ */
+ | {
+    t: "have";
+    id: string;
+    listing: string;
 };
 /**
  * The careful kinds a world may put to its visitor, to be signed at their own press on the sign-in address's page:
@@ -266,6 +294,8 @@ export type SignerRequest = {
 export declare const PROPOSE_KINDS: readonly number[];
 /** A deletion (NIP-09): a request, signed by whoever wrote a note, that relays drop it. */
 export declare const DELETION_KIND = 5;
+/** The most text a purchase may release to a world: room for a key, not for the goods. */
+export declare const DELIVERY_LIMIT = 20000;
 /** A wallet connection as it may be handed to a world: a Nostr Wallet Connect address, and not too long. */
 export declare function cleanWalletUri(input: unknown): string;
 /**
@@ -370,6 +400,27 @@ export type SignerReply = {
     type: string;
     bytes: Uint8Array;
     url?: string;
+}
+/**
+ * Answers `buy`, once it is bought: the receipt, whole and as the selling service signed it, and what the
+ * purchase released where the listing releases something (a key for a sealed world), as text.
+ */
+ | {
+    t: "bought";
+    id: string;
+    receipt: NostrEvent;
+    delivery?: string;
+}
+/** Answers `have`: the visitor's receipt for that listing. */
+ | {
+    t: "receipt";
+    id: string;
+    receipt: NostrEvent;
+}
+/** Answers `have`: they hold none that this world may be told of. */
+ | {
+    t: "none";
+    id: string;
 } | {
     t: "refused";
     id: string;

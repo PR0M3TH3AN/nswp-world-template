@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.68.0";
+var KIT_VERSION = "0.69.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4388,6 +4388,11 @@ var FILE_LIMITS = {
   /** The most characters in its name. */
   name: 120
 };
+
+// packages/core/dist/receipt.js
+var RECEIPT_ISSUERS = Object.freeze([
+  Object.freeze({ name: "BitUnlock", service: "https://api.bitunlock.network", pubkey: "66be61cf5b8d286391f7b1a72ffa7c799ec2dc49eff0830c40df1cc964e6787d" })
+]);
 
 // packages/core/dist/signing.js
 var SIGN_LIMITS = {

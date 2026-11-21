@@ -1197,7 +1197,7 @@ function createSaves(opts = {}) {
 }
 
 // packages/sdk/src/signer.ts
-import { isAchievementAsked, cleanFileBytes, cleanFileName, cleanFileType, cleanInvoice, cleanMessage, fileUrlNames, cleanMore, cleanWalletUri, PROPOSE_KINDS, provesPayment, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex642, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent3, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { isAchievementAsked, cleanFileBytes, cleanFileName, cleanFileType, cleanInvoice, cleanListing, cleanMessage, cleanTip, readReceipt, fileUrlNames, cleanMore, cleanWalletUri, PROPOSE_KINDS, provesPayment, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex642, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent3, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -1218,6 +1218,9 @@ var NONE = {
   pay: () => Promise.resolve(null),
   saveFile: () => Promise.resolve(null),
   pickFile: () => Promise.resolve(null),
+  tip: () => Promise.resolve(false),
+  buy: () => Promise.resolve(null),
+  have: () => Promise.resolve(null),
   panel: false,
   lock() {
   },
@@ -1505,6 +1508,29 @@ function createWorldSigner(opts) {
     pickFile() {
       if (state !== "unlocked" || !frame) return Promise.resolve(null);
       return putToThem({ t: "file-pick", id: `fp${++n}` }, (reply) => reply.t === "file" ? { name: reply.name, type: reply.type, bytes: reply.bytes, url: reply.url && fileUrlNames(reply.url, reply.bytes) ? reply.url : null } : null);
+    },
+    tip(o) {
+      const sats = cleanTip(o.sats);
+      if (state !== "unlocked" || !frame || sats === null || o.to !== void 0 && !isHex642(o.to)) return Promise.resolve(false);
+      return putToThem({ t: "tip", id: `t${++n}`, sats, ...o.to ? { to: o.to } : {} }, (reply) => reply.t === "paid" ? true : null).then((paid) => paid === true);
+    },
+    buy(listing) {
+      const asked = cleanListing(listing);
+      if (state !== "unlocked" || !frame || !asked) return Promise.resolve(null);
+      return putToThem({ t: "buy", id: `b${++n}`, listing: asked }, (reply) => {
+        if (reply.t !== "bought") return null;
+        const checked = readReceipt(reply.receipt, { listing: asked, buyer: pubkey ?? "" });
+        return checked.ok ? { ...checked.receipt, event: reply.receipt, delivery: reply.delivery ?? null } : null;
+      });
+    },
+    have(listing) {
+      const asked = cleanListing(listing);
+      if (state !== "unlocked" || !frame || !asked) return Promise.resolve(null);
+      return askAbout({ t: "have", id: `h${++n}`, listing: asked }, (reply) => {
+        if (reply.t !== "receipt") return null;
+        const checked = readReceipt(reply.receipt, { listing: asked, buyer: pubkey ?? "" });
+        return checked.ok ? { ...checked.receipt, event: reply.receipt } : null;
+      });
     },
     pay(invoice) {
       const asked = cleanInvoice(invoice);
@@ -1852,6 +1878,23 @@ function filesAction(controls, opts = {}) {
       const host = signer.host ?? "your sign-in address";
       if (opts.presenting?.()) return controls.say(`${host} shows your files itself, and that can't be seen from inside a headset. Leave the headset view for a moment and press this again.`);
       if (!askClientForSignIn("files")) controls.say(`${host} couldn't be shown here just now.`);
+    }
+  };
+}
+function libraryAction(controls, opts = {}) {
+  const signer = worldSigner();
+  onClientScreen(() => controls.signal("signer"));
+  return {
+    id: "library",
+    section: "you",
+    icon: "save",
+    label: () => `Your purchases, at ${signer.host ?? "your sign-in address"}`,
+    short: "Purchases",
+    hidden: () => !signer.panel,
+    act: () => {
+      const host = signer.host ?? "your sign-in address";
+      if (opts.presenting?.()) return controls.say(`${host} shows what you have bought itself, and that can't be seen from inside a headset. Leave the headset view for a moment and press this again.`);
+      if (!askClientForSignIn("library")) controls.say(`${host} couldn't be shown here just now.`);
     }
   };
 }
@@ -4991,7 +5034,7 @@ function createPresence(d) {
 
 // packages/sdk/src/room-controls.ts
 import * as THREE11 from "three";
-import { CHAT_LIMITS, DEFAULT_RELAYS as DEFAULT_RELAYS6, DELETION_KIND, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub5, verifyEvent as verifyEvent6 } from "@nswp/core";
+import { CHAT_LIMITS, cleanLightningAddress, DEFAULT_RELAYS as DEFAULT_RELAYS6, DELETION_KIND, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub5, verifyEvent as verifyEvent6 } from "@nswp/core";
 
 // packages/sdk/src/following.ts
 import { decodeNpub, encodeNpub as encodeNpub2, shortNpub as shortNpub3 } from "@nswp/core";
@@ -5803,6 +5846,54 @@ function addRoomControls(controls, presence, opts = {}) {
   });
   let followsKept = null;
   const follows = () => followsKept ??= opts.follows ?? worldFollows();
+  const TIP_AMOUNTS = [21, 100, 500];
+  const tipper = opts.tip === null ? null : opts.tip ?? ((o) => worldSigner().tip(o));
+  let tipping = null;
+  const sendTip = (to, name, sats) => {
+    const host = notes.host?.() ?? worldSigner().host ?? "your sign-in address";
+    if (opts.presenting?.() ?? presence.presenting) return tell(`${host} has to ask you this itself, which can't be seen from in here. Step out of the headset and press this again.`);
+    tipping = null;
+    tell(`${host} is asking: ${sats} sats to ${name}. Say yes there, and it goes.`);
+    if (!tipper) return;
+    void tipper({ sats, ...to ? { to } : {} }).catch(() => false).then((went) => tell(went ? `${sats} sats went to ${name}.` : `The tip to ${name} didn't go.`));
+    refresh();
+  };
+  const tipRows = (key, section, to, name, ask) => {
+    const rows = [{ id: `${key}-tip` }];
+    controls.add({
+      id: `${key}-tip`,
+      section,
+      icon: "key",
+      on: () => tipping === (to ?? "world"),
+      label: ask,
+      short: "Tip",
+      act: () => {
+        tipping = tipping === (to ?? "world") ? null : to ?? "world";
+        refresh();
+      }
+    });
+    if (tipping === (to ?? "world")) {
+      for (const sats of TIP_AMOUNTS) {
+        rows.push({ id: `${key}-tip-${sats}` });
+        controls.add({ id: `${key}-tip-${sats}`, section, icon: "check", label: `${sats} sats to ${name}`, act: () => sendTip(to, name, sats) });
+      }
+    }
+    return rows;
+  };
+  let takesTips = opts.tipsWorld ?? false;
+  if (opts.tipsWorld === void 0 && typeof fetch === "function") {
+    void fetch("/.well-known/nswp.json", { cache: "no-cache" }).then((r) => r.ok ? r.json() : null).then((file) => {
+      takesTips = !!cleanLightningAddress(file?.tip);
+      if (takesTips) refresh();
+    }).catch(() => void 0);
+  }
+  let worldTipRows = [];
+  const tendWorldTip = () => {
+    for (const id of worldTipRows) controls.remove(id);
+    worldTipRows = [];
+    if (!tipper || !takesTips || !follows().pubkey()) return;
+    worldTipRows = tipRows("world", "travel", null, "this world", "Tip this world").map((r) => r.id);
+  };
   const following = addFollowingControls(controls, {
     follows: follows(),
     ...opts.noteRelays ? { relays: opts.noteRelays } : {},
@@ -5833,6 +5924,7 @@ function addRoomControls(controls, presence, opts = {}) {
     tendChat();
     tendFeed();
     people();
+    tendWorldTip();
     remember();
   };
   const remember = () => {
@@ -6037,6 +6129,7 @@ function addRoomControls(controls, presence, opts = {}) {
       const them = who.identity;
       extras.push("person-write");
       controls.add({ id: "person-write", section: "people", icon: "chat", label: `Write to ${who.name}, privately`, act: () => messaging.write(them) });
+      if (tipper) for (const row of tipRows("person", "people", them, who.name, `Send ${who.name} a tip`)) extras.push(row.id);
     }
     if (who) {
       extras.push("person-mute", "person-music", "person-block");
@@ -11818,7 +11911,7 @@ async function addViewControls(controls, d) {
   if (!controls.has("identity") && identityHost()) {
     const leaving = async (to) => ({ ...await d.leaving?.(to), xrSession: d.renderer.xr.getSession() });
     controls.addSection(identitySection());
-    controls.add(figureAction(controls, leaving), identityAction(controls, leaving), signerAction(controls, { presenting: () => d.renderer.xr.isPresenting }), accountAction(controls, { presenting: () => d.renderer.xr.isPresenting }), filesAction(controls, { presenting: () => d.renderer.xr.isPresenting }));
+    controls.add(figureAction(controls, leaving), identityAction(controls, leaving), signerAction(controls, { presenting: () => d.renderer.xr.isPresenting }), accountAction(controls, { presenting: () => d.renderer.xr.isPresenting }), filesAction(controls, { presenting: () => d.renderer.xr.isPresenting }), libraryAction(controls, { presenting: () => d.renderer.xr.isPresenting }));
   }
   document.addEventListener("fullscreenchange", () => controls.setTarget(""));
   controls.addSection({

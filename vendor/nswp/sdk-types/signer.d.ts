@@ -1,4 +1,4 @@
-import { type NostrEvent, type Message, type SealedMessage, type SignerMore } from "@nswp/core";
+import { type Receipt, type NostrEvent, type Message, type SealedMessage, type SignerMore } from "@nswp/core";
 /** "none": the visitor has no client here that offers one. "locked": there is one, and it hasn't been unlocked for this world. */
 export type SignerState = "none" | "locked" | "unlocked";
 export interface WorldSigner {
@@ -121,6 +121,43 @@ export interface WorldSigner {
         bytes: Uint8Array;
         url: string | null;
     } | null>;
+    /**
+     * Ask the visitor to tip someone: a person, by their key, or (with no
+     * `to`) this world itself. The world says who and how much and nothing
+     * else: their sign-in address finds where the money goes (the person's
+     * own profile, or this world's own `/.well-known/nswp.json`), shows it,
+     * and pays at their press. Call it from a press. Resolves true if it
+     * was paid, false if not; never why not. Nothing is owned afterwards.
+     */
+    tip(o: {
+        to?: string;
+        sats: number;
+    }): Promise<boolean>;
+    /**
+     * Ask the visitor to buy a listing (`30078:<seller>:<name>`). Their
+     * sign-in address reads the listing, shows what it is, whose, and what
+     * it costs, pays, and keeps the receipt. Call it from a press. Resolves
+     * null if they didn't buy; else with the receipt, checked here as well:
+     * really signed by a selling service the kit knows, for this listing,
+     * and theirs. `delivery` is what the purchase released, where the
+     * listing releases something. Something already held costs nothing.
+     */
+    buy(listing: string): Promise<(Receipt & {
+        event: NostrEvent;
+        delivery: string | null;
+    }) | null>;
+    /**
+     * Whether the visitor already holds this listing, with no question put
+     * to them. Null if they don't, or if this world may not be told: a
+     * world is told only of its own listings and of things bought through
+     * it. A world loaded again may hear "none" for something held until
+     * their sign-in address has next been shown here; `buy` then brings it
+     * back and charges nothing. Checked here like any receipt. It can't say
+     * whether the receipt was taken back: only the selling service can.
+     */
+    have(listing: string): Promise<(Receipt & {
+        event: NostrEvent;
+    }) | null>;
     /**
      * Whether `unlock()` shows a panel in the visitor's client rather than a
      * window: this world is in the frame of a client that has one, for this

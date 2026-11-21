@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.68.0";
+var KIT_VERSION = "0.69.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -1045,8 +1045,8 @@ function FpLegendre(Fp, n) {
   const powered = F.pow(n, p1mod2);
   const yes = F.eql(powered, F.ONE);
   const zero = F.eql(powered, F.ZERO);
-  const no = F.eql(powered, F.neg(F.ONE));
-  if (!yes && !zero && !no)
+  const no2 = F.eql(powered, F.neg(F.ONE));
+  if (!yes && !zero && !no2)
     throw new Error("invalid Legendre symbol result");
   return yes ? 1 : zero ? 0 : -1;
 }
@@ -3328,15 +3328,15 @@ function encodeNpub(pubkey) {
   return bech32.encode("npub", bech32.toWords(hexToBytes(pubkey)), BECH32_LIMIT);
 }
 function decodeNpub(s) {
-  const text = s.trim();
+  const text2 = s.trim();
   const real = (hex) => {
     if (!isPublicKey(hex)) throw new NswpError("npub_invalid", "not a public key: no key has that value");
     return hex;
   };
-  if (/^[0-9a-f]{64}$/i.test(text)) return real(text.toLowerCase());
+  if (/^[0-9a-f]{64}$/i.test(text2)) return real(text2.toLowerCase());
   let decoded;
   try {
-    decoded = bech32.decode(text, BECH32_LIMIT);
+    decoded = bech32.decode(text2, BECH32_LIMIT);
   } catch (cause) {
     throw new NswpError("npub_invalid", "not a public key: expected npub1\u2026 or 64 hex characters", { cause });
   }
@@ -4717,11 +4717,11 @@ async function fetchManifest(urlOrOrigin, fetchImpl = fetch, timeoutMs = 8e3) {
       issue("manifest_redirected", "The manifest URL redirected; redirects are not followed.");
       return { url, issues, warnings: [], corsHeader };
     }
-    const text = await res.text();
-    const byteLength = new TextEncoder().encode(text).length;
+    const text2 = await res.text();
+    const byteLength = new TextEncoder().encode(text2).length;
     let json;
     try {
-      json = JSON.parse(text);
+      json = JSON.parse(text2);
     } catch {
       issue("manifest_not_json", "The manifest is not valid JSON.");
       return { url, issues, warnings: [], corsHeader };
@@ -4781,8 +4781,8 @@ function buildLayoutEvent(l) {
   tags.push(["alt", `Home layout${l.title ? `: ${l.title}` : ""}`]);
   return { kind: HOME_LAYOUT_KIND, created_at: l.createdAt ?? Math.floor(Date.now() / 1e3), tags, content: "" };
 }
-function parsePosition(text) {
-  const parts = (text ?? "").trim().split(/\s+/).map(Number);
+function parsePosition(text2) {
+  const parts = (text2 ?? "").trim().split(/\s+/).map(Number);
   if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n) || Math.abs(n) > LAYOUT_LIMITS.reach)) return null;
   return parts;
 }
@@ -4911,21 +4911,21 @@ var UNSEEN = [
   [65529, 65531]
 ];
 var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
-function cleanLine(text, chars) {
-  if (typeof text !== "string") return "";
+function cleanLine(text2, chars) {
+  if (typeof text2 !== "string") return "";
   let out = "";
-  for (const ch of text.slice(0, chars * 8).normalize("NFC")) out += unseen(ch.codePointAt(0)) ? " " : ch;
+  for (const ch of text2.slice(0, chars * 8).normalize("NFC")) out += unseen(ch.codePointAt(0)) ? " " : ch;
   out = out.replace(/\s+/g, " ").trim();
   return [...out].slice(0, chars).join("").trim();
 }
-var cleanChat = (text) => cleanLine(text, CHAT_LIMITS.chars);
+var cleanChat = (text2) => cleanLine(text2, CHAT_LIMITS.chars);
 function chatId() {
   const bytes = new Uint8Array(4);
   globalThis.crypto.getRandomValues(bytes);
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-function buildSay(text, id = chatId()) {
-  const cleaned = cleanChat(text);
+function buildSay(text2, id = chatId()) {
+  const cleaned = cleanChat(text2);
   if (!cleaned || !/^[0-9a-f]{8}$/.test(id)) return null;
   return `say:${id}:${cleaned}`;
 }
@@ -4933,8 +4933,8 @@ function parseSay(data) {
   if (typeof data !== "string" || !data.startsWith("say:") || data[12] !== ":") return null;
   const id = data.slice(4, 12);
   if (!/^[0-9a-f]{8}$/.test(id)) return null;
-  const text = cleanChat(data.slice(13));
-  return text ? { id, text } : null;
+  const text2 = cleanChat(data.slice(13));
+  return text2 ? { id, text: text2 } : null;
 }
 function createChatGate(limits = CHAT_LIMITS) {
   const ids = [];
@@ -4954,8 +4954,8 @@ function createChatGate(limits = CHAT_LIMITS) {
     }
   };
 }
-function bubbleSeconds(text) {
-  return Math.min(12, 4 + [...text].length * 0.06);
+function bubbleSeconds(text2) {
+  return Math.min(12, 4 + [...text2].length * 0.06);
 }
 
 // packages/core/src/rating.ts
@@ -5164,21 +5164,21 @@ function cleanSettings(input) {
   return out;
 }
 var hasSettings = (s) => !!s && Object.keys(s).length > 0;
-var toBase64Url = (text) => {
-  const bytes = new TextEncoder().encode(text);
+var toBase64Url = (text2) => {
+  const bytes = new TextEncoder().encode(text2);
   let bin = "";
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
-var fromBase64Url = (text) => {
-  const bin = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+var fromBase64Url = (text2) => {
+  const bin = atob(text2.replace(/-/g, "+").replace(/_/g, "/"));
   return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
 };
 function encodeSettings(settings) {
   const clean3 = cleanSettings(settings);
   if (!hasSettings(clean3)) return "";
-  const text = toBase64Url(JSON.stringify(clean3));
-  if (text.length <= SETTINGS_LINK_LIMIT) return text;
+  const text2 = toBase64Url(JSON.stringify(clean3));
+  if (text2.length <= SETTINGS_LINK_LIMIT) return text2;
   if (clean3.pins) {
     const { pins: _left, ...rest } = clean3;
     return encodeSettings(rest);
@@ -5189,10 +5189,10 @@ function encodeSettings(settings) {
   }
   return "";
 }
-function decodeSettings(text) {
-  if (typeof text !== "string" || !text || text.length > SETTINGS_LINK_LIMIT || !/^[A-Za-z0-9_-]+$/.test(text)) return {};
+function decodeSettings(text2) {
+  if (typeof text2 !== "string" || !text2 || text2.length > SETTINGS_LINK_LIMIT || !/^[A-Za-z0-9_-]+$/.test(text2)) return {};
   try {
-    return cleanSettings(JSON.parse(fromBase64Url(text)));
+    return cleanSettings(JSON.parse(fromBase64Url(text2)));
   } catch {
     return {};
   }
@@ -5286,15 +5286,15 @@ function encodeLook(look, seed) {
   return JSON.stringify(out);
 }
 var LOOK_LIMITS = { chars: 600, seedChars: 64 };
-function decodeLook(text) {
+function decodeLook(text2) {
   const c = new Collector();
-  if (text.length > LOOK_LIMITS.chars) {
+  if (text2.length > LOOK_LIMITS.chars) {
     c.error("look_too_large", "", "A look is at most 600 characters.");
     return c.result({ look: generatedLook(""), seed: "" });
   }
   let json;
   try {
-    json = JSON.parse(text);
+    json = JSON.parse(text2);
   } catch {
     c.error("invalid_json", "", "A look must be a JSON object.");
     return c.result({ look: generatedLook(""), seed: "" });
@@ -5590,8 +5590,8 @@ var blockedFlag = (opts) => {
 };
 var blockedFrom = (value) => cleanKeys((value ?? "").split(","), LIMITS.maxBlockedOnLink);
 var settingsFlag = (opts) => {
-  const text = encodeSettings(opts.settings);
-  return text ? [`set=${text}`] : [];
+  const text2 = encodeSettings(opts.settings);
+  return text2 ? [`set=${text2}`] : [];
 };
 function stateFlags(opts) {
   return [...opts.immersive ? ["xr=1"] : [], ...opts.moving === "intense" ? ["moving=intense"] : [], ...opts.joined ? ["joined=1"] : [], ...opts.joined && opts.mic ? ["mic=1"] : []];
@@ -6413,19 +6413,19 @@ function openSignal(event, sessionKey, topic, now = nowSeconds()) {
   const self = getPublicKey(sessionKey);
   if (event.pubkey === self) return null;
   const to = getTagValue(event, "p");
-  let text;
-  if (to === void 0) text = event.content;
+  let text2;
+  if (to === void 0) text2 = event.content;
   else {
     if (to !== self || !isHex64(to)) return null;
     try {
-      text = nip44Decrypt(event.content, getConversationKey(sessionKey, event.pubkey));
+      text2 = nip44Decrypt(event.content, getConversationKey(sessionKey, event.pubkey));
     } catch {
       return null;
     }
   }
   let message;
   try {
-    message = JSON.parse(text);
+    message = JSON.parse(text2);
   } catch {
     return null;
   }
@@ -6651,10 +6651,10 @@ var UNSEEN2 = [
   [65279, 65279],
   [65529, 65531]
 ];
-function cleanMessage(text) {
-  if (typeof text !== "string") return "";
+function cleanMessage(text2) {
+  if (typeof text2 !== "string") return "";
   let out = "";
-  for (const ch of text.slice(0, MESSAGE_LIMITS.chars * 8).normalize("NFC")) {
+  for (const ch of text2.slice(0, MESSAGE_LIMITS.chars * 8).normalize("NFC")) {
     const code = ch.codePointAt(0);
     out += UNSEEN2.some(([from, to]) => code >= from && code <= to) ? " " : ch;
   }
@@ -6662,9 +6662,9 @@ function cleanMessage(text) {
   return [...out].slice(0, MESSAGE_LIMITS.chars).join("").trim();
 }
 function buildMessage(o) {
-  const text = cleanMessage(o.text);
-  if (!isHex64(o.from) || !isHex64(o.to) || o.from === o.to || !text) return null;
-  const written = { kind: MESSAGE_KIND, pubkey: o.from, created_at: Math.floor(o.now), tags: [["p", o.to, ...o.relay ? [o.relay] : []]], content: text };
+  const text2 = cleanMessage(o.text);
+  if (!isHex64(o.from) || !isHex64(o.to) || o.from === o.to || !text2) return null;
+  const written = { kind: MESSAGE_KIND, pubkey: o.from, created_at: Math.floor(o.now), tags: [["p", o.to, ...o.relay ? [o.relay] : []]], content: text2 };
   return { ...written, id: getEventHash(written) };
 }
 function sealTemplate(sealed, now) {
@@ -6705,10 +6705,10 @@ function readMessage(opened, seal, reader) {
   if (typeof m.content !== "string" || typeof m.created_at !== "number" || !Number.isInteger(m.created_at) || !Array.isArray(m.tags)) return null;
   if (!m.tags.every((t) => Array.isArray(t) && t.every((item) => typeof item === "string"))) return null;
   const to = [...new Set(m.tags.filter((t) => t[0] === "p" && isHex64(t[1])).map((t) => t[1]))];
-  const text = cleanMessage(m.content);
-  if (to.length === 0 || !text || m.pubkey !== reader && !to.includes(reader)) return null;
+  const text2 = cleanMessage(m.content);
+  if (to.length === 0 || !text2 || m.pubkey !== reader && !to.includes(reader)) return null;
   const id = getEventHash({ kind: MESSAGE_KIND, pubkey: m.pubkey, created_at: m.created_at, tags: m.tags, content: m.content });
-  return { id, from: m.pubkey, to, text, at: m.created_at };
+  return { id, from: m.pubkey, to, text: text2, at: m.created_at };
 }
 function writtenWith(message, reader) {
   const others = [.../* @__PURE__ */ new Set([message.from, ...message.to])].filter((k) => k !== reader);
@@ -6763,8 +6763,8 @@ function cleanRead(input) {
   const m = input;
   if (!m || typeof m !== "object" || !isHex64(m.id) || !isHex64(m.from) || !Array.isArray(m.to) || typeof m.at !== "number" || !Number.isFinite(m.at)) return null;
   const to = [...new Set(m.to.filter((k) => isHex64(k)))];
-  const text = cleanMessage(m.text);
-  return to.length && text ? { id: m.id, from: m.from, to, text, at: m.at } : null;
+  const text2 = cleanMessage(m.text);
+  return to.length && text2 ? { id: m.id, from: m.from, to, text: text2, at: m.at } : null;
 }
 function buildMessageRelays(relays, now) {
   const clean3 = [...new Set(relays.map(cleanRelayUrl).filter(Boolean))].slice(0, MESSAGE_LIMITS.relays);
@@ -7020,6 +7020,71 @@ function fileUrlNames(url, bytes) {
   return !!named && named === bytesToHex(sha256(bytes));
 }
 
+// packages/core/src/receipt.ts
+var RECEIPT_KIND = 30078;
+var RECEIPT_NAME = "bitunlock:entitlement:v1";
+var RECEIPT_FORM = { schemaVersion: 1, protocolVersion: "seller-unlock-service-v1" };
+var RECEIPT_ISSUERS = Object.freeze([
+  Object.freeze({ name: "BitUnlock", service: "https://api.bitunlock.network", pubkey: "66be61cf5b8d286391f7b1a72ffa7c799ec2dc49eff0830c40df1cc964e6787d" })
+]);
+function cleanListing(input) {
+  if (typeof input !== "string" || input.length > 300) return "";
+  return /^30078:[0-9a-f]{64}:.{1,200}$/.test(input) ? input : "";
+}
+function listingSeller(listing) {
+  return cleanListing(listing).slice(6, 70);
+}
+var no = (why) => ({ ok: false, why });
+var text = (v, most = 300) => typeof v === "string" && v.length > 0 && v.length <= most;
+function readReceipt(event, expect = {}) {
+  const e = event;
+  if (!e || typeof e !== "object" || e.kind !== RECEIPT_KIND || typeof e.content !== "string" || e.content.length > 8e3 || !Array.isArray(e.tags) || !isHex64(e.pubkey)) return no("not-a-receipt");
+  const issuer = (expect.issuers ?? RECEIPT_ISSUERS).find((i) => i.pubkey === e.pubkey);
+  if (!issuer) return no("unknown-issuer");
+  let signed = false;
+  try {
+    signed = verifyEvent({ ...e, tags: e.tags.map((t) => [...t]) });
+  } catch {
+    signed = false;
+  }
+  if (!signed) return no("not-signed");
+  let d;
+  try {
+    const parsed = JSON.parse(e.content);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return no("not-a-receipt");
+    d = parsed;
+  } catch {
+    return no("not-a-receipt");
+  }
+  if (d.schemaVersion !== RECEIPT_FORM.schemaVersion || d.protocolVersion !== RECEIPT_FORM.protocolVersion || d.status !== "active") return no("not-a-receipt");
+  const listing = cleanListing(d.productCoordinate);
+  const issuedAt = d.issuedAt;
+  if (!listing || !isHex64(d.buyerPubkey) || !isHex64(d.sellerPubkey) || !text(d.fulfillmentId) || typeof issuedAt !== "number" || !Number.isSafeInteger(issuedAt) || issuedAt < 1) return no("not-a-receipt");
+  if (d.sellerPubkey !== listingSeller(listing)) return no("not-a-receipt");
+  const names = e.tags.filter((t) => t[0] === "d");
+  if (names.length !== 1 || names[0][1] !== `${RECEIPT_NAME}:${d.fulfillmentId}`) return no("not-a-receipt");
+  let expiresAt = null;
+  const policy = d.accessPolicy;
+  if (policy !== void 0 && policy !== "perpetual-v1") {
+    const term = policy;
+    if (!term || typeof term !== "object" || term.kind !== "term-v1" || typeof term.expiresAt !== "number" || !Number.isSafeInteger(term.expiresAt) || term.expiresAt <= issuedAt) return no("not-a-receipt");
+    expiresAt = term.expiresAt;
+  }
+  if (expect.listing !== void 0 && listing !== expect.listing) return no("other-listing");
+  if (expect.buyer !== void 0 && d.buyerPubkey !== expect.buyer) return no("other-buyer");
+  if (expiresAt !== null && (expect.now ?? Math.floor(Date.now() / 1e3)) >= expiresAt) return no("run-out");
+  return { ok: true, receipt: { issuer, listing, buyer: d.buyerPubkey, seller: d.sellerPubkey, issuedAt, expiresAt, fulfillment: d.fulfillmentId } };
+}
+function cleanLightningAddress(input) {
+  if (typeof input !== "string" || input.length > 200) return "";
+  const address = input.trim().toLowerCase();
+  return /^[a-z0-9._+-]{1,64}@[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/.test(address) ? address : "";
+}
+var TIP_LIMITS = { least: 1, most: 1e6 };
+function cleanTip(input) {
+  return typeof input === "number" && Number.isSafeInteger(input) && input >= TIP_LIMITS.least && input <= TIP_LIMITS.most ? input : null;
+}
+
 // packages/core/src/signing.ts
 var SIGNER_PROTOCOL = "nswp-signer";
 var SIGNER_VERSION = 1;
@@ -7112,6 +7177,7 @@ function signerAt(base) {
 }
 var PROPOSE_KINDS = [0, 5, 10002];
 var DELETION_KIND = 5;
+var DELIVERY_LIMIT = 2e4;
 function cleanWalletUri(input) {
   return typeof input === "string" && input.length <= 2e3 && /^nostr\+walletconnect:\/\/[0-9a-f]{64}\?[\x21-\x7e]+$/.test(input) ? input : "";
 }
@@ -7152,6 +7218,8 @@ function readSignerRequest(data) {
   if (d.t === "wallet") return { t: "wallet", id: d.id };
   if (d.t === "pay" && cleanInvoice(d.invoice)) return { t: "pay", id: d.id, invoice: cleanInvoice(d.invoice) };
   if (d.t === "file-pick") return { t: "file-pick", id: d.id };
+  if (d.t === "tip" && cleanTip(d.sats) !== null && (d.to === void 0 || isHex64(d.to))) return { t: "tip", id: d.id, sats: cleanTip(d.sats), ...isHex64(d.to) ? { to: d.to } : {} };
+  if ((d.t === "buy" || d.t === "have") && cleanListing(d.listing)) return { t: d.t, id: d.id, listing: cleanListing(d.listing) };
   if (d.t === "file-save" && cleanFileName(d.name) && cleanFileBytes(d.bytes)) return { t: "file-save", id: d.id, name: cleanFileName(d.name), type: cleanFileType(d.type), bytes: cleanFileBytes(d.bytes), private: d.private !== false };
   if (d.t === "follow" && (d.list === null || d.list && typeof d.list === "object") && isHex64(d.add) !== isHex64(d.remove)) {
     return { t: "follow", id: d.id, list: d.list, ...isHex64(d.add) ? { add: d.add } : { remove: d.remove } };
@@ -7187,6 +7255,11 @@ function readSignerReply(data) {
   if (d.t === "asking") return { t: "asking", id: d.id };
   if (d.t === "wallet" && cleanWalletUri(d.uri)) return { t: "wallet", id: d.id, uri: cleanWalletUri(d.uri) };
   if (d.t === "paid") return { t: "paid", id: d.id, ...isHex64(d.preimage) ? { preimage: d.preimage } : {} };
+  if (d.t === "none") return { t: "none", id: d.id };
+  if ((d.t === "bought" || d.t === "receipt") && d.receipt && typeof d.receipt === "object") {
+    const delivery = d.t === "bought" && typeof d.delivery === "string" && d.delivery.length > 0 && d.delivery.length <= DELIVERY_LIMIT ? d.delivery : void 0;
+    return d.t === "bought" ? { t: "bought", id: d.id, receipt: d.receipt, ...delivery !== void 0 ? { delivery } : {} } : { t: "receipt", id: d.id, receipt: d.receipt };
+  }
   if (d.t === "file-saved" && cleanFileName(d.name) && typeof d.size === "number" && Number.isSafeInteger(d.size) && d.size >= 0) {
     const kept = d.private !== false;
     return { t: "file-saved", id: d.id, name: cleanFileName(d.name), size: d.size, private: kept, ...!kept && cleanFileUrl(d.url) ? { url: cleanFileUrl(d.url) } : {} };
@@ -7255,9 +7328,9 @@ function cleanFile(url, sha2562) {
     return null;
   }
 }
-var numbers = (text, n) => {
-  if (typeof text !== "string") return null;
-  const parts = text.trim().split(/\s+/).map(Number);
+var numbers = (text2, n) => {
+  if (typeof text2 !== "string") return null;
+  const parts = text2.trim().split(/\s+/).map(Number);
   return parts.length === n && parts.every((x) => Number.isFinite(x) && Math.abs(x) <= 100) ? parts : null;
 };
 var within = (n) => n > 0 && n <= ITEM_LIMITS.metres;
@@ -7466,9 +7539,9 @@ function cleanShot(o) {
   const stick = Number.isFinite(o.stick) ? Math.min(PLAY_LIMITS.stick, Math.max(0, o.stick)) : 0;
   return { id: o.id, name: o.name, from: [...o.from], velocity: o.velocity.map((v) => v * k), stick };
 }
-function parseShot(text) {
-  if (typeof text !== "string" || !text.startsWith("shot:") || text.length > 200) return null;
-  const parts = text.slice(5).split(",");
+function parseShot(text2) {
+  if (typeof text2 !== "string" || !text2.startsWith("shot:") || text2.length > 200) return null;
+  const parts = text2.slice(5).split(",");
   if (parts.length !== 9) return null;
   const n = parts.slice(2).map(Number);
   return cleanShot({ id: Number(parts[0]), name: parts[1], from: [n[0], n[1], n[2]], velocity: [n[3], n[4], n[5]], stick: n[6] });
@@ -7480,9 +7553,9 @@ function buildHit(o) {
   if (!o || !isHex64(o.by) || !Number.isInteger(o.id) || o.id < 0 || !Array.isArray(o.at) || o.at.length !== 3 || !finite(o.at, 4)) return null;
   return `hit:${o.by},${o.id},${o.at.map(num3).join(",")}`;
 }
-function parseHit(text) {
-  if (typeof text !== "string" || !text.startsWith("hit:") || text.length > 160) return null;
-  const parts = text.slice(4).split(",");
+function parseHit(text2) {
+  if (typeof text2 !== "string" || !text2.startsWith("hit:") || text2.length > 160) return null;
+  const parts = text2.slice(4).split(",");
   if (parts.length !== 5) return null;
   const at = parts.slice(2).map(Number);
   const hit = { by: parts[0], id: Number(parts[1]), at };
@@ -7496,10 +7569,10 @@ function buildDid(o) {
   if (o.kind === "sound" ? !NAME4.test(o.name) : !CLIP2.test(o.name)) return null;
   return `did:${o.kind},${o.name}`;
 }
-function parseDid(text) {
-  if (typeof text !== "string" || !text.startsWith("did:") || text.length > 90) return null;
-  const at = text.indexOf(",");
-  const did = { kind: text.slice(4, at), name: text.slice(at + 1) };
+function parseDid(text2) {
+  if (typeof text2 !== "string" || !text2.startsWith("did:") || text2.length > 90) return null;
+  const at = text2.indexOf(",");
+  const did = { kind: text2.slice(4, at), name: text2.slice(at + 1) };
   return at > 0 && buildDid(did) ? did : null;
 }
 var TINT_PALETTE = [
@@ -7527,10 +7600,10 @@ function buildTints(chosen) {
   const parts = Object.entries(chosen ?? {}).filter(([slot, color]) => NAME4.test(slot) && /^#[0-9a-f]{6}$/.test(color)).slice(0, 4).map(([slot, color]) => `${slot}=${color.slice(1)}`);
   return `tint:${parts.join(",")}`;
 }
-function parseTints(text) {
-  if (typeof text !== "string" || !text.startsWith("tint:") || text.length > 120) return null;
+function parseTints(text2) {
+  if (typeof text2 !== "string" || !text2.startsWith("tint:") || text2.length > 120) return null;
   const out = {};
-  for (const part of text.slice(5).split(",").filter(Boolean).slice(0, 4)) {
+  for (const part of text2.slice(5).split(",").filter(Boolean).slice(0, 4)) {
     const [slot, color] = part.split("=");
     if (!slot || !NAME4.test(slot) || !/^[0-9a-f]{6}$/.test(color ?? "")) return null;
     out[slot] = `#${color}`;
@@ -7553,9 +7626,9 @@ function buildState(o) {
   if (!o || o.name !== "health" || !Number.isInteger(o.value) || !Number.isInteger(o.full) || o.full < 1 || o.full > 1e3 || o.value < 0 || o.value > o.full) return null;
   return `st:${o.name},${o.value},${o.full}`;
 }
-function parseState(text) {
-  if (typeof text !== "string" || !text.startsWith("st:") || text.length > 40) return null;
-  const [name, value, full] = text.slice(3).split(",");
+function parseState(text2) {
+  if (typeof text2 !== "string" || !text2.startsWith("st:") || text2.length > 40) return null;
+  const [name, value, full] = text2.slice(3).split(",");
   const state = { name, value: Number(value), full: Number(full) };
   return buildState(state) ? state : null;
 }
@@ -8194,15 +8267,15 @@ function verifyWorldGrant(event, opts) {
   return c.result({ id: event.id, session: session ?? "", world: world ?? "", expiresAt });
 }
 var b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-var unb64url = (text) => Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0));
+var unb64url = (text2) => Uint8Array.from(atob(text2.replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0));
 function packBrought(b) {
   return b64url(utf8ToBytes(JSON.stringify({ v: 1, grant: b.grant, sessionKey: b.sessionKey, bridge: b.bridge, name: b.name, relays: b.relays, immersive: b.immersive })));
 }
-function readBrought(text, origin, now = nowSeconds()) {
-  if (typeof text !== "string" || text.length > 6e3) return null;
+function readBrought(text2, origin, now = nowSeconds()) {
+  if (typeof text2 !== "string" || text2.length > 6e3) return null;
   let o;
   try {
-    const parsed = JSON.parse(new TextDecoder().decode(unb64url(text)));
+    const parsed = JSON.parse(new TextDecoder().decode(unb64url(text2)));
     if (typeof parsed !== "object" || parsed === null) return null;
     o = parsed;
   } catch {
@@ -8269,11 +8342,11 @@ function cleanSize(cols, rows) {
   const r = whole(rows, BRIDGE_LIMITS.minRows, BRIDGE_LIMITS.maxRows);
   return c === null || r === null ? null : { cols: c, rows: r };
 }
-function parseBridgeControl(text) {
-  if (text.length > 1e3) return null;
+function parseBridgeControl(text2) {
+  if (text2.length > 1e3) return null;
   let o;
   try {
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(text2);
     if (typeof parsed !== "object" || parsed === null) return null;
     o = parsed;
   } catch {
@@ -8295,15 +8368,15 @@ function parseBridgeControl(text) {
   }
   return null;
 }
-function cleanSpeechText(text) {
-  const cleaned = text.normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/\s+/g, " ").trim();
+function cleanSpeechText(text2) {
+  const cleaned = text2.normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, " ").replace(/\s+/g, " ").trim();
   return [...cleaned].slice(0, BRIDGE_LIMITS.speechChars).join("");
 }
-function parseSpeechControl(text) {
-  if (text.length > BRIDGE_LIMITS.speechChars * 8) return null;
+function parseSpeechControl(text2) {
+  if (text2.length > BRIDGE_LIMITS.speechChars * 8) return null;
   let o;
   try {
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(text2);
     if (typeof parsed !== "object" || parsed === null) return null;
     o = parsed;
   } catch {
@@ -8330,10 +8403,10 @@ function isLocalHost(hostname) {
   if ([a, b, Number(m[3]), Number(m[4])].some((n) => n > 255)) return false;
   return a === 127 || a === 10 || a === 172 && b >= 16 && b <= 31 || a === 192 && b === 168 || a === 169 && b === 254;
 }
-function originOf(text, most = 300) {
-  if (typeof text !== "string" || text.length > most) return null;
+function originOf(text2, most = 300) {
+  if (typeof text2 !== "string" || text2.length > most) return null;
   try {
-    const u = new URL(text);
+    const u = new URL(text2);
     return u.username || u.password ? null : u;
   } catch {
     return null;
@@ -8439,6 +8512,7 @@ export {
   Collector,
   DEFAULT_RELAYS,
   DELETION_KIND,
+  DELIVERY_LIMIT,
   DISCOVERY,
   DISCOVERY_RELAYS,
   ENTRY_ASSERTION_KIND,
@@ -8498,6 +8572,8 @@ export {
   PROPOSE_KINDS,
   RATING_KIND,
   RATING_LIMITS,
+  RECEIPT_ISSUERS,
+  RECEIPT_KIND,
   RELAY_DISCOVERY_KIND,
   RELAY_LIST_KIND,
   RELAY_PICK,
@@ -8521,6 +8597,7 @@ export {
   SITE_MARKS,
   STATUSES,
   TINT_PALETTE,
+  TIP_LIMITS,
   VERSION,
   WELL_KNOWN_PATH,
   WORLD_GRANT_LIMITS,
@@ -8584,7 +8661,9 @@ export {
   cleanInvoice,
   cleanItemsRule,
   cleanKeys,
+  cleanLightningAddress,
   cleanLine,
+  cleanListing,
   cleanLocalMap,
   cleanMessage,
   cleanMore,
@@ -8600,6 +8679,7 @@ export {
   cleanSpeechText,
   cleanStars,
   cleanTints,
+  cleanTip,
   cleanWalletUri,
   cleanWorldOrigin,
   coordinate,
@@ -8659,6 +8739,7 @@ export {
   kitAge,
   latestAddressable,
   learnRelays,
+  listingSeller,
   localMap,
   lookFromTags,
   lookToTags,
@@ -8719,6 +8800,7 @@ export {
   readHandoffMessage,
   readMessage,
   readMessageRelays,
+  readReceipt,
   readRelayFinding,
   readRelayList,
   readSeal,
