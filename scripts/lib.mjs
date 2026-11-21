@@ -108,7 +108,8 @@ export function readDoors() {
   }
   for (const [coordinate, entry] of Object.entries(index)) {
     if (typeof entry?.category === "string" && /^[a-z]{1,20}$/.test(entry.category)) kinds[coordinate] = entry.category;
-    if (entry?.items === "allowed" || entry?.items === "play") carried[coordinate] = entry.items;
+    // Whatever the place said, turned off included: a door says "No items here" too.
+    if (entry?.items === "none" || entry?.items === "allowed" || entry?.items === "play") carried[coordinate] = entry.items;
     if (typeof entry?.url === "string" && /^https:\/\/[^\s]{1,300}$/.test(entry.url)) places[coordinate] = entry.url;
     // A door with no picture is listed only for what kind of place it leads to.
     if (entry?.sha256 === undefined) continue;

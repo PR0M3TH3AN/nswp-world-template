@@ -3,11 +3,12 @@ import {
   bytesToHex,
   currentForm,
   fullscreenAction,
+  holdFullscreen,
   portal,
   room,
   sha256,
   startingForm
-} from "./shared-ACIYJK32.js";
+} from "./shared-7ILODBRA.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -571,6 +572,98 @@ function createConsole(controls, opts) {
     }
   };
   return con;
+}
+
+// packages/sdk/src/ui/headset.ts
+var granted = false;
+var waitingForGrant = /* @__PURE__ */ new Set();
+try {
+  if (typeof navigator !== "undefined" && navigator.xr && !/WebXRViewer\//i.test(navigator.userAgent)) {
+    navigator.xr.addEventListener("sessiongranted", () => {
+      granted = true;
+      for (const fn of [...waitingForGrant]) fn();
+      waitingForGrant.clear();
+    });
+  }
+} catch {
+}
+function whenSessionGranted(fn) {
+  if (granted) fn();
+  else waitingForGrant.add(fn);
+}
+var NOT_A_PRESS = /* @__PURE__ */ new Set(["Tab", "Shift", "Control", "Alt", "Meta", "CapsLock", "ContextMenu"]);
+var TRYING_MS = 2e3;
+var GIVE_UP_MS = 12e3;
+function offerHeadset(title, enter, stay) {
+  const scrim = document.createElement("div");
+  scrim.id = "nswp-enter";
+  scrim.setAttribute("role", "dialog");
+  scrim.setAttribute("aria-label", `You've arrived at ${title}`);
+  Object.assign(scrim.style, { position: "fixed", inset: "0", zIndex: "50", display: "grid", placeContent: "center", justifyItems: "center", gap: "18px", padding: "24px", background: "rgba(4, 7, 11, 0.62)", textAlign: "center", cursor: "pointer" });
+  const heading = document.createElement("p");
+  heading.textContent = title;
+  Object.assign(heading.style, { margin: "0", font: "700 clamp(28px, 6vw, 56px)/1.1 system-ui, sans-serif", color: "#eef5fb" });
+  const go = document.createElement("button");
+  go.type = "button";
+  go.id = "nswp-enter-vr";
+  go.textContent = "Enter VR";
+  Object.assign(go.style, { font: "700 clamp(24px, 5vw, 40px)/1 system-ui, sans-serif", minWidth: "min(78vw, 520px)", minHeight: "120px", padding: "0 32px", border: "0", borderRadius: "18px", background: "#eef5fb", color: "#04070b", cursor: "pointer" });
+  const hint2 = document.createElement("p");
+  hint2.id = "nswp-enter-hint";
+  hint2.setAttribute("aria-live", "polite");
+  hint2.textContent = "Press anywhere, with anything, to go back in.";
+  Object.assign(hint2.style, { margin: "0", font: "500 clamp(18px, 3vw, 24px)/1.3 system-ui, sans-serif", color: "#eef5fb" });
+  const flat = document.createElement("button");
+  flat.type = "button";
+  flat.id = "nswp-enter-flat";
+  flat.textContent = "Look around on this screen";
+  Object.assign(flat.style, { font: "500 18px/1 system-ui, sans-serif", padding: "14px 20px", border: "0", background: "none", color: "#eef5fb", textDecoration: "underline", cursor: "pointer" });
+  scrim.append(heading, go, hint2, flat);
+  let tried = -Infinity;
+  let up = true;
+  let gaveUp;
+  const presses = ["pointerup", "touchend", "keydown"];
+  const onPress = (e) => {
+    if (!up) return;
+    const key = e.key;
+    if (e.type === "keydown") {
+      if (key === "Escape") return void stay();
+      if (NOT_A_PRESS.has(key) || e.repeat) return;
+    }
+    const at = e.target instanceof Element ? e.target : null;
+    const onStay = !!at && flat.contains(at);
+    if (onStay && (e.type !== "keydown" || key === "Enter" || key === " ")) return;
+    if (at && !scrim.contains(at) && at !== document.body && at !== document.documentElement && !(at instanceof HTMLCanvasElement)) return;
+    const now = performance.now();
+    if (now - tried < TRYING_MS) return;
+    tried = now;
+    hint2.textContent = "Starting VR\u2026";
+    clearTimeout(gaveUp);
+    gaveUp = setTimeout(failed, GIVE_UP_MS);
+    enter();
+  };
+  const failed = () => {
+    clearTimeout(gaveUp);
+    if (!up) return;
+    tried = -Infinity;
+    hint2.textContent = "That press didn't start VR. Press again, anywhere.";
+  };
+  flat.addEventListener("click", stay);
+  for (const type of presses) addEventListener(type, onPress, true);
+  holdFullscreen(true);
+  document.body.append(scrim);
+  go.focus();
+  return {
+    remove() {
+      if (!up) return;
+      up = false;
+      clearTimeout(gaveUp);
+      for (const type of presses) removeEventListener(type, onPress, true);
+      holdFullscreen(false);
+      scrim.remove();
+    },
+    failed
+  };
 }
 
 // packages/sdk/src/desk.ts
@@ -3794,7 +3887,7 @@ function createPresence(d) {
       a.head.add(a.light);
     }
   };
-  const itemsRule = () => cleanItemsRule2(d.itemsRule?.());
+  const itemsRule = () => d.items ? cleanItemsRule2(d.itemsRule?.()) : "none";
   const canBeHeld = (item) => item.behaviors.includes("holdable") || item.fits.includes("hand-right") || item.fits.includes("hand-left");
   let mine = "";
   let mineModel = null;
@@ -11315,40 +11408,6 @@ function createPortalWindow(geometry, pano, opts = {}) {
   };
   return mesh;
 }
-function offerHeadset(title, enter, stay) {
-  const scrim = document.createElement("div");
-  scrim.id = "nswp-enter";
-  scrim.setAttribute("role", "dialog");
-  scrim.setAttribute("aria-label", `You've arrived at ${title}`);
-  Object.assign(scrim.style, { position: "fixed", inset: "0", zIndex: "50", display: "grid", placeContent: "center", justifyItems: "center", gap: "18px", padding: "24px", background: "rgba(4, 7, 11, 0.62)", textAlign: "center" });
-  const heading = document.createElement("p");
-  heading.textContent = title;
-  Object.assign(heading.style, { margin: "0", font: "700 clamp(28px, 6vw, 56px)/1.1 system-ui, sans-serif", color: "#eef5fb" });
-  const go = document.createElement("button");
-  go.type = "button";
-  go.id = "nswp-enter-vr";
-  go.textContent = "Enter VR";
-  Object.assign(go.style, { font: "700 clamp(24px, 5vw, 40px)/1 system-ui, sans-serif", minWidth: "min(78vw, 520px)", minHeight: "120px", padding: "0 32px", border: "0", borderRadius: "18px", background: "#eef5fb", color: "#04070b", cursor: "pointer" });
-  const flat = document.createElement("button");
-  flat.type = "button";
-  flat.id = "nswp-enter-flat";
-  flat.textContent = "Look around on this screen";
-  Object.assign(flat.style, { font: "500 18px/1 system-ui, sans-serif", padding: "14px 20px", border: "0", background: "none", color: "#eef5fb", textDecoration: "underline", cursor: "pointer" });
-  scrim.append(heading, go, flat);
-  const remove = () => {
-    removeEventListener("keydown", onKey);
-    scrim.remove();
-  };
-  const onKey = (e) => {
-    if (e.key === "Escape") stay();
-  };
-  go.addEventListener("click", enter);
-  flat.addEventListener("click", stay);
-  addEventListener("keydown", onKey);
-  document.body.append(scrim);
-  go.focus();
-  return { remove };
-}
 async function addViewControls(controls, d) {
   if (!controls.has("fresh")) controls.add(freshAction(controls, { busy: () => d.renderer.xr.isPresenting }));
   const xr = navigator.xr;
@@ -11367,23 +11426,45 @@ async function addViewControls(controls, d) {
     offer = null;
     d.onOffer?.(false);
   };
+  const init = { optionalFeatures: ["local-floor", "hand-tracking"] };
+  const begin = async (session) => {
+    await d.renderer.xr.setSession(session);
+    d.onState?.("presenting");
+    session.addEventListener("end", () => {
+      d.onState?.("ended");
+      setTimeout(propose, 0);
+    });
+    answered();
+  };
+  let entering = false;
   const enter = async () => {
-    if (presenting()) return;
+    if (presenting() || entering) return;
+    entering = true;
     try {
-      const session = await xr.requestSession("immersive-vr", { optionalFeatures: ["local-floor", "hand-tracking"] });
-      await d.renderer.xr.setSession(session);
-      d.onState?.("presenting");
-      session.addEventListener("end", () => d.onState?.("ended"));
-      answered();
+      await begin(await xr.requestSession("immersive-vr", init));
     } catch (err) {
       d.onState?.(`error: ${err instanceof Error ? err.message : String(err)}`);
-      controls.say("Couldn't start VR on this device.");
+      if (offer) offer.failed();
+      else controls.say("Couldn't start VR on this device.");
+    } finally {
+      entering = false;
     }
   };
-  try {
-    xr?.addEventListener?.("sessiongranted", () => void enter());
-  } catch {
-  }
+  const propose = () => {
+    const offers = xr;
+    if (!supported || presenting() || typeof offers?.offerSession !== "function") return;
+    try {
+      offers.offerSession("immersive-vr", init).then(
+        (session) => void begin(session).catch(() => {
+        }),
+        () => {
+        }
+      );
+    } catch {
+    }
+  };
+  whenSessionGranted(() => void enter());
+  propose();
   if (supported && d.arrived && !presenting()) {
     offer = offerHeadset(d.arrived.title, () => void enter(), answered);
     d.onOffer?.(true);

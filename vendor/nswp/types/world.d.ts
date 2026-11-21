@@ -42,7 +42,7 @@ export interface WorldInput {
     audience?: Audience;
     /** What kind of place it is: one of `CATEGORIES`. */
     category?: Category;
-    /** What it does with the things visitors carry: one of `ITEM_RULES`. Left out, nothing carried works there. */
+    /** What it does with the things visitors carry: one of `ITEM_RULES`. Left out, they work there (`allowed`); `none` turns them off. */
     items?: ItemsRule;
     status?: string;
     /** Only when the manifest is not at the well-known path (it then can't verify). */
@@ -79,7 +79,7 @@ export interface World {
     audience?: Audience;
     /** What kind of place its maker says it is. Left out when they didn't say, or said something else. */
     category?: Category;
-    /** What its maker says it does with the things visitors carry. Left out when they didn't say: then it is `none`. */
+    /** What its maker says it does with the things visitors carry. Left out when they didn't say: then it is `allowed`. A word nobody knows is `none`. */
     items?: ItemsRule;
     status: string;
     manifest?: string;

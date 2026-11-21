@@ -82,8 +82,14 @@ export declare function say(text: string): void;
 export declare function target(name: string, detail?: string): void;
 /**
  * Tell the menu about a headset, as JSON: `supported` (this browser can start
- * a session, so the way in is offered) and `presenting` (one is running, so
- * the page's menu is put away and the control becomes the way out).
+ * a session, so the way in is offered), `presenting` (one is running, so
+ * the page's menu is put away and the control becomes the way out) and
+ * `failed` (a session was asked for and didn't start).
+ *
+ * A visitor who left a headset to come here is offered the way back in as
+ * soon as the engine says one can start: the whole page is its button, as in
+ * every world (ui/headset.ts). A press on it reaches the engine as the
+ * menu's own control would: `{ type: "vr", enter: true }`.
  */
 export declare function headset(state: string): void;
 /**

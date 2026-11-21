@@ -19,7 +19,7 @@ export declare const WELL_KNOWN_PATH = "/.well-known/nswp.json";
  * client can tell how old a world's controls are without loading the world
  * (protocol/01-worlds.md, "Which kit a world was built with").
  */
-export declare const KIT_VERSION = "0.57.1";
+export declare const KIT_VERSION = "0.58.0";
 /** A version as three numbers, or null for anything that isn't one. */
 export declare function parseKitVersion(v: unknown): [number, number, number] | null;
 /**
@@ -53,15 +53,20 @@ export type Audience = (typeof AUDIENCES)[number];
  * `none`: nothing carried is drawn or works there. `allowed`: items work, and can affect other people; anyone
  * may mute them. `play`: items are part of the game, and nobody there is out of their reach.
  *
- * A world that says nothing is `none`.
+ * A world that says nothing is `allowed`: things can be carried anywhere unless a place turns them off, by
+ * saying `none`.
  */
 export declare const ITEM_RULES: readonly ["none", "allowed", "play"];
 export type ItemsRule = (typeof ITEM_RULES)[number];
-/** A world's rule for items, as it may be used: one on the list, and `none` for anything else. */
+/**
+ * A world's rule for items, as it may be used. Nothing said is `allowed`. A word that isn't on the list is `none`:
+ * a place that said something this doesn't understand is taken to have turned them off, never on.
+ */
 export declare function cleanItemsRule(rule: unknown): ItemsRule;
 /**
- * A world's rule for items as words for a visitor, on a door or at the Airlock. A place where items are part of
- * the game is always said. One that only allows them is said too, more quietly. Null where there are none.
+ * A world's rule for items as words for a visitor, on a door or at the Airlock: only where it is not the ordinary
+ * one. A place where items are part of the game is always said, and so is one that has turned them off, for
+ * whoever is carrying something. Null where they simply work.
  */
 export declare function itemsWords(rule: unknown): string | null;
 export declare const CATEGORIES: readonly ["game", "experience", "social", "app", "site"];

@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.57.1";
+var KIT_VERSION = "0.58.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -36,11 +36,12 @@ var CAPABILITIES = [
 var AUDIENCES = ["kids", "general", "adult"];
 var ITEM_RULES = ["none", "allowed", "play"];
 function cleanItemsRule(rule) {
+  if (rule === void 0 || rule === null) return "allowed";
   return typeof rule === "string" && ITEM_RULES.includes(rule) ? rule : "none";
 }
 function itemsWords(rule) {
   const r = cleanItemsRule(rule);
-  return r === "play" ? "Items are part of play here" : r === "allowed" ? "Items work here" : null;
+  return r === "play" ? "Items are part of play here" : r === "none" ? "No items here" : null;
 }
 var CATEGORIES = ["game", "experience", "social", "app", "site"];
 var CATEGORY_WORDS = { game: "A game", experience: "An experience", social: "A place to meet", app: "An app", site: "A site" };
@@ -4308,7 +4309,7 @@ function buildWorldEvent(w) {
   if (warning !== void 0) tags.push(warning === true ? ["content-warning"] : ["content-warning", warning]);
   if (w.audience) tags.push(["audience", w.audience]);
   if (w.category) tags.push(["category", w.category]);
-  if (w.items && w.items !== "none") tags.push(["items", w.items]);
+  if (w.items) tags.push(["items", w.items]);
   if (w.status) tags.push(["status", w.status]);
   if (w.manifest) tags.push(["manifest", w.manifest]);
   for (const p of w.coCreators ?? []) tags.push(["p", p, "", "co-creator"]);
@@ -4468,7 +4469,10 @@ function parseWorldEvent(input, opts = {}) {
   const carried = getTags({ tags }, "items")[0]?.[1];
   if (carried !== void 0) {
     if (ITEM_RULES.includes(carried)) items = carried;
-    else c.warn("unknown_items_rule", "tags.items", `Unknown rule for items "${carried}"; treated as none.`);
+    else {
+      items = "none";
+      c.warn("unknown_items_rule", "tags.items", `Unknown rule for items "${carried}"; treated as none.`);
+    }
   }
   if (audience === "adult" && contentWarning === void 0) c.warn("adult_without_warning", "tags.audience", "An adult world should also carry a content-warning, which other clients read.");
   if (audience === "kids" && contentWarning !== void 0) c.warn("kids_with_warning", "tags.audience", "A world for kids carries a content warning. One of the two is wrong.");
@@ -4516,7 +4520,7 @@ function parseWorldEvent(input, opts = {}) {
   if (contentWarning !== void 0) world.contentWarning = contentWarning;
   if (audience) world.audience = audience;
   if (category) world.category = category;
-  if (items && items !== "none") world.items = items;
+  if (items) world.items = items;
   if (manifest) world.manifest = manifest;
   if (access) world.access = access;
   return c.result(world);
