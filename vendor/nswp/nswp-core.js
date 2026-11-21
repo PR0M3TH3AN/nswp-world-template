@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.70.0";
+var KIT_VERSION = "0.70.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -7293,7 +7293,7 @@ function readHandoffMessage(data) {
 // packages/core/src/shares.ts
 var SHARE_TAG = "nswp:share";
 var SHARE_CLIENT = "client";
-var SHARE_LIMITS = { most: 6, whole: 1e4, least: 10, label: 32 };
+var SHARE_LIMITS = { most: 4, whole: 1e4, least: 10, label: 32 };
 function cleanShareLabel(input) {
   if (typeof input !== "string") return "";
   const text2 = input.trim();

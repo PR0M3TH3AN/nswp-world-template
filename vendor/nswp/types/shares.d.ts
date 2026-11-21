@@ -3,12 +3,13 @@ export declare const SHARE_TAG = "nswp:share";
 /** Who a share is for when it is for whichever client brought the buyer: this word, where a key would be. */
 export declare const SHARE_CLIENT = "client";
 /**
- * The limits. `most`: how many shares a listing may have (each is its own payment, and a buyer waits for every one).
+ * The limits. `most`: how many shares a listing may have, the seller's among them (each is its own payment, from
+ * its own place, and a buyer waits for every one: four to begin, at the selling service's asking).
  * `whole`: what the parts add up to. `least`: the least any one payment may be, in sats (a smaller one costs more to
  * send than it carries). `label`: the longest a share's word may be.
  */
 export declare const SHARE_LIMITS: {
-    readonly most: 6;
+    readonly most: 4;
     readonly whole: 10000;
     readonly least: 10;
     readonly label: 32;
@@ -67,6 +68,10 @@ export type SplitRead = {
  * `shares` is what `readShares` gave (empty for a listing with none). `client` is the key of the client that brought
  * the buyer, where one did and can be paid; left out, or the seller's own, and the client's share is the seller's.
  * `charge` is what the selling service takes, in sats: it comes out of the seller's part.
+ *
+ * Whether a client can be paid is the selling service's to say (it pays only someone who has agreed to be paid, and
+ * told it where). So for one listing and one client there are two right answers, this with `client` and this without,
+ * and whoever checks the service's plan against the listing takes either, and nothing else.
  *
  * Refused, and so not to be sold this way, where any one payment would be under `SHARE_LIMITS.least`.
  */
