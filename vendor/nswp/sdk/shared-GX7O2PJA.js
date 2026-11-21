@@ -3324,7 +3324,7 @@ var portal = {
     }
     const immersive = opts.immersive ?? !!opts.xrSession;
     if (typeof window.nswp?.navigate === "function") {
-      window.nswp.navigate(dest);
+      window.nswp.navigate(dest, carried(opts, immersive));
       return;
     }
     if (opts.xrSession) {

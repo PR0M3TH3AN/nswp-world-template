@@ -8,7 +8,7 @@
  * Which Airlock (spec §6.3): the return address from the arrival context,
  * else the world's configured default, else a built-in confirmation screen.
  */
-import { type Arrival, type Issue, type NostrEvent, type PortalDestination } from "@nswp/core";
+import { type Arrival, type Issue, type NostrEvent, type AirlockUrlOptions, type PortalDestination } from "@nswp/core";
 import { type Form } from "./form.js";
 export { arrivedSettings, arriveWith, currentSettings, reportSettings, type TravelSettings } from "./settings.js";
 export type { Arrival, PortalDestination } from "@nswp/core";
@@ -159,9 +159,15 @@ export declare const portal: {
 };
 declare global {
     interface Window {
-        /** A future dedicated browser may provide native navigation (spec §6.6). */
+        /**
+         * A browser made for this may take a door itself (browser/spec.md, section 4). It is found by asking, never
+         * by which browser it is. `navigate` is handed the destination and what the visitor carries; `can` says whether
+         * it offers something by name. There is no identity on it, and nothing that pays: a browser holds no key
+         * (browser/spec.md, section 2a).
+         */
         nswp?: {
-            navigate?: (dest: PortalDestination) => void;
+            navigate?: (dest: PortalDestination, carried?: AirlockUrlOptions) => void;
+            can?: (name: string) => boolean;
         };
     }
 }
