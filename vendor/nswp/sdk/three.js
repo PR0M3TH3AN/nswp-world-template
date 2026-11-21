@@ -129,7 +129,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-7XG32XOO.js";
+} from "./shared-E3VI5XNR.js";
 import {
   currentForm,
   deviceForms,
@@ -154,7 +154,7 @@ import {
   sendWell,
   setShowsPictures,
   showsPictures
-} from "./shared-5VG5FJL2.js";
+} from "./shared-EHWKQMP4.js";
 import {
   arriveWith,
   arrivedSettings,
