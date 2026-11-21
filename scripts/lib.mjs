@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildLayoutEvent, buildWorldEvent, cleanItemsRule, decodeNpub, ITEM_BOX_CSP, ITEM_BOX_HTML, KIT_VERSION, parseLayoutEvent, parseWorldEvent, signerAt, stampPage, verifyEvent } from "../vendor/nswp/nswp-core.js";
+import { buildLayoutEvent, buildWorldEvent, cleanItemsRule, decodeNpub, itemBoxCsp, ITEM_BOX_HTML, KIT_VERSION, parseLayoutEvent, parseWorldEvent, signerAt, stampPage, verifyEvent } from "../vendor/nswp/nswp-core.js";
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const dist = join(root, "dist");
@@ -289,7 +289,19 @@ function writeStatic({ config, signed, pictures }) {
   // Response headers, in the two forms static hosts read. Other hosts: see the README.
   // `frame-src https:` is for one thing: the visitor's own client's hidden signer, which this world can't read
   // (NSWP-10, "Signing from a world"). Which client that is, is the visitor's choice.
-  const csp = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "media-src 'self' blob:", "connect-src 'self' https: wss:", "frame-src 'self' https:", "base-uri 'none'", "form-action 'none'"].join("; ");
+  // And who may show this world in a frame: itself, and the client it sends its visitors through (`airlock` in
+  // world.json), which may keep one page on the screen and show each world inside it, so a filled screen isn't
+  // given up at every door (NSWP-02, "A client that keeps the screen"). Nobody else: a page that framed this
+  // world could lay something of its own over it.
+  const client = (() => {
+    try {
+      const at = new URL(config.airlock);
+      return at.protocol === "https:" ? ` ${at.origin}` : "";
+    } catch {
+      return "";
+    }
+  })();
+  const csp = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "media-src 'self' blob:", "connect-src 'self' https: wss:", "frame-src 'self' https:", "base-uri 'none'", "form-action 'none'", `frame-ancestors 'self'${client}`].join("; ");
   const all = [
     ["Content-Security-Policy", csp],
     ["Referrer-Policy", "no-referrer"],
@@ -308,7 +320,9 @@ function writeStatic({ config, signed, pictures }) {
   const carries = cleanItemsRule(config.world?.items) !== "none";
   if (carries) writeFileSync(join(dist, "item-box.html"), ITEM_BOX_HTML);
   const box = [
-    ["Content-Security-Policy", ITEM_BOX_CSP],
+    // The box is in this world, and this world may be in its visitors' client: so the box lets that client be
+    // above it too, or it wouldn't start there. Nothing else about its rules changes: it reaches nothing.
+    ["Content-Security-Policy", itemBoxCsp(client.trim() || undefined)],
     ["Referrer-Policy", "no-referrer"],
     ["X-Content-Type-Options", "nosniff"],
     ["Cache-Control", "no-cache"],
