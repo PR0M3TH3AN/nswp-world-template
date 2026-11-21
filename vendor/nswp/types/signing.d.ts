@@ -247,6 +247,8 @@ export type SignerRequest = {
  * list signed for a world could unfollow everyone, so following is one person at a time (`follow`).
  */
 export declare const PROPOSE_KINDS: readonly number[];
+/** A deletion (NIP-09): a request, signed by whoever wrote a note, that relays drop it. */
+export declare const DELETION_KIND = 5;
 /** A wallet connection as it may be handed to a world: a Nostr Wallet Connect address, and not too long. */
 export declare function cleanWalletUri(input: unknown): string;
 /**

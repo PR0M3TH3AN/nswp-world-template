@@ -10,8 +10,10 @@ export interface FeedPost {
     text: string;
     /** When it was posted, in seconds. */
     at: number;
-    /** "out": it is on a relay. "sending": on its way. "failed": it wasn't sent. */
-    state: "out" | "sending" | "failed";
+    /** "out": it is on a relay. "sending": on its way. "failed": it wasn't sent. "removing": its deletion is being asked for. */
+    state: "out" | "sending" | "failed" | "removing";
+    /** The note's own id, once it is known: what a deletion names. */
+    id?: string;
 }
 export interface FeedView {
     /** There is a feed: something signs for the visitor here. */
@@ -30,6 +32,8 @@ export interface FeedView {
     lead: string;
     /** The most characters in one post written here. */
     limit: number;
+    /** A post here can be asked to be deleted: the visitor's sign-in address can be asked to sign that. */
+    removable: boolean;
     /** Goes up whenever anything above changes. */
     version: number;
 }
@@ -47,8 +51,17 @@ export interface FeedOptions {
      * the world that asked (protocol/10-identity.md, "Signing from a world"), and the visitor is told so.
      */
     marked?: string;
-    /** Sign and send what they wrote. Resolves to a few words on how it went, and whether it did. */
+    /** Sign and send what they wrote. Resolves to a few words on how it went, whether it did, and the note's id if it went. */
     send(text: string): Promise<{
+        ok: boolean;
+        said: string;
+        id?: string;
+    }>;
+    /**
+     * Ask for one of their posts to be deleted, by the note's id: a deletion they sign themselves, at their own
+     * sign-in address (protocol/10-identity.md, "Asking the person"). Left out where nothing can ask them.
+     */
+    remove?(id: string): Promise<{
         ok: boolean;
         said: string;
     }>;
@@ -64,6 +77,8 @@ export interface UiFeed {
     opened(): void;
     /** Send out what the visitor wrote. Returns a few words if it couldn't even be tried, or null. */
     send(text: string): string | null;
+    /** Ask for the post with this key to be deleted. Returns a few words if it couldn't even be tried, or null. */
+    remove(key: string): string | null;
     view(): FeedView;
 }
 /** The feed a set of controls holds. `changed` is called whenever a renderer should draw again. */

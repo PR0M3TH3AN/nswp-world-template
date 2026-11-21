@@ -501,7 +501,7 @@ function createUiFeed(changed, now = () => Date.now()) {
             const text = cleanLine(p.text, FEED_LIMITS.shown);
             if (!text || seen.has(p.id) || !Number.isFinite(p.at)) continue;
             seen.add(p.id);
-            posts.push({ key: p.id, text, at: p.at, state: "out" });
+            posts.push({ key: p.id, text, at: p.at, state: "out", id: p.id });
           }
           sort();
         }
@@ -520,6 +520,24 @@ function createUiFeed(changed, now = () => Date.now()) {
       void mine.send(words).catch(() => ({ ok: false, said: "That wasn't sent." })).then((how) => {
         if (opts !== mine) return;
         post.state = how.ok ? "out" : "failed";
+        if (how.ok && how.id) post.id = how.id;
+        said = how.said;
+        bump();
+      });
+      return null;
+    },
+    remove(key) {
+      const mine = opts;
+      const post = posts.find((p) => p.key === key);
+      if (!mine?.remove || !post?.id || post.state !== "out") return "That post can't be deleted from here.";
+      const id = post.id;
+      post.state = "removing";
+      said = "";
+      bump();
+      void mine.remove(id).catch(() => ({ ok: false, said: "That wasn't deleted." })).then((how) => {
+        if (opts !== mine) return;
+        if (how.ok) posts = posts.filter((p) => p !== post);
+        else post.state = "out";
         said = how.said;
         bump();
       });
@@ -527,8 +545,9 @@ function createUiFeed(changed, now = () => Date.now()) {
     },
     view() {
       const who = typeof opts?.who === "function" ? opts.who() : opts?.who ?? "";
-      const lead = `Public, like a tweet: anyone can read what you send out here, as ${who}, and it can't be taken back.${opts?.marked ? ` Each post is marked as sent from ${opts.marked}.` : ""}`;
-      return { ready: !!opts, title: "My public feed", who, posts, loading, said, lead, limit: CHAT_LIMITS2.chars, version };
+      const back = opts?.remove ? "and deleting it later only asks relays to drop it: copies may remain" : "and it can't be taken back";
+      const lead = `Public, like a tweet: anyone can read what you send out here, as ${who}, ${back}.${opts?.marked ? ` Each post is marked as sent from ${opts.marked}.` : ""}`;
+      return { ready: !!opts, title: "My public feed", who, posts, loading, said, lead, limit: CHAT_LIMITS2.chars, removable: !!opts?.remove, version };
     }
   };
 }

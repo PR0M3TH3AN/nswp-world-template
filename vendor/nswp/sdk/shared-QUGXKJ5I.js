@@ -28,7 +28,7 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-HK3BOLS5.js";
+} from "./shared-5VG5FJL2.js";
 import {
   arrivedSettings,
   askClientForSignIn,
@@ -4956,7 +4956,7 @@ function createPresence(d) {
 
 // packages/sdk/src/room-controls.ts
 import * as THREE11 from "three";
-import { CHAT_LIMITS, DEFAULT_RELAYS as DEFAULT_RELAYS6, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub5, verifyEvent as verifyEvent6 } from "@nswp/core";
+import { CHAT_LIMITS, DEFAULT_RELAYS as DEFAULT_RELAYS6, DELETION_KIND, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub5, verifyEvent as verifyEvent6 } from "@nswp/core";
 
 // packages/sdk/src/following.ts
 import { decodeNpub, encodeNpub as encodeNpub2, shortNpub as shortNpub3 } from "@nswp/core";
@@ -6248,6 +6248,7 @@ function addRoomControls(controls, presence, opts = {}) {
     locked: () => worldSigner().state === "locked",
     unlock: () => worldSigner().unlock(),
     panel: () => worldSigner().panel,
+    propose: (n) => worldSigner().propose(n),
     host: () => worldSigner().host,
     unanswered: () => worldSigner().unanswered ? unansweredWords(worldSigner()) : null,
     pubkey: () => worldSigner().pubkey,
@@ -6272,7 +6273,19 @@ function addRoomControls(controls, presence, opts = {}) {
     const n = to?.relays.length ?? 0;
     const own = to?.own ?? 0;
     const where = own === n ? `${kept3} of your ${n} relays` : own ? `${kept3} of ${n} relays: yours, and the usual ones because too few of your own were answering` : `${kept3} of the ${n} usual relays: you have published no relay list of your own`;
-    return kept3 ? { ok: true, said: `Sent out, to ${where}. Anyone can read it now.` } : { ok: false, said: "Signed, but no relay took it. It wasn't sent." };
+    return kept3 ? { ok: true, said: `Sent out, to ${where}. Anyone can read it now.`, id: note.id } : { ok: false, said: "Signed, but no relay took it. It wasn't sent." };
+  };
+  const removeNote = async (id) => {
+    const host = notes.host?.() ?? "your sign-in address";
+    if (presence.presenting) return { ok: false, said: `Not deleted: ${host} has to ask you this itself, which can't be seen from in here. Step out of the headset and press Delete again.` };
+    const key = notes.pubkey?.();
+    const signed = await notes.propose?.({ kind: DELETION_KIND, content: "", tags: [["e", id], ["k", "1"]] }).catch(() => null);
+    const names = signed ? signed.tags.filter((t) => t[0] === "e" || t[0] === "a") : [];
+    const note = signed && verifyEvent6(signed) && signed.kind === DELETION_KIND && (!key || signed.pubkey === key) && names.length === 1 && names[0][1] === id ? signed : null;
+    if (!note) return { ok: false, said: `Not deleted: ${host} didn't sign it. Either you said no there, or it can't do this yet.` };
+    const to = await sendWell(note, { own: await ownRelays(note.pubkey), usual: usualRelays() }).catch(() => null);
+    const kept3 = to?.took ?? 0;
+    return kept3 ? { ok: true, said: `Deleted: ${kept3} ${kept3 === 1 ? "relay was" : "relays were"} asked to drop it. A copy kept somewhere else may remain.` } : { ok: false, said: "Signed, but no relay took it. It wasn't deleted." };
   };
   const loadPosts = async () => {
     const key = notes.pubkey?.();
@@ -6298,7 +6311,7 @@ function addRoomControls(controls, presence, opts = {}) {
       controls.feed.detach();
       return closeFeedPanel();
     }
-    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub5(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts });
+    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub5(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts, ...notes.propose ? { remove: removeNote } : {} });
   };
   const drawFeedPanel = () => {
     if (!feedPanel) return;
@@ -6354,7 +6367,7 @@ function addRoomControls(controls, presence, opts = {}) {
       g.font = "26px system-ui, sans-serif";
       g.fillStyle = post.state === "failed" ? t.warn : t.ink;
       g.globalAlpha = post.state === "failed" ? 1 : 0.55;
-      g.fillText(post.state === "sending" ? "Sending\u2026" : post.state === "failed" ? "Not sent" : ago(post.at, nowSec), 28, y + 20);
+      g.fillText(post.state === "sending" ? "Sending\u2026" : post.state === "failed" ? "Not sent" : post.state === "removing" ? "Deleting\u2026" : ago(post.at, nowSec), 28, y + 20);
       g.globalAlpha = 0.14;
       g.fillStyle = t.ink;
       g.fillRect(28, y + ROW + 4, CHAT_W - 56, 2);
