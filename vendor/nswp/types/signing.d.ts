@@ -212,7 +212,34 @@ export type SignerRequest = {
     world: string;
     achievement: string;
     title: string;
+}
+/**
+ * Put this to the person themselves (protocol/10-identity.md, "Asking the person"): a note of a careful kind,
+ * which the signer never signs on a world's word. The sign-in address shows it to them in words, on a page of
+ * its own, and it is signed only at their press there.
+ */
+ | {
+    t: "propose";
+    id: string;
+    event: {
+        kind: number;
+        content: string;
+        tags: string[][];
+    };
+}
+/** Ask the person for a wallet connection for this world, the same way: on the sign-in address's own page. */
+ | {
+    t: "wallet";
+    id: string;
 };
+/**
+ * The careful kinds a world may put to its visitor, to be signed at their own press on the sign-in address's page:
+ * their profile (0), a deletion (5), their relay list (10002). A closed list. Not who they follow (3): a whole
+ * list signed for a world could unfollow everyone, so following is one person at a time (`follow`).
+ */
+export declare const PROPOSE_KINDS: readonly number[];
+/** A wallet connection as it may be handed to a world: a Nostr Wallet Connect address, and not too long. */
+export declare function cleanWalletUri(input: unknown): string;
 /**
  * What a world may ask its visitor to let it do, beyond a note and a reaction. A closed list: each is a thing a
  * visitor can be asked in a few plain words, and none is "sign whatever I hand you".
@@ -274,6 +301,20 @@ export type SignerReply = {
     t: "message";
     id: string;
     message: Message;
+}
+/**
+ * Answers `propose` and `wallet`, at once: the person is to be asked. The world has the sign-in address's page
+ * shown (its panel, or its window), and the real answer comes later under the same `id`.
+ */
+ | {
+    t: "asking";
+    id: string;
+}
+/** Answers `wallet`, once the person has said yes: the connection, for this world. */
+ | {
+    t: "wallet";
+    id: string;
+    uri: string;
 } | {
     t: "refused";
     id: string;
