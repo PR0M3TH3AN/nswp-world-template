@@ -723,7 +723,7 @@ function mountHud(controls, opts = {}) {
   tabs.addEventListener("scroll", tendTabs, { passive: true });
   const tabsWatch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => tendTabs());
   tabsWatch?.observe(tabs);
-  tabs.addEventListener(
+  tabbar.addEventListener(
     "wheel",
     (e) => {
       if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || tabs.scrollWidth <= tabs.clientWidth) return;
@@ -1098,7 +1098,7 @@ function mountHud(controls, opts = {}) {
     hotbar.hidden = view.hotbar.length === 0 && view.pins.length === 0;
     tabs.replaceChildren(
       ...view.sections.map((s) => {
-        const b = el("button", { class: "tab", type: "button", role: "tab", "aria-selected": String(s.id === section) }, icon(s.icon), s.label);
+        const b = el("button", { class: "tab", type: "button", role: "tab", "aria-selected": String(s.id === section), tabindex: s.id === section ? "0" : "-1" }, icon(s.icon), s.label);
         b.addEventListener("click", () => {
           section = s.id;
           chose = true;
@@ -1233,6 +1233,26 @@ function mountHud(controls, opts = {}) {
     if (pin) openPin(pin.id);
   };
   addEventListener("keydown", onKey);
+  const onTabKey = (e) => {
+    if (!open || host.hidden || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    const at = e.composedPath()[0];
+    const onStrip = !!at && typeof at.tagName === "string" && tabs.contains(at);
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!step && !(onStrip && (e.key === "Home" || e.key === "End"))) return;
+    if (at && !onStrip && (at.tagName === "INPUT" || at.tagName === "TEXTAREA" || at.tagName === "SELECT" || at.isContentEditable)) return;
+    const ids = controls.view().sections.map((x) => x.id);
+    if (ids.length < 2) return;
+    const now = Math.max(0, ids.indexOf(section));
+    const to = step ? (now + step + ids.length) % ids.length : e.key === "Home" ? 0 : ids.length - 1;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (to === now) return;
+    section = ids[to];
+    chose = true;
+    draw();
+    tabs.querySelector('[aria-selected="true"]')?.focus();
+  };
+  addEventListener("keydown", onTabKey, true);
   const onSummonKey = (e) => {
     if (e.code !== SUMMON_KEY || host.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     const at = e.composedPath()[0];
@@ -1316,6 +1336,7 @@ function mountHud(controls, opts = {}) {
       stopSay();
       removeEventListener("keydown", onKey);
       removeEventListener("keydown", onSummonKey, listening);
+      removeEventListener("keydown", onTabKey, true);
       removeEventListener("keyup", swallow, listening);
       for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) removeEventListener(type, onTouch, watching);
       hold.cancel();

@@ -44,7 +44,7 @@ import {
 } from "./shared-UBZ34GUM.js";
 
 // packages/sdk/src/three.ts
-import * as THREE19 from "three";
+import * as THREE20 from "three";
 
 // packages/sdk/src/turn.ts
 import * as THREE from "three";
@@ -572,6 +572,80 @@ function createConsole(controls, opts) {
     }
   };
   return con;
+}
+
+// packages/sdk/src/panorama.ts
+import * as THREE3 from "three";
+var PANORAMA_VIEWS = [
+  { forward: [0, 0, -1], up: [0, 1, 0] },
+  { forward: [1, 0, 0], up: [0, 1, 0] },
+  { forward: [0, 0, 1], up: [0, 1, 0] },
+  { forward: [-1, 0, 0], up: [0, 1, 0] },
+  { forward: [0, 1, 0], up: [0, 0, 1] },
+  { forward: [0, -1, 0], up: [0, 0, -1] }
+];
+var panoramaWidth = (asked) => Math.min(4096, Math.max(256, Math.round((asked ?? 2048) / 2) * 2));
+function paintPanorama(renderer, width) {
+  const height = width / 2;
+  const flatTarget = new THREE3.WebGLRenderTarget(width, height);
+  flatTarget.texture.colorSpace = THREE3.SRGBColorSpace;
+  const material = new THREE3.ShaderMaterial({
+    uniforms: { face: { value: null }, forward: { value: new THREE3.Vector3() }, up: { value: new THREE3.Vector3() }, right: { value: new THREE3.Vector3() } },
+    vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+    fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
+      void main(){
+        float lon = (vUv.x - 0.5) * 6.283185307179586;
+        float lat = (vUv.y - 0.5) * 3.141592653589793;
+        vec3 dir = vec3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));
+        float along = dot(dir, forward);
+        // Only the directions this view is the best one for (with a hair of overlap).
+        if (along < max(abs(dir.x), max(abs(dir.y), abs(dir.z))) - 0.0005) discard;
+        vec2 p = vec2(dot(dir, right), dot(dir, up)) / along;
+        gl_FragColor = texture2D(face, clamp(p * 0.5 + 0.5, 0.0, 1.0));
+        #include <colorspace_fragment>
+      }`,
+    depthTest: false,
+    depthWrite: false
+  });
+  const quad = new THREE3.Mesh(new THREE3.PlaneGeometry(2, 2), material);
+  const quadScene = new THREE3.Scene();
+  quadScene.add(quad);
+  const quadCamera = new THREE3.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  renderer.setRenderTarget(flatTarget);
+  renderer.autoClear = true;
+  renderer.clear();
+  return {
+    paint(face, view) {
+      const v = PANORAMA_VIEWS[view];
+      if (!v) return;
+      material.uniforms.face.value = face;
+      material.uniforms.forward.value.fromArray(v.forward);
+      material.uniforms.up.value.fromArray(v.up);
+      material.uniforms.right.value.crossVectors(material.uniforms.forward.value, material.uniforms.up.value);
+      renderer.autoClear = false;
+      renderer.setRenderTarget(flatTarget);
+      renderer.render(quadScene, quadCamera);
+    },
+    async blob(quality = 0.82) {
+      const pixels = new Uint8Array(width * height * 4);
+      renderer.readRenderTargetPixels(flatTarget, 0, 0, width, height, pixels);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const g = canvas.getContext("2d");
+      const image = g.createImageData(width, height);
+      for (let y = 0; y < height; y++) image.data.set(pixels.subarray((height - 1 - y) * width * 4, (height - y) * width * 4), y * width * 4);
+      g.putImageData(image, 0, 0);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+      if (!blob) throw new Error("nswp-sdk: this browser couldn't encode the preview");
+      return blob;
+    },
+    dispose() {
+      flatTarget.dispose();
+      material.dispose();
+      quad.geometry.dispose();
+    }
+  };
 }
 
 // packages/sdk/src/ui/headset.ts
@@ -1665,15 +1739,15 @@ function figureAction(controls, leaving = () => ({})) {
 }
 
 // packages/sdk/src/presence.ts
-import * as THREE8 from "three";
+import * as THREE9 from "three";
 import { bubbleSeconds, buildTints, cleanItemsRule as cleanItemsRule2, cleanTints, itemCoordinate as itemCoordinate2, parseTints, decodeLook, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
-import * as THREE5 from "three";
+import * as THREE6 from "three";
 import { generatedLook, markGrid } from "@nswp/core";
 
 // packages/sdk/src/alloy.ts
-import * as THREE3 from "three";
+import * as THREE4 from "three";
 var SKY_GLSL = `
 vec3 skyGlow(vec3 d, vec3 accent, vec3 ground){
   float h = clamp(d.y, -1.0, 1.0);
@@ -1684,10 +1758,10 @@ vec3 skyGlow(vec3 d, vec3 accent, vec3 ground){
   return base + accent * (band * 0.4 + line * 0.9);
 }`;
 function createAlloy(accent, opts = {}) {
-  const material = new THREE3.ShaderMaterial({
+  const material = new THREE4.ShaderMaterial({
     uniforms: {
-      uAccent: { value: new THREE3.Color(accent) },
-      uGround: { value: new THREE3.Color(opts.ground ?? 263947) },
+      uAccent: { value: new THREE4.Color(accent) },
+      uGround: { value: new THREE4.Color(opts.ground ?? 263947) },
       uTime: { value: 0 },
       uAim: { value: 0 },
       uGloss: { value: opts.gloss ?? 0.5 },
@@ -1763,35 +1837,35 @@ function createAlloy(accent, opts = {}) {
 }
 
 // packages/sdk/src/mesh.ts
-import * as THREE4 from "three";
-var va = new THREE4.Vector3();
-var vb = new THREE4.Vector3();
-var vc = new THREE4.Vector3();
-var vd = new THREE4.Vector3();
-var e1 = new THREE4.Vector3();
-var e2 = new THREE4.Vector3();
-var nn = new THREE4.Vector3();
-var hint = new THREE4.Vector3();
-var col = new THREE4.Color();
+import * as THREE5 from "three";
+var va = new THREE5.Vector3();
+var vb = new THREE5.Vector3();
+var vc = new THREE5.Vector3();
+var vd = new THREE5.Vector3();
+var e1 = new THREE5.Vector3();
+var e2 = new THREE5.Vector3();
+var nn = new THREE5.Vector3();
+var hint = new THREE5.Vector3();
+var col = new THREE5.Color();
 var MeshBuilder = class {
   positions = [];
   normals = [];
   tones = [];
   glows = [];
   flows = [];
-  matrix = new THREE4.Matrix4();
-  rotation = new THREE4.Matrix3();
+  matrix = new THREE5.Matrix4();
+  rotation = new THREE5.Matrix3();
   /** The colour faces take when they don't say. */
-  tone = new THREE4.Color(791837);
+  tone = new THREE5.Color(791837);
   /** The colour of this piece's lights, for a material that reads plain vertex colours (see `geometry`). */
-  light = new THREE4.Color(16777215);
+  light = new THREE5.Color(16777215);
   colors = [];
   get triangles() {
     return this.positions.length / 9;
   }
   /** Place and turn everything added from now on: a position, and degrees about the vertical. */
   at(position = [0, 0, 0], degrees = 0, scale = 1) {
-    this.matrix.makeRotationY(THREE4.MathUtils.degToRad(degrees)).scale(vc.set(scale, scale, scale)).setPosition(position[0], position[1], position[2]);
+    this.matrix.makeRotationY(THREE5.MathUtils.degToRad(degrees)).scale(vc.set(scale, scale, scale)).setPosition(position[0], position[1], position[2]);
     this.rotation.setFromMatrix4(this.matrix);
     return this;
   }
@@ -1836,9 +1910,9 @@ var MeshBuilder = class {
   }
   /** A face with a panel pressed into it. Corners in order round the face; `out` is which way it faces. */
   panel(corners, out, o, paint = {}) {
-    const [a, b, c, d] = corners.map((p) => new THREE4.Vector3(...p));
-    const n = new THREE4.Vector3(...out).normalize();
-    const mid = new THREE4.Vector3().add(a).add(b).add(c).add(d).multiplyScalar(0.25);
+    const [a, b, c, d] = corners.map((p) => new THREE5.Vector3(...p));
+    const n = new THREE5.Vector3(...out).normalize();
+    const mid = new THREE5.Vector3().add(a).add(b).add(c).add(d).multiplyScalar(0.25);
     const inner = [a, b, c, d].map((p, i, all2) => {
       const next = all2[(i + 1) % 4];
       const prev = all2[(i + 3) % 4];
@@ -1929,7 +2003,7 @@ var MeshBuilder = class {
     if (o.loop || o.caps === false) return;
     for (const [k, dir] of [[0, -1], [frames.length - 1, 1]]) {
       const f = frames[k];
-      const tangent = new THREE4.Vector3(...f.x).cross(new THREE4.Vector3(...f.y)).multiplyScalar(dir);
+      const tangent = new THREE5.Vector3(...f.x).cross(new THREE5.Vector3(...f.y)).multiplyScalar(dir);
       for (let i = 1; i < profile.length - 1; i++) this.tri(at(k, 0), at(k, i), at(k, i + 1), paint(-1), [tangent.x, tangent.y, tangent.z]);
     }
   }
@@ -1960,12 +2034,12 @@ var MeshBuilder = class {
   }
   /** A thin lit line lying just proud of a surface: from a to b, `width` wide, on a face that points `out`. */
   line(a, b, width, out, paint = {}) {
-    const n = new THREE4.Vector3(...out).normalize();
-    const along = new THREE4.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    const n = new THREE5.Vector3(...out).normalize();
+    const along = new THREE5.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
     const side = along.clone().cross(n).setLength(width / 2);
     const lift = n.clone().multiplyScalar(4e-3);
-    const A = new THREE4.Vector3(...a).add(lift);
-    const B = new THREE4.Vector3(...b).add(lift);
+    const A = new THREE5.Vector3(...a).add(lift);
+    const B = new THREE5.Vector3(...b).add(lift);
     const len = along.length();
     this.quad(
       [A.x - side.x, A.y - side.y, A.z - side.z],
@@ -1978,24 +2052,24 @@ var MeshBuilder = class {
   }
   /** Everything added, as one geometry. */
   geometry() {
-    const g = new THREE4.BufferGeometry();
-    g.setAttribute("position", new THREE4.Float32BufferAttribute(this.positions, 3));
-    g.setAttribute("normal", new THREE4.Float32BufferAttribute(this.normals, 3));
-    g.setAttribute("tone", new THREE4.Float32BufferAttribute(this.tones, 3));
-    g.setAttribute("glow", new THREE4.Float32BufferAttribute(this.glows, 1));
-    g.setAttribute("flow", new THREE4.Float32BufferAttribute(this.flows, 1));
-    g.setAttribute("color", new THREE4.Float32BufferAttribute(this.colors, 3));
+    const g = new THREE5.BufferGeometry();
+    g.setAttribute("position", new THREE5.Float32BufferAttribute(this.positions, 3));
+    g.setAttribute("normal", new THREE5.Float32BufferAttribute(this.normals, 3));
+    g.setAttribute("tone", new THREE5.Float32BufferAttribute(this.tones, 3));
+    g.setAttribute("glow", new THREE5.Float32BufferAttribute(this.glows, 1));
+    g.setAttribute("flow", new THREE5.Float32BufferAttribute(this.flows, 1));
+    g.setAttribute("color", new THREE5.Float32BufferAttribute(this.colors, 3));
     g.computeBoundingSphere();
     return g;
   }
   /** Everything added, as one mesh in this material (see alloy.ts). */
   build(material) {
-    return new THREE4.Mesh(this.geometry(), material);
+    return new THREE5.Mesh(this.geometry(), material);
   }
 };
 
 // packages/sdk/src/figure.ts
-var DARK = new THREE5.Color(659221);
+var DARK = new THREE6.Color(659221);
 var DEPTH = 0.4;
 function nearest(color, palette) {
   let best = palette[0];
@@ -2168,9 +2242,9 @@ function buildBody(b, look, main, accent, omit, proven = false) {
 function createFigure(look, style = {}, facts = {}) {
   const wearing = typeof look === "string" ? generatedLook(look) : look;
   const omit = new Set(style.omit ?? []);
-  let [main, accent, light] = [new THREE5.Color(wearing.color), new THREE5.Color(wearing.accent), new THREE5.Color(wearing.light)];
+  let [main, accent, light] = [new THREE6.Color(wearing.color), new THREE6.Color(wearing.accent), new THREE6.Color(wearing.light)];
   if (style.palette?.length) {
-    const palette = style.palette.map((c) => new THREE5.Color(c));
+    const palette = style.palette.map((c) => new THREE6.Color(c));
     [main, accent, light] = [nearest(main, palette), nearest(accent, palette), nearest(light, palette)];
   }
   const depth = style.material ? 1 : DEPTH;
@@ -2189,14 +2263,14 @@ function createFigure(look, style = {}, facts = {}) {
   handShape.lathe([[5e-4, -0.06], [0.04, 0], [5e-4, 0.06]], [0, 0, 0], 4, () => ({ glow: 0.75 }));
   const metal = style.material ? style.material(light, wearing) : createAlloy(light, { gloss: wearing.finish === "matte" ? 0.25 : wearing.finish === "gloss" ? 0.85 : 0.7, sheen: wearing.finish === "sheen" ? 0.45 : 0 });
   const geometries = [headShape.geometry(), bodyShape.geometry(), handShape.geometry()];
-  const head = new THREE5.Group();
-  head.add(new THREE5.Mesh(geometries[0], metal));
-  const torso = new THREE5.Mesh(geometries[1], metal);
+  const head = new THREE6.Group();
+  head.add(new THREE6.Mesh(geometries[0], metal));
+  const torso = new THREE6.Mesh(geometries[1], metal);
   torso.position.y = -0.45;
-  const hands = [new THREE5.Mesh(geometries[2], metal), new THREE5.Mesh(geometries[2], metal)];
+  const hands = [new THREE6.Mesh(geometries[2], metal), new THREE6.Mesh(geometries[2], metal)];
   hands[0].position.set(-0.28, -0.5, -0.12);
   hands[1].position.set(0.28, -0.5, -0.12);
-  const group = new THREE5.Group();
+  const group = new THREE6.Group();
   group.add(head, torso, ...hands);
   return {
     group,
@@ -2562,7 +2636,7 @@ function songRefusal(file, have) {
 
 // packages/sdk/src/items.ts
 import { tintSlot } from "@nswp/core";
-import * as THREE6 from "three";
+import * as THREE7 from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 // packages/sdk/src/item-store.ts
@@ -2605,9 +2679,11 @@ function onItemsChange(fn) {
   watchers2.add(fn);
   return () => void watchers2.delete(fn);
 }
+var FETCH_MS = 3e4;
+var AGAIN_MS = 4e3;
 async function fetchWithin(url, most) {
   try {
-    const res = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer", redirect: "error" });
+    const res = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer", redirect: "error", signal: AbortSignal.timeout(FETCH_MS) });
     if (!res.ok) return null;
     const stated = Number(res.headers.get("content-length") ?? 0);
     if (stated > most) return null;
@@ -2625,10 +2701,19 @@ function createItemStore(opts = {}) {
   const settled = /* @__PURE__ */ new Map();
   const files2 = /* @__PURE__ */ new Map();
   const models = /* @__PURE__ */ new Map();
+  const forgetSoon = (kept2, key, asked) => {
+    setTimeout(() => {
+      if (kept2.get(key) === asked) kept2.delete(key);
+    }, AGAIN_MS);
+  };
   const file = (named, most) => {
     let got = files2.get(named.sha256);
     if (!got) {
-      got = fetchBytes(named.url).then((bytes) => bytes && bytes.length <= most && bytesToHex(sha256(bytes)) === named.sha256 ? bytes : null).catch(() => null);
+      const asking = fetchBytes(named.url).then((bytes) => {
+        if (!bytes) forgetSoon(files2, named.sha256, asking);
+        return bytes && bytes.length <= most && bytesToHex(sha256(bytes)) === named.sha256 ? bytes : null;
+      }).catch(() => (forgetSoon(files2, named.sha256, asking), null));
+      got = asking;
       files2.set(named.sha256, got);
     }
     return got;
@@ -2658,10 +2743,12 @@ function createItemStore(opts = {}) {
       if (!showsItems()) return Promise.resolve(null);
       let got = models.get(named.model.sha256);
       if (!got) {
-        got = file(named.model, ITEM_BUDGET.bytes).then((bytes) => {
+        const asking = file(named.model, ITEM_BUDGET.bytes).then((bytes) => {
           const read = bytes ? readGlb(bytes) : null;
+          if (!bytes) forgetSoon(models, named.model.sha256, asking);
           return bytes && read?.ok ? { bytes, count: read.count } : null;
         });
+        got = asking;
         models.set(named.model.sha256, got);
       }
       return got;
@@ -2737,13 +2824,13 @@ function withinBudget(root) {
   return ok && meshes > 0 && meshes <= ITEM_BUDGET.meshes && triangles <= ITEM_BUDGET.triangles && materials.size <= ITEM_BUDGET.materials;
 }
 function fitToSize(root, size) {
-  const box = new THREE6.Box3().setFromObject(root);
-  const has = box.getSize(new THREE6.Vector3());
+  const box = new THREE7.Box3().setFromObject(root);
+  const has = box.getSize(new THREE7.Vector3());
   const scale = Math.min(size[0] / (has.x || 1), size[1] / (has.y || 1), size[2] / (has.z || 1));
-  const holder = new THREE6.Group();
+  const holder = new THREE7.Group();
   root.scale.multiplyScalar(Number.isFinite(scale) && scale > 0 ? scale : 1);
-  const fitted = new THREE6.Box3().setFromObject(root);
-  const centre = fitted.getCenter(new THREE6.Vector3());
+  const fitted = new THREE7.Box3().setFromObject(root);
+  const centre = fitted.getCenter(new THREE7.Vector3());
   root.position.x -= centre.x;
   root.position.z -= centre.z;
   root.position.y -= fitted.min.y;
@@ -2756,9 +2843,9 @@ function createItems(opts = {}) {
   const clipsOf = /* @__PURE__ */ new Map();
   const marker = (item) => {
     const [w, h, d] = item.size;
-    const box = new THREE6.Mesh(new THREE6.BoxGeometry(w, h, d), new THREE6.MeshBasicMaterial({ color: 10135476, wireframe: true }));
+    const box = new THREE7.Mesh(new THREE7.BoxGeometry(w, h, d), new THREE7.MeshBasicMaterial({ color: 10135476, wireframe: true }));
     box.position.y = h / 2;
-    const holder = new THREE6.Group();
+    const holder = new THREE7.Group();
     holder.add(box);
     return holder;
   };
@@ -2766,9 +2853,14 @@ function createItems(opts = {}) {
     const key = `${named.model.sha256}:${named.size.join(",")}`;
     let got = made.get(key);
     if (!got) {
-      got = (async () => {
+      const asking = (async () => {
         const checked = await store.modelBytes(named);
-        if (!checked) return null;
+        if (!checked) {
+          queueMicrotask(() => {
+            if (made.get(key) === asking) made.delete(key);
+          });
+          return null;
+        }
         const { bytes } = checked;
         try {
           const read = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), "");
@@ -2784,6 +2876,7 @@ function createItems(opts = {}) {
           return null;
         }
       })();
+      got = asking;
       made.set(key, got);
     }
     return got;
@@ -2827,7 +2920,7 @@ import {
   shotAt,
   struck
 } from "@nswp/core";
-import * as THREE7 from "three";
+import * as THREE8 from "three";
 
 // packages/sdk/src/item-box.ts
 import { cleanAsk, createRate, ITEM_ASKS } from "@nswp/core";
@@ -2924,7 +3017,7 @@ function mayHold(described, o) {
 }
 function drawn(width, height, paint) {
   if (typeof document === "undefined") {
-    const blank = new THREE7.Sprite(new THREE7.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
+    const blank = new THREE8.Sprite(new THREE8.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
     blank.userData.nswpNoHit = true;
     return blank;
   }
@@ -2933,9 +3026,9 @@ function drawn(width, height, paint) {
   canvas.height = height;
   const g = canvas.getContext("2d");
   if (g) paint(g);
-  const map = new THREE7.CanvasTexture(canvas);
-  map.colorSpace = THREE7.SRGBColorSpace;
-  const sprite = new THREE7.Sprite(new THREE7.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false }));
+  const map = new THREE8.CanvasTexture(canvas);
+  map.colorSpace = THREE8.SRGBColorSpace;
+  const sprite = new THREE8.Sprite(new THREE8.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false }));
   sprite.renderOrder = 999;
   sprite.userData.nswpNoHit = true;
   return sprite;
@@ -3017,9 +3110,9 @@ function createPlay(o) {
   const blinking = /* @__PURE__ */ new Set();
   const mixers = /* @__PURE__ */ new Map();
   const soundsOf = /* @__PURE__ */ new Map();
-  const ray = new THREE7.Raycaster();
-  const v = new THREE7.Vector3();
-  const w = new THREE7.Vector3();
+  const ray = new THREE8.Raycaster();
+  const v = new THREE8.Vector3();
+  const w = new THREE8.Vector3();
   let clock = 0;
   let lastAt = null;
   let sent = 0;
@@ -3028,7 +3121,7 @@ function createPlay(o) {
   let nextId = Math.floor(Math.random() * 1e3);
   const active = () => cleanItemsRule(o.rule()) !== "none" && showsItems();
   const muted = (pubkey) => cleanItemsRule(o.rule()) === "allowed" && !!o.itemsMuted?.(pubkey);
-  const hud = new THREE7.Group();
+  const hud = new THREE8.Group();
   hud.userData.nswpNoHit = true;
   if (!o.deferred) o.camera.add(hud);
   const cross = drawn(64, 64, (g) => {
@@ -3084,7 +3177,7 @@ function createPlay(o) {
       y += tall;
     }
   });
-  if (glitch.material.map) glitch.material.map.wrapT = THREE7.RepeatWrapping;
+  if (glitch.material.map) glitch.material.map.wrapT = THREE8.RepeatWrapping;
   glitch.position.set(0, 0, -0.58);
   glitch.renderOrder = 998;
   glitch.visible = false;
@@ -3130,8 +3223,8 @@ function createPlay(o) {
       o.camera.getWorldPosition(v);
       const to = w.copy(at).sub(v);
       const distance = to.length();
-      const right = new THREE7.Vector3(1, 0, 0).applyQuaternion(o.camera.getWorldQuaternion(new THREE7.Quaternion()));
-      const pan = distance < 0.01 ? 0 : THREE7.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
+      const right = new THREE8.Vector3(1, 0, 0).applyQuaternion(o.camera.getWorldQuaternion(new THREE8.Quaternion()));
+      const pan = distance < 0.01 ? 0 : THREE8.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
       o.sounds.playForeign(sound, { distance, pan });
     });
   };
@@ -3143,12 +3236,12 @@ function createPlay(o) {
     if (!clip) return;
     let mixer = mixers.get(model2);
     if (!mixer) {
-      mixer = new THREE7.AnimationMixer(model2);
+      mixer = new THREE8.AnimationMixer(model2);
       mixers.set(model2, mixer);
     }
     const action = mixer.clipAction(clip);
     action.reset();
-    action.setLoop(THREE7.LoopOnce, 1);
+    action.setLoop(THREE8.LoopOnce, 1);
     action.clampWhenFinished = false;
     action.play();
   };
@@ -3163,7 +3256,7 @@ function createPlay(o) {
       const mesh = node;
       if (mesh.isMesh && mesh.geometry) {
         const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-        const shape = material && material.side !== THREE7.BackSide && !(material.transparent && material.opacity < 0.35) && material.blending !== THREE7.AdditiveBlending;
+        const shape = material && material.side !== THREE8.BackSide && !(material.transparent && material.opacity < 0.35) && material.blending !== THREE8.AdditiveBlending;
         if (shape && (o.solid ? o.solid(mesh) : true)) found.push(mesh);
       }
       for (const child of node.children) walk(child);
@@ -3173,31 +3266,31 @@ function createPlay(o) {
     return solids;
   };
   const floorUnder = (at) => {
-    ray.set(w.set(at.x, at.y + 0.05, at.z), new THREE7.Vector3(0, -1, 0));
+    ray.set(w.set(at.x, at.y + 0.05, at.z), new THREE8.Vector3(0, -1, 0));
     ray.far = 60;
     const hit = ray.intersectObjects(worldShapes(), false)[0];
-    return hit ? hit.point.y : o.rig.getWorldPosition(new THREE7.Vector3()).y;
+    return hit ? hit.point.y : o.rig.getWorldPosition(new THREE8.Vector3()).y;
   };
   const drop = (thing) => {
     if (thing.state === "falling" || thing.state === "lying") return;
     o.scene.attach(thing.object);
     thing.state = "falling";
     thing.fall = 0;
-    thing.floor = o.deferred ? o.rig.getWorldPosition(new THREE7.Vector3()).y : floorUnder(thing.object.getWorldPosition(new THREE7.Vector3()));
+    thing.floor = o.deferred ? o.rig.getWorldPosition(new THREE8.Vector3()).y : floorUnder(thing.object.getWorldPosition(new THREE8.Vector3()));
   };
   const TRAIL_STEPS = 14;
   const TRAIL_WIDTH = 0.026;
   const makeTrail = (color) => {
-    const geometry = new THREE7.BufferGeometry();
-    geometry.setAttribute("position", new THREE7.BufferAttribute(new Float32Array((TRAIL_STEPS + 1) * 6), 3));
-    geometry.setAttribute("color", new THREE7.BufferAttribute(new Float32Array((TRAIL_STEPS + 1) * 6), 3));
+    const geometry = new THREE8.BufferGeometry();
+    geometry.setAttribute("position", new THREE8.BufferAttribute(new Float32Array((TRAIL_STEPS + 1) * 6), 3));
+    geometry.setAttribute("color", new THREE8.BufferAttribute(new Float32Array((TRAIL_STEPS + 1) * 6), 3));
     const index = [];
     for (let i = 0; i < TRAIL_STEPS; i++) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
     geometry.setIndex(index);
-    const mesh = new THREE7.Mesh(geometry, new THREE7.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE7.AdditiveBlending, depthWrite: false, side: THREE7.DoubleSide, toneMapped: false }));
+    const mesh = new THREE8.Mesh(geometry, new THREE8.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE8.AdditiveBlending, depthWrite: false, side: THREE8.DoubleSide, toneMapped: false }));
     mesh.frustumCulled = false;
     mesh.userData.nswpNoHit = true;
-    mesh.userData.base = new THREE7.Color(color);
+    mesh.userData.base = new THREE8.Color(color);
     o.scene.add(mesh);
     return mesh;
   };
@@ -3208,7 +3301,7 @@ function createPlay(o) {
     thing.trail.material.dispose();
     thing.trail = null;
   };
-  const eye = new THREE7.Vector3();
+  const eye = new THREE8.Vector3();
   const drawTrail = (thing) => {
     const mesh = thing.trail;
     if (!mesh) return;
@@ -3221,9 +3314,9 @@ function createPlay(o) {
     const color = mesh.geometry.getAttribute("color");
     const base = mesh.userData.base;
     const left = Math.min(1, (head - tail) / thing.trailSeconds);
-    const p = new THREE7.Vector3();
-    const q = new THREE7.Vector3();
-    const side = new THREE7.Vector3();
+    const p = new THREE8.Vector3();
+    const q = new THREE8.Vector3();
+    const side = new THREE8.Vector3();
     for (let i = 0; i <= TRAIL_STEPS; i++) {
       const f = i / TRAIL_STEPS;
       const t = head - (head - tail) * f;
@@ -3254,7 +3347,7 @@ function createPlay(o) {
     const inner = await o.items.sent(item2, shot.name, tints);
     if (!active()) return void pending.delete(`${by}:${shot.id}`);
     inner.position.y -= send.size[1] / 2;
-    const object = new THREE7.Group();
+    const object = new THREE8.Group();
     object.userData.nswpNoHit = true;
     object.add(inner);
     object.position.fromArray(shot.from);
@@ -3270,7 +3363,7 @@ function createPlay(o) {
   };
   const stick = (thing, at, onto, on) => {
     thing.object.position.copy(at);
-    const going2 = new THREE7.Vector3(thing.shot.velocity[0], thing.shot.velocity[1] - GRAVITY * thing.t, thing.shot.velocity[2]);
+    const going2 = new THREE8.Vector3(thing.shot.velocity[0], thing.shot.velocity[1] - GRAVITY * thing.t, thing.shot.velocity[2]);
     if (going2.lengthSq() > 1e-6) thing.object.lookAt(w.copy(at).add(going2));
     if (onto) onto.attach(thing.object);
     thing.state = "stuck";
@@ -3278,11 +3371,11 @@ function createPlay(o) {
     thing.until = thing.t + thing.shot.stick;
   };
   const self = () => {
-    const head = o.camera.getWorldPosition(new THREE7.Vector3());
-    const floor = o.rig.getWorldPosition(new THREE7.Vector3()).y;
-    return { feet: new THREE7.Vector3(head.x, floor, head.z), height: THREE7.MathUtils.clamp(head.y - floor + 0.12, 0.6, 2.4) };
+    const head = o.camera.getWorldPosition(new THREE8.Vector3());
+    const floor = o.rig.getWorldPosition(new THREE8.Vector3()).y;
+    return { feet: new THREE8.Vector3(head.x, floor, head.z), height: THREE8.MathUtils.clamp(head.y - floor + 0.12, 0.6, 2.4) };
   };
-  const shapeOf = (p) => ({ feet: new THREE7.Vector3(p.head.x, p.head.y - 1.5, p.head.z), height: 1.62 });
+  const shapeOf = (p) => ({ feet: new THREE8.Vector3(p.head.x, p.head.y - 1.5, p.head.z), height: 1.62 });
   const reached = (thing, at) => {
     const me = self();
     taken++;
@@ -3301,8 +3394,8 @@ function createPlay(o) {
     gone(thing);
   };
   const fly = (thing, dt) => {
-    const a = new THREE7.Vector3().fromArray(shotAt(thing.shot, thing.t));
-    const b = new THREE7.Vector3().fromArray(shotAt(thing.shot, thing.t + dt));
+    const a = new THREE8.Vector3().fromArray(shotAt(thing.shot, thing.t));
+    const b = new THREE8.Vector3().fromArray(shotAt(thing.shot, thing.t + dt));
     const step = b.clone().sub(a);
     const length = step.length();
     let first = 1.0001;
@@ -3357,7 +3450,7 @@ function createPlay(o) {
       return done();
     }
     thing.object.position.copy(b);
-    const going2 = new THREE7.Vector3(thing.shot.velocity[0], thing.shot.velocity[1] - GRAVITY * thing.t, thing.shot.velocity[2]);
+    const going2 = new THREE8.Vector3(thing.shot.velocity[0], thing.shot.velocity[1] - GRAVITY * thing.t, thing.shot.velocity[2]);
     thing.object.lookAt(w.copy(b).add(going2));
     if (thing.t > PLAY_LIMITS.life) gone(thing);
   };
@@ -3398,18 +3491,18 @@ function createPlay(o) {
     pointed = null;
     if (said) ({ from, to } = said);
     else if (tapped || o.sighting?.()) {
-      const q = o.camera.getWorldQuaternion(new THREE7.Quaternion());
-      const eye2 = o.camera.getWorldPosition(new THREE7.Vector3());
-      from = eye2.clone().add(new THREE7.Vector3(tapped ? 0.14 : 0, tapped ? -0.12 : -0.05, -0.35).applyQuaternion(q));
-      to = tapped ?? eye2.clone().add(new THREE7.Vector3(0, 0, -18).applyQuaternion(q));
+      const q = o.camera.getWorldQuaternion(new THREE8.Quaternion());
+      const eye2 = o.camera.getWorldPosition(new THREE8.Vector3());
+      from = eye2.clone().add(new THREE8.Vector3(tapped ? 0.14 : 0, tapped ? -0.12 : -0.05, -0.35).applyQuaternion(q));
+      to = tapped ?? eye2.clone().add(new THREE8.Vector3(0, 0, -18).applyQuaternion(q));
     } else {
-      const q = o.camera.getWorldQuaternion(new THREE7.Quaternion());
-      const eye2 = o.camera.getWorldPosition(new THREE7.Vector3());
-      from = eye2.clone().add(new THREE7.Vector3(0.14, -0.12, -0.35).applyQuaternion(q));
-      to = eye2.clone().add(new THREE7.Vector3(0, 0, -18).applyQuaternion(q));
+      const q = o.camera.getWorldQuaternion(new THREE8.Quaternion());
+      const eye2 = o.camera.getWorldPosition(new THREE8.Vector3());
+      from = eye2.clone().add(new THREE8.Vector3(0.14, -0.12, -0.35).applyQuaternion(q));
+      to = eye2.clone().add(new THREE8.Vector3(0, 0, -18).applyQuaternion(q));
     }
     const dir = to.clone().sub(from).normalize();
-    if (lift) dir.applyAxisAngle(new THREE7.Vector3().crossVectors(dir, new THREE7.Vector3(0, 1, 0)).normalize(), lift);
+    if (lift) dir.applyAxisAngle(new THREE8.Vector3().crossVectors(dir, new THREE8.Vector3(0, 1, 0)).normalize(), lift);
     return { from, dir };
   };
   const asked = (ask) => {
@@ -3541,7 +3634,7 @@ function createPlay(o) {
         if (!thing || thing.agreed || thing.state === "falling" || thing.state === "lying") return;
         thing.agreed = true;
         const feet = shapeOf(person).feet;
-        const at = new THREE7.Vector3(feet.x + hit.at[0], feet.y + hit.at[1], feet.z + hit.at[2]);
+        const at = new THREE8.Vector3(feet.x + hit.at[0], feet.y + hit.at[1], feet.z + hit.at[2]);
         if (thing.on !== from) stick(thing, at, person.body, from);
         thing.agreeBy = null;
         hear(thing.item, thing.send.strikes, at);
@@ -3621,7 +3714,7 @@ function createPlay(o) {
       const on = active();
       const down = own.downUntil > 0;
       if (wordsSprite) wordsSprite.visible = !o.sighting?.();
-      const tall = Math.tan(THREE7.MathUtils.degToRad(o.camera.fov / 2));
+      const tall = Math.tan(THREE8.MathUtils.degToRad(o.camera.fov / 2));
       const wide = tall * o.camera.aspect;
       ownBar.position.set(0, isPresenting() ? -0.3 : -tall * (o.camera.aspect < 1 ? 0.5 : 0.66), -1);
       const scale = Math.min(0.3, wide * 0.62);
@@ -3699,8 +3792,8 @@ function createPlay(o) {
     snapshot() {
       const clips = clipsSaid;
       clipsSaid = [];
-      const q = new THREE7.Quaternion();
-      const at = new THREE7.Vector3();
+      const q = new THREE8.Quaternion();
+      const at = new THREE8.Vector3();
       const three = (x) => [x.x, x.y, x.z];
       return {
         things: things.map((t) => {
@@ -3751,7 +3844,7 @@ function createPlay(o) {
       const tested = thing?.steps.find((s) => s.n === step);
       if (!thing || !tested || thing.state !== "flying" || thing.late || !point.every((x) => Number.isFinite(x))) return;
       const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0;
-      thing.late = { t: tested.t0 + (tested.t1 - tested.t0) * f, point: new THREE7.Vector3().fromArray(point), ref: String(ref).slice(0, 120) };
+      thing.late = { t: tested.t0 + (tested.t1 - tested.t0) * f, point: new THREE8.Vector3().fromArray(point), ref: String(ref).slice(0, 120) };
     },
     floored(key, y) {
       const thing = things.find((t) => `${t.by}:${t.shot.id}` === key);
@@ -3765,7 +3858,7 @@ function createPlay(o) {
         flying: count("flying"),
         stuck: count("stuck"),
         falling: count("falling") + count("lying"),
-        things: things.map((t) => ({ by: t.by, id: t.shot.id, state: t.state, on: t.on, onto: `${t.object.parent?.type ?? ""}:${t.object.parent?.name ?? ""}`, at: t.object.getWorldPosition(new THREE7.Vector3()).toArray().map((n) => Math.round(n * 100) / 100) })),
+        things: things.map((t) => ({ by: t.by, id: t.shot.id, state: t.state, on: t.on, onto: `${t.object.parent?.type ?? ""}:${t.object.parent?.name ?? ""}`, at: t.object.getWorldPosition(new THREE8.Vector3()).toArray().map((n) => Math.round(n * 100) / 100) })),
         sent,
         landed,
         taken,
@@ -3808,9 +3901,9 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE8.CanvasTexture(canvas);
-  tex.colorSpace = THREE8.SRGBColorSpace;
-  const sprite = new THREE8.Sprite(new THREE8.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE9.CanvasTexture(canvas);
+  tex.colorSpace = THREE9.SRGBColorSpace;
+  const sprite = new THREE9.Sprite(new THREE9.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
@@ -3839,9 +3932,9 @@ function speechSprite(text, width = 0.8) {
   g.font = font;
   g.textBaseline = "middle";
   rows.forEach((row, i) => g.fillText(row, PAD, PAD * 0.7 + LINE * (i + 0.5), canvas.width - PAD * 2));
-  const tex = new THREE8.CanvasTexture(canvas);
-  tex.colorSpace = THREE8.SRGBColorSpace;
-  const sprite = new THREE8.Sprite(new THREE8.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
+  const tex = new THREE9.CanvasTexture(canvas);
+  tex.colorSpace = THREE9.SRGBColorSpace;
+  const sprite = new THREE9.Sprite(new THREE9.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
   const metres = width / FULL;
   sprite.scale.set(canvas.width * metres, canvas.height * metres, 1);
   sprite.center.set(0.5, 0);
@@ -3850,7 +3943,7 @@ function speechSprite(text, width = 0.8) {
 function createPresence(d) {
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE8.AudioListener();
+  const listener = new THREE9.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -3872,9 +3965,9 @@ function createPresence(d) {
       fade.addColorStop(1, "rgba(255,255,255,0)");
       g.fillStyle = fade;
       g.fillRect(0, 0, 64, 64);
-      dot = new THREE8.CanvasTexture(canvas);
+      dot = new THREE9.CanvasTexture(canvas);
     }
-    return new THREE8.Sprite(new THREE8.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
+    return new THREE9.Sprite(new THREE9.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
   };
   const showRecording = (a, on) => {
     if (on && !a.light) {
@@ -3890,6 +3983,7 @@ function createPresence(d) {
   const itemsRule = () => d.items ? cleanItemsRule2(d.itemsRule?.()) : "none";
   const canBeHeld = (item) => item.behaviors.includes("holdable") || item.fits.includes("hand-right") || item.fits.includes("hand-left");
   let mine = "";
+  let holdTurn = Promise.resolve();
   let mineModel = null;
   let mineTints = {};
   const heardTints = (a, said) => {
@@ -3914,8 +4008,8 @@ function createPresence(d) {
   let sightWant = false;
   let sightK = 0;
   let fovBase = null;
-  const hip = new THREE8.Vector3();
-  const up = new THREE8.Vector3();
+  const hip = new THREE9.Vector3();
+  const up = new THREE9.Vector3();
   const endSight = () => {
     sightWant = false;
     sightK = 0;
@@ -3933,9 +4027,9 @@ function createPresence(d) {
     if (now < 0) {
       const size = described?.size ?? [0.2, 0.3, 0.2];
       const acts = !!described?.does.use;
-      const tall1 = Math.tan(THREE8.MathUtils.degToRad((fovBase ?? d.camera.fov) / 2));
+      const tall1 = Math.tan(THREE9.MathUtils.degToRad((fovBase ?? d.camera.fov) / 2));
       const narrow = d.camera.aspect < 1;
-      const far = THREE8.MathUtils.clamp(size[1] / (2 * tall1 * (narrow ? 0.24 : acts ? 0.4 : 0.3)), 0.4, 0.95);
+      const far = THREE9.MathUtils.clamp(size[1] / (2 * tall1 * (narrow ? 0.24 : acts ? 0.4 : 0.3)), 0.4, 0.95);
       const tall = tall1 * far;
       const wide = tall * d.camera.aspect;
       hip.set(narrow ? wide * 0.5 : Math.min(wide * 0.6, wide - size[0] * 0.6), narrow ? -tall * 0.56 : -tall * 0.99, -far);
@@ -3946,7 +4040,7 @@ function createPresence(d) {
         mineModel.position.lerpVectors(hip, up, sightK);
         if (sightK > 2e-3 || fovBase !== null) {
           fovBase ??= d.camera.fov;
-          const share = THREE8.MathUtils.lerp(1, Math.max(0.45, aim.zoom), sightK);
+          const share = THREE9.MathUtils.lerp(1, Math.max(0.45, aim.zoom), sightK);
           d.camera.fov = fovBase * share;
           d.camera.updateProjectionMatrix();
           setAimScale(share);
@@ -3977,7 +4071,7 @@ function createPresence(d) {
     },
     ...d.deferredPlay ? { deferred: true } : {},
     me: () => session?.self.pubkey ?? null,
-    people: () => [...avatars.values()].filter((a) => a.target && a.root.visible).map((a) => ({ pubkey: a.member.pubkey, head: a.head.getWorldPosition(new THREE8.Vector3()), body: a.torso, over: a.head, root: a.root, holding: a.heldItem ?? "", held: a.held ?? null })),
+    people: () => [...avatars.values()].filter((a) => a.target && a.root.visible).map((a) => ({ pubkey: a.member.pubkey, head: a.head.getWorldPosition(new THREE9.Vector3()), body: a.torso, over: a.head, root: a.root, holding: a.heldItem ?? "", held: a.held ?? null })),
     itemsMuted: (pubkey) => itemMutes.has(pubkey),
     tell: (said) => session?.tellPlay(said),
     tintsOf: (pubkey) => pubkey === null ? mineTints : avatars.get(pubkey)?.tints ?? {},
@@ -3989,8 +4083,8 @@ function createPresence(d) {
       const i = hand();
       const c = i >= 0 ? d.controllers[i] : null;
       if (!c) return null;
-      const from = c.getWorldPosition(new THREE8.Vector3());
-      return { from, to: from.clone().add(new THREE8.Vector3(0, 0, -18).applyQuaternion(c.getWorldQuaternion(new THREE8.Quaternion()))) };
+      const from = c.getWorldPosition(new THREE9.Vector3());
+      return { from, to: from.clone().add(new THREE9.Vector3(0, 0, -18).applyQuaternion(c.getWorldQuaternion(new THREE9.Quaternion()))) };
     },
     ...d.solid ? { solid: d.solid } : {},
     ...d.onStruck ? { onStruck: d.onStruck } : {},
@@ -4082,9 +4176,9 @@ function createPresence(d) {
     if (!from) return void dress(a, a.member.look);
     void loadPicture(from).then((canvas) => {
       if (!canvas || a.pictureFrom !== from || !avatars.has(a.member.pubkey)) return;
-      const map = new THREE8.CanvasTexture(canvas);
-      map.colorSpace = THREE8.SRGBColorSpace;
-      const sprite = new THREE8.Sprite(new THREE8.SpriteMaterial({ map, depthWrite: false }));
+      const map = new THREE9.CanvasTexture(canvas);
+      map.colorSpace = THREE9.SRGBColorSpace;
+      const sprite = new THREE9.Sprite(new THREE9.SpriteMaterial({ map, depthWrite: false }));
       sprite.scale.set(0.2, 0.2, 1);
       sprite.position.set(0, 0.63, 0);
       sprite.userData.person = a.member.pubkey;
@@ -4099,7 +4193,7 @@ function createPresence(d) {
   let onPerson = () => {
   };
   const makeAvatar = (member) => {
-    const root = new THREE8.Group();
+    const root = new THREE9.Group();
     root.visible = false;
     root.userData.nswpNoHit = true;
     const label = textSprite(member.name, labelColor, 0.5);
@@ -4126,7 +4220,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE8.PositionalAudio(listener);
+    const pa = new THREE9.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(MUSIC_RANGE);
     pa.setVolume(0);
@@ -4154,8 +4248,8 @@ function createPresence(d) {
     return Math.sqrt(buf.reduce((sum, x) => sum + x * x, 0) / buf.length);
   };
   const levelBuf = new Float32Array(512);
-  const headAt = new THREE8.Vector3();
-  const theirs = new THREE8.Vector3();
+  const headAt = new THREE9.Vector3();
+  const theirs = new THREE9.Vector3();
   const tendMusic = (dt) => {
     if (!session) return;
     d.camera.getWorldPosition(headAt);
@@ -4203,7 +4297,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE8.PositionalAudio(listener);
+    const pa = new THREE9.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -4229,8 +4323,8 @@ function createPresence(d) {
     dropBubble(a);
     a.figure.dispose();
   };
-  const v = new THREE8.Vector3();
-  const q = new THREE8.Quaternion();
+  const v = new THREE9.Vector3();
+  const q = new THREE9.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -4367,9 +4461,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE8.Vector3();
-  const tq = new THREE8.Quaternion();
-  const euler = new THREE8.Euler();
+  const tp = new THREE9.Vector3();
+  const tq = new THREE9.Quaternion();
+  const euler = new THREE9.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -4447,36 +4541,41 @@ function createPresence(d) {
       sayTints();
       changed();
     },
-    async setHolding(itemIn2, tints) {
-      const item = itemCoordinate2(itemIn2);
-      const put = () => {
-        mine = "";
-        mineModel?.removeFromParent();
-        mineModel = null;
-        inHand = -2;
-        endSight();
-        void play?.held(null, null);
-        session?.setHolding("");
-      };
-      if (!item) {
-        const had = !!mine;
+    setHolding(itemIn2, tints) {
+      const turn2 = async () => {
+        const item = itemCoordinate2(itemIn2);
+        const put = () => {
+          mine = "";
+          mineModel?.removeFromParent();
+          mineModel = null;
+          inHand = -2;
+          endSight();
+          void play?.held(null, null);
+          session?.setHolding("");
+        };
+        if (!item) {
+          const had = !!mine;
+          put();
+          return { ok: true, said: had ? "Put away." : "You are holding nothing." };
+        }
+        if (!d.items) return { ok: false, said: "Nothing carried is drawn or works in this place." };
+        const described = itemsRule() === "none" || !showsItems() ? null : await d.items.describe(item);
+        const may = mayHold(described, { rule: itemsRule(), scripts: !!d.itemScripts, asked: askedScript });
+        if (!may.ok || !described) return may.ok ? { ok: false, said: "That item's description couldn't be found." } : may;
+        mineTints = cleanTints(described, tints ?? {});
+        const model = await d.items.model(described, mineTints);
         put();
-        return { ok: true, said: had ? "Put away." : "You are holding nothing." };
-      }
-      if (!d.items) return { ok: false, said: "Nothing carried is drawn or works in this place." };
-      const described = itemsRule() === "none" || !showsItems() ? null : await d.items.describe(item);
-      const may = mayHold(described, { rule: itemsRule(), scripts: !!d.itemScripts, asked: askedScript });
-      if (!may.ok || !described) return may.ok ? { ok: false, said: "That item's description couldn't be found." } : may;
-      mineTints = cleanTints(described, tints ?? {});
-      const model = await d.items.model(described, mineTints);
-      put();
-      mine = item;
-      mineModel = model;
-      placeMine();
-      session?.setHolding(item);
-      sayTints();
-      await play?.held(described, model);
-      return { ok: true, said: `You are holding ${described.title}. People here can see it.` };
+        mine = item;
+        mineModel = model;
+        placeMine();
+        session?.setHolding(item);
+        sayTints();
+        await play?.held(described, model);
+        return { ok: true, said: `You are holding ${described.title}. People here can see it.` };
+      };
+      const result = holdTurn.then(turn2, turn2);
+      holdTurn = result.then(() => changed(), () => changed());
+      return result;
     },
     get play() {
       return play;
@@ -4517,11 +4616,11 @@ function createPresence(d) {
       const a = avatars.get(pubkey);
       if (!a?.target) return null;
       d.camera.getWorldPosition(v);
-      const to = new THREE8.Vector3().fromArray(a.target.head.position).sub(v);
+      const to = new THREE9.Vector3().fromArray(a.target.head.position).sub(v);
       const distance = to.length();
       if (distance < 1e-3) return { distance: 0, pan: 0 };
-      const right = new THREE8.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
-      const pan = THREE8.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
+      const right = new THREE9.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
+      const pan = THREE9.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
       return { distance: Math.round(distance * 100) / 100, pan: Math.round(pan * 100) / 100 };
     },
     pressAt(raycaster) {
@@ -4639,7 +4738,7 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE8.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE9.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
         a.near = near;
         a.materials[0].material.tick?.(performance.now() / 1e3);
@@ -4722,7 +4821,7 @@ function createPresence(d) {
 }
 
 // packages/sdk/src/room-controls.ts
-import * as THREE10 from "three";
+import * as THREE11 from "three";
 import { CHAT_LIMITS, DEFAULT_RELAYS as DEFAULT_RELAYS6, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub5, verifyEvent as verifyEvent6 } from "@nswp/core";
 
 // packages/sdk/src/following.ts
@@ -5193,7 +5292,7 @@ function createMessages(opts) {
 
 // packages/sdk/src/messaging.ts
 import { shortNpub as shortNpub4, MESSAGE_LIMITS } from "@nswp/core";
-import * as THREE9 from "three";
+import * as THREE10 from "three";
 var W2 = 768;
 var H2 = 900;
 var LEAD = 130;
@@ -5291,8 +5390,8 @@ function addMessagingControls(controls, opts) {
     const canvas = document.createElement("canvas");
     canvas.width = W2;
     canvas.height = H2;
-    const texture = new THREE9.CanvasTexture(canvas);
-    texture.colorSpace = THREE9.SRGBColorSpace;
+    const texture = new THREE10.CanvasTexture(canvas);
+    texture.colorSpace = THREE10.SRGBColorSpace;
     try {
       const made = opts.panels.open(
         {
@@ -5604,8 +5703,8 @@ function addRoomControls(controls, presence, opts = {}) {
     watching.set(m.pubkey, w);
     const show = () => {
       if (w.panel || watching.get(m.pubkey) !== w || !video.videoWidth || !video.videoHeight) return;
-      w.texture = new THREE10.VideoTexture(video);
-      w.texture.colorSpace = THREE10.SRGBColorSpace;
+      w.texture = new THREE11.VideoTexture(video);
+      w.texture.colorSpace = THREE11.SRGBColorSpace;
       w.panel = opts.panels.open(
         { kind: "custom", title: `${m.name}'s screen`, texture: w.texture, aspect: video.videoWidth / video.videoHeight, onClose: () => stopWatching(m.pubkey, true) },
         { keep: false }
@@ -5939,8 +6038,8 @@ function addRoomControls(controls, presence, opts = {}) {
     const canvas = document.createElement("canvas");
     canvas.width = CHAT_W;
     canvas.height = CHAT_H;
-    const texture = new THREE10.CanvasTexture(canvas);
-    texture.colorSpace = THREE10.SRGBColorSpace;
+    const texture = new THREE11.CanvasTexture(canvas);
+    texture.colorSpace = THREE11.SRGBColorSpace;
     try {
       const panel = opts.panels.open(
         {
@@ -6133,8 +6232,8 @@ function addRoomControls(controls, presence, opts = {}) {
     const canvas = document.createElement("canvas");
     canvas.width = CHAT_W;
     canvas.height = CHAT_H;
-    const texture = new THREE10.CanvasTexture(canvas);
-    texture.colorSpace = THREE10.SRGBColorSpace;
+    const texture = new THREE11.CanvasTexture(canvas);
+    texture.colorSpace = THREE11.SRGBColorSpace;
     try {
       const panel = opts.panels.open(
         {
@@ -6439,7 +6538,7 @@ function addRoomControls(controls, presence, opts = {}) {
 }
 
 // packages/sdk/src/input.ts
-import * as THREE11 from "three";
+import * as THREE12 from "three";
 
 // packages/sdk/src/stroll.ts
 var WALK_SPEED = 2.4;
@@ -6751,25 +6850,25 @@ var unpointable = (root) => root.traverse((o) => void (o.raycast = () => {
 }));
 function controllerModel(accent) {
   const b = new MeshBuilder().at();
-  b.tone = new THREE11.Color(1712684);
+  b.tone = new THREE12.Color(1712684);
   b.light = accent.clone();
-  const lean = new THREE11.Matrix4().makeRotationX(THREE11.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
+  const lean = new THREE12.Matrix4().makeRotationX(THREE12.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
   b.place(lean);
   b.lathe([[5e-4, -0.07], [0.014, -0.068], [0.018, -0.02], [0.017, 0.03], [0.012, 0.046], [5e-4, 0.048]], [0, 0, 0], 6, (row) => row === 1 ? { glow: 0.5 } : { shade: 0.9 + row % 2 * 0.2 });
-  b.place(new THREE11.Matrix4());
+  b.place(new THREE12.Matrix4());
   b.box([0.03, 0.022, 0.07], [0, 4e-3, -0.045], { bevel: 6e-3, shade: 1.05 });
   b.box([0.018, 0.012, 4e-3], [0, 4e-3, -0.082], { glow: 1 });
-  b.place(new THREE11.Matrix4().makeRotationX(THREE11.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
+  b.place(new THREE12.Matrix4().makeRotationX(THREE12.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
   b.lathe([[0.046, -4e-3], [0.052, 0], [0.046, 4e-3], [0.041, 0]], [0, 0, 0], 12, (row) => row === 1 ? { glow: 0.7 } : { shade: 0.85 });
   const metal = createAlloy(accent, { gloss: 0.6 });
-  const group = new THREE11.Group();
+  const group = new THREE12.Group();
   group.add(b.build(metal));
-  const light = () => new THREE11.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
-  const trigger = new THREE11.Mesh(new THREE11.BoxGeometry(0.012, 0.02, 0.014), light());
+  const light = () => new THREE12.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
+  const trigger = new THREE12.Mesh(new THREE12.BoxGeometry(0.012, 0.02, 0.014), light());
   trigger.position.set(0, -0.016, -0.036);
-  const squeeze = new THREE11.Mesh(new THREE11.BoxGeometry(8e-3, 0.03, 0.012), light());
+  const squeeze = new THREE12.Mesh(new THREE12.BoxGeometry(8e-3, 0.03, 0.012), light());
   squeeze.position.set(0, -0.034, 0.018);
-  squeeze.rotation.x = THREE11.MathUtils.degToRad(-52);
+  squeeze.rotation.x = THREE12.MathUtils.degToRad(-52);
   group.add(trigger, squeeze);
   unpointable(group);
   return { group, metal, trigger, squeeze };
@@ -6778,7 +6877,7 @@ var VIGNETTE_VERT = `varying float vFar; void main(){ vFar = length(position.xy)
 var VIGNETTE_FRAG = `uniform float uAmount; varying float vFar; void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.24, 0.42, vFar) * uAmount); }`;
 function createXrInput(opts) {
   const { renderer, rig, camera } = opts;
-  const accent = new THREE11.Color(opts.accent ?? 16758364);
+  const accent = new THREE12.Color(opts.accent ?? 16758364);
   const came = arrivedSettings();
   let comfort = { ...loadComfort(), ...came.turn !== void 0 ? { turnStep: came.turn } : {}, ...came.hand !== void 0 ? { moveHand: came.hand } : {}, ...came.narrow !== void 0 ? { narrow: came.narrow } : {} };
   if (came.turn !== void 0 || came.hand !== void 0 || came.narrow !== void 0) saveComfort(comfort);
@@ -6811,25 +6910,25 @@ function createXrInput(opts) {
   });
   const kindOf = (s) => !s.source ? "none" : s.source.hand ? "hand" : "controller";
   const handOf = (s) => s.source?.handedness === "left" || s.source?.handedness === "right" ? s.source.handedness : "none";
-  const jointShape = new THREE11.OctahedronGeometry(1, 1);
-  const jointDark = new THREE11.MeshBasicMaterial({ color: 2568767 });
-  const jointLit = new THREE11.MeshBasicMaterial({ color: accent });
+  const jointShape = new THREE12.OctahedronGeometry(1, 1);
+  const jointDark = new THREE12.MeshBasicMaterial({ color: 2568767 });
+  const jointLit = new THREE12.MeshBasicMaterial({ color: accent });
   const dressHand = (hand) => {
     for (const joint of hand.children) {
       if (joint.userData.nswpJoint) continue;
       joint.userData.nswpJoint = true;
       const name = String(joint.jointName ?? "");
       const tip = name.endsWith("-tip");
-      const mesh = new THREE11.Mesh(jointShape, tip ? jointLit : jointDark);
+      const mesh = new THREE12.Mesh(jointShape, tip ? jointLit : jointDark);
       const radius = joint.jointRadius;
       mesh.scale.setScalar(Math.min(0.02, Math.max(5e-3, (radius ?? 8e-3) * (tip ? 0.9 : 0.75))));
       unpointable(mesh);
       joint.add(mesh);
     }
   };
-  const vignette = new THREE11.Mesh(
-    new THREE11.RingGeometry(0.12, 3, 48, 4),
-    new THREE11.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
+  const vignette = new THREE12.Mesh(
+    new THREE12.RingGeometry(0.12, 3, 48, 4),
+    new THREE12.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
   );
   vignette.position.z = -0.4;
   vignette.renderOrder = 999;
@@ -6851,8 +6950,8 @@ function createXrInput(opts) {
     } catch {
     }
   };
-  const headAt = new THREE11.Vector3();
-  const ahead = new THREE11.Vector3();
+  const headAt = new THREE12.Vector3();
+  const ahead = new THREE12.Vector3();
   const canStand = opts.canStand ?? (() => true);
   const walk = (right, forward) => {
     camera.getWorldPosition(headAt);
@@ -6869,12 +6968,12 @@ function createXrInput(opts) {
   const things = /* @__PURE__ */ new Map();
   const held = /* @__PURE__ */ new Map();
   const returning = [];
-  const box = new THREE11.Box3();
-  const ball = new THREE11.Sphere();
-  const handAt = new THREE11.Vector3();
-  const raycaster = new THREE11.Raycaster();
-  const turnOnly = new THREE11.Matrix4();
-  const HOLD_AT = new THREE11.Vector3(0, 0, -0.06);
+  const box = new THREE12.Box3();
+  const ball = new THREE12.Sphere();
+  const handAt = new THREE12.Vector3();
+  const raycaster = new THREE12.Raycaster();
+  const turnOnly = new THREE12.Matrix4();
+  const HOLD_AT = new THREE12.Vector3(0, 0, -0.06);
   const FAR_REACH = 6;
   const isHeld = (object) => [...held.values()].some((h) => h.thing.object === object);
   const grab = (slot, by) => {
@@ -7109,10 +7208,10 @@ function createXrInput(opts) {
 }
 
 // packages/sdk/src/panels.ts
-import * as THREE14 from "three";
+import * as THREE15 from "three";
 
 // packages/sdk/src/keyboard.ts
-import * as THREE12 from "three";
+import * as THREE13 from "three";
 
 // packages/sdk/src/panel-store.ts
 var PANEL_LOOKS = [
@@ -7279,18 +7378,18 @@ var KEYS = 520;
 var LIVE_STRIP = 92;
 var WIDTH = 0.8;
 function createKeyboard(o) {
-  const accent = `#${new THREE12.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE13.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   const canvas = document.createElement("canvas");
   canvas.width = W3;
   canvas.height = SHOW + KEYS;
   const g = canvas.getContext("2d");
-  const texture = new THREE12.CanvasTexture(canvas);
-  texture.colorSpace = THREE12.SRGBColorSpace;
+  const texture = new THREE13.CanvasTexture(canvas);
+  texture.colorSpace = THREE13.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE12.Mesh(new THREE12.PlaneGeometry(WIDTH, WIDTH * canvas.height / W3), new THREE12.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
+  const board = new THREE13.Mesh(new THREE13.PlaneGeometry(WIDTH, WIDTH * canvas.height / W3), new THREE13.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
   board.name = "keyboard";
-  const group = new THREE12.Group();
+  const group = new THREE13.Group();
   group.name = "keyboard";
   group.add(board);
   group.visible = false;
@@ -7410,9 +7509,9 @@ function createKeyboard(o) {
     field.focus();
   };
   const unheard = voice.subscribe(() => done || live ? lay() : void 0);
-  const at = new THREE12.Vector3();
-  const facing2 = new THREE12.Vector3();
-  const local2 = new THREE12.Vector3();
+  const at = new THREE13.Vector3();
+  const facing2 = new THREE13.Vector3();
+  const local2 = new THREE13.Vector3();
   const putUp = (under = false) => {
     o.camera.getWorldPosition(at);
     o.camera.getWorldDirection(facing2);
@@ -7539,7 +7638,7 @@ function createKeyboard(o) {
 }
 
 // packages/sdk/src/library.ts
-import * as THREE13 from "three";
+import * as THREE14 from "three";
 var DB = "nswp-panels";
 function files() {
   return new Promise((resolve, reject) => {
@@ -7606,7 +7705,7 @@ var TOP = 96;
 var FOOT = 104;
 var WIDTH2 = 1.1;
 function createLibrary(o) {
-  const accent = `#${new THREE13.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE14.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   let items = [];
   if (o.keep) {
@@ -7628,12 +7727,12 @@ function createLibrary(o) {
   canvas.width = W4;
   canvas.height = H3;
   const g = canvas.getContext("2d");
-  const texture = new THREE13.CanvasTexture(canvas);
-  texture.colorSpace = THREE13.SRGBColorSpace;
+  const texture = new THREE14.CanvasTexture(canvas);
+  texture.colorSpace = THREE14.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE13.Mesh(new THREE13.PlaneGeometry(WIDTH2, WIDTH2 * H3 / W4), new THREE13.MeshBasicMaterial({ map: texture, toneMapped: false }));
+  const board = new THREE14.Mesh(new THREE14.PlaneGeometry(WIDTH2, WIDTH2 * H3 / W4), new THREE14.MeshBasicMaterial({ map: texture, toneMapped: false }));
   board.name = "library";
-  const group = new THREE13.Group();
+  const group = new THREE14.Group();
   group.name = "library";
   group.add(board);
   group.visible = false;
@@ -7741,8 +7840,8 @@ function createLibrary(o) {
     if (items.length) button("removing", removing ? "Stop removing" : "Remove one", W4 - 300, fy, 276, FOOT - 28, removing);
     texture.needsUpdate = true;
   };
-  const at = new THREE13.Vector3();
-  const facing2 = new THREE13.Vector3();
+  const at = new THREE14.Vector3();
+  const facing2 = new THREE14.Vector3();
   const api = {
     group,
     list: () => items,
@@ -7816,7 +7915,7 @@ function createLibrary(o) {
       if (!r || !group.visible) return null;
       const height = WIDTH2 * H3 / W4;
       group.updateMatrixWorld(true);
-      return board.localToWorld(new THREE13.Vector3(((r.x + r.w / 2) / W4 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H3) * height, 0));
+      return board.localToWorld(new THREE14.Vector3(((r.x + r.w / 2) / W4 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H3) * height, 0));
     },
     info: () => ({ showing: group.visible, page, pages: libraryPage(items, page, COLS * ROWS).pages, removing, cells: regions.map((r) => r.id) }),
     update() {
@@ -7842,8 +7941,8 @@ function canvasTexture(width, height, draw) {
   canvas.width = width;
   canvas.height = height;
   draw(canvas.getContext("2d"), width, height);
-  const texture = new THREE14.CanvasTexture(canvas);
-  texture.colorSpace = THREE14.SRGBColorSpace;
+  const texture = new THREE15.CanvasTexture(canvas);
+  texture.colorSpace = THREE15.SRGBColorSpace;
   texture.anisotropy = 8;
   return texture;
 }
@@ -7929,9 +8028,9 @@ function barTexture(title, ink) {
   });
 }
 function createPanels(o) {
-  const accent = new THREE14.Color(o.accent ?? 16758364);
+  const accent = new THREE15.Color(o.accent ?? 16758364);
   const ink = o.textColor ?? "#eef5fb";
-  const root = new THREE14.Group();
+  const root = new THREE15.Group();
   root.name = "panels";
   o.scene.add(root);
   const live = /* @__PURE__ */ new Map();
@@ -7940,13 +8039,13 @@ function createPanels(o) {
   const glyph = (g) => glyphs.get(g) ?? (glyphs.set(g, glyphTexture(g, ink)), glyphs.get(g));
   const frameShape = (() => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE14.Color(1186340);
+    b.tone = new THREE15.Color(1186340);
     b.light = accent.clone();
     b.box([1, 1, 0.022], [0, 0, 0], { bevel: 8e-3 });
     return b.geometry();
   })();
-  const head = new THREE14.Vector3();
-  const at = new THREE14.Vector3();
+  const head = new THREE15.Vector3();
+  const at = new THREE15.Vector3();
   const headV3 = () => {
     o.camera.getWorldPosition(head);
     return [head.x, head.y, head.z];
@@ -8035,10 +8134,10 @@ function createPanels(o) {
   };
   const presenting = () => !!o.session?.();
   let follow = null;
-  const anchorAt = new THREE14.Vector3();
-  const anchorTurn = new THREE14.Quaternion();
-  const offset = new THREE14.Vector3();
-  const UP = new THREE14.Vector3(0, 1, 0);
+  const anchorAt = new THREE15.Vector3();
+  const anchorTurn = new THREE15.Quaternion();
+  const offset = new THREE15.Vector3();
+  const UP = new THREE15.Vector3(0, 1, 0);
   const anchor = (dt) => {
     o.camera.getWorldPosition(anchorAt);
     if (!presenting()) {
@@ -8079,20 +8178,20 @@ function createPanels(o) {
     save();
     if (p.source.kind === "custom") p.source.onClose?.();
   };
-  const flat = (texture, w = 1, h = 1) => new THREE14.Mesh(new THREE14.PlaneGeometry(w, h), new THREE14.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
+  const flat = (texture, w = 1, h = 1) => new THREE15.Mesh(new THREE15.PlaneGeometry(w, h), new THREE15.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
   const open = (content, opts = {}) => {
     const source = content.kind === "custom" ? content : cleanSource(content);
     if (!source) throw new Error("nswp-sdk: a panel needs something to show (a note with words, or a picture or video with an address).");
     if (live.size >= PANEL_LIMITS.count && !(opts.id && live.has(opts.id))) throw new Error(`nswp-sdk: ${PANEL_LIMITS.count} panels are open. Put one away first.`);
     const id = opts.id ?? newId();
     live.get(id)?.close();
-    const group = new THREE14.Group();
+    const group = new THREE15.Group();
     group.name = `panel:${id}`;
     const body = flat(null);
     body.name = `${id}:body`;
     const bar = flat(barTexture(source.title || (source.kind === "note" ? "Note" : source.kind === "picture" ? "Picture" : source.kind === "video" ? "Video" : ""), ink), 1, BAR);
     bar.name = `${id}:bar`;
-    const frame = new THREE14.Mesh(frameShape, metal);
+    const frame = new THREE15.Mesh(frameShape, metal);
     frame.name = "frame";
     frame.raycast = () => {
     };
@@ -8146,7 +8245,7 @@ function createPanels(o) {
         save();
       },
       place() {
-        const e = new THREE14.Euler().setFromQuaternion(group.quaternion, "YXZ");
+        const e = new THREE15.Euler().setFromQuaternion(group.quaternion, "YXZ");
         const round = (n) => Math.round(n * 1e3) / 1e3;
         return { position: group.position.toArray().map(round), yaw: round((e.y / DEG % 360 + 360) % 360), pitch: round(e.x / DEG), width: round(p.width) };
       },
@@ -8184,8 +8283,8 @@ function createPanels(o) {
           const image = new Image();
           image.onload = () => {
             if (!live.has(id)) return;
-            const texture = new THREE14.Texture(image);
-            texture.colorSpace = THREE14.SRGBColorSpace;
+            const texture = new THREE15.Texture(image);
+            texture.colorSpace = THREE15.SRGBColorSpace;
             texture.needsUpdate = true;
             show(texture, image.naturalWidth / Math.max(1, image.naturalHeight));
           };
@@ -8198,8 +8297,8 @@ function createPanels(o) {
           p.video = video;
           video.addEventListener("loadedmetadata", () => {
             if (!live.has(id) || !video.videoWidth) return;
-            const texture = new THREE14.VideoTexture(video);
-            texture.colorSpace = THREE14.SRGBColorSpace;
+            const texture = new THREE15.VideoTexture(video);
+            texture.colorSpace = THREE15.SRGBColorSpace;
             show(texture, video.videoWidth / video.videoHeight);
           });
           const mark = () => {
@@ -8266,9 +8365,9 @@ function createPanels(o) {
   const tint = (hit, on) => {
     const found = hit ? find(hit) : null;
     const mesh = found?.[0].buttons.get(found[1]);
-    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE14.Color(16777215));
+    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE15.Color(16777215));
   };
-  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE14.Color(16777215));
+  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE15.Color(16777215));
   const api = {
     open,
     async openFile(file) {
@@ -8511,14 +8610,14 @@ function addPanelControls(controls, panels, o) {
 }
 
 // packages/sdk/src/floor-mark.ts
-import * as THREE15 from "three";
+import * as THREE16 from "three";
 var MOST3 = 140;
 var TURNS = 16;
 function createFloorMarks(accent, opts = {}) {
   const y = opts.height ?? 0.02;
-  const group = new THREE15.Group();
+  const group = new THREE16.Group();
   group.name = "floor-marks";
-  const paint = (opacity) => new THREE15.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
+  const paint = (opacity) => new THREE16.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
   const flat = (o) => {
     o.rotation.x = -Math.PI / 2;
     o.renderOrder = 5;
@@ -8528,19 +8627,19 @@ function createFloorMarks(accent, opts = {}) {
     group.add(o);
     return o;
   };
-  const ring = flat(new THREE15.Mesh(new THREE15.RingGeometry(0.26, 0.34, 48), paint(0.85)));
-  const dot = flat(new THREE15.Mesh(new THREE15.CircleGeometry(0.14, 28), paint(0.95)));
-  const halo = flat(new THREE15.Mesh(new THREE15.RingGeometry(0.26, 0.3, 48), paint(0.7)));
-  const line = flat(new THREE15.InstancedMesh(new THREE15.CircleGeometry(0.07, 14), paint(0.8), MOST3));
+  const ring = flat(new THREE16.Mesh(new THREE16.RingGeometry(0.26, 0.34, 48), paint(0.85)));
+  const dot = flat(new THREE16.Mesh(new THREE16.CircleGeometry(0.14, 28), paint(0.95)));
+  const halo = flat(new THREE16.Mesh(new THREE16.RingGeometry(0.26, 0.3, 48), paint(0.7)));
+  const line = flat(new THREE16.InstancedMesh(new THREE16.CircleGeometry(0.07, 14), paint(0.8), MOST3));
   line.rotation.x = 0;
   line.frustumCulled = false;
-  const knots = flat(new THREE15.InstancedMesh(new THREE15.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
+  const knots = flat(new THREE16.InstancedMesh(new THREE16.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
   knots.rotation.x = 0;
   knots.frustumCulled = false;
-  const place = new THREE15.Matrix4();
-  const lie = new THREE15.Quaternion().setFromEuler(new THREE15.Euler(-Math.PI / 2, 0, 0));
-  const at = new THREE15.Vector3();
-  const one = new THREE15.Vector3(1, 1, 1);
+  const place = new THREE16.Matrix4();
+  const lie = new THREE16.Quaternion().setFromEuler(new THREE16.Euler(-Math.PI / 2, 0, 0));
+  const at = new THREE16.Vector3();
+  const one = new THREE16.Vector3(1, 1, 1);
   let shown2 = { ring: null, dot: null, dots: 0, turns: 0 };
   return {
     group,
@@ -9325,7 +9424,7 @@ function createBag(opts) {
 import { decodeNaddr, ITEM_KIND as ITEM_KIND2, itemCoordinate as itemCoordinate4, TINT_PALETTE } from "@nswp/core";
 
 // packages/sdk/src/item-preview.ts
-import * as THREE16 from "three";
+import * as THREE17 from "three";
 var KEPT = 36;
 function createItemPreviews(o) {
   const size = o.size ?? 256;
@@ -9337,19 +9436,19 @@ function createItemPreviews(o) {
     if (stage !== void 0) return stage;
     if (typeof document === "undefined") return stage = null;
     try {
-      const renderer = new THREE16.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
+      const renderer = new THREE17.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
       renderer.setPixelRatio(1);
       renderer.setSize(size, size, false);
       renderer.setClearColor(0, 0);
-      const scene = new THREE16.Scene();
-      scene.add(new THREE16.HemisphereLight(16777215, 2699837, 1.7));
-      const key = new THREE16.DirectionalLight(16777215, 2.4);
+      const scene = new THREE17.Scene();
+      scene.add(new THREE17.HemisphereLight(16777215, 2699837, 1.7));
+      const key = new THREE17.DirectionalLight(16777215, 2.4);
       key.position.set(1.6, 2.6, 2.2);
-      const rim = new THREE16.DirectionalLight(12572927, 1.3);
+      const rim = new THREE17.DirectionalLight(12572927, 1.3);
       rim.position.set(-2, 1.2, -2.4);
-      const pivot = new THREE16.Group();
+      const pivot = new THREE17.Group();
       scene.add(key, rim, pivot);
-      const camera = new THREE16.PerspectiveCamera(28, 1, 0.01, 50);
+      const camera = new THREE17.PerspectiveCamera(28, 1, 0.01, 50);
       return stage = { renderer, scene, camera, pivot };
     } catch {
       return stage = null;
@@ -9362,7 +9461,7 @@ function createItemPreviews(o) {
     s.pivot.add(made.object);
     made.object.position.copy(made.middle).multiplyScalar(-1);
     s.pivot.rotation.set(0, angle, 0);
-    const away = made.radius / Math.sin(THREE16.MathUtils.degToRad(s.camera.fov / 2)) * 1.08;
+    const away = made.radius / Math.sin(THREE17.MathUtils.degToRad(s.camera.fov / 2)) * 1.08;
     s.camera.position.set(0, away * 0.3, away * 0.95);
     s.camera.lookAt(0, 0, 0);
     s.camera.near = Math.max(5e-3, away - made.radius * 2);
@@ -9400,17 +9499,29 @@ function createItemPreviews(o) {
           if (materials.every((m) => m.wireframe === true)) frames++;
           else solids++;
         });
-        if (frames > 0 && solids === 0) return;
-        const box = new THREE16.Box3().setFromObject(object);
-        const ball = box.getBoundingSphere(new THREE16.Sphere());
+        if (frames > 0 && solids === 0) return void again(key);
+        const box = new THREE17.Box3().setFromObject(object);
+        const ball = box.getBoundingSphere(new THREE17.Sphere());
         if (!Number.isFinite(ball.radius) || ball.radius <= 0) return void ready.delete(key);
         ready.set(key, { object, middle: ball.center.clone(), radius: ball.radius, still: null, live: null });
         for (const fn of watchers3) fn();
       },
-      () => void ready.delete(key)
+      () => void again(key)
     );
     return null;
   };
+  const AGAIN_MS2 = 6e3;
+  const tries = /* @__PURE__ */ new Map();
+  function again(key) {
+    const n = (tries.get(key) ?? 0) + 1;
+    tries.set(key, n);
+    if (n > 5) return;
+    setTimeout(() => {
+      if (ready.get(key) !== null) return;
+      ready.delete(key);
+      for (const fn of watchers3) fn();
+    }, AGAIN_MS2 * n);
+  }
   return {
     still(item, tints) {
       const made = want(item, tints);
@@ -9452,6 +9563,7 @@ function addBagControls(controls, opts) {
   let wasMe = null;
   let looked = false;
   let asking = "";
+  let taking = "";
   const say = (text) => controls.say(text);
   const model = items.model;
   const previews = opts.previews === void 0 ? model ? createItemPreviews({ model: (item, tints) => model(item, tints) }) : null : opts.previews;
@@ -9488,7 +9600,9 @@ function addBagControls(controls, opts) {
     chosen = item;
     change2(item, true);
   };
+  let drawnHolding = "";
   const refresh = () => {
+    drawnHolding = opts.holding();
     for (const id of shown2) controls.remove(id);
     shown2 = [];
     const me = opts.me();
@@ -9570,16 +9684,28 @@ function addBagControls(controls, opts) {
     }
     if (chosen === null && opts.holding() && has.includes(opts.holding())) chosen = opts.holding();
     const holding = opts.holding();
-    const away = () => ({ id: "bag-away", icon: "close", tone: chosen === holding ? "primary" : "normal", label: `Put ${titleOf(holding)} away`, short: "Away", act: async () => say((await opts.hold("")).said) });
+    const away = () => ({
+      id: "bag-away",
+      icon: "close",
+      tone: chosen === holding ? "primary" : "normal",
+      label: `Put ${titleOf(holding)} away`,
+      short: "Away",
+      act: async () => {
+        say((await opts.hold("")).said);
+        refresh();
+      }
+    });
     if (chosen && has.includes(chosen)) {
       const item = chosen;
-      if (holding === item) add(away());
+      if (taking === item)
+        add({ id: "bag-taking", icon: "check", label: `Taking ${titleOf(item)} in hand\u2026`, act: () => say("It is on its way: its files are being fetched and checked.") });
+      else if (holding === item) add(away());
       else if (rule === "none") {
         add({
           id: "bag-nohold",
           icon: "close",
           label: `Can't be held here: ${opts.place?.() || "this place"} doesn't have items`,
-          act: () => say(`Each place says whether things can be carried in it. Where they can, a door's sign says "Items work", and Hold is here.`)
+          act: () => say("Each place says whether things can be carried in it. Most let them; this one has turned them off.")
         });
       } else if (!showsItems()) {
         add({
@@ -9600,7 +9726,15 @@ function addBagControls(controls, opts) {
           // An item that does things of its own runs its maker's code, shut away: the second press is their yes.
           label: asking === item ? `Let it run, and hold ${titleOf(item)}` : `Hold ${titleOf(item)}`,
           act: async () => {
-            const done = await opts.hold(item, bag.tints(item));
+            taking = item;
+            refresh();
+            let done;
+            try {
+              done = await opts.hold(item, bag.tints(item));
+            } catch {
+              done = { ok: false, said: "That couldn't be taken in hand just now." };
+            }
+            taking = "";
             asking = !done.ok && /Press Hold again/.test(done.said) ? item : "";
             say(done.said);
             refresh();
@@ -9698,6 +9832,10 @@ function addBagControls(controls, opts) {
   onItemsChange(soon2);
   previews?.onChange(soon2);
   refresh();
+  const watch = setInterval(() => {
+    if (!taking && opts.holding() !== drawnHolding) refresh();
+  }, 400);
+  watch.unref?.();
   return { refresh };
 }
 
@@ -10818,7 +10956,7 @@ function addSoundControls(controls, sounds) {
 }
 
 // packages/sdk/src/chamber.ts
-import * as THREE17 from "three";
+import * as THREE18 from "three";
 var R = 1.8;
 var H4 = 2.8;
 var BAYS = 10;
@@ -10843,16 +10981,16 @@ function signTexture(lines, color) {
     const y = rows.length === 1 ? 192 : rows.length === 2 ? 138 + i * 118 : 92 + i * 100;
     g.fillText(line, 512, y, 944);
   });
-  const texture = new THREE17.CanvasTexture(canvas);
-  texture.colorSpace = THREE17.SRGBColorSpace;
+  const texture = new THREE18.CanvasTexture(canvas);
+  texture.colorSpace = THREE18.SRGBColorSpace;
   return texture;
 }
 function createChamber(accent, opts = {}) {
-  const light = new THREE17.Color(accent);
+  const light = new THREE18.Color(accent);
   const metal = createAlloy(light, { gloss: 0.5, speed: 0.9 });
   const builder = () => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE17.Color(1317668);
+    b.tone = new THREE18.Color(1317668);
     b.light = light.clone();
     return b;
   };
@@ -10864,7 +11002,7 @@ function createChamber(accent, opts = {}) {
   const wallShape = builder();
   for (let i = 1; i < BAYS; i++) {
     const a = i * 2 * Math.PI / BAYS;
-    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE17.MathUtils.radToDeg(a));
+    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE18.MathUtils.radToDeg(a));
     wallShape.box([bay, H4, 0.12], [0, H4 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
     for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H4 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
   }
@@ -10884,31 +11022,31 @@ function createChamber(accent, opts = {}) {
     leaf.position.set(side * DOOR_W / 2, 0, -reach);
     return leaf;
   });
-  const sign = new THREE17.Mesh(new THREE17.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE17.MeshBasicMaterial({ transparent: true }));
+  const sign = new THREE18.Mesh(new THREE18.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE18.MeshBasicMaterial({ transparent: true }));
   sign.position.set(0, DOOR_H + (H4 - DOOR_H) / 2, -reach + 0.085);
-  const rising = new THREE17.Group();
+  const rising = new THREE18.Group();
   rising.add(walls, ...leaves, sign);
-  const clear = new THREE17.Mesh(new THREE17.BufferGeometry().setAttribute("position", new THREE17.BufferAttribute(new Float32Array(9), 3)), new THREE17.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
+  const clear = new THREE18.Mesh(new THREE18.BufferGeometry().setAttribute("position", new THREE18.BufferAttribute(new Float32Array(9), 3)), new THREE18.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
   clear.frustumCulled = false;
   clear.renderOrder = CHAMBER_ORDER;
   clear.onBeforeRender = (renderer) => renderer.clearDepth();
   for (const part of [floor, walls, lid, ...leaves]) part.renderOrder = CHAMBER_ORDER + 1;
   sign.renderOrder = CHAMBER_ORDER + 1.3;
-  const depthOnly = (depth, o) => new THREE17.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE17.AlwaysDepth, depthWrite: true, side: THREE17.DoubleSide, ...o });
+  const depthOnly = (depth, o) => new THREE18.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE18.AlwaysDepth, depthWrite: true, side: THREE18.DoubleSide, ...o });
   const nearest2 = depthOnly("0.0", {});
   const farthest = depthOnly("1.0", { transparent: true });
-  const real = new THREE17.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE17.DoubleSide });
+  const real = new THREE18.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE18.DoubleSide });
   const shutOut = [];
   for (const part of [floor, walls, lid, ...leaves]) {
     for (const [material, order] of [[nearest2, SHUT_ORDER], [farthest, CHAMBER_ORDER + 1.1], [real, CHAMBER_ORDER + 1.2]]) {
-      const pass = new THREE17.Mesh(part.geometry, material);
+      const pass = new THREE18.Mesh(part.geometry, material);
       pass.renderOrder = order;
       pass.frustumCulled = false;
       part.add(pass);
       shutOut.push(pass);
     }
   }
-  const group = new THREE17.Group();
+  const group = new THREE18.Group();
   group.add(clear, floor, rising, lid);
   let door = 0;
   let presence = 1;
@@ -10975,8 +11113,8 @@ function createCrossing(o) {
   let hold;
   let shut = null;
   const moves = () => o.motion?.() ?? true;
-  const at = new THREE17.Vector3();
-  const facing2 = new THREE17.Vector3();
+  const at = new THREE18.Vector3();
+  const facing2 = new THREE18.Vector3();
   const place = () => {
     chamber?.dispose();
     const made = createChamber(o.accent, o.textColor ? { textColor: o.textColor } : {});
@@ -11079,16 +11217,16 @@ function createCrossing(o) {
 }
 
 // packages/sdk/src/camera.ts
-import * as THREE18 from "three";
+import * as THREE19 from "three";
 async function takePicture(renderer, scene, camera, opts = {}) {
   const width = Math.round(opts.width ?? 1920);
   const height = Math.round(opts.height ?? 1080);
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
   const xrWasEnabled = renderer.xr.enabled;
   const previousTarget = renderer.getRenderTarget();
-  const target = new THREE18.WebGLRenderTarget(width, height, { samples: 4 });
-  target.texture.colorSpace = THREE18.SRGBColorSpace;
-  const eye = new THREE18.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
+  const target = new THREE19.WebGLRenderTarget(width, height, { samples: 4 });
+  target.texture.colorSpace = THREE19.SRGBColorSpace;
+  const eye = new THREE19.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
   camera.updateWorldMatrix(true, false);
   camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
   eye.updateMatrixWorld(true);
@@ -11119,17 +11257,17 @@ async function takePicture(renderer, scene, camera, opts = {}) {
 }
 async function takeSelfie(renderer, scene, head, look, opts = {}) {
   head.updateWorldMatrix(true, false);
-  const at = new THREE18.Vector3();
-  const facing2 = new THREE18.Quaternion();
-  head.matrixWorld.decompose(at, facing2, new THREE18.Vector3());
-  const ahead = new THREE18.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
+  const at = new THREE19.Vector3();
+  const facing2 = new THREE19.Quaternion();
+  head.matrixWorld.decompose(at, facing2, new THREE19.Vector3());
+  const ahead = new THREE19.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
   if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
   ahead.normalize();
   const figure = createFigure(look);
   figure.group.position.copy(at);
   figure.group.rotation.y = Math.atan2(-ahead.x, -ahead.z);
   scene.add(figure.group);
-  const eye = new THREE18.PerspectiveCamera(58, 1, 0.05, head.far);
+  const eye = new THREE19.PerspectiveCamera(58, 1, 0.05, head.far);
   eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
   eye.position.y = at.y + 0.08;
   eye.lookAt(at.x, at.y - 0.22, at.z);
@@ -11273,80 +11411,31 @@ function addCameraControls(controls, d) {
 
 // packages/sdk/src/three.ts
 async function capturePanorama(renderer, scene, position, opts = {}) {
-  const width = Math.min(4096, Math.max(256, Math.round(opts.width ?? 2048)));
-  const height = width / 2;
+  const width = panoramaWidth(opts.width);
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
   const xrWasEnabled = renderer.xr.enabled;
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE19.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE19.HalfFloatType });
-  const flatTarget = new THREE19.WebGLRenderTarget(width, height);
-  flatTarget.texture.colorSpace = THREE19.SRGBColorSpace;
-  const material = new THREE19.ShaderMaterial({
-    uniforms: { face: { value: faceTarget.texture }, forward: { value: new THREE19.Vector3() }, up: { value: new THREE19.Vector3() }, right: { value: new THREE19.Vector3() } },
-    vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
-    fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
-      void main(){
-        float lon = (vUv.x - 0.5) * 6.283185307179586;
-        float lat = (vUv.y - 0.5) * 3.141592653589793;
-        vec3 dir = vec3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));
-        float along = dot(dir, forward);
-        // Only the directions this view is the best one for (with a hair of overlap).
-        if (along < max(abs(dir.x), max(abs(dir.y), abs(dir.z))) - 0.0005) discard;
-        vec2 p = vec2(dot(dir, right), dot(dir, up)) / along;
-        gl_FragColor = texture2D(face, clamp(p * 0.5 + 0.5, 0.0, 1.0));
-        #include <colorspace_fragment>
-      }`,
-    depthTest: false,
-    depthWrite: false
-  });
-  const quad = new THREE19.Mesh(new THREE19.PlaneGeometry(2, 2), material);
-  const quadScene = new THREE19.Scene();
-  quadScene.add(quad);
-  const quadCamera = new THREE19.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const faceCamera = new THREE19.PerspectiveCamera(90, 1, 0.05, 700);
+  const faceTarget = new THREE20.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE20.HalfFloatType });
+  const faceCamera = new THREE20.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
-  const views = [
-    [new THREE19.Vector3(0, 0, -1), new THREE19.Vector3(0, 1, 0)],
-    [new THREE19.Vector3(1, 0, 0), new THREE19.Vector3(0, 1, 0)],
-    [new THREE19.Vector3(0, 0, 1), new THREE19.Vector3(0, 1, 0)],
-    [new THREE19.Vector3(-1, 0, 0), new THREE19.Vector3(0, 1, 0)],
-    [new THREE19.Vector3(0, 1, 0), new THREE19.Vector3(0, 0, 1)],
-    [new THREE19.Vector3(0, -1, 0), new THREE19.Vector3(0, 0, -1)]
-  ];
+  let painter = null;
   try {
     for (const o of hidden) o.visible = false;
     scene.fog = null;
     renderer.xr.enabled = false;
-    renderer.setRenderTarget(flatTarget);
-    renderer.clear();
-    for (const [forward, up] of views) {
-      faceCamera.up.copy(up);
-      faceCamera.lookAt(position.clone().add(forward));
+    painter = paintPanorama(renderer, width);
+    PANORAMA_VIEWS.forEach((view, i) => {
+      faceCamera.up.fromArray(view.up);
+      faceCamera.lookAt(position.clone().add(new THREE20.Vector3().fromArray(view.forward)));
       faceCamera.updateMatrixWorld(true);
       renderer.autoClear = true;
       renderer.setRenderTarget(faceTarget);
       renderer.render(scene, faceCamera);
-      material.uniforms.forward.value.copy(forward);
-      material.uniforms.up.value.copy(up);
-      material.uniforms.right.value.crossVectors(forward, up);
-      renderer.autoClear = false;
-      renderer.setRenderTarget(flatTarget);
-      renderer.render(quadScene, quadCamera);
-    }
-    const pixels = new Uint8Array(width * height * 4);
-    renderer.readRenderTargetPixels(flatTarget, 0, 0, width, height, pixels);
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const g = canvas.getContext("2d");
-    const image = g.createImageData(width, height);
-    for (let y = 0; y < height; y++) image.data.set(pixels.subarray((height - 1 - y) * width * 4, (height - y) * width * 4), y * width * 4);
-    g.putImageData(image, 0, 0);
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", opts.quality ?? 0.82));
-    if (!blob) throw new Error("nswp-sdk: this browser couldn't encode the preview");
-    return blob;
+      painter.paint(faceTarget.texture, i);
+    });
+    return await painter.blob(opts.quality ?? 0.82);
   } finally {
     for (const o of hidden) o.visible = true;
     scene.fog = fog;
@@ -11354,30 +11443,28 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     renderer.autoClear = autoClearWas;
     renderer.setRenderTarget(previousTarget);
     faceTarget.dispose();
-    flatTarget.dispose();
-    material.dispose();
-    quad.geometry.dispose();
+    painter?.dispose();
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE19.Texture(image);
-  texture.colorSpace = THREE19.SRGBColorSpace;
-  texture.wrapS = THREE19.RepeatWrapping;
+  const texture = new THREE20.Texture(image);
+  texture.colorSpace = THREE20.SRGBColorSpace;
+  texture.wrapS = THREE20.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE19.LinearFilter;
-  texture.magFilter = THREE19.LinearFilter;
+  texture.minFilter = THREE20.LinearFilter;
+  texture.magFilter = THREE20.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE19.ShaderMaterial({
+  const material = new THREE20.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE19.Matrix3() },
-      center: { value: new THREE19.Vector3() },
+      toLocal: { value: new THREE20.Matrix3() },
+      center: { value: new THREE20.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -11397,10 +11484,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE19.DoubleSide
+    side: THREE20.DoubleSide
   });
-  const mesh = new THREE19.Mesh(geometry, material);
-  const rotation = new THREE19.Matrix4();
+  const mesh = new THREE20.Mesh(geometry, material);
+  const rotation = new THREE20.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();

@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.58.0";
+var KIT_VERSION = "0.59.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -3917,6 +3917,15 @@ function parseWorldEvent(input, opts = {}) {
   if (access)
     world.access = access;
   return c.result(world);
+}
+function doorPictureOwed(world) {
+  const has2 = (type) => (world.previews ?? []).some((p) => p.type === type);
+  if (has2("pano"))
+    return null;
+  const onlyAPage = !!world.modes?.length && world.modes.every((m) => m === "2d");
+  if (onlyAPage)
+    return has2("flat") ? null : "flat";
+  return "pano";
 }
 
 // packages/core/dist/manifest.js
@@ -5336,6 +5345,13 @@ function signWorld(inputPath) {
     return 1;
   }
   const input = JSON.parse(readFileSync(inputPath, "utf8"));
+  const owed = doorPictureOwed(input);
+  if (owed) {
+    console.log(
+      owed === "pano" ? `${BAD} ${input.d} has no 360\xB0 picture for doors to show ("previews", type "pano"), and a world must have one. Take it from where a visitor arrives (capturePanorama in nswp-sdk/three, or NSWP.capturePreview in another engine), then sign.` : `${BAD} ${input.d} has no picture for doors to show ("previews"), and a world must have one: for a place that is only a web page, an ordinary picture (type "flat") will do.`
+    );
+    return 1;
+  }
   const event = finalizeEvent(buildWorldEvent(input), readKey(keyFile));
   const r = parseWorldEvent(event, { requireSigned: true });
   if (!r.ok) {

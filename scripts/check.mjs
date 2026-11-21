@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { KIT_VERSION, parseManifest, parseWorldEvent, portalTarget, verifyOrigin } from "../vendor/nswp/nswp-core.js";
+import { doorPictureOwed, KIT_VERSION, parseManifest, parseWorldEvent, portalTarget, verifyOrigin } from "../vendor/nswp/nswp-core.js";
 import { dist, readConfig, readDoors, readSigned, root, templates, upToDate, validate } from "./lib.mjs";
 
 let failed = 0;
@@ -134,7 +134,11 @@ if (!signed.world) {
   else if (without.length) warn(`${without.length} of the doors in home.json ${without.length === 1 ? "has" : "have"} no picture to show. To fetch what their worlds announced: npm run doors`);
 }
 
-// 6. The preview, if there is one.
+// 6. The picture a door to this world shows, which a world must have (NSWP-04).
+if (doorPictureOwed(files.config.world)) {
+  if (signed.world) bad("This world has no 360° picture, and a world must have one: it is what a door to it shows. Run `npm run preview`, then `npm run sign`.");
+  else warn("No 360° picture of this world yet. A world must have one before it is signed: once world.json has your address, run `npm run preview`.");
+}
 for (const p of files.config.world.previews ?? []) {
   const file = join(root, "previews", `${p.sha256}.webp`);
   if (!existsSync(file)) bad(`world.json names a preview that isn't in previews/ (${p.sha256.slice(0, 12)}…). Run \`npm run preview\`.`);

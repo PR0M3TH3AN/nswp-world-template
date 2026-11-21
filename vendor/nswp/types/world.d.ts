@@ -119,6 +119,21 @@ export type PreviewCheck = {
  */
 export declare function checkPreviewBytes(preview: Preview, bytes: Uint8Array): PreviewCheck;
 /**
+ * The picture a door to this world shows, which a world must have (protocol/04-previews.md): which kind it still
+ * owes, or null when it has it. A place that can be stood in owes a `pano`, the 360° still a doorway is drawn
+ * from. A place that is only an ordinary web page (every mode `2d`) has nowhere to stand, and may give a `flat`.
+ *
+ * This is for whoever makes or signs a world, and it is their tools that hold them to it. A reader never refuses
+ * a world for having no picture: it draws a placeholder, as it always has, for the worlds made before this and
+ * the sites that never announced themselves.
+ */
+export declare function doorPictureOwed(world: {
+    modes?: readonly string[];
+    previews?: readonly {
+        type: string;
+    }[];
+}): PreviewType | null;
+/**
  * True when a preview is served from the world's own site. Such a preview must
  * not be fetched while the world is merely listed (spec §5.7, §5.8).
  */
