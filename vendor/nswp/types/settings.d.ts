@@ -1,26 +1,15 @@
 /**
- * Settings that travel: the few things a visitor sets once and expects to
- * find the same in the next world.
- *
- * Each world is a different website, and a website can only remember what a
- * visitor chose on that site. So someone who turned the music down, made the
- * text larger or filled their screen had to do it again in every world. These
- * settings go with them instead, through each door, the same way that how
- * they move does: the world they leave says what they are, their own client
- * passes that on, and the world they arrive in starts from it
- * (protocol/11-the-visitors-console.md, "Settings that travel").
- *
- * They are what the visitor has chosen, not what happened to be so when they
- * left: someone who prefers a filled screen and pressed Escape for a moment
- * in one world still prefers a filled screen in the next. Only their own
- * hand on the control for a thing changes what is said about it.
- *
- * They are preferences and nothing more. A link that says them falsely has
- * turned a volume down or made some text larger, and the visitor changes it
- * back. So nothing here is anything that needs asking about: a microphone,
- * who is blocked and hearing other people's music are not settings, and
- * travel under rules of their own or not at all.
+ * What a visitor had in their hand as they left a world (protocol/17-items.md): which item, in which colours,
+ * and the mark of its own logic if that was running for them.
  */
+export interface HeldThrough {
+    /** The item's address: `37303:<its maker>:<its name>`. */
+    item: string;
+    /** The colours they chose for it, by slot. */
+    tints?: Record<string, string>;
+    /** The SHA-256 of the item's script, if it was running: they had been told about it, and let it. */
+    script?: string;
+}
 /** What goes with a visitor. Every part is optional: what isn't said is the next world's to decide. */
 export interface TravelSettings {
     /** Their volumes, each from 0 to 1, and whether everything is off. */
@@ -72,6 +61,13 @@ export interface TravelSettings {
      * there. Only they pin: a world never does it for them.
      */
     pins?: string[];
+    /**
+     * What was in their hand, so that it is in their hand in the next world too; or `""`, when they put it away
+     * themselves. A link can say this falsely, so a world acts on it only as far as is safe whoever wrote the
+     * link: the thing is taken in hand only if it is in the visitor's own bag, as they signed it, and its logic
+     * runs unasked only if it is the very script the link names. Anything else is as if nothing had been said.
+     */
+    holding?: HeldThrough | "";
 }
 /** The most tabs of the menu a visitor may keep on their bar. */
 export declare const PINS_MOST = 4;
@@ -79,7 +75,7 @@ export declare const PINS_MOST = 4;
 export declare const LOOK_RANGE: readonly [0.25, 3];
 export declare const FOV_RANGE: readonly [50, 110];
 /** The longest a set of settings may be on a link, in characters. */
-export declare const SETTINGS_LINK_LIMIT = 400;
+export declare const SETTINGS_LINK_LIMIT = 900;
 /** Settings as they were said, with everything unknown or out of range left out. Never throws. */
 export declare function cleanSettings(input: unknown): TravelSettings;
 /** Whether there is anything in them. */

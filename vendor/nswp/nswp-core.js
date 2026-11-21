@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.59.2";
+var KIT_VERSION = "0.60.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4750,12 +4750,371 @@ function assertManifest(input) {
   return r.value;
 }
 
+// packages/core/src/layout.ts
+var HOME_LAYOUT_KIND = 37302;
+var ITEM_KIND = 37303;
+var ROOM_TEMPLATES = ["hall", "open"];
+var BUILTIN_ITEMS = ["frame", "portal", "note", "plant", "lamp", "bench", "table", "plinth"];
+var LAYOUT_ACCESS = ["open", "invite", "list", "follows", "ticket"];
+var LAYOUT_LIMITS = {
+  placements: 64,
+  publishedItems: 16,
+  /** Furthest a placement may be from the home's origin, in metres. */
+  reach: 50,
+  noteChars: 280,
+  /** A picture in a frame (spec §10.1). */
+  pictureBytes: 1024 * 1024
+};
+var DEFAULT_ROOM = { template: "hall", color: "#101217", accent: "#3fc584" };
+var HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+var num2 = (n) => String(Math.round(n * 1e3) / 1e3);
+function buildLayoutEvent(l) {
+  const room = { ...DEFAULT_ROOM, ...l.room };
+  const tags = [["d", l.d]];
+  if (l.title) tags.push(["title", l.title]);
+  tags.push(["room", room.template, room.color, room.accent]);
+  for (const item of l.items ?? []) {
+    tags.push(["item", item.type, item.position.map(num2).join(" "), num2(item.rotation ?? 0), ...item.args ?? []]);
+  }
+  if (l.access) tags.push(["access", l.access]);
+  if (l.contentWarning !== void 0) tags.push(["content-warning", l.contentWarning]);
+  tags.push(["alt", `Home layout${l.title ? `: ${l.title}` : ""}`]);
+  return { kind: HOME_LAYOUT_KIND, created_at: l.createdAt ?? Math.floor(Date.now() / 1e3), tags, content: "" };
+}
+function parsePosition(text) {
+  const parts = (text ?? "").trim().split(/\s+/).map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n) || Math.abs(n) > LAYOUT_LIMITS.reach)) return null;
+  return parts;
+}
+function portalTarget(arg) {
+  if (!arg) return null;
+  const c = parseCoordinate(arg);
+  if (c) return c.kind === WORLD_KIND ? { coordinate: arg, pubkey: c.pubkey, d: c.identifier } : null;
+  const chk = checkDestination(arg);
+  return chk.ok ? { url: chk.value.url } : null;
+}
+function parseLayoutEvent(input) {
+  const c = new Collector();
+  if (!isPlainObject(input) || !Array.isArray(input.tags)) {
+    c.error("invalid_event", "", "A layout must be an event object with tags.");
+    return c.result(void 0);
+  }
+  if (input.kind !== HOME_LAYOUT_KIND) c.error("wrong_kind", "kind", `A layout is kind ${HOME_LAYOUT_KIND}.`);
+  const tags = input.tags.filter((t) => Array.isArray(t) && t.every((v) => typeof v === "string"));
+  const event = { tags };
+  const d = getTagValue(event, "d");
+  if (!d) c.error("missing_tag", "tags.d", "A layout needs a `d` tag naming the place.");
+  if (c.errors.length > 0) return c.result(void 0);
+  const room = { ...DEFAULT_ROOM };
+  const roomTag = tags.find((t) => t[0] === "room");
+  if (roomTag) {
+    if (ROOM_TEMPLATES.includes(roomTag[1] ?? "")) room.template = roomTag[1];
+    else c.warn("unknown_value", "tags.room", `Unknown room template "${roomTag[1] ?? ""}"; using "${room.template}".`);
+    if (roomTag[2] && HEX_COLOR.test(roomTag[2])) room.color = roomTag[2];
+    if (roomTag[3] && HEX_COLOR.test(roomTag[3])) room.accent = roomTag[3];
+  }
+  const items = [];
+  const published = /* @__PURE__ */ new Set();
+  tags.filter((t) => t[0] === "item").forEach((t, i) => {
+    const path = `tags.item[${i}]`;
+    if (items.length >= LAYOUT_LIMITS.placements) {
+      if (items.length === LAYOUT_LIMITS.placements && i === LAYOUT_LIMITS.placements) c.warn("too_many_items", path, `A layout holds at most ${LAYOUT_LIMITS.placements} placements; the rest were dropped.`);
+      return;
+    }
+    const type = t[1] ?? "";
+    const position = parsePosition(t[2]);
+    const rotation = Number(t[3] ?? "0");
+    if (!position || !Number.isFinite(rotation)) {
+      c.warn("item_position_invalid", path, "A placement needs a position in metres (`x y z`) and a rotation in degrees; it was dropped.");
+      return;
+    }
+    const args = t.slice(4);
+    const coordinate2 = parseCoordinate(type);
+    if (coordinate2) {
+      if (coordinate2.kind !== ITEM_KIND) {
+        c.warn("item_unknown", path, "A placement can name only an item definition; it was dropped.");
+        return;
+      }
+      if (!published.has(type) && published.size >= LAYOUT_LIMITS.publishedItems) {
+        c.warn("too_many_items", path, `A layout uses at most ${LAYOUT_LIMITS.publishedItems} different published items; this one was dropped.`);
+        return;
+      }
+      published.add(type);
+      items.push({ source: "published", type, position, rotation, args });
+      return;
+    }
+    if (!BUILTIN_ITEMS.includes(type)) {
+      c.warn("item_unknown", path, `"${type}" isn't in the built-in catalogue; it was dropped.`);
+      return;
+    }
+    if (type === "frame" && !(checkDestination(args[0] ?? "").ok && isHex64(args[1]))) {
+      c.warn("item_args_invalid", path, "A frame needs an https picture address and its SHA-256; it was dropped.");
+      return;
+    }
+    if (type === "portal" && !portalTarget(args[0])) {
+      c.warn("item_args_invalid", path, "A portal needs a world's coordinate or an https address; it was dropped.");
+      return;
+    }
+    if (type === "note") {
+      if (!args[0]) {
+        c.warn("item_args_invalid", path, "A note needs some text; it was dropped.");
+        return;
+      }
+      if (args[0].length > LAYOUT_LIMITS.noteChars) args[0] = `${args[0].slice(0, LAYOUT_LIMITS.noteChars - 1)}\u2026`;
+    }
+    items.push({ source: "builtin", type, position, rotation, args });
+  });
+  const access = getTagValue(event, "access");
+  if (access !== void 0 && !LAYOUT_ACCESS.includes(access)) c.warn("unknown_value", "tags.access", `Unknown access rule "${access}".`);
+  const warning = tags.find((t) => t[0] === "content-warning");
+  const layout = {
+    d,
+    room,
+    items,
+    createdAt: typeof input.created_at === "number" ? input.created_at : 0
+  };
+  const title = getTagValue(event, "title");
+  if (title) layout.title = title;
+  if (access !== void 0 && LAYOUT_ACCESS.includes(access)) layout.access = access;
+  if (warning) layout.contentWarning = warning[1] ?? "";
+  if (isHex64(input.pubkey)) layout.pubkey = input.pubkey;
+  return c.result(layout);
+}
+function checkPictureBytes(expectedSha256, bytes) {
+  return bytes.length <= LAYOUT_LIMITS.pictureBytes && bytesToHex(sha256(bytes)) === expectedSha256;
+}
+
+// packages/core/src/chat.ts
+var CHAT_LIMITS = {
+  /** The most characters in one thing said. Longer is cut, by the one saying it and again by the one reading. */
+  chars: 240,
+  /** A line is sent this many times, because the channel doesn't try again; a reader takes the first. */
+  repeats: 3,
+  repeatGapMs: 180,
+  /** No more than `burst` lines from one member in `perMs`. The rest are dropped, unseen. */
+  burst: 5,
+  perMs: 1e4,
+  /** How many lines a reader keeps for the visit. */
+  kept: 100,
+  /** How many ids are remembered for each member, to know a repeat from a new line. */
+  remembered: 32
+};
+var UNSEEN = [
+  [0, 31],
+  [127, 159],
+  [8203, 8204],
+  // 0x200d joins the parts of one emoji, and stays.
+  [8206, 8207],
+  [8232, 8239],
+  [8288, 8303],
+  [65279, 65279],
+  [65529, 65531]
+];
+var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
+function cleanLine(text, chars) {
+  if (typeof text !== "string") return "";
+  let out = "";
+  for (const ch of text.slice(0, chars * 8).normalize("NFC")) out += unseen(ch.codePointAt(0)) ? " " : ch;
+  out = out.replace(/\s+/g, " ").trim();
+  return [...out].slice(0, chars).join("").trim();
+}
+var cleanChat = (text) => cleanLine(text, CHAT_LIMITS.chars);
+function chatId() {
+  const bytes = new Uint8Array(4);
+  globalThis.crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function buildSay(text, id = chatId()) {
+  const cleaned = cleanChat(text);
+  if (!cleaned || !/^[0-9a-f]{8}$/.test(id)) return null;
+  return `say:${id}:${cleaned}`;
+}
+function parseSay(data) {
+  if (typeof data !== "string" || !data.startsWith("say:") || data[12] !== ":") return null;
+  const id = data.slice(4, 12);
+  if (!/^[0-9a-f]{8}$/.test(id)) return null;
+  const text = cleanChat(data.slice(13));
+  return text ? { id, text } : null;
+}
+function createChatGate(limits = CHAT_LIMITS) {
+  const ids = [];
+  let times = [];
+  const recent = (now) => times = times.filter((t) => now - t < limits.perMs);
+  return {
+    take(id, now) {
+      if (ids.includes(id)) return false;
+      ids.push(id);
+      if (ids.length > limits.remembered) ids.shift();
+      if (recent(now).length >= limits.burst) return false;
+      times.push(now);
+      return true;
+    },
+    room(now) {
+      return recent(now).length < limits.burst;
+    }
+  };
+}
+function bubbleSeconds(text) {
+  return Math.min(12, 4 + [...text].length * 0.06);
+}
+
+// packages/core/src/rating.ts
+var RATING_KIND = 37305;
+var RATING_LIMITS = {
+  /** Stars run from 1 to this. */
+  most: 5,
+  /** The longest the words may be, in characters. A review longer than that is a comment (NIP-22), not a rating. */
+  words: 280
+};
+var SITE_MARKS = ["nswp:world", "bitlogin:site"];
+function worldCoordinate(input) {
+  if (typeof input !== "string" || input.length > 200) return "";
+  const c = parseCoordinate(input);
+  return c && c.kind === WORLD_KIND && isHex64(c.pubkey) && c.identifier !== "" ? `${WORLD_KIND}:${c.pubkey}:${c.identifier}` : "";
+}
+function cleanStars(input) {
+  const n = typeof input === "string" && /^[1-5]$/.test(input) ? Number(input) : input;
+  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= RATING_LIMITS.most ? n : 0;
+}
+function buildRating(o) {
+  const world = worldCoordinate(o.world);
+  const stars = cleanStars(o.stars);
+  if (!world || !stars) return null;
+  return {
+    kind: RATING_KIND,
+    created_at: Math.floor(o.now),
+    tags: [
+      ["d", world],
+      ["a", world, ...o.relay ? [o.relay] : []],
+      ["rating", String(stars)],
+      ["alt", `A rating of a world: ${stars} of ${RATING_LIMITS.most}`]
+    ],
+    content: cleanLine(o.words ?? "", RATING_LIMITS.words)
+  };
+}
+function parseRating(event) {
+  if (!event || event.kind !== RATING_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
+  const world = worldCoordinate(getTags(event, "d")[0]?.[1]);
+  const stars = cleanStars(getTags(event, "rating")[0]?.[1]);
+  if (!world || !stars || getTags(event, "a")[0]?.[1] !== world) return null;
+  const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
+  return { by: event.pubkey, world, stars, words: cleanLine(typeof event.content === "string" ? event.content : "", RATING_LIMITS.words), at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
+}
+function tallyRatings(events, o) {
+  const world = worldCoordinate(o.world);
+  const counted = new Set(o.counted);
+  if (o.me) counted.add(o.me);
+  const publisher = world.split(":")[1];
+  const own = cleanOrigin(o.worldUrl);
+  const newest = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    const r = parseRating(event);
+    if (!r || r.world !== world || !counted.has(r.by) || r.by === publisher) continue;
+    if (own && r.askedAt.includes(own)) continue;
+    const had = newest.get(r.by);
+    if (had && had.at >= r.at) continue;
+    if (!verifyEvent(event)) continue;
+    newest.set(r.by, r);
+  }
+  const ratings = [...newest.values()].sort((a, b) => b.at - a.at);
+  const sum = ratings.reduce((n, r) => n + r.stars, 0);
+  return { count: ratings.length, average: ratings.length ? Math.round(sum / ratings.length * 10) / 10 : 0, mine: o.me && newest.get(o.me)?.stars || 0, ratings };
+}
+function tallyMark(tally) {
+  return tally && tally.count ? `\u2605 ${tally.average.toFixed(1)} from ${tally.count}` : "";
+}
+function tallyWords(tally) {
+  return tally.count ? `${tally.average.toFixed(1)} of ${RATING_LIMITS.most}, from ${tally.count}` : "";
+}
+
+// packages/core/src/bag.ts
+var BAG_KIND = 37308;
+var BAG_D = "bag";
+var BAG_LIMITS = {
+  /** No more than this many items are read from a bag. */
+  items: 200
+};
+var NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
+function itemCoordinate(input) {
+  if (typeof input !== "string" || input.length > 200) return "";
+  const [kind, maker, ...rest] = input.split(":");
+  const d = rest.join(":");
+  return kind === String(ITEM_KIND) && isHex64(maker) && NAME.test(d) ? `${ITEM_KIND}:${maker}:${d}` : "";
+}
+function bagIn(event) {
+  if (!event || !Array.isArray(event.tags)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const t of event.tags) {
+    if (!Array.isArray(t) || t[0] !== "a") continue;
+    const item = itemCoordinate(t[1]);
+    if (item && seen.size < BAG_LIMITS.items) seen.add(item);
+  }
+  return [...seen];
+}
+function newestBag(events, pubkey) {
+  return events.filter((e) => e.kind === BAG_KIND && e.pubkey === pubkey && Array.isArray(e.tags) && e.tags.some((t) => t[0] === "d" && t[1] === BAG_D)).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0] ?? null;
+}
+function bagTints(event) {
+  const out = {};
+  if (!event || !Array.isArray(event.tags)) return out;
+  const has = new Set(bagIn(event));
+  for (const t of event.tags) {
+    if (!Array.isArray(t) || t[0] !== "tint") continue;
+    const item = itemCoordinate(t[1]);
+    if (!item || !has.has(item) || out[item]) continue;
+    const tints = {};
+    for (const word of t.slice(2, 6)) {
+      const [slot, color] = typeof word === "string" ? word.split("=") : [];
+      if (slot && /^[a-z][a-z0-9-]{0,23}$/.test(slot) && /^#[0-9a-f]{6}$/.test(color ?? "")) tints[slot] = color;
+    }
+    out[item] = tints;
+  }
+  return out;
+}
+function tintBag(newest, change) {
+  if (!newest || newest.kind !== BAG_KIND || !Array.isArray(newest.tags)) return null;
+  const item = itemCoordinate(change.item);
+  if (!item || !bagIn(newest).includes(item)) return null;
+  const words = Object.entries(change.tints ?? {}).filter(([slot, color]) => /^[a-z][a-z0-9-]{0,23}$/.test(slot) && /^#[0-9a-f]{6}$/.test(color)).slice(0, 4).map(([slot, color]) => `${slot}=${color}`);
+  const was = bagTints(newest)[item] ?? {};
+  if (JSON.stringify(Object.entries(was).map(([s, c]) => `${s}=${c}`)) === JSON.stringify(words)) return null;
+  const kept = newest.tags.filter((t) => Array.isArray(t) && t.every((x) => typeof x === "string") && !SITE_MARKS.includes(t[0] ?? "") && t[0] !== "d" && t[0] !== "alt" && !(t[0] === "tint" && itemCoordinate(t[1]) === item)).map((t) => [...t]);
+  return {
+    kind: BAG_KIND,
+    created_at: Math.max(Math.floor(change.now), newest.created_at + 1),
+    tags: [["d", BAG_D], ...kept, ...words.length ? [["tint", item, ...words]] : [], ["alt", "A bag: the items this person has"]],
+    content: ""
+  };
+}
+function changeBag(newest, change) {
+  if (newest && (newest.kind !== BAG_KIND || !Array.isArray(newest.tags))) return null;
+  if (!newest && !change.fromNothing) return null;
+  const add = itemCoordinate(change.add);
+  const remove = itemCoordinate(change.remove);
+  if (add === "" === (remove === "")) return null;
+  const which = add || remove;
+  const had = newest ? newest.tags.filter((t) => Array.isArray(t) && t.every((x) => typeof x === "string") && !SITE_MARKS.includes(t[0] ?? "") && t[0] !== "d" && t[0] !== "alt") : [];
+  const names = (t) => t[0] === "a" && itemCoordinate(t[1]) === which;
+  const has = had.some(names);
+  if (add ? has : !has) return null;
+  if (add && bagIn({ tags: had }).length >= BAG_LIMITS.items) return null;
+  const kept = add ? [...had.map((t) => [...t]), ["a", add, ...change.relay ? [change.relay] : []]] : had.filter((t) => !names(t) && !(t[0] === "tint" && itemCoordinate(t[1]) === which)).map((t) => [...t]);
+  return {
+    kind: BAG_KIND,
+    created_at: Math.max(Math.floor(change.now), newest ? newest.created_at + 1 : 0),
+    tags: [["d", BAG_D], ...kept, ["alt", "A bag: the items this person has"]],
+    content: ""
+  };
+}
+
 // packages/core/src/settings.ts
 var PINS_MOST = 4;
 var PIN_NAME = /^[a-z][a-z0-9-]{0,11}$/;
 var LOOK_RANGE = [0.25, 3];
 var FOV_RANGE = [50, 110];
-var SETTINGS_LINK_LIMIT = 400;
+var SETTINGS_LINK_LIMIT = 900;
+var TINT_SLOT = /^[a-z][a-z0-9-]{0,15}$/;
+var TINT_COLOR = /^#[0-9a-f]{6}$/;
 var level = (v) => typeof v === "number" && Number.isFinite(v) ? Math.round(Math.min(1, Math.max(0, v)) * 100) / 100 : void 0;
 function cleanSettings(input) {
   const out = {};
@@ -4786,6 +5145,22 @@ function cleanSettings(input) {
   if (typeof s.chat === "boolean") out.chat = s.chat;
   if (typeof s.items === "boolean") out.items = s.items;
   if (Array.isArray(s.pins)) out.pins = [...new Set(s.pins.filter((name) => typeof name === "string" && PIN_NAME.test(name)))].slice(0, PINS_MOST);
+  if (s.holding === "") out.holding = "";
+  else if (s.holding && typeof s.holding === "object" && !Array.isArray(s.holding)) {
+    const from = s.holding;
+    const item = itemCoordinate(from.item);
+    if (item && item.length <= 160) {
+      const held = { item };
+      if (from.tints && typeof from.tints === "object" && !Array.isArray(from.tints)) {
+        const tints = Object.fromEntries(
+          Object.entries(from.tints).filter((pair) => TINT_SLOT.test(pair[0]) && typeof pair[1] === "string" && TINT_COLOR.test(pair[1].toLowerCase())).slice(0, 6).map(([slot, color]) => [slot, color.toLowerCase()])
+        );
+        if (Object.keys(tints).length) held.tints = tints;
+      }
+      if (typeof from.script === "string" && /^[0-9a-f]{64}$/.test(from.script)) held.script = from.script;
+      out.holding = held;
+    }
+  }
   return out;
 }
 var hasSettings = (s) => !!s && Object.keys(s).length > 0;
@@ -4806,6 +5181,10 @@ function encodeSettings(settings) {
   if (text.length <= SETTINGS_LINK_LIMIT) return text;
   if (clean3.pins) {
     const { pins: _left, ...rest } = clean3;
+    return encodeSettings(rest);
+  }
+  if (clean3.holding !== void 0) {
+    const { holding: _put, ...rest } = clean3;
     return encodeSettings(rest);
   }
   return "";
@@ -4831,7 +5210,7 @@ var LOOK_PARTS = {
   finish: ["matte", "gloss", "sheen"]
 };
 var LOOK_COLORS = ["color", "accent", "light"];
-var HEX_COLOR = /^#[0-9a-f]{6}$/;
+var HEX_COLOR2 = /^#[0-9a-f]{6}$/;
 var MARK = /^[0-7][0-9a-f]{3}$/;
 function hsl(h, s, l) {
   const a = s * Math.min(l, 1 - l);
@@ -4882,7 +5261,7 @@ function applyChoices(base, choices) {
   for (const [key, value] of Object.entries(choices)) {
     if (key === "mark") continue;
     if (LOOK_COLORS.includes(key)) {
-      if (typeof value === "string" && HEX_COLOR.test(value.toLowerCase())) look[key] = value.toLowerCase();
+      if (typeof value === "string" && HEX_COLOR2.test(value.toLowerCase())) look[key] = value.toLowerCase();
       else warnings.push(key);
     } else if (key in LOOK_PARTS) {
       const list = LOOK_PARTS[key];
@@ -6084,80 +6463,6 @@ function unpackPose(data) {
   return pose;
 }
 
-// packages/core/src/chat.ts
-var CHAT_LIMITS = {
-  /** The most characters in one thing said. Longer is cut, by the one saying it and again by the one reading. */
-  chars: 240,
-  /** A line is sent this many times, because the channel doesn't try again; a reader takes the first. */
-  repeats: 3,
-  repeatGapMs: 180,
-  /** No more than `burst` lines from one member in `perMs`. The rest are dropped, unseen. */
-  burst: 5,
-  perMs: 1e4,
-  /** How many lines a reader keeps for the visit. */
-  kept: 100,
-  /** How many ids are remembered for each member, to know a repeat from a new line. */
-  remembered: 32
-};
-var UNSEEN = [
-  [0, 31],
-  [127, 159],
-  [8203, 8204],
-  // 0x200d joins the parts of one emoji, and stays.
-  [8206, 8207],
-  [8232, 8239],
-  [8288, 8303],
-  [65279, 65279],
-  [65529, 65531]
-];
-var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
-function cleanLine(text, chars) {
-  if (typeof text !== "string") return "";
-  let out = "";
-  for (const ch of text.slice(0, chars * 8).normalize("NFC")) out += unseen(ch.codePointAt(0)) ? " " : ch;
-  out = out.replace(/\s+/g, " ").trim();
-  return [...out].slice(0, chars).join("").trim();
-}
-var cleanChat = (text) => cleanLine(text, CHAT_LIMITS.chars);
-function chatId() {
-  const bytes = new Uint8Array(4);
-  globalThis.crypto.getRandomValues(bytes);
-  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function buildSay(text, id = chatId()) {
-  const cleaned = cleanChat(text);
-  if (!cleaned || !/^[0-9a-f]{8}$/.test(id)) return null;
-  return `say:${id}:${cleaned}`;
-}
-function parseSay(data) {
-  if (typeof data !== "string" || !data.startsWith("say:") || data[12] !== ":") return null;
-  const id = data.slice(4, 12);
-  if (!/^[0-9a-f]{8}$/.test(id)) return null;
-  const text = cleanChat(data.slice(13));
-  return text ? { id, text } : null;
-}
-function createChatGate(limits = CHAT_LIMITS) {
-  const ids = [];
-  let times = [];
-  const recent = (now) => times = times.filter((t) => now - t < limits.perMs);
-  return {
-    take(id, now) {
-      if (ids.includes(id)) return false;
-      ids.push(id);
-      if (ids.length > limits.remembered) ids.shift();
-      if (recent(now).length >= limits.burst) return false;
-      times.push(now);
-      return true;
-    },
-    room(now) {
-      return recent(now).length < limits.burst;
-    }
-  };
-}
-function bubbleSeconds(text) {
-  return Math.min(12, 4 + [...text].length * 0.06);
-}
-
 // packages/core/src/pass.ts
 var PASS_LIMITS = {
   defaultTtlSec: 4 * 3600,
@@ -6467,75 +6772,6 @@ function buildMessageRelays(relays, now) {
   return { kind: MESSAGE_RELAYS_KIND, created_at: Math.floor(now), tags: clean3.map((url) => ["relay", url]), content: "" };
 }
 
-// packages/core/src/rating.ts
-var RATING_KIND = 37305;
-var RATING_LIMITS = {
-  /** Stars run from 1 to this. */
-  most: 5,
-  /** The longest the words may be, in characters. A review longer than that is a comment (NIP-22), not a rating. */
-  words: 280
-};
-var SITE_MARKS = ["nswp:world", "bitlogin:site"];
-function worldCoordinate(input) {
-  if (typeof input !== "string" || input.length > 200) return "";
-  const c = parseCoordinate(input);
-  return c && c.kind === WORLD_KIND && isHex64(c.pubkey) && c.identifier !== "" ? `${WORLD_KIND}:${c.pubkey}:${c.identifier}` : "";
-}
-function cleanStars(input) {
-  const n = typeof input === "string" && /^[1-5]$/.test(input) ? Number(input) : input;
-  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= RATING_LIMITS.most ? n : 0;
-}
-function buildRating(o) {
-  const world = worldCoordinate(o.world);
-  const stars = cleanStars(o.stars);
-  if (!world || !stars) return null;
-  return {
-    kind: RATING_KIND,
-    created_at: Math.floor(o.now),
-    tags: [
-      ["d", world],
-      ["a", world, ...o.relay ? [o.relay] : []],
-      ["rating", String(stars)],
-      ["alt", `A rating of a world: ${stars} of ${RATING_LIMITS.most}`]
-    ],
-    content: cleanLine(o.words ?? "", RATING_LIMITS.words)
-  };
-}
-function parseRating(event) {
-  if (!event || event.kind !== RATING_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
-  const world = worldCoordinate(getTags(event, "d")[0]?.[1]);
-  const stars = cleanStars(getTags(event, "rating")[0]?.[1]);
-  if (!world || !stars || getTags(event, "a")[0]?.[1] !== world) return null;
-  const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
-  return { by: event.pubkey, world, stars, words: cleanLine(typeof event.content === "string" ? event.content : "", RATING_LIMITS.words), at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
-}
-function tallyRatings(events, o) {
-  const world = worldCoordinate(o.world);
-  const counted = new Set(o.counted);
-  if (o.me) counted.add(o.me);
-  const publisher = world.split(":")[1];
-  const own = cleanOrigin(o.worldUrl);
-  const newest = /* @__PURE__ */ new Map();
-  for (const event of events) {
-    const r = parseRating(event);
-    if (!r || r.world !== world || !counted.has(r.by) || r.by === publisher) continue;
-    if (own && r.askedAt.includes(own)) continue;
-    const had = newest.get(r.by);
-    if (had && had.at >= r.at) continue;
-    if (!verifyEvent(event)) continue;
-    newest.set(r.by, r);
-  }
-  const ratings = [...newest.values()].sort((a, b) => b.at - a.at);
-  const sum = ratings.reduce((n, r) => n + r.stars, 0);
-  return { count: ratings.length, average: ratings.length ? Math.round(sum / ratings.length * 10) / 10 : 0, mine: o.me && newest.get(o.me)?.stars || 0, ratings };
-}
-function tallyMark(tally) {
-  return tally && tally.count ? `\u2605 ${tally.average.toFixed(1)} from ${tally.count}` : "";
-}
-function tallyWords(tally) {
-  return tally.count ? `${tally.average.toFixed(1)} of ${RATING_LIMITS.most}, from ${tally.count}` : "";
-}
-
 // packages/core/src/score.ts
 var SCORE_KIND = 37306;
 var SCORE_LIMITS = {
@@ -6638,9 +6874,9 @@ var ACHIEVEMENT_LIMITS = {
   title: 60,
   about: 160
 };
-var NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
+var NAME2 = /^[a-z0-9][a-z0-9-]{0,31}$/;
 function cleanAchievementId(input) {
-  return typeof input === "string" && NAME.test(input) ? input : "";
+  return typeof input === "string" && NAME2.test(input) ? input : "";
 }
 function buildAchievement(o) {
   const world = worldCoordinate(o.world);
@@ -6886,140 +7122,6 @@ function readHandoffMessage(data) {
   return null;
 }
 
-// packages/core/src/layout.ts
-var HOME_LAYOUT_KIND = 37302;
-var ITEM_KIND = 37303;
-var ROOM_TEMPLATES = ["hall", "open"];
-var BUILTIN_ITEMS = ["frame", "portal", "note", "plant", "lamp", "bench", "table", "plinth"];
-var LAYOUT_ACCESS = ["open", "invite", "list", "follows", "ticket"];
-var LAYOUT_LIMITS = {
-  placements: 64,
-  publishedItems: 16,
-  /** Furthest a placement may be from the home's origin, in metres. */
-  reach: 50,
-  noteChars: 280,
-  /** A picture in a frame (spec §10.1). */
-  pictureBytes: 1024 * 1024
-};
-var DEFAULT_ROOM = { template: "hall", color: "#101217", accent: "#3fc584" };
-var HEX_COLOR2 = /^#[0-9a-fA-F]{6}$/;
-var num2 = (n) => String(Math.round(n * 1e3) / 1e3);
-function buildLayoutEvent(l) {
-  const room = { ...DEFAULT_ROOM, ...l.room };
-  const tags = [["d", l.d]];
-  if (l.title) tags.push(["title", l.title]);
-  tags.push(["room", room.template, room.color, room.accent]);
-  for (const item of l.items ?? []) {
-    tags.push(["item", item.type, item.position.map(num2).join(" "), num2(item.rotation ?? 0), ...item.args ?? []]);
-  }
-  if (l.access) tags.push(["access", l.access]);
-  if (l.contentWarning !== void 0) tags.push(["content-warning", l.contentWarning]);
-  tags.push(["alt", `Home layout${l.title ? `: ${l.title}` : ""}`]);
-  return { kind: HOME_LAYOUT_KIND, created_at: l.createdAt ?? Math.floor(Date.now() / 1e3), tags, content: "" };
-}
-function parsePosition(text) {
-  const parts = (text ?? "").trim().split(/\s+/).map(Number);
-  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n) || Math.abs(n) > LAYOUT_LIMITS.reach)) return null;
-  return parts;
-}
-function portalTarget(arg) {
-  if (!arg) return null;
-  const c = parseCoordinate(arg);
-  if (c) return c.kind === WORLD_KIND ? { coordinate: arg, pubkey: c.pubkey, d: c.identifier } : null;
-  const chk = checkDestination(arg);
-  return chk.ok ? { url: chk.value.url } : null;
-}
-function parseLayoutEvent(input) {
-  const c = new Collector();
-  if (!isPlainObject(input) || !Array.isArray(input.tags)) {
-    c.error("invalid_event", "", "A layout must be an event object with tags.");
-    return c.result(void 0);
-  }
-  if (input.kind !== HOME_LAYOUT_KIND) c.error("wrong_kind", "kind", `A layout is kind ${HOME_LAYOUT_KIND}.`);
-  const tags = input.tags.filter((t) => Array.isArray(t) && t.every((v) => typeof v === "string"));
-  const event = { tags };
-  const d = getTagValue(event, "d");
-  if (!d) c.error("missing_tag", "tags.d", "A layout needs a `d` tag naming the place.");
-  if (c.errors.length > 0) return c.result(void 0);
-  const room = { ...DEFAULT_ROOM };
-  const roomTag = tags.find((t) => t[0] === "room");
-  if (roomTag) {
-    if (ROOM_TEMPLATES.includes(roomTag[1] ?? "")) room.template = roomTag[1];
-    else c.warn("unknown_value", "tags.room", `Unknown room template "${roomTag[1] ?? ""}"; using "${room.template}".`);
-    if (roomTag[2] && HEX_COLOR2.test(roomTag[2])) room.color = roomTag[2];
-    if (roomTag[3] && HEX_COLOR2.test(roomTag[3])) room.accent = roomTag[3];
-  }
-  const items = [];
-  const published = /* @__PURE__ */ new Set();
-  tags.filter((t) => t[0] === "item").forEach((t, i) => {
-    const path = `tags.item[${i}]`;
-    if (items.length >= LAYOUT_LIMITS.placements) {
-      if (items.length === LAYOUT_LIMITS.placements && i === LAYOUT_LIMITS.placements) c.warn("too_many_items", path, `A layout holds at most ${LAYOUT_LIMITS.placements} placements; the rest were dropped.`);
-      return;
-    }
-    const type = t[1] ?? "";
-    const position = parsePosition(t[2]);
-    const rotation = Number(t[3] ?? "0");
-    if (!position || !Number.isFinite(rotation)) {
-      c.warn("item_position_invalid", path, "A placement needs a position in metres (`x y z`) and a rotation in degrees; it was dropped.");
-      return;
-    }
-    const args = t.slice(4);
-    const coordinate2 = parseCoordinate(type);
-    if (coordinate2) {
-      if (coordinate2.kind !== ITEM_KIND) {
-        c.warn("item_unknown", path, "A placement can name only an item definition; it was dropped.");
-        return;
-      }
-      if (!published.has(type) && published.size >= LAYOUT_LIMITS.publishedItems) {
-        c.warn("too_many_items", path, `A layout uses at most ${LAYOUT_LIMITS.publishedItems} different published items; this one was dropped.`);
-        return;
-      }
-      published.add(type);
-      items.push({ source: "published", type, position, rotation, args });
-      return;
-    }
-    if (!BUILTIN_ITEMS.includes(type)) {
-      c.warn("item_unknown", path, `"${type}" isn't in the built-in catalogue; it was dropped.`);
-      return;
-    }
-    if (type === "frame" && !(checkDestination(args[0] ?? "").ok && isHex64(args[1]))) {
-      c.warn("item_args_invalid", path, "A frame needs an https picture address and its SHA-256; it was dropped.");
-      return;
-    }
-    if (type === "portal" && !portalTarget(args[0])) {
-      c.warn("item_args_invalid", path, "A portal needs a world's coordinate or an https address; it was dropped.");
-      return;
-    }
-    if (type === "note") {
-      if (!args[0]) {
-        c.warn("item_args_invalid", path, "A note needs some text; it was dropped.");
-        return;
-      }
-      if (args[0].length > LAYOUT_LIMITS.noteChars) args[0] = `${args[0].slice(0, LAYOUT_LIMITS.noteChars - 1)}\u2026`;
-    }
-    items.push({ source: "builtin", type, position, rotation, args });
-  });
-  const access = getTagValue(event, "access");
-  if (access !== void 0 && !LAYOUT_ACCESS.includes(access)) c.warn("unknown_value", "tags.access", `Unknown access rule "${access}".`);
-  const warning = tags.find((t) => t[0] === "content-warning");
-  const layout = {
-    d,
-    room,
-    items,
-    createdAt: typeof input.created_at === "number" ? input.created_at : 0
-  };
-  const title = getTagValue(event, "title");
-  if (title) layout.title = title;
-  if (access !== void 0 && LAYOUT_ACCESS.includes(access)) layout.access = access;
-  if (warning) layout.contentWarning = warning[1] ?? "";
-  if (isHex64(input.pubkey)) layout.pubkey = input.pubkey;
-  return c.result(layout);
-}
-function checkPictureBytes(expectedSha256, bytes) {
-  return bytes.length <= LAYOUT_LIMITS.pictureBytes && bytesToHex(sha256(bytes)) === expectedSha256;
-}
-
 // packages/core/src/item.ts
 var ITEM_LIMITS = {
   title: 60,
@@ -7046,7 +7148,7 @@ var PLAIN = /^[a-z][a-z0-9-]{0,23}$/;
 var ITEM_BEHAVIORS = ["holdable", "sittable", "touchable", "readable", "wearable"];
 var ITEM_FITS = ["place", "head", "back", "hand-left", "hand-right", "side"];
 var ITEM_MOMENTS = ["idle", "touch", "held", "move", "use"];
-var NAME2 = /^[a-z0-9][a-z0-9-]{0,63}$/;
+var NAME3 = /^[a-z0-9][a-z0-9-]{0,63}$/;
 var CLIP = /^[\w .-]{1,64}$/;
 function cleanFile(url, sha2562) {
   if (typeof url !== "string" || url.length > ITEM_LIMITS.url || !isHex64(sha2562)) return null;
@@ -7108,7 +7210,7 @@ function readSend(t) {
 function buildItem(o) {
   const title = cleanLine(o.title, ITEM_LIMITS.title);
   const model = cleanFile(o.model?.url, o.model?.sha256);
-  if (typeof o.d !== "string" || !NAME2.test(o.d) || !title || !model || !Array.isArray(o.size) || o.size.length !== 3 || !o.size.every(within)) return null;
+  if (typeof o.d !== "string" || !NAME3.test(o.d) || !title || !model || !Array.isArray(o.size) || o.size.length !== 3 || !o.size.every(within)) return null;
   const tags = [
     ["d", o.d],
     ["title", title]
@@ -7186,7 +7288,7 @@ function parseItem(event) {
   const m = tag("model");
   const model = m && m[2] === "glb" ? cleanFile(m[1], m[3]) : null;
   const size = numbers(tag("size")?.[1], 3);
-  if (typeof d !== "string" || !NAME2.test(d) || !title || !model || !size || !size.every(within)) return null;
+  if (typeof d !== "string" || !NAME3.test(d) || !title || !model || !size || !size.every(within)) return null;
   const th = tag("thumb");
   const sc = tag("script");
   const clips = {};
@@ -7229,86 +7331,6 @@ function parseItem(event) {
   };
 }
 
-// packages/core/src/bag.ts
-var BAG_KIND = 37308;
-var BAG_D = "bag";
-var BAG_LIMITS = {
-  /** No more than this many items are read from a bag. */
-  items: 200
-};
-var NAME3 = /^[a-z0-9][a-z0-9-]{0,63}$/;
-function itemCoordinate(input) {
-  if (typeof input !== "string" || input.length > 200) return "";
-  const [kind, maker, ...rest] = input.split(":");
-  const d = rest.join(":");
-  return kind === String(ITEM_KIND) && isHex64(maker) && NAME3.test(d) ? `${ITEM_KIND}:${maker}:${d}` : "";
-}
-function bagIn(event) {
-  if (!event || !Array.isArray(event.tags)) return [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const t of event.tags) {
-    if (!Array.isArray(t) || t[0] !== "a") continue;
-    const item = itemCoordinate(t[1]);
-    if (item && seen.size < BAG_LIMITS.items) seen.add(item);
-  }
-  return [...seen];
-}
-function newestBag(events, pubkey) {
-  return events.filter((e) => e.kind === BAG_KIND && e.pubkey === pubkey && Array.isArray(e.tags) && e.tags.some((t) => t[0] === "d" && t[1] === BAG_D)).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0] ?? null;
-}
-function bagTints(event) {
-  const out = {};
-  if (!event || !Array.isArray(event.tags)) return out;
-  const has = new Set(bagIn(event));
-  for (const t of event.tags) {
-    if (!Array.isArray(t) || t[0] !== "tint") continue;
-    const item = itemCoordinate(t[1]);
-    if (!item || !has.has(item) || out[item]) continue;
-    const tints = {};
-    for (const word of t.slice(2, 6)) {
-      const [slot, color] = typeof word === "string" ? word.split("=") : [];
-      if (slot && /^[a-z][a-z0-9-]{0,23}$/.test(slot) && /^#[0-9a-f]{6}$/.test(color ?? "")) tints[slot] = color;
-    }
-    out[item] = tints;
-  }
-  return out;
-}
-function tintBag(newest, change) {
-  if (!newest || newest.kind !== BAG_KIND || !Array.isArray(newest.tags)) return null;
-  const item = itemCoordinate(change.item);
-  if (!item || !bagIn(newest).includes(item)) return null;
-  const words = Object.entries(change.tints ?? {}).filter(([slot, color]) => /^[a-z][a-z0-9-]{0,23}$/.test(slot) && /^#[0-9a-f]{6}$/.test(color)).slice(0, 4).map(([slot, color]) => `${slot}=${color}`);
-  const was = bagTints(newest)[item] ?? {};
-  if (JSON.stringify(Object.entries(was).map(([s, c]) => `${s}=${c}`)) === JSON.stringify(words)) return null;
-  const kept = newest.tags.filter((t) => Array.isArray(t) && t.every((x) => typeof x === "string") && !SITE_MARKS.includes(t[0] ?? "") && t[0] !== "d" && t[0] !== "alt" && !(t[0] === "tint" && itemCoordinate(t[1]) === item)).map((t) => [...t]);
-  return {
-    kind: BAG_KIND,
-    created_at: Math.max(Math.floor(change.now), newest.created_at + 1),
-    tags: [["d", BAG_D], ...kept, ...words.length ? [["tint", item, ...words]] : [], ["alt", "A bag: the items this person has"]],
-    content: ""
-  };
-}
-function changeBag(newest, change) {
-  if (newest && (newest.kind !== BAG_KIND || !Array.isArray(newest.tags))) return null;
-  if (!newest && !change.fromNothing) return null;
-  const add = itemCoordinate(change.add);
-  const remove = itemCoordinate(change.remove);
-  if (add === "" === (remove === "")) return null;
-  const which = add || remove;
-  const had = newest ? newest.tags.filter((t) => Array.isArray(t) && t.every((x) => typeof x === "string") && !SITE_MARKS.includes(t[0] ?? "") && t[0] !== "d" && t[0] !== "alt") : [];
-  const names = (t) => t[0] === "a" && itemCoordinate(t[1]) === which;
-  const has = had.some(names);
-  if (add ? has : !has) return null;
-  if (add && bagIn({ tags: had }).length >= BAG_LIMITS.items) return null;
-  const kept = add ? [...had.map((t) => [...t]), ["a", add, ...change.relay ? [change.relay] : []]] : had.filter((t) => !names(t) && !(t[0] === "tint" && itemCoordinate(t[1]) === which)).map((t) => [...t]);
-  return {
-    kind: BAG_KIND,
-    created_at: Math.max(Math.floor(change.now), newest ? newest.created_at + 1 : 0),
-    tags: [["d", BAG_D], ...kept, ["alt", "A bag: the items this person has"]],
-    content: ""
-  };
-}
-
 // packages/core/src/play.ts
 var GRAVITY = 9.8;
 var PLAY_LIMITS = {
@@ -7316,6 +7338,8 @@ var PLAY_LIMITS = {
   speed: 40,
   /** The longest a thing may stay stuck where it landed, in seconds. */
   stick: 10,
+  /** The most a thing's aim may be thrown off at random, in radians either way: about six degrees. */
+  spread: 0.1,
   /** The longest a thing may fly before it is gone, in seconds. */
   life: 5,
   /** How far from the middle of a world anything may be said to start, in metres. */
@@ -7370,6 +7394,8 @@ function parseHit(text) {
   return buildHit(hit) ? hit : null;
 }
 var CLIP2 = /^[\w .-]{1,64}$/;
+var POSE = "pose";
+var isPose = (clip) => clip.startsWith(POSE);
 function buildDid(o) {
   if (!o || o.kind !== "sound" && o.kind !== "clip" || typeof o.name !== "string") return null;
   if (o.kind === "sound" ? !NAME4.test(o.name) : !CLIP2.test(o.name)) return null;
@@ -7464,7 +7490,7 @@ var ITEM_ASKS = {
   /** Play one of its own sounds, by name. */
   play: { burst: 6, perSecond: 6 },
   /** Play one of its own animations, by name. */
-  clip: { burst: 4, perSecond: 4 },
+  clip: { burst: 8, perSecond: 8 },
   /** Send out one of the things it has described. */
   send: { burst: PLAY_LIMITS.burst, perSecond: PLAY_LIMITS.perSecond },
   /** Show its own words: a counter. */
@@ -7496,7 +7522,7 @@ function cleanAsk(name, args) {
   if (name === "send") {
     const o = a[1] && typeof a[1] === "object" ? a[1] : {};
     const within2 = (x, least, most, otherwise) => typeof x === "number" && Number.isFinite(x) ? Math.min(most, Math.max(least, x)) : otherwise;
-    return typeof a[0] === "string" && NAME4.test(a[0]) ? { ask: "send", name: a[0], speed: within2(o.speed, 1, PLAY_LIMITS.speed, 12), stick: within2(o.stick, 0, PLAY_LIMITS.stick, 3), lift: within2(o.lift, -0.5, 0.5, 0) } : null;
+    return typeof a[0] === "string" && NAME4.test(a[0]) ? { ask: "send", name: a[0], speed: within2(o.speed, 1, PLAY_LIMITS.speed, 12), stick: within2(o.stick, 0, PLAY_LIMITS.stick, 3), lift: within2(o.lift, -0.5, 0.5, 0), spread: within2(o.spread, 0, PLAY_LIMITS.spread, 0) } : null;
   }
   return null;
 }
@@ -7512,7 +7538,7 @@ const item = Object.freeze({
   on(event, fn) { if (typeof fn === "function") __on[String(event)] = fn; },
   play(name) { __ask("play", [String(name)]); },
   clip(name) { __ask("clip", [String(name)]); },
-  send(name, how) { __ask("send", [String(name), { speed: Number(how && how.speed), stick: Number(how && how.stick), lift: Number(how && how.lift) }]); },
+  send(name, how) { __ask("send", [String(name), { speed: Number(how && how.speed), stick: Number(how && how.stick), lift: Number(how && how.lift), spread: Number(how && how.spread) }]); },
   show(text) { __ask("show", [String(text)]); },
   after(ms, fn) { if (typeof fn === "function" && __timers.length < 32) __timers.push({ at: __now + Math.max(0, Number(ms) || 0), fn }); },
 });
@@ -8357,6 +8383,7 @@ export {
   PERSON_SHAPE,
   PINS_MOST,
   PLAY_LIMITS,
+  POSE,
   POSE_BYTES,
   PREVIEW_LIMITS,
   PREVIEW_TYPES,
@@ -8502,6 +8529,7 @@ export {
   isHttpsUrl,
   isLocalHost,
   isPlainObject,
+  isPose,
   isPublicKey,
   isReachAsked,
   isScoreAsked,

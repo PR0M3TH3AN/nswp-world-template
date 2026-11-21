@@ -2515,6 +2515,7 @@ function pieceName(address) {
   return name.slice(0, 60) || "a piece with no name";
 }
 var STEP_LEVEL = 0.45;
+var STRIDE = 0.75;
 var HEARD = { near: 2, far: 25, floor: 0.14, fall: 6 };
 function heardFrom(place) {
   const d = Number.isFinite(place.distance) ? Math.max(0, place.distance) : HEARD.far;
@@ -2921,6 +2922,7 @@ import {
   buildShot,
   buildState,
   cleanItemsRule,
+  isPose,
   createRate as createRate2,
   GRAVITY,
   HEALTH,
@@ -3242,6 +3244,7 @@ function createPlay(o) {
       o.sounds.playForeign(sound, { distance, pan });
     });
   };
+  const poses = /* @__PURE__ */ new WeakMap();
   let clipsSaid = [];
   const animate = (item2, model2, name, who = "") => {
     if (o.deferred && clipsSaid.length < 16) clipsSaid.push({ who, name });
@@ -3254,9 +3257,15 @@ function createPlay(o) {
       mixers.set(model2, mixer);
     }
     const action = mixer.clipAction(clip);
+    const pose = isPose(name);
+    if (pose) {
+      const was = poses.get(model2);
+      if (was && was !== action) was.stop();
+      poses.set(model2, action);
+    }
     action.reset();
     action.setLoop(THREE8.LoopOnce, 1);
-    action.clampWhenFinished = false;
+    action.clampWhenFinished = pose;
     action.play();
   };
   let solids = [];
@@ -3497,7 +3506,7 @@ function createPlay(o) {
   };
   let pointed = null;
   const wall = () => typeof performance !== "undefined" ? performance.now() : Date.now();
-  const aim = (lift) => {
+  const aim = (lift, spread = 0) => {
     const said = o.aim?.();
     let from;
     let to;
@@ -3517,6 +3526,15 @@ function createPlay(o) {
     }
     const dir = to.clone().sub(from).normalize();
     if (lift) dir.applyAxisAngle(new THREE8.Vector3().crossVectors(dir, new THREE8.Vector3(0, 1, 0)).normalize(), lift);
+    if (spread > 0) {
+      const across = new THREE8.Vector3().crossVectors(dir, new THREE8.Vector3(0, 1, 0));
+      if (across.lengthSq() < 1e-6) across.set(1, 0, 0);
+      across.normalize();
+      const over = new THREE8.Vector3().crossVectors(across, dir).normalize();
+      const off = spread * Math.sqrt(Math.random());
+      const round = Math.random() * Math.PI * 2;
+      dir.applyAxisAngle(over, off * Math.cos(round)).applyAxisAngle(across, off * Math.sin(round)).normalize();
+    }
     return { from, dir };
   };
   const asked = (ask) => {
@@ -3536,7 +3554,7 @@ function createPlay(o) {
       return;
     }
     if (ask.ask !== "send" || !item.sends.some((s) => s.name === ask.name)) return;
-    const { from, dir } = aim(ask.lift);
+    const { from, dir } = aim(ask.lift, ask.spread);
     const shot = { id: nextId++, name: ask.name, from: from.toArray(), velocity: dir.multiplyScalar(ask.speed).toArray(), stick: ask.stick };
     const said = buildShot(shot);
     const read = said ? parseShot(said) : null;
@@ -4034,8 +4052,25 @@ function createPresence(d) {
     }
     setAimScale(1);
   };
+  const bob = { x: 0, y: 0 };
+  const walked = { at: new THREE9.Vector3(), has: false, far: 0, k: 0 };
+  const sway = (dt, still) => {
+    const at = d.rig.getWorldPosition(new THREE9.Vector3());
+    const moved = walked.has ? Math.hypot(at.x - walked.at.x, at.z - walked.at.z) : 0;
+    walked.at.copy(at);
+    walked.has = true;
+    const speed = dt > 0 ? moved / dt : 0;
+    const walking = speed > 0.25 && speed < 14;
+    if (walking) walked.far += moved;
+    walked.k += ((walking && !still ? 1 : 0) - walked.k) * (dt > 0 ? Math.min(1, dt * 7) : 0);
+    const swing = d.theme?.().motion === false ? 0 : walked.k * (1 - sightK);
+    const step = walked.far / STRIDE * Math.PI;
+    bob.x = Math.sin(step) * 0.012 * swing;
+    bob.y = -Math.abs(Math.sin(step)) * 0.016 * swing;
+  };
   const placeMine = (dt = 0) => {
     const now = hand();
+    sway(dt, now >= 0);
     if (!mineModel) return;
     const described = mine ? d.items?.known(mine) ?? null : null;
     if (now < 0) {
@@ -4061,6 +4096,8 @@ function createPresence(d) {
           if (sightK <= 2e-3 && !sightWant) endSight();
         }
       } else mineModel.position.copy(hip);
+      mineModel.position.x += bob.x * far;
+      mineModel.position.y += bob.y * far;
       mineModel.rotation.set(0, acts ? 0.1 * (1 - sightK) : 0, 0);
     }
     if (now === inHand) return;
@@ -4593,6 +4630,9 @@ function createPresence(d) {
     },
     get play() {
       return play;
+    },
+    get heldBob() {
+      return [bob.x, bob.y];
     },
     get holdingHand() {
       return mine ? hand() : -1;
@@ -9435,7 +9475,7 @@ function createBag(opts) {
 }
 
 // packages/sdk/src/bagging.ts
-import { decodeNaddr, ITEM_KIND as ITEM_KIND2, itemCoordinate as itemCoordinate4, TINT_PALETTE } from "@nswp/core";
+import { cleanSettings, decodeNaddr, ITEM_KIND as ITEM_KIND2, itemCoordinate as itemCoordinate4, TINT_PALETTE } from "@nswp/core";
 
 // packages/sdk/src/item-preview.ts
 import * as THREE17 from "three";
@@ -9555,6 +9595,21 @@ function createItemPreviews(o) {
 }
 
 // packages/sdk/src/bagging.ts
+var HELD_KEY = "nswp:holding";
+function keptHolding() {
+  try {
+    const kept2 = globalThis.localStorage?.getItem(HELD_KEY);
+    return kept2 ? cleanSettings({ holding: JSON.parse(kept2) }).holding : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function keepHolding(held) {
+  try {
+    globalThis.localStorage?.setItem(HELD_KEY, JSON.stringify(held));
+  } catch {
+  }
+}
 var PAGE2 = 24;
 function itemIn(text) {
   if (typeof text !== "string") return "";
@@ -9614,9 +9669,35 @@ function addBagControls(controls, opts) {
     chosen = item;
     change2(item, true);
   };
+  let cardActs = [];
+  let putAway = false;
+  let cameHolding = (() => {
+    const came = arrivedSettings().holding ?? keptHolding();
+    return came && typeof came === "object" ? came : null;
+  })();
+  const carryOn = async (has) => {
+    const came = cameHolding;
+    cameHolding = null;
+    if (!came || opts.holding() || opts.rule() === "none" || !showsItems() || !has.includes(came.item)) return;
+    const described = await items.describe(came.item);
+    if (!described || opts.holding()) return;
+    if (described.script && came.script === described.script.sha256) allowScript(described.script.sha256);
+    taking = came.item;
+    refresh();
+    let done = { ok: false, said: "" };
+    try {
+      done = await opts.hold(came.item, came.tints ?? bag.tints(came.item));
+    } catch {
+    }
+    taking = "";
+    if (done.ok) say(`${items.known(came.item)?.title ?? "What you were holding"} is still in your hand.`);
+    refresh();
+  };
   let drawnHolding = "";
   const refresh = () => {
     drawnHolding = opts.holding();
+    const held = heldNow();
+    if (held !== void 0) keepHolding(held);
     for (const id of shown2) controls.remove(id);
     shown2 = [];
     const me = opts.me();
@@ -9628,6 +9709,7 @@ function addBagControls(controls, opts) {
     }
     const has = me ? bag.items() : null;
     const rule = opts.rule();
+    if (has && cameHolding) void carryOn(has);
     const offers = () => has && bag.canChange() ? [...new Set((opts.offered?.() ?? []).map((i) => itemCoordinate4(i)).filter((i) => i && !has.includes(i)))].slice(0, 12) : [];
     const add = (...actions) => {
       for (const a of actions) shown2.push(a.id);
@@ -9658,6 +9740,9 @@ function addBagControls(controls, opts) {
           picture: "",
           color: "",
           now: [],
+          // What to do with it sits in the card with it: what it does while it is in their hand (the kit's own
+          // rows for that, item-controls.ts), then holding it or putting it away, its colours, and keeping it.
+          acts: [...opts.holding() === item.id ? ["item-use", "item-second"] : [], ...cardActs],
           // The thing itself, large and turning, in the colours they chose for it.
           ...previews && showsItems() ? { draw: () => previews.turning(item, tints, opts.motion?.() ?? controls.theme?.motion ?? true) } : {}
         };
@@ -9705,10 +9790,12 @@ function addBagControls(controls, opts) {
       label: `Put ${titleOf(holding)} away`,
       short: "Away",
       act: async () => {
+        putAway = true;
         say((await opts.hold("")).said);
         refresh();
       }
     });
+    const firstOfTheirs = shown2.length;
     if (chosen && has.includes(chosen)) {
       const item = chosen;
       if (taking === item)
@@ -9741,6 +9828,7 @@ function addBagControls(controls, opts) {
           label: asking === item ? `Let it run, and hold ${titleOf(item)}` : `Hold ${titleOf(item)}`,
           act: async () => {
             taking = item;
+            putAway = false;
             refresh();
             let done;
             try {
@@ -9780,6 +9868,7 @@ function addBagControls(controls, opts) {
       const item = chosen;
       add({ id: "bag-take", icon: "save", tone: "primary", label: `Put ${titleOf(item)} in my bag`, act: () => change2(item, true) });
     }
+    cardActs = shown2.slice(firstOfTheirs);
     if (holding && holding !== chosen) add(away());
     const listed = has.slice(0, pages * PAGE2);
     for (const item of listed) if (!items.known(item)) void items.describe(item).then((found) => found && soon2());
@@ -9845,6 +9934,17 @@ function addBagControls(controls, opts) {
   bag.onChange(soon2);
   onItemsChange(soon2);
   previews?.onChange(soon2);
+  const heldNow = () => {
+    const item = opts.holding();
+    if (!item) return putAway ? "" : void 0;
+    const script = items.known(item)?.script?.sha256;
+    const tints = bag.tints(item);
+    return { item, ...Object.keys(tints).length ? { tints } : {}, ...script && scriptAllowed(script) ? { script } : {} };
+  };
+  reportSettings("holding", () => {
+    const held = heldNow();
+    return held === void 0 ? {} : { holding: held };
+  });
   refresh();
   const watch = setInterval(() => {
     if (!taking && opts.holding() !== drawnHolding) refresh();
@@ -9865,7 +9965,7 @@ function addItemControls(controls, o) {
     shown2 = key;
     controls.remove("item-use");
     controls.remove("item-second");
-    if (!now) return;
+    if (!now) return void sight(false);
     if (now.use) controls.add({ id: "item-use", section: "bag", icon: "check", tone: "primary", hotbar: true, lead: true, label: now.use, short: now.use, act: () => o.play()?.use() });
     if (now.second) controls.add({ id: "item-second", section: "bag", icon: "turn", hotbar: true, lead: true, label: now.second, short: now.second, act: () => o.play()?.second() });
     if (now.use) controls.say(`Tap or click where you want to ${now.use.toLowerCase()}. Hold a press to walk.`);
@@ -9883,10 +9983,7 @@ function addItemControls(controls, o) {
   const onDown = (e) => {
     if (!document.pointerLockElement || !does()) return;
     if (e.button === 0 && does()?.use) o.play()?.use();
-    else if (e.button === 2) sight(true);
-  };
-  const onUp = (e) => {
-    if (e.button === 2) sight(false);
+    else if (e.button === 2) sight(!sighting);
   };
   const onMenu = (e) => {
     if (document.pointerLockElement && does()) e.preventDefault();
@@ -9899,7 +9996,6 @@ function addItemControls(controls, o) {
   };
   o.dom?.addEventListener("mousedown", onDown);
   o.dom?.addEventListener("contextmenu", onMenu);
-  if (typeof addEventListener === "function") addEventListener("mouseup", onUp);
   if (typeof document !== "undefined") document.addEventListener("pointerlockchange", onLock);
   if (typeof addEventListener === "function") addEventListener("keydown", onKey);
   refresh();
@@ -9918,7 +10014,6 @@ function addItemControls(controls, o) {
     dispose() {
       o.dom?.removeEventListener("mousedown", onDown);
       o.dom?.removeEventListener("contextmenu", onMenu);
-      if (typeof removeEventListener === "function") removeEventListener("mouseup", onUp);
       if (typeof document !== "undefined") document.removeEventListener("pointerlockchange", onLock);
       sight(false);
       if (typeof removeEventListener === "function") removeEventListener("keydown", onKey);
@@ -10244,7 +10339,6 @@ function addAchievementControls(controls, opts) {
 // packages/sdk/src/sound.ts
 var FOREIGN_SOUND = { seconds: 4, peak: 0.7, fades: 25, gone: 45 };
 var GAP2 = { step: 0.14, hover: 0.08, bump: 0.5, land: 0.2, notice: 0.25, chat: 0.3 };
-var STRIDE = 0.75;
 var JUMP = 1.2;
 function createSounds(o = {}) {
   const ctx = o.context ?? new AudioContext();

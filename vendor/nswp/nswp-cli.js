@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.59.2";
+var KIT_VERSION = "0.60.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4136,6 +4136,41 @@ async function fetchManifest(urlOrOrigin, fetchImpl = fetch, timeoutMs = 8e3) {
   }
 }
 
+// packages/core/dist/layout.js
+var ITEM_KIND = 37303;
+var LAYOUT_LIMITS = {
+  placements: 64,
+  publishedItems: 16,
+  /** Furthest a placement may be from the home's origin, in metres. */
+  reach: 50,
+  noteChars: 280,
+  /** A picture in a frame (spec §10.1). */
+  pictureBytes: 1024 * 1024
+};
+
+// packages/core/dist/chat.js
+var UNSEEN = [
+  [0, 31],
+  [127, 159],
+  [8203, 8204],
+  // 0x200d joins the parts of one emoji, and stays.
+  [8206, 8207],
+  [8232, 8239],
+  [8288, 8303],
+  [65279, 65279],
+  [65529, 65531]
+];
+var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
+function cleanLine(text, chars) {
+  if (typeof text !== "string")
+    return "";
+  let out = "";
+  for (const ch of text.slice(0, chars * 8).normalize("NFC"))
+    out += unseen(ch.codePointAt(0)) ? " " : ch;
+  out = out.replace(/\s+/g, " ").trim();
+  return [...out].slice(0, chars).join("").trim();
+}
+
 // packages/core/dist/arrival.js
 var decoder2 = new TextDecoder();
 
@@ -4321,29 +4356,6 @@ var decoder3 = new TextDecoder("utf-8", { fatal: true });
 var POSE_FLOATS = 22;
 var POSE_BYTES = POSE_FLOATS * 4;
 
-// packages/core/dist/chat.js
-var UNSEEN = [
-  [0, 31],
-  [127, 159],
-  [8203, 8204],
-  // 0x200d joins the parts of one emoji, and stays.
-  [8206, 8207],
-  [8232, 8239],
-  [8288, 8303],
-  [65279, 65279],
-  [65529, 65531]
-];
-var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
-function cleanLine(text, chars) {
-  if (typeof text !== "string")
-    return "";
-  let out = "";
-  for (const ch of text.slice(0, chars * 8).normalize("NFC"))
-    out += unseen(ch.codePointAt(0)) ? " " : ch;
-  out = out.replace(/\s+/g, " ").trim();
-  return [...out].slice(0, chars).join("").trim();
-}
-
 // packages/core/dist/pass.js
 var PASS_LIMITS = {
   defaultTtlSec: 4 * 3600,
@@ -4389,18 +4401,6 @@ var SIGN_LIMITS = {
    */
   passBurst: 2,
   passHourly: 10
-};
-
-// packages/core/dist/layout.js
-var ITEM_KIND = 37303;
-var LAYOUT_LIMITS = {
-  placements: 64,
-  publishedItems: 16,
-  /** Furthest a placement may be from the home's origin, in metres. */
-  reach: 50,
-  noteChars: 280,
-  /** A picture in a frame (spec §10.1). */
-  pictureBytes: 1024 * 1024
 };
 
 // packages/core/dist/item.js
@@ -4649,6 +4649,8 @@ var PLAY_LIMITS = {
   speed: 40,
   /** The longest a thing may stay stuck where it landed, in seconds. */
   stick: 10,
+  /** The most a thing's aim may be thrown off at random, in radians either way: about six degrees. */
+  spread: 0.1,
   /** The longest a thing may fly before it is gone, in seconds. */
   life: 5,
   /** How far from the middle of a world anything may be said to start, in metres. */
@@ -4667,7 +4669,7 @@ var ITEM_ASKS = {
   /** Play one of its own sounds, by name. */
   play: { burst: 6, perSecond: 6 },
   /** Play one of its own animations, by name. */
-  clip: { burst: 4, perSecond: 4 },
+  clip: { burst: 8, perSecond: 8 },
   /** Send out one of the things it has described. */
   send: { burst: PLAY_LIMITS.burst, perSecond: PLAY_LIMITS.perSecond },
   /** Show its own words: a counter. */
@@ -4686,7 +4688,7 @@ const item = Object.freeze({
   on(event, fn) { if (typeof fn === "function") __on[String(event)] = fn; },
   play(name) { __ask("play", [String(name)]); },
   clip(name) { __ask("clip", [String(name)]); },
-  send(name, how) { __ask("send", [String(name), { speed: Number(how && how.speed), stick: Number(how && how.stick), lift: Number(how && how.lift) }]); },
+  send(name, how) { __ask("send", [String(name), { speed: Number(how && how.speed), stick: Number(how && how.stick), lift: Number(how && how.lift), spread: Number(how && how.spread) }]); },
   show(text) { __ask("show", [String(text)]); },
   after(ms, fn) { if (typeof fn === "function" && __timers.length < 32) __timers.push({ at: __now + Math.max(0, Number(ms) || 0), fn }); },
 });

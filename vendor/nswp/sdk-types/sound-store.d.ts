@@ -116,6 +116,8 @@ export declare const STEP_LEVEL = 0.45;
  * steadily, and every step differs a little more by chance.
  */
 /** Where a sound made by somebody comes from: how far off they are, in metres, and how far to one side (-1 left, 1 right). */
+/** How far a visitor walks between steps, in metres: the pace of their footsteps, and of anything that keeps time with them. */
+export declare const STRIDE = 0.75;
 export interface SoundPlace {
     distance: number;
     pan?: number;

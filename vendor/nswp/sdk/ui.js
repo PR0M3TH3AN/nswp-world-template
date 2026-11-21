@@ -516,7 +516,7 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
   .sheet { width: min(780px, calc(100vw - 40px)); max-height: min(74vh, 780px); }
   .rows { grid-template-columns: 1fr 1fr; align-content: start; }
   .rows > .person, .rows > .swatches, .rows > .tiles, .rows > .row.primary { grid-column: 1 / -1; }
-  .rows > .person.thing { grid-template-columns: 160px 1fr; }
+  .rows > .person.thing { grid-template-columns: 200px 1fr; grid-template-areas: "face about" "face acts"; grid-template-rows: auto 1fr; }
   .rows > .tiles { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); }
 }
 .sheet::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; pointer-events: none;
@@ -572,8 +572,14 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
   background: var(--c, rgba(var(--ink), .2)); color: rgb(var(--glass)); font-weight: 700; font-size: 1.5em; }
 .person .face canvas { width: 100%; height: 100%; display: block; }
 /* A card about a thing: the thing itself, large, on a lit plinth, where a person's card has a face. */
-.person.thing { grid-template-columns: minmax(112px, 30%) 1fr; align-items: start; gap: 4px 14px; }
-.person.thing .face { grid-row: span 4; width: 100%; height: auto; aspect-ratio: 1; border-radius: 14px;
+.person.thing { grid-template-columns: minmax(112px, 30%) 1fr; grid-template-areas: "face about" "acts acts"; align-items: start; gap: 10px 14px; }
+.person.thing .about { grid-area: about; display: grid; gap: 5px; min-width: 0; align-content: start; }
+.person.thing .about blockquote { margin: 3px 0 0; }
+/* What to do with the thing: side by side where they fit, and one under another where they don't. */
+.person.thing .acts { grid-area: acts; display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; align-content: start; min-width: 0; }
+.person.thing .acts > .row { flex: 1 1 210px; min-width: 0; }
+.person.thing .acts > .swatches { flex: 1 1 100%; }
+.person.thing .face { grid-area: face; width: 100%; height: auto; aspect-ratio: 1; border-radius: 14px;
   background: radial-gradient(90% 70% at 50% 92%, rgba(var(--accent), .3), transparent 70%), rgba(var(--ink), .05); color: rgba(var(--ink), .4); }
 .person h3 { margin: 0; font-size: 1.15em; font-weight: 650; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; overflow-wrap: anywhere; }
 .person .tag { font-size: .76em; font-weight: 500; padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(var(--ink), .3); color: rgba(var(--ink), .75); white-space: nowrap; }
@@ -766,7 +772,7 @@ function mountHud(controls, opts = {}) {
     if (open && section === id2) setOpen(false);
     else setOpen(true, id2);
   };
-  const drawCard = (card) => {
+  const drawCard = (card, acts = []) => {
     const face = el("span", { class: "face", "aria-hidden": "true" }, [...card.title][0]?.toUpperCase() ?? "");
     if (card.color) face.style.setProperty("--c", card.color);
     const paint = card.draw;
@@ -777,10 +783,10 @@ function mountHud(controls, opts = {}) {
       let had = false;
       const tick2 = () => {
         if (had && (!canvas.isConnected || sheet.hidden)) return;
-        const now = paint();
-        if (now && g) {
+        const now2 = paint();
+        if (now2 && g) {
           g.clearRect(0, 0, 256, 256);
-          g.drawImage(now, 0, 0, 256, 256);
+          g.drawImage(now2, 0, 0, 256, 256);
           if (!had) face.replaceChildren(canvas);
           had = true;
         }
@@ -810,15 +816,20 @@ function mountHud(controls, opts = {}) {
         () => controls.say(`The key: ${card.copy}`)
       );
     });
-    return el(
-      "div",
-      { class: card.draw ? "person thing" : "person", role: "group", "aria-label": `About ${card.title}` },
-      face,
-      el("h3", {}, card.title, card.tag && el("span", { class: card.proven ? "tag proven" : "tag" }, card.tag)),
-      el("div", { class: "keyline" }, el("span", { class: card.copy ? "mono" : "" }, card.sub), copyKey),
-      card.text && el("blockquote", {}, card.text),
-      card.now.length > 0 && el("p", { class: "now" }, card.now.join(", "))
-    );
+    const head = el("h3", {}, card.title, card.tag && el("span", { class: card.proven ? "tag proven" : "tag" }, card.tag));
+    const key = el("div", { class: "keyline" }, el("span", { class: card.copy ? "mono" : "" }, card.sub), copyKey);
+    const words = card.text && el("blockquote", {}, card.text);
+    const now = card.now.length > 0 && el("p", { class: "now" }, card.now.join(", "));
+    if (card.draw) {
+      return el(
+        "div",
+        { class: "person thing", role: "group", "aria-label": `About ${card.title}` },
+        face,
+        el("div", { class: "about" }, head, key, words, now),
+        acts.length > 0 && el("div", { class: "acts" }, ...acts)
+      );
+    }
+    return el("div", { class: "person", role: "group", "aria-label": `About ${card.title}` }, face, head, key, words, now);
   };
   let chatState = "closed";
   let dockTab = "room";
@@ -1154,24 +1165,30 @@ function mountHud(controls, opts = {}) {
       b.addEventListener("click", () => press(item));
       return b;
     };
-    const laid = [];
-    let run = null;
-    for (const item of current?.items ?? []) {
-      if (item.kind === "button") {
-        run = null;
-        laid.push(drawRow(item));
-        continue;
+    const lay = (items) => {
+      const laid2 = [];
+      let run = null;
+      for (const item of items) {
+        if (item.kind === "button") {
+          run = null;
+          laid2.push(drawRow(item));
+          continue;
+        }
+        if (run?.kind !== item.kind) {
+          run = { kind: item.kind, box: el("div", { class: item.kind === "tile" ? "tiles" : "swatches" }) };
+          laid2.push(run.box);
+        }
+        run.box.append(item.kind === "tile" ? drawTile(item) : drawSwatch(item));
       }
-      if (run?.kind !== item.kind) {
-        run = { kind: item.kind, box: el("div", { class: item.kind === "tile" ? "tiles" : "swatches" }) };
-        laid.push(run.box);
-      }
-      run.box.append(item.kind === "tile" ? drawTile(item) : drawSwatch(item));
-    }
+      return laid2;
+    };
+    const inCard = new Set(current?.card?.draw ? current.card.acts ?? [] : []);
+    const laid = lay((current?.items ?? []).filter((item) => !inCard.has(item.id)));
+    const beside = lay((current?.items ?? []).filter((item) => inCard.has(item.id)));
     const about = current?.card ? `${section}:${current.card.title}` : "";
     const fresh = about !== cardShown;
     cardShown = about;
-    rows.replaceChildren(current?.card ? drawCard(current.card) : "", ...laid);
+    rows.replaceChildren(current?.card ? drawCard(current.card, beside) : "", ...laid);
     if (fresh && about) rows.scrollTop = 0;
     rows.hidden = !current?.items.length && !current?.card;
     note.textContent = current?.note ?? "";
@@ -1238,7 +1255,7 @@ function mountHud(controls, opts = {}) {
     const at = e.composedPath()[0];
     const onStrip = !!at && typeof at.tagName === "string" && tabs.contains(at);
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-    if (!step && !(onStrip && (e.key === "Home" || e.key === "End"))) return;
+    if (!step && e.key !== "Home" && e.key !== "End") return;
     if (at && !onStrip && (at.tagName === "INPUT" || at.tagName === "TEXTAREA" || at.tagName === "SELECT" || at.isContentEditable)) return;
     const ids = controls.view().sections.map((x) => x.id);
     if (ids.length < 2) return;
