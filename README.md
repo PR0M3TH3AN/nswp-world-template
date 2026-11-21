@@ -259,19 +259,24 @@ Your world is a folder of plain files. Any static host will do.
    ```bash
    npm run keygen
    ```
-3. **Sign and build.**
+3. **Take its picture.** A 360° view from where visitors arrive, which doors
+   to your world show. A world must have one (it needs Google Chrome):
+   ```bash
+   npm run preview
+   ```
+4. **Sign and build.**
    ```bash
    npm run sign
    ```
    ```bash
    npm run check
    ```
-4. **Upload the `dist/` folder** to your host.
-5. **Check the live site.**
+5. **Upload the `dist/` folder** to your host.
+6. **Check the live site.**
    ```bash
    npm run check:live -- https://your-world.example/
    ```
-6. **Announce it,** so lobbies and other worlds can find it. The first command
+7. **Announce it,** so lobbies and other worlds can find it. The first command
    shows what would be sent. The second sends it, publicly and for good.
    ```bash
    npm run announce
@@ -285,8 +290,9 @@ announce again.
 
 ### A picture of your world
 
-Doors that lead to your world can show a view of it. This takes a 360°
-picture from where visitors arrive (it needs Google Chrome installed):
+Doors that lead to your world show a view of it, and a world must have one:
+`npm run sign` won't sign without it. This takes a 360° picture from where
+visitors arrive (it needs Google Chrome installed):
 
 ```bash
 npm run preview

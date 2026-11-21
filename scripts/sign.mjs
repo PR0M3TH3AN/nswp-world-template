@@ -7,7 +7,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
-import { finalizeEvent, getPublicKey } from "../vendor/nswp/nswp-core.js";
+import { doorPictureOwed, finalizeEvent, getPublicKey } from "../vendor/nswp/nswp-core.js";
 import { keyPath, readConfig, root, templates, validate } from "./lib.mjs";
 
 const files = readConfig();
@@ -44,6 +44,11 @@ for (const e of errors) console.error(`✘ ${e}`);
 if (errors.length) process.exit(1);
 if (new URL(files.config.world.url).hostname === "example.com") {
   console.error("✘ world.json still has the placeholder address. Set `url` to where this world will live before signing.");
+  process.exit(1);
+}
+// A world must have the picture its doors show (NSWP-04): its hash is part of what is signed here.
+if (doorPictureOwed(files.config.world)) {
+  console.error("✘ This world has no 360° picture yet, and a world must have one: it is what a door to your world shows. Take it with `npm run preview` (it needs Google Chrome), then sign.");
   process.exit(1);
 }
 const t = templates(files);

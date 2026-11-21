@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.58.0";
+var KIT_VERSION = "0.59.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4531,6 +4531,13 @@ function checkPreviewBytes(preview, bytes) {
   if (bytesToHex(sha256(bytes)) !== preview.sha256) return { ok: false, code: "preview_hash_mismatch", message: "The preview file doesn't match the hash in the announcement." };
   return { ok: true };
 }
+function doorPictureOwed(world) {
+  const has = (type) => (world.previews ?? []).some((p) => p.type === type);
+  if (has("pano")) return null;
+  const onlyAPage = !!world.modes?.length && world.modes.every((m) => m === "2d");
+  if (onlyAPage) return has("flat") ? null : "flat";
+  return "pano";
+}
 function previewOnWorldOrigin(world, preview) {
   try {
     return new URL(preview.url).origin === new URL(world.url).origin;
@@ -7601,6 +7608,19 @@ var ITEM_BOX_HTML = `<!doctype html>
 <\/script>
 `;
 
+// packages/core/src/stamp.ts
+var MARK2 = /<meta name="nswp-built" content="[^"]*">\n?/i;
+function builtMark(kit, rules) {
+  return `${kit} ${bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(rules ?? null)))).slice(0, 16)}`;
+}
+function stampPage(html, kit, rules) {
+  const meta = `<meta name="nswp-built" content="${builtMark(kit, rules).replace(/[^\w. -]/g, "")}">
+`;
+  const bare = html.replace(MARK2, "");
+  const at = bare.search(/<\/head>/i);
+  return at < 0 ? `${bare}${bare.endsWith("\n") ? "" : "\n"}${meta}` : `${bare.slice(0, at)}${meta}${bare.slice(at)}`;
+}
+
 // packages/core/src/glb.ts
 function tintSlot(name) {
   return typeof name === "string" ? /^tint[:_]([a-z][a-z0-9-]{0,23})$/.exec(name)?.[1] ?? "" : "";
@@ -8407,6 +8427,7 @@ export {
   buildWayUrl,
   buildWorldEvent,
   buildWorldGrant,
+  builtMark,
   categoryWords,
   changeBag,
   changeFollows,
@@ -8449,6 +8470,7 @@ export {
   decodeNpub,
   decodeSettings,
   doorFor,
+  doorPictureOwed,
   encodeArrival,
   encodeLook,
   encodeNaddr,
@@ -8574,6 +8596,7 @@ export {
   signerAt,
   signerMessage,
   spawnOffset,
+  stampPage,
   stripArrivalParam,
   struck,
   tallyMark,

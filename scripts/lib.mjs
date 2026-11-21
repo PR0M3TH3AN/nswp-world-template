@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildLayoutEvent, buildWorldEvent, cleanItemsRule, decodeNpub, ITEM_BOX_CSP, ITEM_BOX_HTML, KIT_VERSION, parseLayoutEvent, parseWorldEvent, signerAt, verifyEvent } from "../vendor/nswp/nswp-core.js";
+import { buildLayoutEvent, buildWorldEvent, cleanItemsRule, decodeNpub, ITEM_BOX_CSP, ITEM_BOX_HTML, KIT_VERSION, parseLayoutEvent, parseWorldEvent, signerAt, stampPage, verifyEvent } from "../vendor/nswp/nswp-core.js";
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const dist = join(root, "dist");
@@ -332,6 +332,10 @@ function writeStatic({ config, signed, pictures }) {
     ["/pictures/*", "/pictures/(.*)", open],
   ];
   writeFileSync(join(dist, "vercel.json"), `${JSON.stringify({ headers: rules.map(([, source, h]) => ({ source, headers: h.map(([key, value]) => ({ key, value })) })) }, null, 2)}\n`);
+  // The page is marked with this kit and with everything it is served with, so that it changes whenever either
+  // does. A browser that is told a page hasn't changed keeps the content rules it first had with it: a change to
+  // the rules above would never reach anyone who had been here before.
+  writeFileSync(join(dist, "index.html"), stampPage(readFileSync(join(dist, "index.html"), "utf8"), KIT_VERSION, rules));
   writeFileSync(join(dist, "_headers"), `${rules.map(([path, , h, off = []]) => `${path}\n${[...off.map((k) => `  ! ${k}`), ...h.map(([k, v]) => `  ${k}: ${v}`)].join("\n")}`).join("\n\n")}\n`);
 }
 

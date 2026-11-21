@@ -124,7 +124,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-CG43DQZM.js";
+} from "./shared-LIMIDOQK.js";
 import {
   currentForm,
   deviceForms,
