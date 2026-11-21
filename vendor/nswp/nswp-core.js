@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.69.1";
+var KIT_VERSION = "0.70.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -7290,6 +7290,65 @@ function readHandoffMessage(data) {
   return null;
 }
 
+// packages/core/src/shares.ts
+var SHARE_TAG = "nswp:share";
+var SHARE_CLIENT = "client";
+var SHARE_LIMITS = { most: 6, whole: 1e4, least: 10, label: 32 };
+function cleanShareLabel(input) {
+  if (typeof input !== "string") return "";
+  const text2 = input.trim();
+  if (!text2 || text2.length > SHARE_LIMITS.label || /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/.test(text2)) return "";
+  return text2;
+}
+function readShares(tags, seller) {
+  const no2 = (why) => ({ ok: false, why });
+  if (!Array.isArray(tags)) return no2("not-a-share");
+  const mine = tags.filter((t) => Array.isArray(t) && t[0] === SHARE_TAG);
+  if (mine.length === 0) return { ok: true, shares: [] };
+  if (!isHex64(seller)) return no2("no-seller");
+  if (mine.length > SHARE_LIMITS.most) return no2("too-many");
+  const shares = [];
+  for (const t of mine) {
+    const [, to, parts, label] = t;
+    if (t.length < 3 || t.length > 4) return no2("not-a-share");
+    if (to !== SHARE_CLIENT && !isHex64(to)) return no2("not-a-share");
+    if (typeof parts !== "string" || !/^[1-9][0-9]{0,4}$/.test(parts) || Number(parts) > SHARE_LIMITS.whole) return no2("not-a-share");
+    const word = label === void 0 ? to === SHARE_CLIENT ? "client" : to === seller ? "seller" : "share" : cleanShareLabel(label);
+    if (!word) return no2("not-a-share");
+    if (shares.some((s) => s.to === to)) return no2("twice");
+    shares.push({ to, parts: Number(parts), label: word });
+  }
+  if (!shares.some((s) => s.to === seller)) return no2("no-seller");
+  if (shares.reduce((sum, s) => sum + s.parts, 0) !== SHARE_LIMITS.whole) return no2("not-whole");
+  return { ok: true, shares };
+}
+function splitPrice(price, shares, seller, o = {}) {
+  const no2 = (why) => ({ ok: false, why });
+  const charge = o.charge ?? 0;
+  if (typeof price !== "number" || !Number.isSafeInteger(price) || price < 1 || !Number.isSafeInteger(price * SHARE_LIMITS.whole)) return no2("not-a-price");
+  if (!Number.isSafeInteger(charge) || charge < 0) return no2("not-a-price");
+  if (!isHex64(seller)) return no2("no-seller");
+  if (shares.length > 0 && !shares.some((s) => s.to === seller)) return no2("no-seller");
+  const client = isHex64(o.client) && o.client !== seller ? o.client : null;
+  const others = /* @__PURE__ */ new Map();
+  for (const s of shares) {
+    if (s.to === seller) continue;
+    const to = s.to === SHARE_CLIENT ? client : s.to;
+    if (!to) continue;
+    const sats = Math.floor(price * s.parts / SHARE_LIMITS.whole);
+    const had = others.get(to);
+    others.set(to, had ? { sats: had.sats + sats, label: had.label } : { sats, label: s.label });
+  }
+  const given = [...others.values()].reduce((sum, p) => sum + p.sats, 0);
+  const left = price - given - charge;
+  const label = shares.find((s) => s.to === seller)?.label ?? "seller";
+  const parts = [...others].map(([to, p]) => ({ to, sats: p.sats, label: p.label, seller: false }));
+  parts.sort((a, b) => a.sats - b.sats || (a.to < b.to ? -1 : 1));
+  parts.push({ to: seller, sats: left, label, seller: true });
+  if (parts.some((p) => p.sats < SHARE_LIMITS.least)) return no2("too-small");
+  return { ok: true, parts };
+}
+
 // packages/core/src/item.ts
 var ITEM_LIMITS = {
   title: 60,
@@ -8590,6 +8649,9 @@ export {
   SCRIPT_LIMITS,
   SEAL_KIND,
   SETTINGS_LINK_LIMIT,
+  SHARE_CLIENT,
+  SHARE_LIMITS,
+  SHARE_TAG,
   SIGNER_MORE,
   SIGNER_PROTOCOL,
   SIGNER_VERSION,
@@ -8674,6 +8736,7 @@ export {
   cleanRelayUrl,
   cleanScore,
   cleanSettings,
+  cleanShareLabel,
   cleanSize,
   cleanSlot,
   cleanSpeechText,
@@ -8804,6 +8867,7 @@ export {
   readRelayFinding,
   readRelayList,
   readSeal,
+  readShares,
   readSignerReply,
   readSignerRequest,
   relayScore,
@@ -8825,6 +8889,7 @@ export {
   signerAt,
   signerMessage,
   spawnOffset,
+  splitPrice,
   stampPage,
   stripArrivalParam,
   struck,
