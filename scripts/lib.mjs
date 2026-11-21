@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildLayoutEvent, buildWorldEvent, cleanItemsRule, decodeNpub, itemBoxCsp, ITEM_BOX_HTML, KIT_VERSION, parseLayoutEvent, parseWorldEvent, signerAt, stampPage, verifyEvent } from "../vendor/nswp/nswp-core.js";
+import { buildLayoutEvent, buildWorldEvent, cleanItemsRule, cleanLightningAddress, decodeNpub, itemBoxCsp, ITEM_BOX_HTML, KIT_VERSION, parseLayoutEvent, parseWorldEvent, signerAt, stampPage, verifyEvent } from "../vendor/nswp/nswp-core.js";
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const dist = join(root, "dist");
@@ -208,6 +208,9 @@ export function manifestFor(config, publisher) {
     // Who may announce this world: the key this folder signs with, and the owner's own key if they named it. The
     // second is what lets them show the world is theirs, for making it their home.
     publishers: { [publisher]: { worlds: [w.d] }, ...(owner && owner !== publisher ? { [owner]: { worlds: [w.d] } } : {}) },
+    // Where a tip to this world goes, if world.json names a lightning address for them (`tip`). A visitor's sign-in
+    // address reads it from this file, at this world's own address.
+    ...(cleanLightningAddress(w.tip) ? { tip: cleanLightningAddress(w.tip) } : {}),
     worlds: {
       [w.d]: {
         entry: { url: w.url, modes: w.modes ?? [] },
