@@ -48,8 +48,11 @@ export interface WorldInput {
     /** Only when the manifest is not at the well-known path (it then can't verify). */
     manifest?: string;
     coCreators?: string[];
-    /** Coordinate of an access product, e.g. a BitUnlock product (`30078:<pubkey>:<d>`). */
-    access?: string;
+    /**
+     * What this world is entered by, where it is paid: the coordinates of its listings (`30078:<pubkey>:<d>`), each
+     * signed by the key that signs this announcement. Left out, the world is free.
+     */
+    access?: string | string[];
     createdAt?: number;
 }
 export interface World {
@@ -84,7 +87,11 @@ export interface World {
     status: string;
     manifest?: string;
     coCreators: string[];
-    access?: string;
+    /**
+     * The listings this world is entered by, where it is paid (protocol/01-worlds.md, "A paid world"): each one a
+     * listing's coordinate whose seller is the key that signed this announcement. Left out, the world is free.
+     */
+    access?: string[];
     createdAt: number;
 }
 /**

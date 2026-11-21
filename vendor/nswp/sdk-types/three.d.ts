@@ -104,7 +104,8 @@ export { arrivedSettings, arriveWith, currentSettings, reportSettings, type Trav
 export { fullscreenWaiting, prefersFullscreen, resumeFullscreen } from "./ui/fullscreen.js";
 export { loadPicture, onPicturesChange, PICTURE_LIMITS, setShowsPictures, showsPictures } from "./picture.js";
 export { addDeskControls, FOV_STEPS, LOOK_STEPS, lookScale, onDeskChange, setLookScale, setVisitorFov, visitorFov, watchFov } from "./desk.js";
-export { byName, figureAction, hereAs, identityAction, identityHost, identitySection, identityWords, onHereAs, seekPass, signerAction, signerNamed, worldPeople, worldSaves, worldSigner, youCard, type Leaving } from "./ui/identity.js";
+export { byName, figureAction, hereAs, identityAction, identityHost, identitySection, identityWords, onHereAs, seekPass, signerAction, signerNamed, worldGate, worldPeople, worldSaves, worldSigner, youCard, type Leaving } from "./ui/identity.js";
+export { addGateControls, createPaidGate, GATE_TIMES, type GateOffer, type GateReason, type GateSigner, type GateState, type PaidGate, type PaidGateOptions } from "./front-room.js";
 export { createSaves, type Saved, type SaveResult, type Saves, type SavesOptions } from "./saves.js";
 export { foundRelays, publishBacked, queryBacked, relayBackup } from "./relay-book.js";
 export { createScores, type ScoreHand, type Scores, type ScoresOptions } from "./scores.js";

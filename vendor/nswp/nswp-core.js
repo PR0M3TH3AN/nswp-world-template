@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.72.0";
+var KIT_VERSION = "0.73.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -1050,8 +1050,8 @@ function FpLegendre(Fp, n) {
   const powered = F.pow(n, p1mod2);
   const yes = F.eql(powered, F.ONE);
   const zero = F.eql(powered, F.ZERO);
-  const no2 = F.eql(powered, F.neg(F.ONE));
-  if (!yes && !zero && !no2)
+  const no3 = F.eql(powered, F.neg(F.ONE));
+  if (!yes && !zero && !no3)
     throw new Error("invalid Legendre symbol result");
   return yes ? 1 : zero ? 0 : -1;
 }
@@ -4280,6 +4280,209 @@ function cleanOrigin(input) {
   }
 }
 
+// packages/core/src/receipt.ts
+var RECEIPT_KIND = 30078;
+var RECEIPT_NAME = "bitunlock:entitlement:v1";
+var RECEIPT_FORM = { schemaVersion: 1, protocolVersion: "seller-unlock-service-v1" };
+var RECEIPT_ISSUERS = Object.freeze([
+  Object.freeze({ name: "BitUnlock", service: "https://api.bitunlock.network", pubkey: "66be61cf5b8d286391f7b1a72ffa7c799ec2dc49eff0830c40df1cc964e6787d" })
+]);
+function cleanListing(input) {
+  if (typeof input !== "string" || input.length > 400) return "";
+  return /^30078:[0-9a-f]{64}:[^:\r\n][^\r\n]{0,255}$/.test(input) ? input : "";
+}
+function listingSeller(listing) {
+  return cleanListing(listing).slice(6, 70);
+}
+var no = (why) => ({ ok: false, why });
+var text = (v, most = 300) => typeof v === "string" && v.length > 0 && v.length <= most;
+function readReceipt(event, expect = {}) {
+  const e = event;
+  if (!e || typeof e !== "object" || e.kind !== RECEIPT_KIND || typeof e.content !== "string" || e.content.length > 8e3 || !Array.isArray(e.tags) || !isHex64(e.pubkey)) return no("not-a-receipt");
+  const issuer = (expect.issuers ?? RECEIPT_ISSUERS).find((i) => i.pubkey === e.pubkey);
+  if (!issuer) return no("unknown-issuer");
+  let signed = false;
+  try {
+    signed = verifyEvent({ ...e, tags: e.tags.map((t) => [...t]) });
+  } catch {
+    signed = false;
+  }
+  if (!signed) return no("not-signed");
+  let d;
+  try {
+    const parsed = JSON.parse(e.content);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return no("not-a-receipt");
+    d = parsed;
+  } catch {
+    return no("not-a-receipt");
+  }
+  if (d.schemaVersion !== RECEIPT_FORM.schemaVersion || d.protocolVersion !== RECEIPT_FORM.protocolVersion || d.status !== "active") return no("not-a-receipt");
+  const listing = cleanListing(d.productCoordinate);
+  const issuedAt = d.issuedAt;
+  if (!listing || !isHex64(d.buyerPubkey) || !isHex64(d.sellerPubkey) || !text(d.fulfillmentId) || typeof issuedAt !== "number" || !Number.isSafeInteger(issuedAt) || issuedAt < 1) return no("not-a-receipt");
+  if (d.sellerPubkey !== listingSeller(listing)) return no("not-a-receipt");
+  const names = e.tags.filter((t) => t[0] === "d");
+  if (names.length !== 1 || names[0][1] !== `${RECEIPT_NAME}:${d.fulfillmentId}`) return no("not-a-receipt");
+  let expiresAt = null;
+  const policy = d.accessPolicy;
+  if (policy !== void 0 && policy !== "perpetual-v1") {
+    const term = policy;
+    if (!term || typeof term !== "object" || term.kind !== "term-v1" || typeof term.expiresAt !== "number" || !Number.isSafeInteger(term.expiresAt) || term.expiresAt <= issuedAt) return no("not-a-receipt");
+    expiresAt = term.expiresAt;
+  }
+  if (expect.listing !== void 0 && listing !== expect.listing) return no("other-listing");
+  if (expect.buyer !== void 0 && d.buyerPubkey !== expect.buyer) return no("other-buyer");
+  if (expiresAt !== null && (expect.now ?? Math.floor(Date.now() / 1e3)) >= expiresAt) return no("run-out");
+  return { ok: true, receipt: { issuer, listing, buyer: d.buyerPubkey, seller: d.sellerPubkey, issuedAt, expiresAt, fulfillment: d.fulfillmentId } };
+}
+function cleanLightningAddress(input) {
+  if (typeof input !== "string" || input.length > 200) return "";
+  const address = input.trim().toLowerCase();
+  return /^[a-z0-9._+-]{1,64}@[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/.test(address) ? address : "";
+}
+var TIP_LIMITS = { least: 1, most: 1e6 };
+function cleanTip(input) {
+  return typeof input === "number" && Number.isSafeInteger(input) && input >= TIP_LIMITS.least && input <= TIP_LIMITS.most ? input : null;
+}
+
+// packages/core/src/shares.ts
+var SHARE_TAG = "nswp:share";
+var SHARE_CLIENT = "client";
+var SHARE_LIMITS = { most: 4, whole: 1e4, least: 10, label: 32 };
+function cleanShareLabel(input) {
+  if (typeof input !== "string") return "";
+  const text2 = input.trim();
+  if (!text2 || text2.length > SHARE_LIMITS.label || /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/.test(text2)) return "";
+  return text2;
+}
+function readShares(tags, seller) {
+  const no3 = (why) => ({ ok: false, why });
+  if (!Array.isArray(tags)) return no3("not-a-share");
+  const mine = tags.filter((t) => Array.isArray(t) && t[0] === SHARE_TAG);
+  if (mine.length === 0) return { ok: true, shares: [] };
+  if (!isHex64(seller)) return no3("no-seller");
+  if (mine.length > SHARE_LIMITS.most) return no3("too-many");
+  const shares = [];
+  for (const t of mine) {
+    const [, to, parts, label] = t;
+    if (t.length < 3 || t.length > 4) return no3("not-a-share");
+    if (to !== SHARE_CLIENT && !isHex64(to)) return no3("not-a-share");
+    if (typeof parts !== "string" || !/^[1-9][0-9]{0,4}$/.test(parts) || Number(parts) > SHARE_LIMITS.whole) return no3("not-a-share");
+    const word = label === void 0 ? to === SHARE_CLIENT ? "client" : to === seller ? "seller" : "share" : cleanShareLabel(label);
+    if (!word) return no3("not-a-share");
+    if (shares.some((s) => s.to === to)) return no3("twice");
+    shares.push({ to, parts: Number(parts), label: word });
+  }
+  if (!shares.some((s) => s.to === seller)) return no3("no-seller");
+  if (shares.reduce((sum, s) => sum + s.parts, 0) !== SHARE_LIMITS.whole) return no3("not-whole");
+  return { ok: true, shares };
+}
+function splitPrice(price, shares, seller, o = {}) {
+  const no3 = (why) => ({ ok: false, why });
+  const charge = o.charge ?? 0;
+  if (typeof price !== "number" || !Number.isSafeInteger(price) || price < 1 || !Number.isSafeInteger(price * SHARE_LIMITS.whole)) return no3("not-a-price");
+  if (!Number.isSafeInteger(charge) || charge < 0) return no3("not-a-price");
+  if (!isHex64(seller)) return no3("no-seller");
+  if (shares.length > 0 && !shares.some((s) => s.to === seller)) return no3("no-seller");
+  const client = isHex64(o.client) && o.client !== seller ? o.client : null;
+  const others = /* @__PURE__ */ new Map();
+  for (const s of shares) {
+    if (s.to === seller) continue;
+    const to = s.to === SHARE_CLIENT ? client : s.to;
+    if (!to) continue;
+    const sats = Math.floor(price * s.parts / SHARE_LIMITS.whole);
+    const had = others.get(to);
+    others.set(to, had ? { sats: had.sats + sats, label: had.label } : { sats, label: s.label });
+  }
+  const given = [...others.values()].reduce((sum, p) => sum + p.sats, 0);
+  const left = price - given - charge;
+  const label = shares.find((s) => s.to === seller)?.label ?? "seller";
+  const parts = [...others].map(([to, p]) => ({ to, sats: p.sats, label: p.label, seller: false }));
+  parts.sort((a, b) => a.sats - b.sats || (a.to < b.to ? -1 : 1));
+  parts.push({ to: seller, sats: left, label, seller: true });
+  if (parts.some((p) => p.sats < SHARE_LIMITS.least)) return no3("too-small");
+  return { ok: true, parts };
+}
+
+// packages/core/src/listing.ts
+var LISTING_KIND = 30078;
+var LEAST_PRICE_SATS = 500;
+var ACCESS_MOST = 8;
+var DELIVERY = "seller-unlock-service-v1";
+var NAME_MOST = 80;
+var no2 = (why) => ({ ok: false, why });
+var only = (tags, name) => {
+  const found = tags.filter((t) => t[0] === name);
+  return found.length === 1 ? found[0] : null;
+};
+function cleanListingName(input) {
+  if (typeof input !== "string") return "";
+  const seen = Array.from(input.normalize("NFC")).filter((ch) => {
+    const c = ch.codePointAt(0);
+    return c >= 32 && !(c >= 127 && c <= 159) && !(c >= 8203 && c <= 8207) && !(c >= 8232 && c <= 8239) && !(c >= 8288 && c <= 8303) && c !== 65279;
+  });
+  return Array.from(seen.join("").trim()).slice(0, NAME_MOST).join("").trim();
+}
+function readListing(event, coordinate2, o = {}) {
+  const wanted = cleanListing(coordinate2);
+  const e = event;
+  if (!wanted || !e || typeof e !== "object" || e.kind !== LISTING_KIND || typeof e.content !== "string" || e.content.length > 8e3) return no2("not-a-listing");
+  if (!Array.isArray(e.tags) || !e.tags.every((t) => Array.isArray(t) && t.every((x) => typeof x === "string"))) return no2("not-a-listing");
+  if (e.pubkey !== listingSeller(wanted)) return no2("other-seller");
+  let signed = false;
+  try {
+    signed = verifyEvent({ ...e, tags: e.tags.map((t) => [...t]) });
+  } catch {
+    signed = false;
+  }
+  if (!signed) return no2("not-signed");
+  const d = only(e.tags, "d");
+  if (!d || `${LISTING_KIND}:${e.pubkey}:${d[1] ?? ""}` !== wanted) return no2("other-listing");
+  if (only(e.tags, "status")?.[1] !== "active" || only(e.tags, "br:delivery")?.[1] !== DELIVERY) return no2("not-for-sale");
+  const price = only(e.tags, "price");
+  if (!price || price[2] !== "SAT" || !/^[1-9][0-9]{0,11}$/.test(price[1] ?? "")) return no2("not-a-listing");
+  const sats = Number(price[1]);
+  const terms = e.tags.filter((t) => t[0] === "nswp:term");
+  if (terms.length > 1 || terms.length === 1 && (terms[0].length !== 2 || !/^[1-9][0-9]{0,9}$/.test(terms[0][1] ?? ""))) return no2("not-a-listing");
+  const term = terms.length ? Number(terms[0][1]) : null;
+  const issuer = (o.issuers ?? RECEIPT_ISSUERS).find((i) => i.service === only(e.tags, "br:unlock-service")?.[1] && i.pubkey === only(e.tags, "br:unlock-service-pubkey")?.[1]);
+  if (!issuer) return no2("unknown-service");
+  if (sats < LEAST_PRICE_SATS) return no2("too-cheap");
+  if (e.tags.some((t) => t[0] === SHARE_TAG)) return no2("shared");
+  let words = {};
+  try {
+    const parsed = JSON.parse(e.content || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) words = parsed;
+  } catch {
+    words = {};
+  }
+  const name = cleanListingName(only(e.tags, "title")?.[1]) || cleanListingName(words.title) || cleanListingName(words.name) || cleanListingName(d[1]);
+  const said2 = only(e.tags, "nswp:for")?.[1] ?? "";
+  return { ok: true, listing: { coordinate: wanted, seller: e.pubkey, name, sats, term, for: /^3730[0-9]:[0-9a-f]{64}:[^\s]{1,200}$/.test(said2) ? said2 : "", issuer } };
+}
+function termWords(term) {
+  if (term === null || !Number.isSafeInteger(term) || term < 1) return "once";
+  for (const [unit, seconds] of [["day", 86400], ["hour", 3600], ["minute", 60]]) {
+    if (term % seconds === 0) return `for ${term / seconds} ${unit}${term === seconds ? "" : "s"}`;
+  }
+  return `for ${term} second${term === 1 ? "" : "s"}`;
+}
+function priceWords(listing) {
+  return `${listing.sats} sats, ${termWords(listing.term)}`;
+}
+function paidWorldReaches(access) {
+  return cleanAccess(access).length ? RECEIPT_ISSUERS.map((i) => i.service) : [];
+}
+function cleanAccess(input, sellers) {
+  const out = [];
+  for (const said2 of Array.isArray(input) ? input : [input]) {
+    const listing = cleanListing(said2);
+    if (!listing || out.includes(listing) || sellers && !sellers.includes(listingSeller(listing))) continue;
+    if (out.length < ACCESS_MOST) out.push(listing);
+  }
+  return out;
+}
+
 // packages/core/src/world.ts
 function audienceOf(w) {
   if (w.audience === "adult") return "adult";
@@ -4318,7 +4521,7 @@ function buildWorldEvent(w) {
   if (w.status) tags.push(["status", w.status]);
   if (w.manifest) tags.push(["manifest", w.manifest]);
   for (const p of w.coCreators ?? []) tags.push(["p", p, "", "co-creator"]);
-  if (w.access) tags.push(["a", w.access, "", "access"]);
+  for (const listing of [w.access ?? []].flat()) tags.push(["a", listing, "", "access"]);
   tags.push(["alt", `Spatial world listing: ${w.title}`]);
   return { kind: WORLD_KIND, created_at: w.createdAt ?? nowSeconds(), tags, content: w.description ?? "" };
 }
@@ -4493,11 +4696,15 @@ function parseWorldEvent(input, opts = {}) {
     if (isHex64(t[1])) coCreators.push(t[1]);
     else c.warn("invalid_pubkey", "tags.p", "Ignoring a p tag that is not a 64-character hex pubkey.");
   }
-  let access;
+  const access = [];
   for (const t of getTags({ tags }, "a")) {
     if (t[3] !== "access") continue;
-    if (t[1] && parseCoordinate(t[1])) access = t[1];
-    else c.warn("invalid_coordinate", "tags.a", "Ignoring an access tag that is not an event coordinate.");
+    const listing = cleanListing(t[1]);
+    if (!listing) c.warn("invalid_coordinate", "tags.a", "Ignoring an access tag that is not a listing's coordinate (30078:<pubkey>:<name>).");
+    else if (pubkey && listingSeller(listing) !== pubkey) c.warn("access_not_own", "tags.a", "Ignoring an access listing that is sold by another key: a world is sold only by the key that announces it.");
+    else if (access.includes(listing)) continue;
+    else if (access.length >= ACCESS_MOST) c.warn("too_many_listings", "tags.a", `Only the first ${ACCESS_MOST} access listings are used.`);
+    else access.push(listing);
   }
   const world = {
     d: d ?? "",
@@ -4527,7 +4734,7 @@ function parseWorldEvent(input, opts = {}) {
   if (category) world.category = category;
   if (items) world.items = items;
   if (manifest) world.manifest = manifest;
-  if (access) world.access = access;
+  if (access.length) world.access = access;
   return c.result(world);
 }
 function checkPreviewBytes(preview, bytes) {
@@ -4597,7 +4804,8 @@ function worldOffers(world) {
       scores && achievements ? "It keeps scores, and marks what you achieve." : scores ? "It keeps scores." : achievements ? "It marks what you achieve." : "It doesn't say it keeps scores or marks what you achieve."
     ],
     // What costs money to go into names what is sold (the `access` tag). Saying it takes payments is not that.
-    paid: line("paid", !!world.access),
+    // Only a listing counts: a list with nothing in it, or nothing in it that is a listing, is a free world.
+    paid: line("paid", cleanAccess(world.access).length > 0),
     tips: line("tips", says("tips")),
     doors: line("doors", says("spatial-portals")),
     looks: line("looks", says("avatars")),
@@ -4698,6 +4906,21 @@ function parseManifest(input, opts = {}) {
         if (isHttpsUrl(raw.airlock)) w.airlock = raw.airlock;
         else c.warn("url_not_https", `${p}.airlock`, "airlock must be an https URL; ignored.");
       }
+      if (raw.access !== void 0) {
+        if (!stringArray(raw.access)) c.warn("invalid_field", `${p}.access`, "access must be an array of listing coordinates; ignored.");
+        else {
+          const access = [];
+          for (const said2 of raw.access) {
+            const listing2 = cleanListing(said2);
+            if (!listing2) c.warn("invalid_listing", `${p}.access`, "Ignoring an access entry that is not a listing's coordinate (30078:<pubkey>:<name>).");
+            else if (!publishers[listingSeller(listing2)]?.worlds.includes(id)) c.warn("access_not_own", `${p}.access`, "Ignoring an access listing sold by a key that isn't a publisher of this world.");
+            else if (access.includes(listing2)) continue;
+            else if (access.length >= ACCESS_MOST) c.warn("too_many_listings", `${p}.access`, `Only the first ${ACCESS_MOST} access listings are used.`);
+            else access.push(listing2);
+          }
+          if (access.length) w.access = access;
+        }
+      }
       worlds[id] = w;
     }
   }
@@ -4760,6 +4983,13 @@ function doorFor(manifest, url) {
   const publishers = d === void 0 ? [] : Object.keys(manifest.publishers).filter((key) => manifest.publishers[key].worlds.includes(d));
   if (d === void 0 || publishers.length !== 1) return { url };
   return { naddr: encodeNaddr({ kind: WORLD_KIND, pubkey: publishers[0], identifier: d, relays: manifest.relays.slice(0, 2) }), url };
+}
+function accessFor(manifest, url) {
+  const here = normalizeUrl(url);
+  const d = Object.keys(manifest.worlds).find((id) => normalizeUrl(manifest.worlds[id].entry.url) === here);
+  if (d === void 0) return null;
+  const sellers = Object.keys(manifest.publishers).filter((key) => manifest.publishers[key].worlds.includes(d));
+  return { d, listings: [...manifest.worlds[d].access ?? []], sellers };
 }
 async function fetchManifest(urlOrOrigin, fetchImpl = fetch, timeoutMs = 8e3) {
   const url = wellKnownUrl(urlOrOrigin);
@@ -7085,71 +7315,6 @@ function fileUrlNames(url, bytes) {
   return !!named && named === bytesToHex(sha256(bytes));
 }
 
-// packages/core/src/receipt.ts
-var RECEIPT_KIND = 30078;
-var RECEIPT_NAME = "bitunlock:entitlement:v1";
-var RECEIPT_FORM = { schemaVersion: 1, protocolVersion: "seller-unlock-service-v1" };
-var RECEIPT_ISSUERS = Object.freeze([
-  Object.freeze({ name: "BitUnlock", service: "https://api.bitunlock.network", pubkey: "66be61cf5b8d286391f7b1a72ffa7c799ec2dc49eff0830c40df1cc964e6787d" })
-]);
-function cleanListing(input) {
-  if (typeof input !== "string" || input.length > 400) return "";
-  return /^30078:[0-9a-f]{64}:[^:\n][^\n]{0,255}$/.test(input) ? input : "";
-}
-function listingSeller(listing) {
-  return cleanListing(listing).slice(6, 70);
-}
-var no = (why) => ({ ok: false, why });
-var text = (v, most = 300) => typeof v === "string" && v.length > 0 && v.length <= most;
-function readReceipt(event, expect = {}) {
-  const e = event;
-  if (!e || typeof e !== "object" || e.kind !== RECEIPT_KIND || typeof e.content !== "string" || e.content.length > 8e3 || !Array.isArray(e.tags) || !isHex64(e.pubkey)) return no("not-a-receipt");
-  const issuer = (expect.issuers ?? RECEIPT_ISSUERS).find((i) => i.pubkey === e.pubkey);
-  if (!issuer) return no("unknown-issuer");
-  let signed = false;
-  try {
-    signed = verifyEvent({ ...e, tags: e.tags.map((t) => [...t]) });
-  } catch {
-    signed = false;
-  }
-  if (!signed) return no("not-signed");
-  let d;
-  try {
-    const parsed = JSON.parse(e.content);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return no("not-a-receipt");
-    d = parsed;
-  } catch {
-    return no("not-a-receipt");
-  }
-  if (d.schemaVersion !== RECEIPT_FORM.schemaVersion || d.protocolVersion !== RECEIPT_FORM.protocolVersion || d.status !== "active") return no("not-a-receipt");
-  const listing = cleanListing(d.productCoordinate);
-  const issuedAt = d.issuedAt;
-  if (!listing || !isHex64(d.buyerPubkey) || !isHex64(d.sellerPubkey) || !text(d.fulfillmentId) || typeof issuedAt !== "number" || !Number.isSafeInteger(issuedAt) || issuedAt < 1) return no("not-a-receipt");
-  if (d.sellerPubkey !== listingSeller(listing)) return no("not-a-receipt");
-  const names = e.tags.filter((t) => t[0] === "d");
-  if (names.length !== 1 || names[0][1] !== `${RECEIPT_NAME}:${d.fulfillmentId}`) return no("not-a-receipt");
-  let expiresAt = null;
-  const policy = d.accessPolicy;
-  if (policy !== void 0 && policy !== "perpetual-v1") {
-    const term = policy;
-    if (!term || typeof term !== "object" || term.kind !== "term-v1" || typeof term.expiresAt !== "number" || !Number.isSafeInteger(term.expiresAt) || term.expiresAt <= issuedAt) return no("not-a-receipt");
-    expiresAt = term.expiresAt;
-  }
-  if (expect.listing !== void 0 && listing !== expect.listing) return no("other-listing");
-  if (expect.buyer !== void 0 && d.buyerPubkey !== expect.buyer) return no("other-buyer");
-  if (expiresAt !== null && (expect.now ?? Math.floor(Date.now() / 1e3)) >= expiresAt) return no("run-out");
-  return { ok: true, receipt: { issuer, listing, buyer: d.buyerPubkey, seller: d.sellerPubkey, issuedAt, expiresAt, fulfillment: d.fulfillmentId } };
-}
-function cleanLightningAddress(input) {
-  if (typeof input !== "string" || input.length > 200) return "";
-  const address = input.trim().toLowerCase();
-  return /^[a-z0-9._+-]{1,64}@[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/.test(address) ? address : "";
-}
-var TIP_LIMITS = { least: 1, most: 1e6 };
-function cleanTip(input) {
-  return typeof input === "number" && Number.isSafeInteger(input) && input >= TIP_LIMITS.least && input <= TIP_LIMITS.most ? input : null;
-}
-
 // packages/core/src/signing.ts
 var SIGNER_PROTOCOL = "nswp-signer";
 var SIGNER_VERSION = 1;
@@ -7353,65 +7518,6 @@ function readHandoffMessage(data) {
   }
   if (d.t === "done" && typeof d.ok === "boolean") return { t: "done", nonce: d.nonce, ok: d.ok };
   return null;
-}
-
-// packages/core/src/shares.ts
-var SHARE_TAG = "nswp:share";
-var SHARE_CLIENT = "client";
-var SHARE_LIMITS = { most: 4, whole: 1e4, least: 10, label: 32 };
-function cleanShareLabel(input) {
-  if (typeof input !== "string") return "";
-  const text2 = input.trim();
-  if (!text2 || text2.length > SHARE_LIMITS.label || /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/.test(text2)) return "";
-  return text2;
-}
-function readShares(tags, seller) {
-  const no2 = (why) => ({ ok: false, why });
-  if (!Array.isArray(tags)) return no2("not-a-share");
-  const mine = tags.filter((t) => Array.isArray(t) && t[0] === SHARE_TAG);
-  if (mine.length === 0) return { ok: true, shares: [] };
-  if (!isHex64(seller)) return no2("no-seller");
-  if (mine.length > SHARE_LIMITS.most) return no2("too-many");
-  const shares = [];
-  for (const t of mine) {
-    const [, to, parts, label] = t;
-    if (t.length < 3 || t.length > 4) return no2("not-a-share");
-    if (to !== SHARE_CLIENT && !isHex64(to)) return no2("not-a-share");
-    if (typeof parts !== "string" || !/^[1-9][0-9]{0,4}$/.test(parts) || Number(parts) > SHARE_LIMITS.whole) return no2("not-a-share");
-    const word = label === void 0 ? to === SHARE_CLIENT ? "client" : to === seller ? "seller" : "share" : cleanShareLabel(label);
-    if (!word) return no2("not-a-share");
-    if (shares.some((s) => s.to === to)) return no2("twice");
-    shares.push({ to, parts: Number(parts), label: word });
-  }
-  if (!shares.some((s) => s.to === seller)) return no2("no-seller");
-  if (shares.reduce((sum, s) => sum + s.parts, 0) !== SHARE_LIMITS.whole) return no2("not-whole");
-  return { ok: true, shares };
-}
-function splitPrice(price, shares, seller, o = {}) {
-  const no2 = (why) => ({ ok: false, why });
-  const charge = o.charge ?? 0;
-  if (typeof price !== "number" || !Number.isSafeInteger(price) || price < 1 || !Number.isSafeInteger(price * SHARE_LIMITS.whole)) return no2("not-a-price");
-  if (!Number.isSafeInteger(charge) || charge < 0) return no2("not-a-price");
-  if (!isHex64(seller)) return no2("no-seller");
-  if (shares.length > 0 && !shares.some((s) => s.to === seller)) return no2("no-seller");
-  const client = isHex64(o.client) && o.client !== seller ? o.client : null;
-  const others = /* @__PURE__ */ new Map();
-  for (const s of shares) {
-    if (s.to === seller) continue;
-    const to = s.to === SHARE_CLIENT ? client : s.to;
-    if (!to) continue;
-    const sats = Math.floor(price * s.parts / SHARE_LIMITS.whole);
-    const had = others.get(to);
-    others.set(to, had ? { sats: had.sats + sats, label: had.label } : { sats, label: s.label });
-  }
-  const given = [...others.values()].reduce((sum, p) => sum + p.sats, 0);
-  const left = price - given - charge;
-  const label = shares.find((s) => s.to === seller)?.label ?? "seller";
-  const parts = [...others].map(([to, p]) => ({ to, sats: p.sats, label: p.label, seller: false }));
-  parts.sort((a, b) => a.sats - b.sats || (a.to < b.to ? -1 : 1));
-  parts.push({ to: seller, sats: left, label, seller: true });
-  if (parts.some((p) => p.sats < SHARE_LIMITS.least)) return no2("too-small");
-  return { ok: true, parts };
 }
 
 // packages/core/src/item.ts
@@ -8617,6 +8723,7 @@ var FRESH_HEADER = "no-cache";
 // packages/core/src/index.ts
 var VERSION = "0.1.0";
 export {
+  ACCESS_MOST,
   ACHIEVEMENT_KIND,
   ACHIEVEMENT_LIMITS,
   AUDIENCES,
@@ -8667,7 +8774,9 @@ export {
   KIT_VERSION,
   LAYOUT_ACCESS,
   LAYOUT_LIMITS,
+  LEAST_PRICE_SATS,
   LIMITS,
+  LISTING_KIND,
   LIST_LIMITS,
   LOCAL_MAP_LIMIT,
   LOCAL_MAP_PATH,
@@ -8734,6 +8843,7 @@ export {
   WORLD_KIND,
   WORLD_TAG,
   WRAP_KIND,
+  accessFor,
   achievementForWorld,
   achievementsIn,
   applyChoices,
@@ -8780,6 +8890,7 @@ export {
   checkPreviewBytes,
   claimsKey,
   cleanAbout,
+  cleanAccess,
   cleanAchievementId,
   cleanAsk,
   cleanBoard,
@@ -8794,6 +8905,7 @@ export {
   cleanLightningAddress,
   cleanLine,
   cleanListing,
+  cleanListingName,
   cleanLocalMap,
   cleanMessage,
   cleanMore,
@@ -8895,6 +9007,7 @@ export {
   openWrap,
   packBrought,
   packPose,
+  paidWorldReaches,
   parseAchievement,
   parseAirlockFragment,
   parseAvatarEvent,
@@ -8921,6 +9034,7 @@ export {
   portalTarget,
   prepareForWorld,
   previewOnWorldOrigin,
+  priceWords,
   provesPayment,
   publishEvent,
   queryRelays,
@@ -8929,6 +9043,7 @@ export {
   readBrought,
   readGlb,
   readHandoffMessage,
+  readListing,
   readMessage,
   readMessageRelays,
   readReceipt,
@@ -8964,6 +9079,7 @@ export {
   tallyMark,
   tallyRatings,
   tallyWords,
+  termWords,
   tintBag,
   tintSlot,
   toHex,
