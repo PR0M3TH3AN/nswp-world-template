@@ -81,7 +81,8 @@ for (const key of wanted.keys()) {
     ...(world.items ? { items: world.items } : {}),
     modes: world.modes,
     capabilities: world.capabilities,
-    ...(world.access ? { access: true } : {}),
+    // The listings it is entered by, where it names any: "paid to enter" is lit only for a real one, and the kit decides which are.
+    ...(world.access?.length ? { access: world.access } : {}),
   };
   const noted = Object.keys(said).length > 0;
   const preview = world.previews.find((p) => p.type === "pano");

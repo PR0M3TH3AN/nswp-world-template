@@ -99,7 +99,7 @@ export function readDoors() {
   const carried = {};
   /**
    * What each place offers, as its announcement said when `npm run doors` last asked: the modes and capabilities it
-   * names, word for word, and whether it names something sold to go in. A door noted before this was kept has none,
+   * names, word for word, and the listings it says it is entered by. A door noted before this was kept has none,
    * and shows no tiles until it is asked about again: nothing is known, which is not the same as nothing offered.
    */
   const offered = {};
@@ -117,8 +117,8 @@ export function readDoors() {
     // Whatever the place said, turned off included: a door says "No items here" too.
     if (entry?.items === "none" || entry?.items === "allowed" || entry?.items === "play") carried[coordinate] = entry.items;
     if (typeof entry?.url === "string" && /^https:\/\/[^\s]{1,300}$/.test(entry.url)) places[coordinate] = entry.url;
-    const words = (list) => (Array.isArray(list) ? list.filter((w) => typeof w === "string" && /^[a-z0-9-]{1,40}$/.test(w)).slice(0, 40) : null);
-    if (words(entry?.modes) && words(entry?.capabilities)) offered[coordinate] = { modes: words(entry.modes), capabilities: words(entry.capabilities), ...(entry.access === true ? { access: true } : {}) };
+    const words = (list, shape = /^[a-z0-9-]{1,40}$/) => (Array.isArray(list) ? list.filter((w) => typeof w === "string" && shape.test(w)).slice(0, 40) : null);
+    if (words(entry?.modes) && words(entry?.capabilities)) offered[coordinate] = { modes: words(entry.modes), capabilities: words(entry.capabilities), ...(words(entry.access, /^30078:[0-9a-f]{64}:[^\s]{1,200}$/)?.length ? { access: words(entry.access, /^30078:[0-9a-f]{64}:[^\s]{1,200}$/) } : {}) };
     // A door with no picture is listed only for what kind of place it leads to.
     if (entry?.sha256 === undefined) continue;
     const hash = String(entry.sha256 ?? "");

@@ -225,7 +225,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
         const said = site.offered?.[coordinate];
         const rule = site.carried?.[coordinate];
         const items = (ITEM_RULES as readonly string[]).includes(rule ?? "") ? (rule as ItemsRule) : undefined;
-        if (said) gate.setOffers(worldOffers({ modes: said.modes, capabilities: said.capabilities, ...(items ? { items } : {}), ...(said.access ? { access: "said" as never } : {}) }));
+        if (said) gate.setOffers(worldOffers({ modes: said.modes, capabilities: said.capabilities, ...(items ? { items } : {}), ...(said.access ? { access: said.access } : {}) }));
       } catch {
         /* not an address this page can read */
       }

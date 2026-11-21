@@ -13,8 +13,8 @@ declare module "virtual:site" {
     places: Record<string, string>;
     /** What each door's place does with the things visitors carry, by the door's coordinate: "allowed" or "play", as its own announcement said. */
     carried: Record<string, string>;
-    /** What each door's place offers, by the door's coordinate: the modes and capabilities its own announcement named, and whether it names something sold to go in. Absent for a door not asked about since this was kept. */
-    offered: Record<string, { modes: string[]; capabilities: string[]; access?: true }>;
+    /** What each door's place offers, by the door's coordinate: the modes and capabilities its own announcement named, and the listings it says it is entered by, where it names any. Absent for a door not asked about since this was kept. */
+    offered: Record<string, { modes: string[]; capabilities: string[]; access?: string[] }>;
   };
   export default site;
 }
