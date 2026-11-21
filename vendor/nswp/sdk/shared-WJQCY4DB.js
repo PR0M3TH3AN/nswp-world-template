@@ -3302,15 +3302,15 @@ var portal = {
       if (!chk.ok) throw new Error(`nswp-sdk: refusing portal destination (${chk.error.code})`);
     }
     const immersive = opts.immersive ?? !!opts.xrSession;
+    if (typeof window.nswp?.navigate === "function") {
+      window.nswp.navigate(dest);
+      return;
+    }
     if (opts.xrSession) {
       try {
         await opts.xrSession.end();
       } catch {
       }
-    }
-    if (typeof window.nswp?.navigate === "function") {
-      window.nswp.navigate(dest);
-      return;
     }
     const airlock = portal.airlockFor(opts);
     if (airlock) {

@@ -8,7 +8,7 @@ import {
   room,
   sha256,
   startingForm
-} from "./shared-7ILODBRA.js";
+} from "./shared-WJQCY4DB.js";
 import {
   FEED_LIMITS,
   ICONS,

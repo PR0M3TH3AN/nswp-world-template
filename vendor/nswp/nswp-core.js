@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.60.0";
+var KIT_VERSION = "0.61.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -7529,6 +7529,16 @@ function cleanAsk(name, args) {
 
 // packages/core/src/item-box.ts
 var ITEM_BOX_CSP = "default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; frame-ancestors 'self'";
+function itemBoxCsp(client) {
+  if (typeof client !== "string") return ITEM_BOX_CSP;
+  let origin = "";
+  try {
+    const at = new URL(client);
+    if (at.protocol === "https:" && at.origin === client && /^https:\/\/[a-z0-9.-]+(:\d+)?$/.test(client)) origin = at.origin;
+  } catch {
+  }
+  return origin ? `${ITEM_BOX_CSP} ${origin}` : ITEM_BOX_CSP;
+}
 var WORKER_HEAD = `"use strict";
 const __on = Object.create(null);
 let __timers = [];
@@ -8536,6 +8546,7 @@ export {
   isSealAsked,
   isWhatWasAsked,
   isWssUrl,
+  itemBoxCsp,
   itemCoordinate,
   itemsWords,
   kitAge,
