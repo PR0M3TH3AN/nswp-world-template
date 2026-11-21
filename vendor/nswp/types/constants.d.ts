@@ -19,7 +19,7 @@ export declare const WELL_KNOWN_PATH = "/.well-known/nswp.json";
  * client can tell how old a world's controls are without loading the world
  * (protocol/01-worlds.md, "Which kit a world was built with").
  */
-export declare const KIT_VERSION = "0.71.0";
+export declare const KIT_VERSION = "0.72.0";
 /** A version as three numbers, or null for anything that isn't one. */
 export declare function parseKitVersion(v: unknown): [number, number, number] | null;
 /**
@@ -31,7 +31,7 @@ export declare function parseKitVersion(v: unknown): [number, number, number] | 
  */
 export declare function kitAge(theirs: unknown, mine?: string): "same" | "older" | "newer" | "unknown";
 export declare const MODES: readonly ["2d", "inline-3d", "immersive-vr", "immersive-ar"];
-export declare const CAPABILITIES: readonly ["webxr", "rooms", "multiplayer", "voice", "spatial-portals", "avatars", "entry-assertion", "payments", "home"];
+export declare const CAPABILITIES: readonly ["webxr", "rooms", "multiplayer", "voice", "spatial-portals", "avatars", "entry-assertion", "payments", "home", "saves", "scores", "achievements", "tips"];
 /**
  * Who a world is for, as its maker says. `kids`: made for children. `general`:
  * not made for children, and nothing an adult would need warning about.

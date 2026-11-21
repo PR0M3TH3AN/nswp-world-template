@@ -8,15 +8,17 @@ import {
   createAlloy,
   createPortalWindow,
   textSprite
-} from "./shared-7XG32XOO.js";
+} from "./shared-E3VI5XNR.js";
 import "./shared-GX7O2PJA.js";
-import "./shared-5VG5FJL2.js";
+import {
+  ICONS
+} from "./shared-EHWKQMP4.js";
 import "./shared-UMAJ2QEI.js";
 import "./shared-UBZ34GUM.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/home.ts
-import * as THREE3 from "three";
+import * as THREE4 from "three";
 import { categoryWords, itemsWords, checkDestination, checkPictureBytes, encodeNaddr, LAYOUT_LIMITS, portalTarget, WORLD_KIND } from "@nswp/core";
 
 // packages/sdk/src/environment.ts
@@ -808,6 +810,140 @@ function createEnvironment(accent, opts = {}) {
   };
 }
 
+// packages/sdk/src/door-offers.ts
+import * as THREE3 from "three";
+import { DOOR_OFFERS } from "@nswp/core";
+
+// packages/sdk/src/offer-icons.ts
+var OFFER_ICONS = {
+  headset: "vr",
+  people: "people",
+  voice: "mic",
+  items: "bag",
+  saves: "save",
+  records: "trophy",
+  paid: "coin"
+};
+
+// packages/sdk/src/door-offers.ts
+var OFFER_TILE = 0.24;
+var GAP = 0.03;
+var OFFER_COLUMN_X = -(PORTAL_WIDTH / 2 + 0.34);
+var FOOT = 0.32;
+function doorOfferPlaces(count) {
+  const n = Math.max(0, Math.floor(count));
+  return Array.from({ length: n }, (_, i) => [OFFER_COLUMN_X, FOOT + (n - 1 - i) * (OFFER_TILE + GAP), 0.05]);
+}
+var tileGeo = new THREE3.PlaneGeometry(OFFER_TILE, OFFER_TILE);
+function tileTexture(icon, on, color, pointed) {
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const pen = canvas.getContext("2d");
+  const css = `#${color.getHexString()}`;
+  pen.fillStyle = on ? "rgba(6, 12, 14, 0.86)" : "rgba(6, 10, 12, 0.6)";
+  pen.fillRect(0, 0, size, size);
+  if (on) {
+    pen.globalAlpha = pointed ? 0.34 : 0.2;
+    pen.fillStyle = css;
+    pen.fillRect(0, 0, size, size);
+    pen.globalAlpha = 1;
+  }
+  pen.lineWidth = on || pointed ? 6 : 3;
+  pen.strokeStyle = on ? css : pointed ? "rgba(214, 226, 236, 0.75)" : "rgba(160, 174, 186, 0.34)";
+  pen.strokeRect(3, 3, size - 6, size - 6);
+  const scale = size * 0.66 / 24;
+  pen.translate(size * 0.17, size * 0.17);
+  pen.scale(scale, scale);
+  pen.lineWidth = on ? 2 : 1.6;
+  pen.lineCap = "round";
+  pen.lineJoin = "round";
+  pen.strokeStyle = on ? pointed ? "#ffffff" : css : pointed ? "rgba(214, 226, 236, 0.8)" : "rgba(160, 174, 186, 0.42)";
+  pen.stroke(new Path2D(ICONS[icon]));
+  const texture = new THREE3.CanvasTexture(canvas);
+  texture.colorSpace = THREE3.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+function createDoorOffers(offers = [], opts = {}) {
+  const color = new THREE3.Color(opts.color ?? 5032432);
+  const textColor = opts.textColor ?? "#f2f3f6";
+  const group = new THREE3.Group();
+  group.name = "door-offers";
+  const targets = [];
+  let shown = [];
+  let pointed = null;
+  let label = null;
+  let labelled = "";
+  const material = (mesh) => mesh.material;
+  const paint = (mesh, offer) => {
+    material(mesh).map?.dispose();
+    material(mesh).map = tileTexture(OFFER_ICONS[offer.id], offer.on, color, offer.id === pointed);
+    material(mesh).needsUpdate = true;
+  };
+  const dropLabel = () => {
+    if (!label) return;
+    group.remove(label);
+    label.material.map?.dispose();
+    label.material.dispose();
+    label = null;
+    labelled = "";
+  };
+  const api = {
+    group,
+    targets,
+    offerOf(object) {
+      const i = object ? targets.indexOf(object) : -1;
+      return i >= 0 ? shown[i] ?? null : null;
+    },
+    point(offer, words = false) {
+      const next = offer && shown.some((o) => o.id === offer.id) ? offer.id : null;
+      if (next !== pointed) {
+        const before = pointed;
+        pointed = next;
+        shown.forEach((o, i) => {
+          if (o.id === before || o.id === next) paint(targets[i], o);
+        });
+      }
+      const say = words && next ? `${shown.find((o) => o.id === next).name}
+${shown.find((o) => o.id === next).words}` : "";
+      if (say === labelled) return;
+      dropLabel();
+      if (!say) return;
+      label = textSprite(say, textColor, 1.5);
+      label.position.set(0, 1.55, 0.4);
+      label.renderOrder = 5;
+      label.material.depthTest = false;
+      group.add(label);
+      labelled = say;
+    },
+    set(next) {
+      const door = new Set(DOOR_OFFERS);
+      shown = next.filter((o) => door.has(o.id));
+      for (const mesh of targets.splice(0)) {
+        group.remove(mesh);
+        material(mesh).map?.dispose();
+        material(mesh).dispose();
+      }
+      pointed = null;
+      dropLabel();
+      doorOfferPlaces(shown.length).forEach((at, i) => {
+        const mesh = new THREE3.Mesh(tileGeo, new THREE3.MeshBasicMaterial({ transparent: true, toneMapped: false }));
+        mesh.name = `offer:${shown[i].id}`;
+        mesh.position.set(...at);
+        paint(mesh, shown[i]);
+        targets.push(mesh);
+        group.add(mesh);
+      });
+    },
+    dispose() {
+      api.set([]);
+    }
+  };
+  api.set(offers);
+  return api;
+}
+
 // packages/sdk/src/home.ts
 function addressLine(dest, category) {
   const kind = categoryWords(category);
@@ -833,7 +969,7 @@ function archMaskTexture() {
   g.closePath();
   g.fillStyle = "#ffffff";
   g.fill();
-  archMask = new THREE3.CanvasTexture(canvas);
+  archMask = new THREE4.CanvasTexture(canvas);
   return archMask;
 }
 var frameGeometry = null;
@@ -846,9 +982,9 @@ function archFrameGeometry() {
   return frameGeometry;
 }
 function veilMaterial(color) {
-  return new THREE3.ShaderMaterial({
-    side: THREE3.DoubleSide,
-    uniforms: { uTime: { value: 0 }, uColor: { value: color }, uAim: { value: 0 }, uSize: { value: new THREE3.Vector2(PORTAL_WIDTH, PORTAL_HEIGHT) }, uSpring: { value: PORTAL_SPRING } },
+  return new THREE4.ShaderMaterial({
+    side: THREE4.DoubleSide,
+    uniforms: { uTime: { value: 0 }, uColor: { value: color }, uAim: { value: 0 }, uSize: { value: new THREE4.Vector2(PORTAL_WIDTH, PORTAL_HEIGHT) }, uSpring: { value: PORTAL_SPRING } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
     fragmentShader: `uniform float uTime; uniform vec3 uColor; uniform float uAim; uniform vec2 uSize; uniform float uSpring; varying vec2 vUv;
       float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -887,11 +1023,11 @@ function veilMaterial(color) {
   });
 }
 function gateGlow(color) {
-  const material = new THREE3.ShaderMaterial({
+  const material = new THREE4.ShaderMaterial({
     transparent: true,
     depthWrite: false,
-    blending: THREE3.AdditiveBlending,
-    side: THREE3.DoubleSide,
+    blending: THREE4.AdditiveBlending,
+    side: THREE4.DoubleSide,
     uniforms: { uColor: { value: color }, uAim: { value: 0 }, uSpring: { value: PORTAL_SPRING }, uRadius: { value: PORTAL_WIDTH / 2 + 0.09 } },
     vertexShader: "attribute float floor; varying vec2 vAt; varying float vFloor; void main(){ vAt = position.xy; vFloor = floor; vec3 p = floor > 0.5 ? vec3(position.x, 0.014, position.y) : position; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }",
     fragmentShader: `uniform vec3 uColor; uniform float uAim; uniform float uSpring; uniform float uRadius; varying vec2 vAt; varying float vFloor;
@@ -909,34 +1045,35 @@ function gateGlow(color) {
         #include <colorspace_fragment>
       }`
   });
-  const group = new THREE3.Group();
+  const group = new THREE4.Group();
   const [w, h] = [PORTAL_WIDTH + 2.6, PORTAL_HEIGHT + 1.7];
   for (const z of [0.125, -0.125]) {
-    const sheet = new THREE3.PlaneGeometry(w, h);
+    const sheet = new THREE4.PlaneGeometry(w, h);
     sheet.translate(0, h / 2 - 0.2, z);
-    sheet.setAttribute("floor", new THREE3.Float32BufferAttribute([0, 0, 0, 0], 1));
-    group.add(new THREE3.Mesh(sheet, material));
+    sheet.setAttribute("floor", new THREE4.Float32BufferAttribute([0, 0, 0, 0], 1));
+    group.add(new THREE4.Mesh(sheet, material));
   }
-  const pool = new THREE3.PlaneGeometry(3.4, 4.8);
-  pool.setAttribute("floor", new THREE3.Float32BufferAttribute([1, 1, 1, 1], 1));
-  const onFloor = new THREE3.Mesh(pool, material);
+  const pool = new THREE4.PlaneGeometry(3.4, 4.8);
+  pool.setAttribute("floor", new THREE4.Float32BufferAttribute([1, 1, 1, 1], 1));
+  const onFloor = new THREE4.Mesh(pool, material);
   onFloor.frustumCulled = false;
   group.add(onFloor);
   return { group, material };
 }
 function createPortalGate(destination, opts = {}) {
-  const color = new THREE3.Color(opts.color ?? 5032432);
+  const color = new THREE4.Color(opts.color ?? 5032432);
   const textColor = opts.textColor ?? "#f2f3f6";
-  const group = new THREE3.Group();
+  const group = new THREE4.Group();
   const alloy = createAlloy(color, { gloss: 0.75 });
-  const frame = new THREE3.Mesh(archFrameGeometry(), alloy);
+  const frame = new THREE4.Mesh(archFrameGeometry(), alloy);
   const veil = veilMaterial(color);
-  const plane = new THREE3.PlaneGeometry(PORTAL_WIDTH, PORTAL_HEIGHT);
-  const target = new THREE3.Mesh(plane, veil);
+  const plane = new THREE4.PlaneGeometry(PORTAL_WIDTH, PORTAL_HEIGHT);
+  const target = new THREE4.Mesh(plane, veil);
   target.name = "portal";
   target.position.y = PORTAL_HEIGHT / 2;
   const glow = gateGlow(color);
-  group.add(frame, target, glow.group);
+  const offers = createDoorOffers(opts.offers ?? [], { color, textColor });
+  group.add(frame, target, glow.group, offers.group);
   let sign = null;
   let said = opts.label ?? "Portal";
   let category = opts.category ?? null;
@@ -964,6 +1101,10 @@ ${itemsWords(items)}` : ""}`, textColor, 2.2);
     destination,
     aimed: 0,
     setLabel,
+    offers,
+    setOffers(next) {
+      offers.set(next);
+    },
     setCategory(next) {
       if ((next ?? null) === category) return;
       category = next ?? null;
@@ -1018,12 +1159,12 @@ async function hangPicture(url, sha256, picture, maxW, maxH) {
     const image = new Image();
     image.src = URL.createObjectURL(new Blob([bytes]));
     await image.decode();
-    const texture = new THREE3.Texture(image);
-    texture.colorSpace = THREE3.SRGBColorSpace;
+    const texture = new THREE4.Texture(image);
+    texture.colorSpace = THREE4.SRGBColorSpace;
     texture.needsUpdate = true;
     const fit = Math.min(maxW / image.naturalWidth, maxH / image.naturalHeight);
     picture.scale.set(image.naturalWidth * fit / maxW, image.naturalHeight * fit / maxH, 1);
-    picture.material = new THREE3.MeshBasicMaterial({ map: texture });
+    picture.material = new THREE4.MeshBasicMaterial({ map: texture });
   } catch {
   }
 }
@@ -1040,9 +1181,9 @@ function createHalo(color, size) {
     fade.addColorStop(1, "rgba(255,255,255,0)");
     g.fillStyle = fade;
     g.fillRect(0, 0, 128, 128);
-    haloTexture = new THREE3.CanvasTexture(canvas);
+    haloTexture = new THREE4.CanvasTexture(canvas);
   }
-  const halo = new THREE3.Sprite(new THREE3.SpriteMaterial({ map: haloTexture, color, transparent: true, depthWrite: false, blending: THREE3.AdditiveBlending }));
+  const halo = new THREE4.Sprite(new THREE4.SpriteMaterial({ map: haloTexture, color, transparent: true, depthWrite: false, blending: THREE4.AdditiveBlending }));
   halo.scale.setScalar(size);
   return halo;
 }
@@ -1057,12 +1198,12 @@ function buildRoom(layout, b) {
   addWall(b.at([W / 2 + 0.1, 0, mid], -90), D, H);
 }
 function buildItem(p, layout, b, soft, opts, portals, index) {
-  const accent = new THREE3.Color(layout.room.accent);
+  const accent = new THREE4.Color(layout.room.accent);
   const textColor = opts.textColor ?? "#f2f3f6";
-  const g = new THREE3.Group();
+  const g = new THREE4.Group();
   b.at(p.position, p.rotation);
   if (p.source === "published") {
-    const box = new THREE3.LineSegments(new THREE3.EdgesGeometry(new THREE3.BoxGeometry(0.5, 0.5, 0.5)), new THREE3.LineBasicMaterial({ color: accent }));
+    const box = new THREE4.LineSegments(new THREE4.EdgesGeometry(new THREE4.BoxGeometry(0.5, 0.5, 0.5)), new THREE4.LineBasicMaterial({ color: accent }));
     box.position.y = 0.25;
     g.add(box);
     return g;
@@ -1072,7 +1213,7 @@ function buildItem(p, layout, b, soft, opts, portals, index) {
       const W = 1.2;
       const H = 0.9;
       addPictureFrame(b, W, H);
-      const picture = new THREE3.Mesh(new THREE3.PlaneGeometry(W, H), new THREE3.MeshBasicMaterial({ color: 857632 }));
+      const picture = new THREE4.Mesh(new THREE4.PlaneGeometry(W, H), new THREE4.MeshBasicMaterial({ color: 857632 }));
       picture.position.z = 0.012;
       g.add(picture);
       void hangPicture(p.args[0], p.args[1], picture, W, H);
@@ -1099,7 +1240,7 @@ function buildItem(p, layout, b, soft, opts, portals, index) {
       const halo = createHalo(accent, 1.5);
       halo.position.y = 1.64;
       const pool = createHalo(accent, 1);
-      const disc = new THREE3.Mesh(new THREE3.CircleGeometry(2.6, 40), new THREE3.MeshBasicMaterial({ map: pool.material.map, color: accent, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE3.AdditiveBlending }));
+      const disc = new THREE4.Mesh(new THREE4.CircleGeometry(2.6, 40), new THREE4.MeshBasicMaterial({ map: pool.material.map, color: accent, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE4.AdditiveBlending }));
       disc.rotation.x = -Math.PI / 2;
       disc.position.y = 0.012;
       g.add(halo, disc);
@@ -1119,13 +1260,13 @@ function buildItem(p, layout, b, soft, opts, portals, index) {
   }
 }
 function createHome(layout, opts = {}) {
-  const group = new THREE3.Group();
+  const group = new THREE4.Group();
   group.name = `home:${layout.d}`;
-  const accent = new THREE3.Color(layout.room.accent);
-  const ground = new THREE3.Color(layout.room.color);
+  const accent = new THREE4.Color(layout.room.accent);
+  const ground = new THREE4.Color(layout.room.color);
   if (opts.lights !== false) {
-    group.add(new THREE3.HemisphereLight(16777215, ground, 0.9));
-    const key = new THREE3.DirectionalLight(16777215, 0.8);
+    group.add(new THREE4.HemisphereLight(16777215, ground, 0.9));
+    const key = new THREE4.DirectionalLight(16777215, 0.8);
     key.position.set(3, 9, 5);
     group.add(key);
   }
@@ -1136,7 +1277,7 @@ function createHome(layout, opts = {}) {
   const soft = b.tone.clone().lerp(accent, 0.03);
   buildRoom(layout, b);
   if (layout.room.template === "open") {
-    const edge = new THREE3.Mesh(new THREE3.RingGeometry(11.94, 12, 96), new THREE3.MeshBasicMaterial({ color: accent }));
+    const edge = new THREE4.Mesh(new THREE4.RingGeometry(11.94, 12, 96), new THREE4.MeshBasicMaterial({ color: accent }));
     edge.rotation.x = -Math.PI / 2;
     edge.position.y = 0.012;
     group.add(edge);
@@ -1148,7 +1289,7 @@ function createHome(layout, opts = {}) {
     if (p.source === "published") markers++;
     if (!object) return;
     object.position.set(...p.position);
-    object.rotation.y = THREE3.MathUtils.degToRad(p.rotation);
+    object.rotation.y = THREE4.MathUtils.degToRad(p.rotation);
     group.add(object);
   });
   let alloy = null;
@@ -1170,6 +1311,9 @@ function createHome(layout, opts = {}) {
 export {
   GROUND,
   MeshBuilder,
+  OFFER_COLUMN_X,
+  OFFER_ICONS,
+  OFFER_TILE,
   PORTAL_HEIGHT,
   PORTAL_WIDTH,
   addArchFrame,
@@ -1189,10 +1333,12 @@ export {
   archFrameGeometry,
   bandProfile,
   createAlloy,
+  createDoorOffers,
   createEnvironment,
   createHalo,
   createHome,
   createPortalGate,
+  doorOfferPlaces,
   loopFrames,
   metalTone,
   mouldingPaint,

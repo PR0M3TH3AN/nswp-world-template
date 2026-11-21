@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.71.0";
+var KIT_VERSION = "0.72.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -2997,7 +2997,12 @@ var CAPABILITIES = [
   "avatars",
   "entry-assertion",
   "payments",
-  "home"
+  "home",
+  // What a door can say a world offers (offers.ts): each a claim, like the rest, and said only by a world that does it.
+  "saves",
+  "scores",
+  "achievements",
+  "tips"
 ];
 var AUDIENCES = ["kids", "general", "adult"];
 var ITEM_RULES = ["none", "allowed", "play"];
@@ -3927,6 +3932,11 @@ function doorPictureOwed(world) {
     return has2("flat") ? null : "flat";
   return "pano";
 }
+
+// packages/core/dist/offers.js
+var DOOR_OFFERS = ["headset", "people", "voice", "items", "saves", "records", "paid"];
+var MORE_OFFERS = ["tips", "doors", "looks", "by-name", "home"];
+var OFFERS = [...DOOR_OFFERS, ...MORE_OFFERS];
 
 // packages/core/dist/manifest.js
 var stringArray = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");

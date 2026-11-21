@@ -4,6 +4,7 @@ export * from "./event.js";
 export * from "./nip19.js";
 export * from "./destination.js";
 export * from "./world.js";
+export * from "./offers.js";
 export * from "./manifest.js";
 export * from "./arrival.js";
 export * from "./portal.js";
