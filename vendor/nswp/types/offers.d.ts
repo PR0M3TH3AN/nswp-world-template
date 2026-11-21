@@ -1,17 +1,3 @@
-/**
- * What a world offers, as its own announcement says it: the list a door
- * shows, and a door's details (NSWP-01, "What a world offers").
- *
- * One rule for every line: it is `on` only for what the announcement says in
- * so many words. Nothing is on by a default, by a guess from something else
- * it said, or because most worlds have it. A world that says nothing about
- * the things visitors carry does allow them (NSWP-17), and its door still
- * doesn't say so: that is the world's to say.
- *
- * So what is not `on` is never "this world doesn't": it is "this world
- * doesn't say", and the words say exactly that. A reader has only the
- * announcement, and looking at a door contacts no site.
- */
 import type { World } from "./world.js";
 /** The seven a door shows, in the order it shows them. */
 export declare const DOOR_OFFERS: readonly ["headset", "people", "voice", "items", "saves", "records", "paid"];

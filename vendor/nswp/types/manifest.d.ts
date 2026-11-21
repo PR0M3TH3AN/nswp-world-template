@@ -20,6 +20,11 @@ export interface ManifestWorld {
         initialDownloadMb?: number;
     };
     airlock?: string;
+    /**
+     * The listings this world is entered by, where it is paid (protocol/01-worlds.md, "A paid world"): each one a
+     * listing's coordinate whose seller is a key this file names as a publisher of this world. Left out, it is free.
+     */
+    access?: string[];
 }
 export interface Manifest {
     schema: string;
@@ -62,6 +67,16 @@ export declare function doorFor(manifest: Manifest, url: string): {
     naddr?: string;
     url: string;
 };
+/**
+ * What the world at an address is entered by, as its own site says: the listings its manifest names for it, and the
+ * keys that may sell it (its publishers). A world its manifest names no listing for is free: `listings` is empty.
+ * Null where the manifest lists no world at that address at all, so nothing can be said of it.
+ */
+export declare function accessFor(manifest: Manifest, url: string): {
+    d: string;
+    listings: string[];
+    sellers: string[];
+} | null;
 export interface FetchManifestResult {
     url: string;
     manifest?: Manifest;
