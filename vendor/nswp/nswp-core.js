@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.64.0";
+var KIT_VERSION = "0.65.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6943,6 +6943,46 @@ function achievementsIn(events, o) {
   return { byId, held: [...newest.values()].sort((x, y) => y.at - x.at) };
 }
 
+// packages/core/src/invoice.ts
+var INVOICE_LIMIT = 2e3;
+function cleanInvoice(input) {
+  if (typeof input !== "string") return "";
+  const invoice = input.trim().toLowerCase().replace(/^lightning:/, "");
+  return invoice.length <= INVOICE_LIMIT && /^ln(bc|tb|tbs|bcrt)[0-9a-z]+$/.test(invoice) ? invoice : "";
+}
+var TIMESTAMP_WORDS = 7;
+var SIGNATURE_WORDS = 104;
+var PAYMENT_HASH = 1;
+var PAYMENT_HASH_WORDS = 52;
+function invoicePaymentHash(invoice) {
+  const clean3 = cleanInvoice(invoice);
+  if (!clean3) return null;
+  let words;
+  try {
+    words = bech32.decode(clean3, INVOICE_LIMIT).words;
+  } catch {
+    return null;
+  }
+  const end = words.length - SIGNATURE_WORDS;
+  let at = TIMESTAMP_WORDS;
+  while (at + 3 <= end) {
+    const length = words[at + 1] * 32 + words[at + 2];
+    const data = words.slice(at + 3, at + 3 + length);
+    if (at + 3 + length > end) return null;
+    if (words[at] === PAYMENT_HASH && length === PAYMENT_HASH_WORDS) {
+      const bytes = bech32.fromWordsUnsafe(data);
+      return bytes && bytes.length === 32 ? bytesToHex(bytes) : null;
+    }
+    at += 3 + length;
+  }
+  return null;
+}
+function provesPayment(invoice, preimage) {
+  if (typeof preimage !== "string" || !/^[0-9a-f]{64}$/.test(preimage)) return false;
+  const hash = invoicePaymentHash(invoice);
+  return !!hash && bytesToHex(sha256(hexToBytes(preimage))) === hash;
+}
+
 // packages/core/src/signing.ts
 var SIGNER_PROTOCOL = "nswp-signer";
 var SIGNER_VERSION = 1;
@@ -7072,6 +7112,7 @@ function readSignerRequest(data) {
   if (d.t === "reach" && Array.isArray(d.relays) && d.relays.length <= 8 && d.relays.every((r) => typeof r === "string" && r.length <= 200)) return { t: "reach", id: d.id, relays: d.relays };
   if (d.t === "propose" && d.event && typeof d.event === "object" && PROPOSE_KINDS.includes(d.event.kind)) return { t: "propose", id: d.id, event: d.event };
   if (d.t === "wallet") return { t: "wallet", id: d.id };
+  if (d.t === "pay" && cleanInvoice(d.invoice)) return { t: "pay", id: d.id, invoice: cleanInvoice(d.invoice) };
   if (d.t === "follow" && (d.list === null || d.list && typeof d.list === "object") && isHex64(d.add) !== isHex64(d.remove)) {
     return { t: "follow", id: d.id, list: d.list, ...isHex64(d.add) ? { add: d.add } : { remove: d.remove } };
   }
@@ -7105,6 +7146,7 @@ function readSignerReply(data) {
   if (d.t === "refused") return { t: "refused", id: d.id };
   if (d.t === "asking") return { t: "asking", id: d.id };
   if (d.t === "wallet" && cleanWalletUri(d.uri)) return { t: "wallet", id: d.id, uri: cleanWalletUri(d.uri) };
+  if (d.t === "paid") return { t: "paid", id: d.id, ...isHex64(d.preimage) ? { preimage: d.preimage } : {} };
   if (d.t === "signed" && d.event && typeof d.event === "object") return { t: "signed", id: d.id, event: d.event };
   if (d.t === "found" && isHex64(d.d)) return { t: "found", id: d.id, d: d.d };
   if (d.t === "sealed" && d.message && typeof d.message === "object" && Array.isArray(d.seals) && d.seals.length === 2) return { t: "sealed", id: d.id, message: d.message, seals: d.seals };
@@ -8365,6 +8407,7 @@ export {
   HOME_CAPABILITY,
   HOME_LAYOUT_KIND,
   INPUTS,
+  INVOICE_LIMIT,
   ITEM_ASKS,
   ITEM_BEHAVIORS,
   ITEM_BOX_CSP,
@@ -8487,6 +8530,7 @@ export {
   cleanAsk,
   cleanBoard,
   cleanChat,
+  cleanInvoice,
   cleanItemsRule,
   cleanKeys,
   cleanLine,
@@ -8542,6 +8586,7 @@ export {
   handoffMessage,
   hasEventShape,
   hasSettings,
+  invoicePaymentHash,
   isAchievementAsked,
   isFollowAsked,
   isForm,
@@ -8612,6 +8657,7 @@ export {
   portalTarget,
   prepareForWorld,
   previewOnWorldOrigin,
+  provesPayment,
   publishEvent,
   queryRelays,
   randomNonce,

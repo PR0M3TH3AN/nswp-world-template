@@ -124,7 +124,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-WNGKEZRL.js";
+} from "./shared-YJINBLAC.js";
 import {
   currentForm,
   deviceForms,
