@@ -30,6 +30,8 @@ export interface RoomNotes {
     locked?(): boolean;
     /** Start unlocking it, from a press. False if nothing could be opened. */
     unlock?(): boolean;
+    /** Whether that is a panel in the visitor's client rather than a window (signer.ts, `panel`). */
+    panel?(): boolean;
     /** Where that happens, as an address to name, or null. */
     host?(): string | null;
     /** A signer was named and didn't answer: then what to say about it. Null when that isn't so. */

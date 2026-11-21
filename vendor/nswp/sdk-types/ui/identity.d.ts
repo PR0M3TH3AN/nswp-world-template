@@ -99,6 +99,14 @@ export declare function signerAction(controls: Controls, opts?: {
     presenting?: () => boolean;
 }): UiAction;
 /**
+ * Their account at the sign-in address, without leaving the world: its own pages (other accounts, the lock, the
+ * password, recovery, what it keeps), in the panel the visitor's client draws over the world (client-frame.ts).
+ * Only where there is such a panel, for this world's own signer's address: a world never shows any of it itself.
+ */
+export declare function accountAction(controls: Controls, opts?: {
+    presenting?: () => boolean;
+}): UiAction;
+/**
  * The way to change how they look. Their look is kept by their own client and
  * is the same in every world, so it is changed there: this leaves for it and
  * comes back, as signing in does.

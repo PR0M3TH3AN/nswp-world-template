@@ -125,6 +125,7 @@ export { createProfiles, readProfile, type Profile, type Profiles } from "./prof
 export { createPeople, type FollowHand, type FollowResult, type FollowWhy, type People, type PeopleOptions } from "./people.js";
 export { askWell, learnFrom, relaysWell, sendWell, type SentWell } from "./relay-book.js";
 export { createWorldSigner, type SignerState, type WorldSigner } from "./signer.js";
+export { askClientForSignIn, clientPanelOpen, clientSignsInAt, onClientSignIn, type ClientPanelMode } from "./client-frame.js";
 export { currentForm, deviceForms, formFor, startingForm, usedForm, type DeviceForms, type Form } from "./form.js";
 export { createFps, heldKey, lookAfter, strideOf, LOOK_SPEED, PITCH_LIMIT, SPRINT, type Fps, type FpsOptions, type Held } from "./fps.js";
 export { addSoundControls, createSounds, CUES, type Cue, type Jukebox, type Song, type SoundLevels, type Sounds, type SoundsOptions, type SoundTheme } from "./sound.js";

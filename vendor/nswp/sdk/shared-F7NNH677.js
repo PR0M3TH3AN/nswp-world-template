@@ -1,9 +1,15 @@
 import {
   arriveWith,
   arrivedSettings,
+  askClientForScreen,
+  clientHoldsScreen,
+  clientScreenFilled,
   currentSettings,
+  framed,
+  meetClient,
+  onClientScreen,
   reportSettings
-} from "./shared-Q3D4OUDA.js";
+} from "./shared-UMAJ2QEI.js";
 
 // packages/sdk/src/index.ts
 import {
@@ -73,54 +79,6 @@ function watch() {
     { capture: true, passive: true }
   );
 }
-
-// packages/sdk/src/client-frame.ts
-var framed = () => {
-  try {
-    return typeof window !== "undefined" && window.parent !== window;
-  } catch {
-    return false;
-  }
-};
-var holds = false;
-var filled = false;
-var met = false;
-var watchers = /* @__PURE__ */ new Set();
-var clientHoldsScreen = () => holds;
-var clientScreenFilled = () => holds && filled;
-function onClientScreen(fn) {
-  watchers.add(fn);
-  return () => void watchers.delete(fn);
-}
-var say = (words) => {
-  try {
-    window.parent.postMessage({ nswp: words.nswp, ...words }, "*");
-  } catch {
-  }
-};
-function askClientForScreen(fill) {
-  if (framed()) say({ nswp: "screen", fill });
-}
-function meetClient() {
-  if (met || !framed()) return;
-  met = true;
-  addEventListener("message", (e) => {
-    if (e.source !== window.parent) return;
-    const said = e.data;
-    if (!said || typeof said !== "object" || said.nswp !== "screen" || typeof said.holds !== "boolean") return;
-    const was = `${holds}${filled}`;
-    holds = said.holds;
-    filled = said.filled === true;
-    if (was !== `${holds}${filled}`) for (const fn of watchers) fn();
-  });
-  let at = "/";
-  try {
-    at = `${location.pathname}${location.search}`.slice(0, 300);
-  } catch {
-  }
-  say({ nswp: "here", at });
-}
-meetClient();
 
 // packages/sdk/src/ui/fullscreen.ts
 var resumed = false;
@@ -2733,7 +2691,7 @@ var RoomSession = class {
   introduce(ch) {
     if (!this.look && !this.pass && !this.held) return;
     let left = 4;
-    const say2 = () => {
+    const say = () => {
       if (this.closed || ch.readyState !== "open") return;
       try {
         if (this.look) ch.send(`look:${this.look}`);
@@ -2742,9 +2700,9 @@ var RoomSession = class {
         if (this.held && this.tints) ch.send(this.tints);
       } catch {
       }
-      if (--left > 0) setTimeout(say2, 1500);
+      if (--left > 0) setTimeout(say, 1500);
     };
-    say2();
+    say();
   }
   async gathered(pc) {
     if (pc.iceGatheringState !== "complete") {
@@ -2857,10 +2815,10 @@ var RoomSession = class {
     this.tune = track;
     this.self.music = !!track;
     clearInterval(this.tuneTimer);
-    const say2 = () => this.tellAll(this.tune ? "mus:1" : "mus:0");
-    say2();
-    if (track) this.tuneTimer = setInterval(say2, 2e3);
-    else setTimeout(say2, 400);
+    const say = () => this.tellAll(this.tune ? "mus:1" : "mus:0");
+    say();
+    if (track) this.tuneTimer = setInterval(say, 2e3);
+    else setTimeout(say, 400);
     await Promise.all(
       [...this.peers.values()].map(async (peer) => {
         peer.tuned = false;
@@ -2911,10 +2869,10 @@ var RoomSession = class {
     this.screen = track;
     this.self.sharing = !!track;
     clearInterval(this.screenTimer);
-    const say2 = () => this.tellAll(this.screen ? "scr:1" : "scr:0");
-    say2();
-    if (track) this.screenTimer = setInterval(say2, 2e3);
-    else setTimeout(say2, 400);
+    const say = () => this.tellAll(this.screen ? "scr:1" : "scr:0");
+    say();
+    if (track) this.screenTimer = setInterval(say, 2e3);
+    else setTimeout(say, 400);
     await Promise.all(
       [...this.peers.values()].map(async (peer) => {
         peer.fed = false;
@@ -2970,7 +2928,7 @@ var RoomSession = class {
     if (next) this.self.holding = next;
     else delete this.self.holding;
     let left = 3;
-    const say2 = () => {
+    const say = () => {
       if (this.closed || this.held !== next) return;
       for (const peer of this.peers.values()) {
         if (!peer.open || peer.pose?.readyState !== "open") continue;
@@ -2979,9 +2937,9 @@ var RoomSession = class {
         } catch {
         }
       }
-      if (--left > 0) setTimeout(say2, 700);
+      if (--left > 0) setTimeout(say, 700);
     };
-    say2();
+    say();
   }
   /**
    * Say something of an item in play to everyone: a thing sent out, a hit, a sound, this visitor's state
@@ -2997,7 +2955,7 @@ var RoomSession = class {
     if (on === this.self.recording) return;
     this.self.recording = on;
     clearInterval(this.recordingTimer);
-    const say2 = () => {
+    const say = () => {
       for (const peer of this.peers.values()) {
         if (!peer.open || peer.pose?.readyState !== "open") continue;
         try {
@@ -3006,9 +2964,9 @@ var RoomSession = class {
         }
       }
     };
-    say2();
-    if (on) this.recordingTimer = setInterval(say2, 2e3);
-    else setTimeout(say2, 400);
+    say();
+    if (on) this.recordingTimer = setInterval(say, 2e3);
+    else setTimeout(say, 400);
   }
   drop(pubkey, announce) {
     const peer = this.peers.get(pubkey);

@@ -8,7 +8,7 @@ import {
   room,
   sha256,
   startingForm
-} from "./shared-BQRKL7JK.js";
+} from "./shared-F7NNH677.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -28,11 +28,14 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-VXYHIAUE.js";
+} from "./shared-HK3BOLS5.js";
 import {
   arrivedSettings,
+  askClientForSignIn,
+  clientSignsInAt,
+  onClientScreen,
   reportSettings
-} from "./shared-Q3D4OUDA.js";
+} from "./shared-UMAJ2QEI.js";
 import {
   LiveKeys,
   TextEntry,
@@ -1210,6 +1213,7 @@ var NONE = {
   retry: () => false,
   copy: null,
   unlock: () => false,
+  panel: false,
   lock() {
   },
   sign: async () => null,
@@ -1422,8 +1426,12 @@ function createWorldSigner(opts) {
         return null;
       }
     },
+    get panel() {
+      return !test && clientSignsInAt() === real.origin;
+    },
     unlock() {
       if (state === "none" || !windowAt) return false;
+      if (!test && clientSignsInAt() === real.origin && askClientForSignIn("ask")) return true;
       try {
         const opened = window.open(`${windowAt}${test ? "?signer=test" : ""}`, "nswp-connect", "popup,width=460,height=660");
         return !!opened;
@@ -1632,9 +1640,9 @@ var identitySection = () => ({
     if (!signerNamed()) return `Who you are and how you look are kept by ${host}, the place you set out from, and are the same in every world. Changing either takes you there and brings you back here.`;
     const at = worldSigner().host ?? "your sign-in address";
     const look = `How you look is kept by ${host}, the place you set out from: changing it takes you there and brings you back.`;
-    const visit = worldSigner().remembered === false ? ` It lasts for this visit: next time, ${at} asks again. Whether it remembers this world is yours to choose in its window.` : "";
+    const visit = worldSigner().remembered === false ? ` It lasts for this visit: next time, ${at} asks again. Whether it remembers this world is yours to choose when it asks.` : "";
     if (worldSigner().state === "unlocked") return `You are signed in here by ${at}.${visit} Signing out here makes you a guest in this world, and nowhere else. ${look}`;
-    return `Signing in is done at ${at}, in a window of its own: nothing is typed in this world. Until you sign in here, everyone sees a guest. ${look}`;
+    return `Signing in is done by ${at}, which asks you itself: this world never sees a password. Until you sign in here, everyone sees a guest. ${look}`;
   }
 });
 var going = false;
@@ -1734,9 +1742,27 @@ function signerAction(controls, opts = {}) {
         if (signer.retry()) return controls.say(`Asking ${host} again. It has ten seconds to answer.`);
         return controls.say(unansweredWords(signer));
       }
-      if (opts.presenting?.()) return controls.say(`A window from ${host} is needed for this, and none can open in a headset. Leave the headset view for a moment, sign in, and come back in.`);
-      if (signer.unlock()) controls.say(`A window from ${host} has opened. Say yes there, and you are signed in here.`);
+      if (opts.presenting?.()) return controls.say(`${signer.panel ? `${host} has to ask you this itself, and that can't be seen from inside a headset` : `A window from ${host} is needed for this, and none can open in a headset`}. Leave the headset view for a moment, sign in, and come back in.`);
+      const here = signer.panel;
+      if (signer.unlock()) controls.say(here ? `${host} is asking, here. Say yes there, and you are signed in.` : `A window from ${host} has opened. Say yes there, and you are signed in here.`);
       else controls.say(`Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`);
+    }
+  };
+}
+function accountAction(controls, opts = {}) {
+  const signer = worldSigner();
+  onClientScreen(() => controls.signal("signer"));
+  return {
+    id: "account",
+    section: "you",
+    icon: "key",
+    label: () => `Your account, at ${signer.host ?? "your sign-in address"}`,
+    short: "Account",
+    hidden: () => !signer.panel,
+    act: () => {
+      const host = signer.host ?? "your sign-in address";
+      if (opts.presenting?.()) return controls.say(`${host} shows your account itself, and that can't be seen from inside a headset. Leave the headset view for a moment and press this again.`);
+      if (!askClientForSignIn("account")) controls.say(`${host} couldn't be shown here just now.`);
     }
   };
 }
@@ -5657,10 +5683,11 @@ function addRoomControls(controls, presence, opts = {}) {
     }
     const where = signer.host ?? "your sign-in address";
     if (signer.offers && !signer.offers.includes(what)) return `${where} doesn't let a world ${to} yet. It can be done at your home.`;
-    if (opts.presenting?.()) return `This world needs your say before it can ${to}, once, in a window of ${where} that can't be seen from in here. Step out of the headset and press this again.`;
+    if (opts.presenting?.()) return `This world needs your say before it can ${to}, once. ${where} asks that itself, which can't be seen from in here. Step out of the headset and press this again.`;
     waitingFor.set(what, { then, at: Date.now() });
     signer.want([...signer.more, what]);
-    return signer.unlock() ? `This world needs your say before it can ${to}: once, in the window of ${where} that has opened.` : `The window of ${where} couldn't be opened. Allow this site to open windows, and press again.`;
+    const here = signer.panel;
+    return signer.unlock() ? here ? `This world needs your say before it can ${to}: once. ${where} is asking, here.` : `This world needs your say before it can ${to}: once, in the window of ${where} that has opened.` : `The window of ${where} couldn't be opened. Allow this site to open windows, and press again.`;
   };
   const signedInHere = () => signerNamed() && worldSigner().state === "unlocked" ? worldSigner().pubkey : null;
   const worldFollows = () => ({
@@ -6166,6 +6193,7 @@ function addRoomControls(controls, presence, opts = {}) {
     onChange: (fn) => worldSigner().onChange(fn),
     locked: () => worldSigner().state === "locked",
     unlock: () => worldSigner().unlock(),
+    panel: () => worldSigner().panel,
     host: () => worldSigner().host,
     unanswered: () => worldSigner().unanswered ? unansweredWords(worldSigner()) : null,
     pubkey: () => worldSigner().pubkey,
@@ -6400,9 +6428,10 @@ function addRoomControls(controls, presence, opts = {}) {
         if (why) return tell(why);
         const host = notes.host?.() ?? "your sign-in address";
         if (presence.presenting) return tell(`A window from ${host} is needed first, and none can open in a headset. Leave the headset view for a moment, press this again, and come back in.`);
+        const here = !!notes.panel?.();
         wantsFeed = !!notes.unlock?.();
         tell(
-          wantsFeed ? `A window from ${host} has opened. Sign in there if it asks, and say yes. Then your public feed opens here.` : `Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`
+          wantsFeed ? here ? `${host} is asking, here. Sign in there if it asks, and say yes. Then your public feed opens.` : `A window from ${host} has opened. Sign in there if it asks, and say yes. Then your public feed opens here.` : `Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`
         );
       }
     },
@@ -11687,7 +11716,7 @@ async function addViewControls(controls, d) {
   if (!controls.has("identity") && identityHost()) {
     const leaving = async (to) => ({ ...await d.leaving?.(to), xrSession: d.renderer.xr.getSession() });
     controls.addSection(identitySection());
-    controls.add(figureAction(controls, leaving), identityAction(controls, leaving), signerAction(controls, { presenting: () => d.renderer.xr.isPresenting }));
+    controls.add(figureAction(controls, leaving), identityAction(controls, leaving), signerAction(controls, { presenting: () => d.renderer.xr.isPresenting }), accountAction(controls, { presenting: () => d.renderer.xr.isPresenting }));
   }
   document.addEventListener("fullscreenchange", () => controls.setTarget(""));
   controls.addSection({
