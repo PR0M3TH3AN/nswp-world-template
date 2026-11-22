@@ -9,6 +9,7 @@ import {
   SUMMON_KEY,
   SUMMON_SLOP,
   UI_PRESETS,
+  addDoorControls,
   ago,
   askWell,
   cleanTheme,
@@ -33,8 +34,9 @@ import {
   setShowsChat,
   setShowsPictures,
   showsChat,
-  showsPictures
-} from "./shared-EHWKQMP4.js";
+  showsPictures,
+  vouchedWords
+} from "./shared-CQLLTW2Z.js";
 import {
   arrivedSettings,
   onClientSignIn,
@@ -266,7 +268,7 @@ function createControls(opts) {
     },
     run(id) {
       const a = actions.find((x) => x.id === id);
-      if (!a || a.hidden?.()) return false;
+      if (!a || a.hidden?.() || a.kind === "line") return false;
       for (const fn of signals) fn("press");
       void Promise.resolve().then(() => a.act()).catch(() => {
       }).finally(changed);
@@ -294,7 +296,8 @@ function createControls(opts) {
     },
     view() {
       const showing = inOrder(actions.filter((a) => !a.hidden?.()));
-      const bar = [...showing.filter((a) => a.hotbar && a.lead), ...showing.filter((a) => a.hotbar && !a.lead)].slice(0, 6);
+      const pressable = showing.filter((a) => a.kind !== "line");
+      const bar = [...pressable.filter((a) => a.hotbar && a.lead), ...pressable.filter((a) => a.hotbar && !a.lead)].slice(0, 6);
       const item = (a) => {
         const slot = bar.indexOf(a);
         return { id: a.id, label: read(a.label), icon: (typeof a.icon === "function" ? a.icon() : a.icon) ?? null, on: a.on ? a.on() : null, tone: a.tone ?? "normal", key: slot === -1 ? "" : String(slot + 1), short: read(a.short) || read(a.label), kind: a.kind ?? "button", color: read(a.color), ...a.picture ? { picture: a.picture } : {} };
@@ -562,6 +565,11 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .row { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 8px 12px; border-radius: 10px; text-align: left;
   border: 1px solid rgba(var(--ink), .12); background: rgba(var(--ink), .03); transition: background .12s, border-color .12s; }
 .row:hover { background: rgba(var(--accent), .13); border-color: rgba(var(--accent), .7); }
+/* A line is read and not pressed: no edge, no hover, nothing that looks like a button. Lit is the accent; dark is dim. */
+.line { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 12px; margin: 0; padding: 4px 12px; line-height: 1.35; color: rgba(var(--ink), .55); }
+.line svg { flex: none; margin-top: 1px; opacity: .55; }
+.line.on { color: rgb(var(--ink)); }
+.line.on svg { opacity: 1; color: rgb(var(--accent)); }
 .row .grow { flex: 1; min-width: 0; }
 .row .state { font-size: .86em; color: rgba(var(--ink), .6); }
 .row[aria-pressed="true"] { border-color: rgba(var(--accent), .8); }
@@ -1182,13 +1190,14 @@ function mountHud(controls, opts = {}) {
       b.addEventListener("click", () => press(item));
       return b;
     };
+    const drawLine = (item) => el("p", { class: `line ${item.on ? "on" : "off"}` }, icon(item.icon), el("span", {}, item.label));
     const lay = (items) => {
       const laid2 = [];
       let run = null;
       for (const item of items) {
-        if (item.kind === "button") {
+        if (item.kind === "button" || item.kind === "line") {
           run = null;
-          laid2.push(drawRow(item));
+          laid2.push(item.kind === "line" ? drawLine(item) : drawRow(item));
           continue;
         }
         if (run?.kind !== item.kind) {
@@ -1406,6 +1415,7 @@ export {
   SUMMON_KEY,
   SUMMON_SLOP,
   UI_PRESETS,
+  addDoorControls,
   ago,
   askWell,
   cleanTheme,
@@ -1427,5 +1437,6 @@ export {
   setShowsChat,
   setShowsPictures,
   showsChat,
-  showsPictures
+  showsPictures,
+  vouchedWords
 };

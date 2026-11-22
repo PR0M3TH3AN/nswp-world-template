@@ -8,11 +8,12 @@ import {
   createAlloy,
   createPortalWindow,
   textSprite
-} from "./shared-MB6ALDOF.js";
+} from "./shared-B7FKT2D7.js";
 import "./shared-GX7O2PJA.js";
 import {
-  ICONS
-} from "./shared-EHWKQMP4.js";
+  ICONS,
+  OFFER_ICONS
+} from "./shared-CQLLTW2Z.js";
 import "./shared-UMAJ2QEI.js";
 import "./shared-UBZ34GUM.js";
 import "./shared-QLSLERQ3.js";
@@ -813,19 +814,6 @@ function createEnvironment(accent, opts = {}) {
 // packages/sdk/src/door-offers.ts
 import * as THREE3 from "three";
 import { DOOR_OFFERS } from "@nswp/core";
-
-// packages/sdk/src/offer-icons.ts
-var OFFER_ICONS = {
-  headset: "vr",
-  people: "people",
-  voice: "mic",
-  items: "bag",
-  saves: "save",
-  records: "trophy",
-  paid: "coin"
-};
-
-// packages/sdk/src/door-offers.ts
 var OFFER_TILE = 0.24;
 var GAP = 0.03;
 var OFFER_COLUMN_X = -(PORTAL_WIDTH / 2 + 0.34);

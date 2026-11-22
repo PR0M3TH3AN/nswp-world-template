@@ -47,6 +47,7 @@ export interface XrConsole {
         section: string;
         sections: string[];
         buttons: string[];
+        lines: string[];
         note: string;
         card: string;
     };

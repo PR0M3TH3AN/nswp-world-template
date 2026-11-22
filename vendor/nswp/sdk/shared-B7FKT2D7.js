@@ -28,7 +28,7 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-EHWKQMP4.js";
+} from "./shared-CQLLTW2Z.js";
 import {
   arrivedSettings,
   askClientForSignIn,
@@ -283,7 +283,8 @@ function createConsole(controls, opts) {
       });
     });
     const current = view.sections.find((s) => s.id === section);
-    const items = current?.items ?? [];
+    const items = (current?.items ?? []).filter((item) => item.kind !== "line");
+    const lines = (current?.items ?? []).filter((item) => item.kind === "line");
     noteNow = current?.note ?? "";
     g.font = `400 ${Math.round(24 * k)}px ${SANS}`;
     const noteLines = noteNow ? wrap(g, noteNow, W - 330, 3) : [];
@@ -354,7 +355,9 @@ function createConsole(controls, opts) {
     const cols = items.length > 8 ? 3 : 2;
     const rowsN = Math.max(1, Math.ceil(items.length / cols));
     const cellW = (areaW - (cols - 1) * 14) / cols;
-    const cellH = Math.min(96, (H - 150 - noteH - cardH - (rowsN - 1) * 12) / rowsN);
+    const lineRows = Math.ceil(lines.length / 2);
+    const linesH = lines.length ? lineRows * 50 + 10 : 0;
+    const cellH = items.length ? Math.min(96, (H - 150 - noteH - cardH - linesH - (rowsN - 1) * 12) / rowsN) : 0;
     items.forEach((item, i) => {
       const x = left + i % cols * (cellW + 14);
       const y = 138 + cardH + Math.floor(i / cols) * (cellH + 12);
@@ -392,6 +395,30 @@ function createConsole(controls, opts) {
         g.textBaseline = "alphabetic";
       });
     });
+    if (lines.length) {
+      const top2 = 138 + cardH + (items.length ? rowsN * (cellH + 12) : 0) + 4;
+      const room2 = H - 14 - noteH - top2;
+      const colW = (areaW - 14) / 2;
+      const textW = colW - 44;
+      let size = Math.round(22 * k);
+      let laid = [];
+      let rowH = 0;
+      for (; size >= 12; size--) {
+        g.font = `400 ${size}px ${SANS}`;
+        laid = lines.map((item) => wrap(g, item.label, textW, 99));
+        rowH = Math.max(...laid.map((l) => l.length)) * (size + 4) + 8;
+        if (lineRows * rowH <= room2) break;
+      }
+      lines.forEach((item, i) => {
+        const x = left + i % 2 * (colW + 14);
+        const y = top2 + Math.floor(i / 2) * rowH;
+        g.strokeStyle = g.fillStyle = item.on ? t.accent : `rgba(${I}, 0.4)`;
+        strokeIcon(g, item.icon, x + 4, y + 2, Math.min(28, size + 6));
+        g.fillStyle = item.on ? t.ink : `rgba(${I}, 0.6)`;
+        g.font = `${item.on ? 500 : 400} ${size}px ${SANS}`;
+        laid[i].forEach((line, n) => g.fillText(line, x + 40, y + size + n * (size + 4)));
+      });
+    }
     if (noteLines.length) {
       const y = H - noteH - 14;
       g.fillStyle = `rgba(${A}, 0.7)`;
@@ -556,7 +583,8 @@ function createConsole(controls, opts) {
         mount,
         section: open ? current?.id ?? "" : "",
         sections: open ? view.sections.map((s) => s.label) : [],
-        buttons: open ? current?.items.map((i) => i.label) ?? [] : opener.visible ? ["Menu"] : [],
+        buttons: open ? current?.items.filter((i) => i.kind !== "line").map((i) => i.label) ?? [] : opener.visible ? ["Menu"] : [],
+        lines: open ? current?.items.filter((i) => i.kind === "line").map((i) => i.label) ?? [] : [],
         note: open ? current?.note ?? "" : "",
         card: open ? current?.card?.title ?? "" : ""
       };
@@ -1067,6 +1095,8 @@ function createPaidGate(opts) {
   let lookTimer;
   let retries = 0;
   let unwatch = null;
+  let seeking2 = 0;
+  let seekTimer;
   const changed = () => {
     for (const fn of [...watchers3]) {
       try {
@@ -1144,7 +1174,13 @@ function createPaidGate(opts) {
     if (disposed || state === "free") return;
     const mine = ++round;
     const signer = opts.signer();
+    if (signer && !unwatch) unwatch = signer.onChange(() => void look());
     const buyer = signer?.state === "unlocked" ? signer.pubkey : null;
+    if (!signer && seeking2 < 10) {
+      seeking2++;
+      clearTimeout(seekTimer);
+      seekTimer = setTimeout(() => void look(), 3e3);
+    }
     if (!signer || !buyer) return shut(signer ? "signed-out" : "no-signer");
     if (held && held.buyer !== buyer) held = null;
     const got = await Promise.all(listings.map((l) => signer.have(l).then((r) => r ? believe(r.event, l, buyer) : null).catch(() => null)));
@@ -1213,7 +1249,7 @@ function createPaidGate(opts) {
     const signer = opts.signer();
     if (signer) await signer.whenAnswered(4e3).catch(() => void 0);
     if (disposed) return;
-    unwatch = signer?.onChange(() => void look()) ?? null;
+    if (signer && !unwatch) unwatch = signer.onChange(() => void look());
     lookTimer = setInterval(() => void look(), GATE_TIMES.look * 1e3);
     await look();
   };
@@ -1305,6 +1341,7 @@ function createPaidGate(opts) {
       clearTimeout(endTimer);
       clearTimeout(graceTimer);
       clearTimeout(retryTimer);
+      clearTimeout(seekTimer);
       clearInterval(lookTimer);
       unwatch?.();
       watchers3.clear();

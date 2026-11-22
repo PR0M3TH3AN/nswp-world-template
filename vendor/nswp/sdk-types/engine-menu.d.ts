@@ -64,6 +64,26 @@ export declare function menu(options?: string): string;
  */
 export declare function who(): string;
 /**
+ * The gate of a paid world (protocol/10-identity.md, "The front room"), for a world made in another engine: the
+ * same gate as a Three.js world's, since none of it is drawing. Call it once as the world comes up, after `start()`,
+ * in a world that is paid. It asks what the visitor holds, reads what is for sale, and puts the one control that asks to buy
+ * (`gate-buy`) in the kit's menu.
+ *
+ * Returns how the gate stands, as JSON, and a `gate` event with the same fields comes whenever that changes:
+ * `state` ("checking", "shut", "open", "ending", or "free"), `open` (whether a visitor may go past it now: the one
+ * thing to act on), `reason` and `why` (why it is shut: a stable word, and plain words for the visitor), `offers`
+ * (what can be bought: `listing`, `name`, `sats`, `term`, `words`), and `until` (when a pass ends, in seconds, or null).
+ *
+ * The engine draws the gate and stops the visitor where it stands: everything before it is free, and where it
+ * stands is the world's to choose. While `open` is false, nobody goes past. It is false until the gate knows.
+ * `run("gate-buy")` presses the control, for a gate that is pressed in the world.
+ *
+ * What it is entered by is the world's own manifest's word (`access`). `options` is JSON: `paid` false says this
+ * world's own settings name nothing for sale, and then nothing is made, read or asked: the answer is "free". A
+ * world that isn't paid has no need to call this at all.
+ */
+export declare function gate(options?: string): string;
+/**
  * Keep this for the visitor (protocol/12-saves.md): text, the world's own, in a slot ("main" when none is named).
  * It is kept on this device at once, and with their account if they are signed in here. A `saved` event says
  * where it was kept: `{"type":"saved","slot":...,"kept":"account"|"device"|"nowhere","said":...}`.

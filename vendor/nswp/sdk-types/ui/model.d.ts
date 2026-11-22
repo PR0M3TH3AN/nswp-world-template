@@ -31,9 +31,11 @@ export interface UiAction {
      * What kind of control it is. Each kind is drawn by one small function in
      * each renderer, so a new kind is added there and nowhere else.
      * "swatch" is a choice of colour, and needs `color`. "tile" is a thing with a picture of itself, one of several
-     * laid out side by side: it needs `picture`.
+     * laid out side by side: it needs `picture`. "line" is something to read and not to press: an icon, its words
+     * (the whole sentence, in `label`) and whether it is so (`on`). A line never answers a press, is never focused
+     * as a button and never goes on the hotbar; its `act` is never called.
      */
-    kind?: "button" | "swatch" | "tile";
+    kind?: "button" | "swatch" | "tile" | "line";
     /**
      * For a tile: its picture as it is now, or null while there is none (a renderer then shows its first letter).
      * Asked again whenever the menu is drawn.
@@ -96,7 +98,7 @@ export interface UiItemView {
     /** The number key that presses it from the hotbar, or "". */
     key: string;
     short: string;
-    kind: "button" | "swatch" | "tile";
+    kind: "button" | "swatch" | "tile" | "line";
     color: string;
     /** A tile's picture, asked for as it is drawn. Not part of what is written out as text. */
     picture?: () => CanvasImageSource | null;
