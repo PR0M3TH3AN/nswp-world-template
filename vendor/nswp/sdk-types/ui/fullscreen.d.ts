@@ -28,3 +28,37 @@ export declare function resumeFullscreen(presenting?: () => boolean): void;
 /** Whether the screen is still waiting for a press to fill it again. */
 export declare const fullscreenWaiting: () => boolean;
 export declare function fullscreenAction(controls: Controls, presenting: () => boolean): UiAction;
+/** Be told when the browser itself took the visitor out of fullscreen (its own Escape): the menu comes up then. */
+export declare function onBrowserLeftFullscreen(fn: () => void): () => void;
+/**
+ * Hold Escape whenever this page fills the screen, where the browser lets it; and say when the browser took the
+ * screen back by itself. Called once, by the control; idempotent.
+ */
+export declare function watchEscape(): void;
+/** Whether Escape is this page's just now: in fullscreen, with the key held by it. */
+export declare const escapeHeld: () => boolean;
+/**
+ * What Escape does, given how things stand. One rule, asked by the menu and by the intense way of moving, so the
+ * two never answer the same press differently.
+ *
+ * - The menu open, in fullscreen with Escape held: leave fullscreen (the menu stays open).
+ * - The menu open otherwise: close it.
+ * - The menu closed, in fullscreen with Escape held: open it.
+ * - The menu closed otherwise: nothing here (moving the intense way, the pointer coming back opens it).
+ */
+export declare function escapeDoes(state: {
+    menuOpen: boolean;
+    held: boolean;
+}): "leave-fullscreen" | "close-menu" | "open-menu" | "nothing";
+/** Leave fullscreen from the page's own doing: not taken for the browser's. */
+export declare function leaveFullscreen(): Promise<void>;
+/**
+ * The small "Full screen" button at the top centre: shown on a desk, where this page may fill the screen and
+ * doesn't yet, never in a headset session, and never on a touch screen (a phone that offers fullscreen at all keeps
+ * it in the menu). Pressing it fills the screen, as the menu's control does, and keeps that as what they prefer.
+ */
+export declare const fullscreenButton: {
+    shown(): boolean;
+    label: string;
+    press(controls?: Controls): Promise<void>;
+};

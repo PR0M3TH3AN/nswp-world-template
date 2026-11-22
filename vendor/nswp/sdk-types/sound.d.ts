@@ -57,6 +57,11 @@ export interface Sounds {
     moved(metres: number): void;
     /** They walked into something. */
     bump(): void;
+    /**
+     * They jumped: two footsteps back to back, a little louder than a step (`JUMP_STEPS`). The world's own `step`
+     * sound where it named one, silent where it silenced it, and at the visitor's own volume for effects.
+     */
+    jumped(): void;
     readonly levels: SoundLevels;
     setLevels(patch: Partial<SoundLevels>): void;
     /** The visitor's own music. */

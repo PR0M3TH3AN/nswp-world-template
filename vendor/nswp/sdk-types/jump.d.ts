@@ -25,9 +25,13 @@ export declare function createJump(o?: {
 export interface AddJumpOptions {
     /** In a headset, the page's keys and its control stand down: the controller's button asks instead. */
     presenting(): boolean;
-    /** Something to make it heard: leaving the floor is a step, and coming down is a landing. */
+    /**
+     * Something to make it heard: leaving the floor is two footsteps back to back (`jumped`), and coming down is a
+     * landing. Something with no `jumped` plays one step, as before.
+     */
     sounds?: {
         play(cue: "step" | "land"): void;
+        jumped?(): void;
     } | null;
     /** The menu, so that Space works it while it is open and doesn't jump. */
     hud?: {

@@ -100,6 +100,8 @@ export declare function load(slot?: string): void;
 export declare function events(): string;
 /** Play one of the kit's cues by name (`kit().cues`): the world's own sound for it, or the default. */
 export declare function play(cue: string): void;
+/** The visitor jumped: the kit's own sound for it, as in every world (two footsteps back to back, a little louder). */
+export declare function jumped(): void;
 /** Say how far the visitor was moved this frame, in metres, by what moves them: their steps are heard. */
 export declare function moved(metres: number): void;
 /** They walked into something. */

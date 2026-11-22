@@ -1,15 +1,10 @@
 import {
+  arriveAs,
   arriveWith,
-  arrivedSettings,
-  askClientForScreen,
-  clientHoldsScreen,
-  clientScreenFilled,
+  currentForm,
   currentSettings,
-  framed,
-  meetClient,
-  onClientScreen,
-  reportSettings
-} from "./shared-UMAJ2QEI.js";
+  resumeFullscreen
+} from "./shared-4X7PNRMN.js";
 
 // packages/sdk/src/index.ts
 import {
@@ -30,150 +25,6 @@ import {
   verifyRoomPass as verifyRoomPass2,
   WELL_KNOWN_PATH
 } from "@nswp/core";
-
-// packages/sdk/src/form.ts
-var matches = (query) => {
-  try {
-    return typeof matchMedia === "function" && matchMedia(query).matches;
-  } catch {
-    return false;
-  }
-};
-function deviceForms() {
-  const touch = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0 || matches("(any-pointer: coarse)");
-  const mouse = matches("(any-pointer: fine)");
-  return { touch, mouse, main: matches("(pointer: fine)") ? "desk" : "touch" };
-}
-function formFor(said, device) {
-  if (said === "touch" && device.touch) return "touch";
-  if (said === "desk" && device.mouse) return "desk";
-  return device.main;
-}
-var arrived;
-var used;
-var watching = false;
-function arriveAs(form) {
-  arrived = form;
-  watch();
-}
-function startingForm() {
-  return formFor(arrived, deviceForms());
-}
-function currentForm() {
-  watch();
-  return used ?? startingForm();
-}
-function usedForm() {
-  watch();
-  return used;
-}
-function watch() {
-  if (watching || typeof addEventListener !== "function") return;
-  watching = true;
-  addEventListener(
-    "pointerdown",
-    (e) => {
-      if (e.pointerType === "touch") used = "touch";
-      else if (e.pointerType === "mouse") used = "desk";
-    },
-    { capture: true, passive: true }
-  );
-}
-
-// packages/sdk/src/ui/fullscreen.ts
-var resumed = false;
-var waiting = false;
-var FULL_KEY = "nswp:full";
-var prefers = false;
-var keepFull = (on) => {
-  prefers = on;
-  try {
-    if (on) localStorage.setItem(FULL_KEY, "1");
-    else localStorage.removeItem(FULL_KEY);
-  } catch {
-  }
-};
-var prefersFullscreen = () => prefers;
-var held = false;
-var holdFullscreen = (on) => {
-  held = on;
-};
-function resumeFullscreen(presenting = () => false) {
-  if (resumed || typeof document === "undefined") return;
-  resumed = true;
-  const came = arrivedSettings().full;
-  let kept = false;
-  try {
-    kept = localStorage.getItem(FULL_KEY) === "1";
-  } catch {
-  }
-  if (came === void 0) prefers = kept;
-  else keepFull(came);
-  reportSettings("screen", () => ({ full: prefers }));
-  meetClient();
-  const mayAsk = framed();
-  waiting = prefers && (document.fullscreenEnabled && !document.fullscreenElement || mayAsk);
-  if (!waiting) return;
-  const presses = ["keydown", "pointerdown", "pointerup", "touchend"];
-  const stop = () => {
-    waiting = false;
-    for (const type of presses) removeEventListener(type, onPress, true);
-    document.removeEventListener("fullscreenchange", onChange);
-    forget();
-  };
-  const onChange = () => {
-    if (document.fullscreenElement || clientScreenFilled()) stop();
-  };
-  const forget = onClientScreen(onChange);
-  const onPress = (e) => {
-    if (e.code === "Escape" || held || presenting() || document.fullscreenElement) return;
-    if (clientHoldsScreen()) return void (clientScreenFilled() ? stop() : askClientForScreen(true));
-    if (!document.fullscreenEnabled) return;
-    void document.documentElement.requestFullscreen().then(stop, () => {
-    });
-  };
-  for (const type of presses) addEventListener(type, onPress, true);
-  document.addEventListener("fullscreenchange", onChange);
-  onChange();
-}
-var isFilled = () => clientHoldsScreen() ? clientScreenFilled() : !!document.fullscreenElement;
-var canFill = () => clientHoldsScreen() || document.fullscreenEnabled;
-var fullscreenWaiting = () => waiting && canFill() && !isFilled();
-function fullscreenAction(controls, presenting) {
-  resumeFullscreen(presenting);
-  setTimeout(() => {
-    if (waiting && !held && !presenting() && canFill() && !isFilled()) controls.say("Press any key, or click, to fill the screen again.");
-  }, 600);
-  onClientScreen(() => controls.setTarget(""));
-  return {
-    id: "fullscreen",
-    section: "view",
-    icon: "size",
-    on: () => prefers,
-    // Not every browser lets a page fill the screen (a phone's often won't), and a headset already does.
-    hidden: () => !canFill() || presenting(),
-    // It says what they prefer, in every world, and whether the screen is filled just now.
-    label: () => !prefers ? "Fullscreen: off" : isFilled() ? "Fullscreen: on, in every world" : "Fullscreen: on, in every world. Press to fill the screen again",
-    act: async () => {
-      const fill = !isFilled();
-      if (!fill) keepFull(false);
-      if (clientHoldsScreen()) {
-        if (fill) keepFull(true);
-        askClientForScreen(fill);
-        return void controls.setTarget("");
-      }
-      try {
-        if (fill) {
-          await document.documentElement.requestFullscreen();
-          keepFull(true);
-        } else await document.exitFullscreen();
-      } catch {
-        controls.say("This browser wouldn't go fullscreen.");
-      }
-      controls.setTarget("");
-    }
-  };
-}
 
 // node_modules/@noble/hashes/_u64.js
 var fromNumH = (n) => n / 2 ** 32 | 0;
@@ -3535,16 +3386,6 @@ function showFallback(dest) {
 }
 
 export {
-  deviceForms,
-  formFor,
-  startingForm,
-  currentForm,
-  usedForm,
-  prefersFullscreen,
-  holdFullscreen,
-  resumeFullscreen,
-  fullscreenWaiting,
-  fullscreenAction,
   bytesToHex,
   sha256,
   RoomSession,
