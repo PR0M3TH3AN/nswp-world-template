@@ -1,14 +1,24 @@
 import {
   RoomSession,
+  addressesFor,
   arrival,
   configure,
   dropBrought,
+  fetchByHash,
+  fetchByHashSaying,
+  fileHosts,
+  filesAnywhere,
+  forgetFileHosts,
+  keptElsewhere,
+  learnFileHosts,
+  onFileHostsChange,
   portal,
   room,
+  setFilesAnywhere,
   somethingBrought,
   takeBrought,
   watchBrought
-} from "./shared-QY5YFQ6P.js";
+} from "./shared-QRGGCX3I.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -16,10 +26,11 @@ import {
   currentSettings,
   reportSettings,
   startingForm
-} from "./shared-4X7PNRMN.js";
+} from "./shared-LQ6USDK4.js";
 import "./shared-QLSLERQ3.js";
 export {
   RoomSession,
+  addressesFor,
   arrival,
   arriveWith,
   arrivedSettings,
@@ -27,9 +38,18 @@ export {
   currentForm,
   currentSettings,
   dropBrought,
+  fetchByHash,
+  fetchByHashSaying,
+  fileHosts,
+  filesAnywhere,
+  forgetFileHosts,
+  keptElsewhere,
+  learnFileHosts,
+  onFileHostsChange,
   portal,
   reportSettings,
   room,
+  setFilesAnywhere,
   somethingBrought,
   startingForm,
   takeBrought,

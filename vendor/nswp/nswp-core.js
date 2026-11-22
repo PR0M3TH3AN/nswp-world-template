@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.82.0";
+var KIT_VERSION = "0.83.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -5602,6 +5602,7 @@ function cleanSettings(input) {
   if (s.turn === 30 || s.turn === 45 || s.turn === 90) out.turn = s.turn;
   if (s.hand === "left" || s.hand === "right") out.hand = s.hand;
   if (typeof s.narrow === "boolean") out.narrow = s.narrow;
+  if (typeof s.fade === "boolean") out.fade = s.fade;
   if (typeof s.full === "boolean") out.full = s.full;
   if (typeof s.intense === "boolean") out.intense = s.intense;
   if (s.headset === "casual" || s.headset === "intense") out.headset = s.headset;
@@ -5610,6 +5611,7 @@ function cleanSettings(input) {
   if (typeof s.pictures === "boolean") out.pictures = s.pictures;
   if (typeof s.chat === "boolean") out.chat = s.chat;
   if (typeof s.items === "boolean") out.items = s.items;
+  if (s.filesAnywhere === false) out.filesAnywhere = false;
   if (Array.isArray(s.pins)) out.pins = [...new Set(s.pins.filter((name) => typeof name === "string" && PIN_NAME.test(name)))].slice(0, PINS_MOST);
   if (s.holding === "") out.holding = "";
   else if (s.holding && typeof s.holding === "object" && !Array.isArray(s.holding)) {
@@ -7965,6 +7967,59 @@ function parseItem(event) {
   };
 }
 
+// packages/core/src/file-hosts.ts
+var FILE_HOST_LIST_KIND = 10063;
+var FILE_HOSTS = ["https://grove.bitblocks.network/items/"];
+var FILE_HOST_LIMITS = { list: 6, url: 200 };
+function cleanFileHost(input) {
+  if (typeof input !== "string" || input.length > FILE_HOST_LIMITS.url) return null;
+  try {
+    const u = new URL(input.trim());
+    if (u.protocol !== "https:" || u.username || u.password) return null;
+    u.search = "";
+    u.hash = "";
+    const href = u.href;
+    return href.endsWith("/") ? href : `${href}/`;
+  } catch {
+    return null;
+  }
+}
+function fileExtension(hint) {
+  try {
+    const last = new URL(hint).pathname.split("/").pop() ?? "";
+    const ext = /\.[a-z0-9]{1,8}$/i.exec(last)?.[0];
+    return ext ? ext.toLowerCase() : "";
+  } catch {
+    return "";
+  }
+}
+function fileAt(host, sha2562, hint = "") {
+  return `${host}${sha2562}${fileExtension(hint)}`;
+}
+function onFileHost(url, hosts) {
+  let href;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" || u.username || u.password) return false;
+    href = u.href;
+  } catch {
+    return false;
+  }
+  return hosts.some((host) => href.startsWith(host));
+}
+function parseFileHostList(events, pubkey) {
+  const newest = events.filter((e) => e.kind === FILE_HOST_LIST_KIND && e.pubkey === pubkey && verifyEvent(e)).sort((a, b) => b.created_at - a.created_at)[0];
+  if (!newest) return [];
+  const hosts = [];
+  for (const tag of newest.tags) {
+    if (tag[0] !== "server") continue;
+    const host = cleanFileHost(tag[1]);
+    if (host && !hosts.includes(host)) hosts.push(host);
+    if (hosts.length >= FILE_HOST_LIMITS.list) break;
+  }
+  return hosts;
+}
+
 // packages/core/src/play.ts
 var GRAVITY = 9.8;
 var PLAY_LIMITS = {
@@ -9018,6 +9073,9 @@ export {
   ENTRY_PLACES_LEAST,
   ENTRY_PLACES_ROOMS,
   ENTRY_RING,
+  FILE_HOSTS,
+  FILE_HOST_LIMITS,
+  FILE_HOST_LIST_KIND,
   FILE_LIMITS,
   FOLLOWS_KIND,
   FOLLOW_LIMITS,
@@ -9172,6 +9230,7 @@ export {
   cleanBoard,
   cleanChat,
   cleanFileBytes,
+  cleanFileHost,
   cleanFileName,
   cleanFileType,
   cleanFileUrl,
@@ -9220,6 +9279,8 @@ export {
   encodeSettings,
   entryPlaces,
   fetchManifest,
+  fileAt,
+  fileExtension,
   fileUrlNames,
   finalizeEvent,
   fitsInSave,
@@ -9282,6 +9343,7 @@ export {
   nip44Encrypt,
   normalizeUrl,
   nowSeconds,
+  onFileHost,
   onLocalHost,
   openBridgeSignal,
   openSave,
@@ -9297,6 +9359,7 @@ export {
   parseBridgeControl,
   parseCoordinate,
   parseDid,
+  parseFileHostList,
   parseHit,
   parseItem,
   parseKitVersion,

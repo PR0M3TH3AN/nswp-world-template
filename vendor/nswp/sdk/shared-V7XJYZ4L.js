@@ -1,41 +1,44 @@
 import {
   arrival,
-  bytesToHex,
+  fetchByHashSaying,
+  filesAnywhere,
+  keptElsewhere,
+  onFileHostsChange,
   portal,
   room,
-  sha256
-} from "./shared-QY5YFQ6P.js";
+  setFilesAnywhere
+} from "./shared-QRGGCX3I.js";
 import {
   FEED_LIMITS,
   ICONS,
   ago,
-  askWell,
   createHeldButton,
-  foundRelays,
-  learnFrom,
   loadPicture,
   onChatChange,
   onPicturesChange,
-  relayBackup,
   rgb,
-  sendWell,
   setShowsChat,
   setShowsPictures,
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-ICA3LMEK.js";
+} from "./shared-FYLN3PQO.js";
 import {
   arrivedSettings,
   askClientForSignIn,
+  askWell,
   clientSignsInAt,
   currentForm,
+  foundRelays,
   fullscreenAction,
   holdFullscreen,
+  learnFrom,
   onClientScreen,
+  relayBackup,
   reportSettings,
+  sendWell,
   startingForm
-} from "./shared-4X7PNRMN.js";
+} from "./shared-LQ6USDK4.js";
 import {
   LiveKeys,
   TextEntry,
@@ -438,7 +441,7 @@ function createConsole(controls, opts) {
     const shared2 = !!(linePages > 1 && layout.rows === 1 && items.length);
     const itemW = shared2 ? (areaW - PAGER_W - items.length * 14) / items.length : evenW;
     const cellAt = (i) => shared2 ? { x: left + i * (itemW + 14), y: contentTop, w: i < items.length ? itemW : PAGER_W } : { x: left + i % cols * (evenW + 14), y: contentTop + Math.floor(i / cols) * (cellH + 12), w: evenW };
-    const pager = linePages > 1 ? { id: "", label: `Page ${linePage + 1} of ${linePages}`, icon: "turn", on: null, tone: "normal", key: "", short: "", kind: "button", color: "" } : null;
+    const pager = linePages > 1 ? { id: "", label: `Page ${linePage + 1} of ${linePages}`, icon: "turn", on: null, tone: "normal", key: "", short: "", kind: "button", color: "", mark: null, faint: false } : null;
     [...items, ...pager ? [pager] : []].forEach((item, i) => {
       const { x, y, w: cellW } = cellAt(i);
       const tone2 = item.tone === "warn" ? rgb(t.warn) : A;
@@ -464,8 +467,17 @@ function createConsole(controls, opts) {
         } else if (item.kind === "tile") {
           const picture = item.picture?.();
           const side = Math.min(cellH - 12, iconSize * 1.5);
+          const was = g.globalAlpha;
+          if (item.faint) g.globalAlpha = was * 0.45;
           if (picture) g.drawImage(picture, x + 10, y + (cellH - side) / 2 - 2, side, side);
           else strokeIcon(g, item.icon, x + 18, y + (cellH - iconSize) / 2 - 2, iconSize);
+          g.globalAlpha = was;
+          if (item.mark) {
+            const ink = g.strokeStyle;
+            g.strokeStyle = t.accent;
+            strokeIcon(g, item.mark, x + 10 + side - 22, y + (cellH - side) / 2, 22);
+            g.strokeStyle = ink;
+          }
         } else strokeIcon(g, item.icon, x + 18, y + (cellH - iconSize) / 2 - 2, iconSize);
         const size = Math.round((cols === 3 || cellW < 240 ? 23 : 28) * k);
         g.font = `600 ${size}px ${SANS}`;
@@ -3944,24 +3956,13 @@ function onItemsChange(fn) {
   watchers2.add(fn);
   return () => void watchers2.delete(fn);
 }
-var FETCH_MS = 3e4;
 var AGAIN_MS = 4e3;
-async function fetchWithin(url, most) {
-  try {
-    const res = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer", redirect: "error", signal: AbortSignal.timeout(FETCH_MS) });
-    if (!res.ok) return null;
-    const stated = Number(res.headers.get("content-length") ?? 0);
-    if (stated > most) return null;
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    return bytes.length <= most ? bytes : null;
-  } catch {
-    return null;
-  }
-}
 function createItemStore(opts = {}) {
   const query = opts.query ?? queryRelays4;
   const now = opts.now ?? (() => Date.now());
-  const fetchBytes = opts.fetchBytes ?? ((url) => fetchWithin(url, ITEM_BUDGET.bytes));
+  const viewer = opts.viewer ?? (() => arrival.identity()?.pubkey ?? null);
+  const hosts = { ...opts.relays ? { relays: opts.relays } : {}, query, now };
+  const refused = /* @__PURE__ */ new Set();
   const described = /* @__PURE__ */ new Map();
   const settled = /* @__PURE__ */ new Map();
   const files2 = /* @__PURE__ */ new Map();
@@ -3974,15 +3975,24 @@ function createItemStore(opts = {}) {
   const file = (named, most) => {
     let got = files2.get(named.sha256);
     if (!got) {
-      const asking = fetchBytes(named.url).then((bytes) => {
-        if (!bytes) forgetSoon(files2, named.sha256, asking);
-        return bytes && bytes.length <= most && bytesToHex(sha256(bytes)) === named.sha256 ? bytes : null;
+      const asking = fetchByHashSaying(named.sha256, named.url, { most, viewer: viewer(), hosts, ...opts.fetchBytes ? { fetchBytes: opts.fetchBytes } : {} }).then(({ bytes, wrong }) => {
+        if (bytes) refused.delete(named.sha256);
+        else if (keptElsewhere(named.url)) refused.add(named.sha256);
+        else if (!wrong) forgetSoon(files2, named.sha256, asking);
+        return bytes;
       }).catch(() => (forgetSoon(files2, named.sha256, asking), null));
       got = asking;
       files2.set(named.sha256, got);
     }
     return got;
   };
+  onFileHostsChange(() => {
+    for (const sha of refused) {
+      files2.delete(sha);
+      models.delete(sha);
+    }
+    refused.clear();
+  });
   return {
     describe(coordinateIn) {
       const coordinate = itemCoordinate(coordinateIn);
@@ -4010,7 +4020,7 @@ function createItemStore(opts = {}) {
       if (!got) {
         const asking = file(named.model, ITEM_BUDGET.bytes).then((bytes) => {
           const read = bytes ? readGlb(bytes) : null;
-          if (!bytes) forgetSoon(models, named.model.sha256, asking);
+          if (!bytes && !refused.has(named.model.sha256)) forgetSoon(models, named.model.sha256, asking);
           return bytes && read?.ok ? { bytes, count: read.count } : null;
         });
         got = asking;
@@ -4022,6 +4032,7 @@ function createItemStore(opts = {}) {
       const named = item.sounds[name];
       return named && showsItems() ? file(named, ITEM_BUDGET.sound) : null;
     },
+    elsewhere: (item) => [item.model, item.script].some((f) => !!f && refused.has(f.sha256)),
     async script(item) {
       if (!item.script || !showsItems()) return null;
       const bytes = await file(item.script, SCRIPT_LIMITS.bytes);
@@ -4252,17 +4263,17 @@ function runInBox(script, on, opts = {}) {
 
 // packages/sdk/src/play.ts
 var SCRIPT_KEPT = "nswp:item-scripts";
-function scriptAllowed(sha2562) {
+function scriptAllowed(sha256) {
   try {
-    return JSON.parse(globalThis.localStorage?.getItem(SCRIPT_KEPT) ?? "[]").includes(sha2562);
+    return JSON.parse(globalThis.localStorage?.getItem(SCRIPT_KEPT) ?? "[]").includes(sha256);
   } catch {
     return false;
   }
 }
-function allowScript(sha2562) {
+function allowScript(sha256) {
   try {
-    const kept2 = JSON.parse(globalThis.localStorage?.getItem(SCRIPT_KEPT) ?? "[]").filter((x) => typeof x === "string" && x !== sha2562);
-    globalThis.localStorage?.setItem(SCRIPT_KEPT, JSON.stringify([...kept2, sha2562].slice(-64)));
+    const kept2 = JSON.parse(globalThis.localStorage?.getItem(SCRIPT_KEPT) ?? "[]").filter((x) => typeof x === "string" && x !== sha256);
+    globalThis.localStorage?.setItem(SCRIPT_KEPT, JSON.stringify([...kept2, sha256].slice(-64)));
   } catch {
   }
 }
@@ -5256,10 +5267,15 @@ function createPresence(d) {
     if (arriving.moving?.()) return;
     const i = pickEntryPlace(arriving.places, others, arriving.canStand);
     const to = arriving.places[i];
+    const jump = arriving.jump ?? ((fn) => fn());
     arriving = null;
     if (!to) return;
-    d.rig.position.x += to.position[0] - head.x;
-    d.rig.position.z += to.position[2] - head.z;
+    const dx = to.position[0] - head.x;
+    const dz = to.position[2] - head.z;
+    jump(() => {
+      d.rig.position.x += dx;
+      d.rig.position.z += dz;
+    });
   };
   let plainSeed;
   let dot = null;
@@ -5720,11 +5736,13 @@ function createPresence(d) {
       offsetApplied = true;
       const at = d.arrival?.() ?? null;
       if (at && at.places.length) {
-        arriving = { until: clock + ARRIVING_SECONDS, from: d.camera.getWorldPosition(new THREE9.Vector3()), places: at.places, ...at.canStand ? { canStand: at.canStand } : {}, ...at.moving ? { moving: at.moving } : {} };
+        arriving = { until: clock + ARRIVING_SECONDS, from: d.camera.getWorldPosition(new THREE9.Vector3()), places: at.places, ...at.jump ? { jump: at.jump } : {}, ...at.canStand ? { canStand: at.canStand } : {}, ...at.moving ? { moving: at.moving } : {} };
       } else {
         const off = spawnOffset(s.self.pubkey);
-        d.rig.position.x += off.x;
-        d.rig.position.z += off.z;
+        (at?.jump ?? ((fn) => fn()))(() => {
+          d.rig.position.x += off.x;
+          d.rig.position.z += off.z;
+        });
       }
     }
     s.on("status", changed);
@@ -6906,6 +6924,20 @@ function addRoomControls(controls, presence, opts = {}) {
       controls.say(showsPictures() ? "People's own pictures are shown over their names. Each is fetched from wherever its owner keeps it, which tells that place your address." : "No pictures are fetched or shown, here or in the next world.");
     }
   });
+  controls.add({
+    id: "files-anywhere",
+    section: "people",
+    icon: "link",
+    on: () => filesAnywhere(),
+    label: () => filesAnywhere() ? "Load people's files from anywhere: on" : "Load people's files from anywhere: off",
+    short: "Files",
+    act: () => {
+      setFilesAnywhere(!filesAnywhere());
+      controls.say(
+        filesAnywhere() ? "What people carry is fetched from wherever they keep it, in this place. The place that keeps a file learns your address, and when you were near it: anyone can choose that place. It stays off in other places until you turn it on there." : "People's files are fetched only from the file hosts you already use. Anything kept elsewhere is shown as a plain box."
+      );
+    }
+  });
   const people = () => {
     const here = presence.session ? presence.people() : [];
     if (presence.session && here.length !== headcount) controls.signal(here.length > headcount ? "join" : "leave");
@@ -7922,9 +7954,9 @@ function readPad(pad) {
   }
   return { stick, from, trigger: value(0), squeeze: value(1), primary: !!button(4)?.pressed, secondary: !!button(5)?.pressed, press: from === "thumbstick" && !!button(3)?.pressed };
 }
-var DEFAULT_COMFORT = { move: "steps", turn: "steps", turnStep: 30, narrow: true, moveHand: "left" };
-var CASUAL_COMFORT = { move: "steps", turn: "steps", narrow: true };
-var INTENSE_COMFORT = { move: "smooth", turn: "smooth", narrow: false };
+var DEFAULT_COMFORT = { move: "steps", turn: "steps", turnStep: 30, narrow: true, fade: true, moveHand: "left" };
+var CASUAL_COMFORT = { move: "steps", turn: "steps", narrow: true, fade: true };
+var INTENSE_COMFORT = { move: "smooth", turn: "smooth", narrow: false, fade: false };
 var isIntense = (comfort) => comfort.move === "smooth" && comfort.turn === "smooth";
 function cleanComfort(input) {
   const out = {};
@@ -7934,6 +7966,7 @@ function cleanComfort(input) {
   if (c.turn === "steps" || c.turn === "smooth") out.turn = c.turn;
   if (c.turnStep === 30 || c.turnStep === 45 || c.turnStep === 90) out.turnStep = c.turnStep;
   if (typeof c.narrow === "boolean") out.narrow = c.narrow;
+  if (typeof c.fade === "boolean") out.fade = c.fade;
   if (c.moveHand === "left" || c.moveHand === "right") out.moveHand = c.moveHand;
   return out;
 }
@@ -8093,9 +8126,9 @@ function createXrInput(opts) {
   const accent = new THREE12.Color(opts.accent ?? 16758364);
   const came = arrivedSettings();
   let answered = came.headset !== void 0 || hasComfort() || opts.arrivedIntense === true;
-  let comfort = { ...loadComfort(), ...came.headset === "intense" ? INTENSE_COMFORT : came.headset === "casual" ? CASUAL_COMFORT : {}, ...came.turn !== void 0 ? { turnStep: came.turn } : {}, ...came.hand !== void 0 ? { moveHand: came.hand } : {}, ...came.narrow !== void 0 ? { narrow: came.narrow } : {} };
-  if (came.turn !== void 0 || came.hand !== void 0 || came.narrow !== void 0 || came.headset !== void 0) saveComfort(comfort);
-  reportSettings("hands", () => ({ turn: comfort.turnStep, hand: comfort.moveHand, narrow: comfort.narrow, ...answered ? { headset: isIntense(comfort) ? "intense" : "casual" } : {} }));
+  let comfort = { ...loadComfort(), ...came.headset === "intense" ? INTENSE_COMFORT : came.headset === "casual" ? CASUAL_COMFORT : {}, ...came.turn !== void 0 ? { turnStep: came.turn } : {}, ...came.hand !== void 0 ? { moveHand: came.hand } : {}, ...came.narrow !== void 0 ? { narrow: came.narrow } : {}, ...came.fade !== void 0 ? { fade: came.fade } : {} };
+  if (came.turn !== void 0 || came.hand !== void 0 || came.narrow !== void 0 || came.fade !== void 0 || came.headset !== void 0) saveComfort(comfort);
+  reportSettings("hands", () => ({ turn: comfort.turnStep, hand: comfort.moveHand, narrow: comfort.narrow, fade: comfort.fade, ...answered ? { headset: isIntense(comfort) ? "intense" : "casual" } : {} }));
   const loco = new Locomotion();
   const stops = [];
   const listeners = [];
@@ -8152,6 +8185,45 @@ function createXrInput(opts) {
   unpointable(vignette);
   camera.add(vignette);
   let narrow = 0;
+  const FADE_S = 0.12;
+  const sheet = new THREE12.Mesh(
+    new THREE12.PlaneGeometry(4, 4),
+    new THREE12.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0, depthTest: false, depthWrite: false })
+  );
+  sheet.position.z = -0.3;
+  sheet.renderOrder = 1e3;
+  sheet.frustumCulled = false;
+  sheet.visible = false;
+  unpointable(sheet);
+  camera.add(sheet);
+  let dark = 0;
+  let fading = null;
+  const jumps = [];
+  const jumped = [];
+  const made = (fn) => {
+    jumped.push(Math.round(dark * 100) / 100);
+    if (jumped.length > 8) jumped.shift();
+    fn();
+  };
+  const jump = (fn) => {
+    if (!renderer.xr.isPresenting || !comfort.fade) return made(fn);
+    jumps.push(fn);
+    fading = "out";
+  };
+  const tendFade = (dt) => {
+    if (fading === "out") {
+      dark = Math.min(1, dark + dt / FADE_S);
+      if (dark >= 1) {
+        for (const fn of jumps.splice(0)) made(fn);
+        fading = "in";
+      }
+    } else if (fading === "in") {
+      dark = Math.max(0, dark - dt / FADE_S);
+      if (dark <= 0) fading = null;
+    }
+    sheet.material.opacity = dark;
+    sheet.visible = dark > 0;
+  };
   let pulses = 0;
   const pulse = (slot, strength = 0.4, ms = 25) => {
     const pad = slots[slot]?.source?.gamepad;
@@ -8319,6 +8391,17 @@ function createXrInput(opts) {
         label: () => comfort.narrow ? "The view narrows while you move. Turn that off" : "Narrow the view while you move",
         short: "Narrow",
         act: () => change2({ narrow: !comfort.narrow })
+      },
+      {
+        // A jump the kit makes (a step, being stepped aside) fades to black and back: casual's default, intense's not.
+        id: "move-fade",
+        section: "moving",
+        icon: "look",
+        hidden,
+        on: () => comfort.fade,
+        label: () => comfort.fade ? "The view fades when you step. Turn that off" : "Fade the view when you step",
+        short: "Fade",
+        act: () => change2({ fade: !comfort.fade })
       }
     );
     let asking = false;
@@ -8356,6 +8439,10 @@ function createXrInput(opts) {
       aiming = [];
       narrow = 0;
       vignette.visible = false;
+      for (const fn of jumps.splice(0)) fn();
+      fading = null;
+      dark = 0;
+      sheet.visible = false;
       for (const slot of [...held.keys()]) release(slot);
     } else {
       const pads = read();
@@ -8367,7 +8454,11 @@ function createXrInput(opts) {
         }
       }
       const stepped = comfort.move === "steps";
-      if ((intent.walk[0] !== 0 || intent.walk[1] !== 0) && (!stepped || !opts.pace || opts.pace.take(Math.hypot(intent.walk[0], intent.walk[1])))) walk(intent.walk[0], intent.walk[1]);
+      if ((intent.walk[0] !== 0 || intent.walk[1] !== 0) && (!stepped || !opts.pace || opts.pace.take(Math.hypot(intent.walk[0], intent.walk[1])))) {
+        const [x, z] = intent.walk;
+        if (stepped) jump(() => walk(x, z));
+        else walk(x, z);
+      }
       for (const slot of intent.stepFrom) {
         opts.stepFrom?.(slot);
         pulse(slot, 0.35, 20);
@@ -8379,6 +8470,7 @@ function createXrInput(opts) {
       narrow += (intent.narrow - narrow) * Math.min(1, dt * (intent.narrow > narrow ? 12 : 3));
       vignette.material.uniforms.uAmount.value = narrow * 0.85;
       vignette.visible = narrow > 0.01;
+      tendFade(dt);
       slots.forEach((s, i) => {
         const kind = kindOf(s);
         if (s.model) {
@@ -8415,6 +8507,7 @@ function createXrInput(opts) {
     },
     setComfort,
     update,
+    jump,
     grabbable(object, o = {}) {
       things.set(object, { object, reach: o.reach ?? 0.1, far: o.far ?? true, pull: o.pull ?? true, release: o.release ?? "stay", ...o.onGrab ? { onGrab: o.onGrab } : {}, ...o.onRelease ? { onRelease: o.onRelease } : {} });
       return () => {
@@ -8432,6 +8525,8 @@ function createXrInput(opts) {
         aiming,
         holding: [0, 1].map((i) => held.get(i)?.thing.object.name || (held.has(i) ? "(unnamed)" : null)),
         narrow: Math.round(narrow * 100) / 100,
+        dark: Math.round(dark * 100) / 100,
+        jumped: [...jumped],
         pulses
       };
     },
@@ -10987,7 +11082,8 @@ function addBagControls(controls, opts) {
           proven: false,
           sub: `Made by ${item.maker.slice(0, 8)}\u2026`,
           copy: item.id,
-          text: item.summary,
+          // Drawn as a plain box because its files are kept somewhere they don't load files from: said, with what to do.
+          text: items.elsewhere?.(item) ? `${item.summary ? `${item.summary} ` : ""}Kept somewhere you don't load files from, so it is shown as a plain box. "Load people's files from anywhere", under People, would fetch it.` : item.summary,
           picture: "",
           color: "",
           now: [],
@@ -11136,6 +11232,8 @@ function addBagControls(controls, opts) {
           icon: "save",
           picture: still(item),
           on: () => chosen === item,
+          // In the bag (and in hand, which is in the bag): the bag in its corner.
+          mark: "bag",
           label: () => `${titleOf(item)}${opts.holding() === item ? ", in your hand" : ""}`,
           short: () => titleOf(item),
           act: choose(item)
@@ -11152,7 +11250,9 @@ function addBagControls(controls, opts) {
           icon: "save",
           picture: still(item),
           on: () => chosen === item,
-          label: () => `${titleOf(item)}, offered here`,
+          // Not theirs yet: greyed, and still theirs to choose and take.
+          faint: () => true,
+          label: () => `${titleOf(item)}, offered here, not in your bag`,
           short: () => titleOf(item),
           act: choose(item)
         })

@@ -138,43 +138,43 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-U647KBIX.js";
-import "./shared-QY5YFQ6P.js";
+} from "./shared-V7XJYZ4L.js";
+import "./shared-QRGGCX3I.js";
 import {
   PICTURE_LIMITS,
   addDoorControls,
-  askWell,
-  foundRelays,
-  learnFrom,
   loadPicture,
   onPicturesChange,
-  publishBacked,
-  queryBacked,
-  relayBackup,
-  relaysWell,
-  sendWell,
   setShowsPictures,
   showsPictures,
   vouchedWords
-} from "./shared-ICA3LMEK.js";
+} from "./shared-FYLN3PQO.js";
 import {
   arriveWith,
   arrivedSettings,
   askClientForSignIn,
+  askWell,
   clientPanelOpen,
   clientSignsInAt,
   currentForm,
   currentSettings,
   deviceForms,
   formFor,
+  foundRelays,
   fullscreenWaiting,
+  learnFrom,
   onClientSignIn,
   prefersFullscreen,
+  publishBacked,
+  queryBacked,
+  relayBackup,
+  relaysWell,
   reportSettings,
   resumeFullscreen,
+  sendWell,
   startingForm,
   usedForm
-} from "./shared-4X7PNRMN.js";
+} from "./shared-LQ6USDK4.js";
 import {
   browserVoice,
   computerVoice,

@@ -94,6 +94,10 @@ export interface XrInputInfo {
     holding: (string | null)[];
     /** How much of the view's edge is darkened, 0 to 1. */
     narrow: number;
+    /** How dark the whole view is just now, 0 to 1: above 0 only while the kit fades a jump. */
+    dark: number;
+    /** How dark the view was as each of the last few jumps was made: 1 for a faded one, 0 for a cut. For tests. */
+    jumped: number[];
     /** Buzzes sent so far, for tests: nothing else can see one. */
     pulses: number;
 }
@@ -105,6 +109,12 @@ export interface XrInput {
     setComfort(patch: Partial<Comfort>, keep?: boolean): void;
     /** Call once per frame with the seconds since the last one. */
     update(dt: number): void;
+    /**
+     * Make a jump: `fn` moves the visitor at once (a step, a respawn, a teleporter). In a headset, for someone whose
+     * `fade` setting is on (casual's default), the view fades to black, `fn` runs while it is dark, and the view comes
+     * back: nothing is seen to move. Otherwise `fn` runs now, an instant cut, as intense keeps.
+     */
+    jump(fn: () => void): void;
     /** Make something a visitor can pick up. Returns a function that takes that back. */
     grabbable(object: THREE.Object3D, opts?: GrabOptions): () => void;
     /** True while a pinch in this slot is holding something: its `select` picked that up, and is not a press. */

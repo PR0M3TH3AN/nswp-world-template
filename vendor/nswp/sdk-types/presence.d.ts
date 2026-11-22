@@ -18,13 +18,15 @@ export interface PresenceOptions {
      * Where the visitor arrived, for stepping them aside if they join and find themselves inside someone (protocol/
      * 01-worlds.md, "Places to arrive"): the places of the entry point they came by (`entryPlaces`), where they may
      * stand, and whether they are stepping or turning now. Asked when they join. Only the one arriving is ever moved,
-     * once, soon after they join, and never while they are stepping or turning; in a headset it is the same instant cut
-     * a step is, never a slide. Left out, they are stepped a little way round their spot as before (`spawnOffset`).
+     * once, soon after they join, and never while they are stepping or turning; in a headset it is the same jump a
+     * step is, never a slide, made through `jump` where it is given (the headset input's, which fades it for someone
+     * whose `fade` is on). Left out, they are stepped a little way round their spot as before (`spawnOffset`).
      */
     arrival?: () => {
         places: readonly EntryPlace[];
         canStand?: (x: number, z: number) => boolean;
         moving?: () => boolean;
+        jump?: (fn: () => void) => void;
     } | null;
     /**
      * The world's own rules for its rooms (protocol/10-identity.md, "A world's own lists"), as its gate last read

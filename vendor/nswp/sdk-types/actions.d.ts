@@ -46,6 +46,8 @@ export interface Comfort {
     turnStep: 30 | 45 | 90;
     /** Darken the edge of the view while moving smoothly. It is what stops most people feeling ill. */
     narrow: boolean;
+    /** Fade the view to black and back when the kit jumps them: a step, being stepped aside. Nothing is seen to move. */
+    fade: boolean;
     /** Which hand's stick moves you. The other turns you. */
     moveHand: "left" | "right";
 }

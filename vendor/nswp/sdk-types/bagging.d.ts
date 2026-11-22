@@ -10,7 +10,7 @@ export interface BaggingOptions {
      * What looks items up. Their descriptions are all that is needed; where it can also give a model (items.ts),
      * each thing is shown as itself, drawn from that model. Without, each is shown by its first letter.
      */
-    items: Pick<ItemStore, "known" | "describe"> & Partial<Pick<Items, "model">>;
+    items: Pick<ItemStore, "known" | "describe"> & Partial<Pick<Items, "model" | "elsewhere">>;
     /** What draws each thing's picture. Left out, one is made from `items.model`, where there is one. `null` for none. */
     previews?: ItemPreviews | null;
     /** Whether things may move for this visitor: off, the chosen thing is shown still. Left out, as the menu's own setting says. */

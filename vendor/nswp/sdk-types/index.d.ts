@@ -11,6 +11,7 @@
 import { type Arrival, type Issue, type NostrEvent, type AirlockUrlOptions, type PortalDestination } from "@nswp/core";
 import { type Form } from "./form.js";
 export { arrivedSettings, arriveWith, currentSettings, reportSettings, type TravelSettings } from "./settings.js";
+export { addressesFor, fetchByHash, fetchByHashSaying, fileHosts, filesAnywhere, forgetFileHosts, keptElsewhere, learnFileHosts, onFileHostsChange, setFilesAnywhere, type FetchByHashOptions, type Fetched, type FileHostsOptions } from "./file-hosts.js";
 export type { Arrival, PortalDestination } from "@nswp/core";
 export { currentForm, startingForm, type Form } from "./form.js";
 export { room, RoomSession, type JoinOptions, type Member, type RoomStatus } from "./room.js";

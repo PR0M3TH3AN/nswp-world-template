@@ -18,6 +18,10 @@ export interface UiAction {
     /** For something that is on or off: whether it is on now. */
     on?: () => boolean;
     tone?: "normal" | "primary" | "warn";
+    /** A tile's small icon in its corner, saying something about the thing at a glance (the bag's: it is in your bag). */
+    mark?: IconName | (() => IconName | null);
+    /** A tile drawn greyed: not the visitor's yet (offered here). Still pressable: grey is never "unavailable". */
+    faint?: () => boolean;
     /** Put it in the row of things always at hand. Keep that row to six. */
     hotbar?: boolean;
     /**
@@ -100,6 +104,10 @@ export interface UiItemView {
     short: string;
     kind: "button" | "swatch" | "tile" | "line";
     color: string;
+    /** A tile's small icon in its corner, or null. */
+    mark: IconName | null;
+    /** A tile drawn greyed, and still pressable. */
+    faint: boolean;
     /** A tile's picture, asked for as it is drawn. Not part of what is written out as text. */
     picture?: () => CanvasImageSource | null;
 }
