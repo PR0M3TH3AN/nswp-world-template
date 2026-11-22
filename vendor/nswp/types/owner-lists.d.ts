@@ -1,3 +1,24 @@
+/**
+ * A world owner's own lists: who is let into a world, and who is kept out of it (protocol/10-identity.md, "A
+ * world's own lists"; docs/plans/a-world-by-invitation.md).
+ *
+ * The shape is BitGate's, not the kit's: one shape for an allow list and a block list everywhere
+ * (PR0M3TH3AN/bitgate, `docs/governance-lists.md`). This file reads it the way that document says, and is held to
+ * BitGate's own examples (`vectors/governance-lists.json`, copied with the commit they came from). Nothing here
+ * needs a service: a list is a signed note, and every copy of the kit checks the signature itself.
+ *
+ * - A list is kind 30078, addressed by `d` = `<namespace>:governance:<scope>:v1:<subject>`, with the subject the
+ *   world's own coordinate (`37300:<key>:<its d>`). An allow list and a block list are two notes.
+ * - It counts only when signed by the root the reader was given: by default the subject's own key, and for a world
+ *   whose manifest names `keepers`, those. A given root replaces the default.
+ * - The newest copy is the list. One dated more than ten minutes ahead is left out before choosing, and said.
+ *   If the newest is refused, the list is unreadable: an older copy is never used in its place.
+ * - A list is public. Anyone can read who is let in and who is kept out, and the owner is told so.
+ *
+ * The decisions on how a world acts on them (blocked beats invited, a block list that can't be read is no block,
+ * an allow list that can't be read lets nobody in) are the gate's (SDK `front-room.ts`), not this file's.
+ */
+import { type NostrEvent } from "./event.js";
 /** The kind a list is: application data, addressed by its own name. The same kind as a listing and a receipt. */
 export declare const LIST_KIND = 30078;
 /** The namespace every client's lists for worlds are written under. */
@@ -85,3 +106,35 @@ export declare function ownerListTemplate(o: {
     content: string;
     tags: string[][];
 } | null;
+/** One change to a world owner's lists: who is let in, taken off, kept out, or no longer kept out. */
+export type OwnerListChange = "allow" | "unallow" | "block" | "unblock";
+/** Which list a change is made to: letting in and taking off are the guest list's, blocking and unblocking the block list's. */
+export declare const scopeOfChange: (change: OwnerListChange) => ListScope;
+/**
+ * The list one change makes (protocol/10-identity.md, "Writing one, from one change"; `vectors/owner-list-writing.json`
+ * is held to it): everyone on `list` stays, `key` is put on or taken off, and it is dated `now`, or a second after
+ * `list` where that is later, so it replaces it. `list` is the newest found for that world and that change's list, or
+ * null for none. Null where it can't be written: a list that is another world's or another list, a key that isn't one,
+ * a subject that isn't one, or more than `OWNER_LIST_LIMITS.write` people.
+ */
+export declare function changeOwnerList(list: NostrEvent | null, o: {
+    subject: string;
+    change: OwnerListChange;
+    key: string;
+    now: number;
+    namespace?: string;
+}): ReturnType<typeof ownerListTemplate>;
+/**
+ * Whether `signed`, come back from a sign-in address, is exactly `list` with that one change: signed by `pubkey` (the
+ * keeper who asked), really signed, dated after `list`, and with the same tags and people as `changeOwnerList` gives,
+ * leaving out a `client` tag and a site's marks, which a writer may add. Nothing else gets in, and nothing between can
+ * slip anyone onto the list.
+ */
+export declare function isOwnerListAsked(signed: unknown, o: {
+    list: NostrEvent | null;
+    subject: string;
+    change: OwnerListChange;
+    key: string;
+    pubkey: string | null;
+    namespace?: string;
+}): signed is NostrEvent;

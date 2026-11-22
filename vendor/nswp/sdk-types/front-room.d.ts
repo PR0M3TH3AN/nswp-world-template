@@ -26,7 +26,7 @@
  * Nothing here draws anything: a world shows the gate its own way and reads `open`. The control is added to the
  * visitor's console, so it is the same on a flat screen and in a headset.
  */
-import { type Filter, type QueryResult, type Receipt } from "@nswp/core";
+import { publishEvent, type OwnerListChange, type Filter, type QueryResult, type Receipt } from "@nswp/core";
 import type { WorldSigner } from "./signer.js";
 import type { Controls } from "./ui/model.js";
 /**
@@ -63,7 +63,7 @@ export interface GateOffer {
     readonly words: string;
 }
 /** What the gate needs of the page's signer: no more than it uses. */
-export type GateSigner = Pick<WorldSigner, "state" | "pubkey" | "host" | "have" | "buy" | "onChange" | "whenAnswered">;
+export type GateSigner = Pick<WorldSigner, "state" | "pubkey" | "host" | "have" | "buy" | "guests" | "onChange" | "whenAnswered">;
 export interface PaidGateOptions {
     /** The page's own signer, or null where the visitor came with none (`worldGate` gives it). Asked each time. */
     signer: () => GateSigner | null;
@@ -81,6 +81,8 @@ export interface PaidGateOptions {
     manifest?: () => Promise<unknown>;
     /** For tests: what asks relays. */
     query?: (relays: string[], filter: Filter, timeoutMs?: number) => Promise<QueryResult>;
+    /** For tests: what sends a changed list to relays. */
+    publish?: typeof publishEvent;
     /**
      * For tests: what asks the service that signed a receipt whether it has taken it back since. Left out, that
      * service is asked at its own address. "unknown" where it couldn't be asked.
@@ -128,6 +130,22 @@ export interface PaidGate {
     readonly host: string;
     /** A purchase is with the visitor now, at their sign-in address. */
     readonly buying: boolean;
+    /** The visitor signed in here, where they are one of this world's keepers (their key), or null: "Who comes in" is theirs. */
+    readonly keeper: string | null;
+    /** Who the guest list itself names, as read (not the keepers, always let in), where the world is by invitation; else null. */
+    readonly guests: readonly string[] | null;
+    /**
+     * Change one person on this world's own lists, for a keeper signed in here (protocol/10-identity.md, "The owner's
+     * screen"): let in or take off the guest list (a world by invitation), block or unblock. Call it from a press.
+     * Their sign-in address asks them on its own page; what comes back is checked, sent to relays, and taken here at
+     * once. Where no list was found, the first press says so and a second, for the same change, starts one: a relay
+     * that was down must not wipe a list. `said` is what to tell them, in words; `again` that a second press is wanted.
+     */
+    changeList(change: OwnerListChange, key: string): Promise<{
+        ok: boolean;
+        said: string;
+        again?: boolean;
+    }>;
     /**
      * Ask the visitor to buy one of the offers (the first, left out). Call it from a press. Their sign-in address
      * asks them on its own page. Resolves true only once a receipt that holds up has opened the gate.
@@ -158,6 +176,12 @@ export declare function addGateControls(controls: Controls, gate: PaidGate, opts
     section?: string;
     /** What starts signing in, from a press. Left out, the kit's own sign-in row. False if nothing could be started. */
     signIn?: () => boolean;
+    /** The owner's screen: who is here now, by their keys (those whose pass checked out), to offer a keeper. */
+    here?: () => readonly string[];
+    /** The owner's screen: who the visitor follows, by their keys, or null where that isn't known (`worldPeople().follows`). */
+    follows?: () => readonly string[] | null;
+    /** For tests: what reads what the visitor copied. Left out, the browser's clipboard. */
+    copied?: () => Promise<string>;
 }): {
     refresh(): void;
     press(listing?: string): void;

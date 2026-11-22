@@ -138,7 +138,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-C5YZ3WVE.js";
+} from "./shared-U647KBIX.js";
 import "./shared-QY5YFQ6P.js";
 import {
   PICTURE_LIMITS,

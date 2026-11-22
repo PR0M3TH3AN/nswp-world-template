@@ -285,6 +285,22 @@ export type SignerRequest = {
     t: "have";
     id: string;
     listing: string;
+}
+/**
+ * Change one person on this world's own lists (protocol/10-identity.md, "The owner's screen"), the same way: on the
+ * sign-in address's own page, every time, with no standing say-so. The world hands over its coordinate, the newest
+ * list it found for the signed-in keeper (or null, with `none` where it has looked and there is none), and the one
+ * change. The sign-in address checks that the account is one of the world's keepers, builds the new list itself
+ * and signs it; the world sends it to relays.
+ */
+ | {
+    t: "guests";
+    id: string;
+    world: string;
+    list: NostrEvent | null;
+    change: "allow" | "unallow" | "block" | "unblock";
+    key: string;
+    none?: true;
 };
 /**
  * The careful kinds a world may put to its visitor, to be signed at their own press on the sign-in address's page:

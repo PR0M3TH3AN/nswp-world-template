@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.81.0";
+var KIT_VERSION = "0.82.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4000,6 +4000,32 @@ var DOOR_OFFERS = ["headset", "people", "voice", "items", "saves", "records", "b
 var MORE_OFFERS = ["tips", "doors", "looks", "by-name", "home"];
 var OFFERS = [...DOOR_OFFERS, ...MORE_OFFERS];
 
+// packages/core/dist/chat.js
+var UNSEEN = [
+  [0, 31],
+  [127, 159],
+  [8203, 8204],
+  // 0x200d joins the parts of one emoji, and stays.
+  [8206, 8207],
+  [8232, 8239],
+  [8288, 8303],
+  [65279, 65279],
+  [65529, 65531]
+];
+var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
+function cleanLine(text, chars) {
+  if (typeof text !== "string")
+    return "";
+  let out = "";
+  for (const ch of text.slice(0, chars * 8).normalize("NFC"))
+    out += unseen(ch.codePointAt(0)) ? " " : ch;
+  out = out.replace(/\s+/g, " ").trim();
+  return [...out].slice(0, chars).join("").trim();
+}
+
+// packages/core/dist/rating.js
+var SITE_MARKS = ["nswp:world", "bitlogin:site"];
+
 // packages/core/dist/owner-lists.js
 var LIST_KIND = 30078;
 var LIST_NAMESPACE = "nswp";
@@ -4098,6 +4124,7 @@ function ownerListTemplate(o) {
     tags: [["d", listD(o.scope, o.subject, o.namespace)], ["v", "1"], ["scope", o.scope], ["subject", o.subject], ...people.map((p) => ["p", p])]
   };
 }
+var NOT_READ = ["client", ...SITE_MARKS];
 
 // packages/core/dist/manifest.js
 var KEEPERS_MOST = OWNER_LIST_LIMITS.root;
@@ -4363,29 +4390,6 @@ var LAYOUT_LIMITS = {
   /** A picture in a frame (spec §10.1). */
   pictureBytes: 1024 * 1024
 };
-
-// packages/core/dist/chat.js
-var UNSEEN = [
-  [0, 31],
-  [127, 159],
-  [8203, 8204],
-  // 0x200d joins the parts of one emoji, and stays.
-  [8206, 8207],
-  [8232, 8239],
-  [8288, 8303],
-  [65279, 65279],
-  [65529, 65531]
-];
-var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
-function cleanLine(text, chars) {
-  if (typeof text !== "string")
-    return "";
-  let out = "";
-  for (const ch of text.slice(0, chars * 8).normalize("NFC"))
-    out += unseen(ch.codePointAt(0)) ? " " : ch;
-  out = out.replace(/\s+/g, " ").trim();
-  return [...out].slice(0, chars).join("").trim();
-}
 
 // packages/core/dist/arrival.js
 var decoder2 = new TextDecoder();
