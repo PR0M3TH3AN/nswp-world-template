@@ -67,6 +67,8 @@ export declare const isIntense: (comfort: Comfort) => boolean;
 /** Keep only values that are what they claim to be: this is read back from storage. */
 export declare function cleanComfort(input: unknown): Partial<Comfort>;
 export declare function loadComfort(): Comfort;
+/** Whether this site keeps a choice of how they move in a headset: they chose, here or before arriving. */
+export declare function hasComfort(): boolean;
 export declare function saveComfort(comfort: Comfort): void;
 export type Handedness = "left" | "right" | "none";
 export interface HeldPad {

@@ -133,7 +133,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-4PECIHLL.js";
+} from "./shared-YS3HWVIA.js";
 import {
   currentForm,
   deviceForms,

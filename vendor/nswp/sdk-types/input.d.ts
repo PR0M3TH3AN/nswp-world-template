@@ -114,4 +114,9 @@ export interface XrInput {
     info(): XrInputInfo;
     dispose(): void;
 }
+/** The words of the question asked once, the first time a visitor is in a headset with no choice said or kept. */
+export declare const MOVE_QUESTION: {
+    readonly casual: "Casual: point to step, turn in notches";
+    readonly intense: "Intense: walk and turn smoothly with the sticks";
+};
 export declare function createXrInput(opts: XrInputOptions): XrInput;

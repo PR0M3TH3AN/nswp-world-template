@@ -352,7 +352,7 @@ function createConsole(controls, opts) {
         wrap(g, card.text, areaW - 60, 2).forEach((line, i) => g.fillText(line, left + 34, y + 114 + i * 26));
       }
     }
-    const cols = items.length > 8 ? 3 : 2;
+    const cols = items.length <= 2 && items.some((item) => item.label.length > 24) ? 1 : items.length > 8 ? 3 : 2;
     const rowsN = Math.max(1, Math.ceil(items.length / cols));
     const cellW = (areaW - (cols - 1) * 14) / cols;
     const lineRows = Math.ceil(lines.length / 2);
@@ -448,6 +448,11 @@ function createConsole(controls, opts) {
   const want = new THREE2.Vector3();
   const hand = new THREE2.Vector3();
   const toHand = new THREE2.Vector3();
+  controls.onSignal((name) => {
+    if (!name.startsWith("show:") || !opts.renderer.xr.isPresenting) return;
+    section = name.slice(5);
+    setOpen(true, "floating");
+  });
   const setOpen = (next, where = "floating") => {
     if (open === next && mount === where) return;
     if (open !== next) controls.signal(next ? "menuOpen" : "menuClose");
@@ -7577,6 +7582,13 @@ function loadComfort() {
     return { ...DEFAULT_COMFORT };
   }
 }
+function hasComfort() {
+  try {
+    return globalThis.localStorage?.getItem(KEY3) !== null && globalThis.localStorage?.getItem(KEY3) !== void 0;
+  } catch {
+    return false;
+  }
+}
 function saveComfort(comfort) {
   try {
     globalThis.localStorage?.setItem(KEY3, JSON.stringify(cleanComfort(comfort)));
@@ -7669,6 +7681,16 @@ var Locomotion = class {
   }
 };
 
+// packages/sdk/src/ask-once.ts
+function mayAskHowTheyMove() {
+  try {
+    if (new URLSearchParams(globalThis.location?.search ?? "").get("ask") === "moving") return true;
+    return !globalThis.navigator?.webdriver;
+  } catch {
+    return false;
+  }
+}
+
 // packages/sdk/src/input.ts
 var unpointable = (root) => root.traverse((o) => void (o.raycast = () => {
 }));
@@ -7699,14 +7721,20 @@ function controllerModel(accent) {
 }
 var VIGNETTE_VERT = `varying float vFar; void main(){ vFar = length(position.xy); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 var VIGNETTE_FRAG = `uniform float uAmount; varying float vFar; void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.24, 0.42, vFar) * uAmount); }`;
+var MOVE_QUESTION = {
+  casual: "Casual: point to step, turn in notches",
+  intense: "Intense: walk and turn smoothly with the sticks"
+};
 function createXrInput(opts) {
   const { renderer, rig, camera } = opts;
   const accent = new THREE12.Color(opts.accent ?? 16758364);
   const came = arrivedSettings();
-  let comfort = { ...loadComfort(), ...came.turn !== void 0 ? { turnStep: came.turn } : {}, ...came.hand !== void 0 ? { moveHand: came.hand } : {}, ...came.narrow !== void 0 ? { narrow: came.narrow } : {} };
-  if (came.turn !== void 0 || came.hand !== void 0 || came.narrow !== void 0) saveComfort(comfort);
-  reportSettings("hands", () => ({ turn: comfort.turnStep, hand: comfort.moveHand, narrow: comfort.narrow }));
+  let answered = came.headset !== void 0 || hasComfort() || opts.arrivedIntense === true;
+  let comfort = { ...loadComfort(), ...came.headset === "intense" ? INTENSE_COMFORT : came.headset === "casual" ? CASUAL_COMFORT : {}, ...came.turn !== void 0 ? { turnStep: came.turn } : {}, ...came.hand !== void 0 ? { moveHand: came.hand } : {}, ...came.narrow !== void 0 ? { narrow: came.narrow } : {} };
+  if (came.turn !== void 0 || came.hand !== void 0 || came.narrow !== void 0 || came.headset !== void 0) saveComfort(comfort);
+  reportSettings("hands", () => ({ turn: comfort.turnStep, hand: comfort.moveHand, narrow: comfort.narrow, ...answered ? { headset: isIntense(comfort) ? "intense" : "casual" } : {} }));
   const loco = new Locomotion();
+  const stops = [];
   const listeners = [];
   const listen = (target, type, fn) => {
     target.addEventListener(type, fn);
@@ -7866,7 +7894,10 @@ function createXrInput(opts) {
   });
   const setComfort = (patch, keep3 = false) => {
     comfort = { ...comfort, ...cleanComfort(patch) };
-    if (keep3) saveComfort(comfort);
+    if (keep3) {
+      saveComfort(comfort);
+      answered = true;
+    }
   };
   if (opts.arrivedIntense && !isIntense(comfort)) setComfort(INTENSE_COMFORT, true);
   if (opts.controls) {
@@ -7893,7 +7924,7 @@ function createXrInput(opts) {
         icon: "motion",
         hidden,
         on: () => isIntense(comfort),
-        label: () => isIntense(comfort) ? "Headset controls: intense" : "Headset controls: casual",
+        label: () => `${renderer.xr.isPresenting ? "How you move" : "In a headset"}: ${isIntense(comfort) ? "intense" : "casual"}`,
         short: "Style",
         act: () => {
           const intense = !isIntense(comfort);
@@ -7927,6 +7958,32 @@ function createXrInput(opts) {
         act: () => change2({ narrow: !comfort.narrow })
       }
     );
+    let asking = false;
+    const answer = (intense) => {
+      asking = false;
+      setComfort(intense ? INTENSE_COMFORT : CASUAL_COMFORT, true);
+      controls.say(intense ? "Intense: one stick walks, the other turns, smoothly. You can change it in Moving." : "Casual: point at the floor to step there, and turn a notch at a time. You can change it in Moving.");
+    };
+    controls.addSection({ id: "how-you-move", label: "How you move", icon: "step", note: () => asking ? "You can change this whenever you like, in Moving." : "" });
+    controls.add(
+      { id: "how-casual", section: "how-you-move", icon: "step", hidden: () => !asking, label: MOVE_QUESTION.casual, act: () => answer(false) },
+      { id: "how-intense", section: "how-you-move", icon: "motion", hidden: () => !asking, label: MOVE_QUESTION.intense, act: () => answer(true) }
+    );
+    let askedAt = 0;
+    const stopAsking = controls.onSignal((name) => {
+      if (name === "menuClose" && asking && renderer.xr.isPresenting && performance.now() - askedAt > 1500) answer(false);
+    });
+    const ask = () => {
+      if (answered || asking || !mayAskHowTheyMove()) return;
+      asking = true;
+      askedAt = performance.now();
+      controls.signal("show:how-you-move");
+    };
+    renderer.xr.addEventListener("sessionstart", ask);
+    stops.push(() => {
+      renderer.xr.removeEventListener("sessionstart", ask);
+      stopAsking();
+    });
   }
   let aiming = [];
   const read = () => slots.flatMap((s, index) => kindOf(s) === "controller" && s.source?.gamepad ? [{ index, hand: handOf(s), pad: readPad(s.source.gamepad) }] : []);
@@ -8016,6 +8073,7 @@ function createXrInput(opts) {
       };
     },
     dispose() {
+      for (const stop of stops.splice(0)) stop();
       for (const slot of [...held.keys()]) release(slot);
       for (const [target, type, fn] of listeners) target.removeEventListener(type, fn);
       camera.remove(vignette);
@@ -9609,18 +9667,29 @@ function startsIntense(arrived, key = DESK_KEY) {
 }
 function keepIntense(on, key = DESK_KEY) {
   try {
-    if (on) localStorage.setItem(key, "1");
-    else localStorage.removeItem(key);
+    localStorage.setItem(key, on ? "1" : "0");
   } catch {
   }
 }
+function keptIntense(key = DESK_KEY) {
+  try {
+    return localStorage.getItem(key) !== null;
+  } catch {
+    return false;
+  }
+}
+var DESK_QUESTION = {
+  casual: "Casual: click to walk, drag to look",
+  intense: "Intense: the mouse looks, keys walk"
+};
 function createFps(o) {
   const key = o.keep ?? DESK_KEY;
   const mouse = hasMouse();
   let enabled = startsIntense(o.arrived === true, key);
+  let answered = typeof arrivedSettings().intense === "boolean" || o.arrived === true || keptIntense(key);
   if (mouse) {
     if (typeof arrivedSettings().intense === "boolean" || o.arrived) keepIntense(enabled, key);
-    reportSettings("moving", () => ({ intense: enabled }));
+    reportSettings("moving", () => answered ? { intense: enabled } : {});
   }
   const held = {};
   let pitch = 0;
@@ -9721,9 +9790,12 @@ function createFps(o) {
   });
   const setEnabled = (on) => {
     const next = on && mouse;
+    if (mouse) {
+      answered = true;
+      keepIntense(next, key);
+    }
     if (next === enabled) return;
     enabled = next;
-    keepIntense(enabled, key);
     if (!enabled) {
       letGo();
       pitch = 0;
@@ -9747,6 +9819,28 @@ function createFps(o) {
       o.controls.say(enabled ? DESK_WORDS.nowIntense : DESK_WORDS.nowCasual);
     }
   });
+  let asking = false;
+  const answer = (intense) => {
+    asking = false;
+    setEnabled(intense);
+    o.controls.say(intense ? DESK_WORDS.nowIntense : DESK_WORDS.nowCasual);
+  };
+  o.controls.addSection({ id: "how-you-move-desk", label: "How you move", icon: "step", note: () => asking ? "You can change this whenever you like, in Moving." : "" });
+  o.controls.add(
+    { id: "desk-casual", section: "how-you-move-desk", icon: "step", hidden: () => !asking || o.presenting(), label: DESK_QUESTION.casual, act: () => answer(false) },
+    { id: "desk-intense", section: "how-you-move-desk", icon: "look", hidden: () => !asking || o.presenting(), label: DESK_QUESTION.intense, act: () => answer(true) }
+  );
+  const stopAskingDesk = o.controls.onSignal((name) => {
+    if (name === "menuClose" && asking) answer(false);
+  });
+  let askTimer = 0;
+  if (mouse && !answered && mayAskHowTheyMove()) {
+    askTimer = window.setTimeout(() => {
+      if (answered || o.presenting()) return;
+      asking = true;
+      o.controls.signal("show:how-you-move-desk");
+    }, 1200);
+  }
   const at = o.camera.position.clone();
   return {
     get enabled() {
@@ -9785,6 +9879,8 @@ function createFps(o) {
       return true;
     },
     dispose() {
+      clearTimeout(askTimer);
+      stopAskingDesk();
       letGo();
       dot.remove();
       stopSignals();

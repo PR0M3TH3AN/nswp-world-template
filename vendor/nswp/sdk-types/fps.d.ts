@@ -66,8 +66,15 @@ export declare const DESK_WORDS: {
 export declare const hasMouse: () => boolean;
 /** Whether a visitor starts out moving the intense way at a desk: they arrived so, or chose it here before. */
 export declare function startsIntense(arrived: boolean, key?: string): boolean;
-/** Keep the choice, or forget it. */
+/** Keep the choice: casual is kept as plainly as intense, so a visitor who chose casual isn't asked again. */
 export declare function keepIntense(on: boolean, key?: string): void;
+/** Whether this site keeps a choice of how they move at a desk. */
+export declare function keptIntense(key?: string): boolean;
+/** The words of the question asked once, the first time a visitor is at a desk with a mouse and no choice said or kept. */
+export declare const DESK_QUESTION: {
+    readonly casual: "Casual: click to walk, drag to look";
+    readonly intense: "Intense: the mouse looks, keys walk";
+};
 export interface FpsOptions {
     /** What is clicked to look round: the canvas. */
     dom: HTMLElement;
