@@ -32,6 +32,8 @@ export interface TravelSettings {
     hand?: "left" | "right";
     /** Whether the view narrows while they move smoothly in a headset. */
     narrow?: boolean;
+    /** Whether the view fades to black and back when the kit jumps them in a headset: a step, being stepped aside. */
+    fade?: boolean;
     /** They prefer the world filling their screen: it is filled at their first press in each world. */
     full?: boolean;
     /** They prefer the intense way of moving at a desk: the mouse looks round and keys walk. */
@@ -61,6 +63,13 @@ export interface TravelSettings {
      * a world that has items. Turned off, it is off in the next world too: it is how they mute every item.
      */
     items?: boolean;
+    /**
+     * That other people's files (what their items are made of) are fetched only from the file hosts on the
+     * visitor's own list (protocol/17-items.md, "Where a file is fetched from"). Only `false` travels: any world can
+     * write a link, so turning loading from anywhere on can't come by one. It is turned on only by the visitor's own
+     * press, in the place they are in. A `true` is dropped as it is read.
+     */
+    filesAnywhere?: false;
     /**
      * Which tabs of the menu they keep on their bar, by name, in the order they pinned them: `PINS_MOST` at most.
      * An empty list is a choice too: they took them all off. A name a world has no tab for is simply not shown

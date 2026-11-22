@@ -10,8 +10,11 @@
  * - a model is read and counted first (`readGlb` in the core): one with too much in it, or one that names
  *   anything outside itself, is not handed on at all.
  *
- * Fetching a file tells the place that keeps it the visitor's address, as fetching a picture does. A visitor
- * who would rather not has one switch for all items (`showsItems`).
+ * Fetching a file tells the place that keeps it the visitor's address. So a file is asked for by its hash, only
+ * from file hosts on the visitor's own list (`fetchByHash`, file-hosts.ts): the address an item gives is a hint.
+ * One kept only somewhere else is not fetched unless the visitor turned on loading files from anywhere, and the
+ * item is drawn as its marker. A visitor who would rather nothing were fetched has one switch for all items
+ * (`showsItems`).
  */
 import { queryRelays, type GlbCount, type Item } from "@nswp/core";
 /** The most an item's files may be: its models (the core's `MODEL_BUDGET`, the same for every engine), and a sound. */
@@ -38,8 +41,13 @@ export declare function onItemsChange(fn: () => void): () => void;
 export interface ItemStoreOptions {
     relays?: string[];
     query?: typeof queryRelays;
-    /** Fetch a file's bytes. For tests; left out, the browser's own. */
+    /** Fetch a file's bytes, at one address. For tests; left out, the browser's own. */
     fetchBytes?: (url: string) => Promise<Uint8Array | null>;
+    /**
+     * Whose own file hosts are used: the signed-in viewer's key, or null for a guest. Left out, whoever the visitor
+     * arrived as.
+     */
+    viewer?: () => string | null;
     now?: () => number;
 }
 /** A model file and its box: an item's own, or one of the things it sends out. */
@@ -67,6 +75,11 @@ export interface ItemStore {
     sound(item: Item, name: string): Promise<Uint8Array | null>;
     /** An item's script, as its text: fetched and checked against its hash. Null if it has none, or it failed. */
     script(item: Item): Promise<string | null>;
+    /**
+     * Whether a file of this item didn't come because it is kept somewhere the visitor doesn't load files from:
+     * what its card says, beside its marker.
+     */
+    elsewhere(item: Pick<Item, "model" | "script">): boolean;
 }
 /** Count what a loaded model holds, and say whether it is within what may be drawn. */
 export declare function createItemStore(opts?: ItemStoreOptions): ItemStore;

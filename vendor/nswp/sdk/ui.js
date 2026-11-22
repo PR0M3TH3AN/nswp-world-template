@@ -11,43 +11,43 @@ import {
   UI_PRESETS,
   addDoorControls,
   ago,
-  askWell,
   cleanTheme,
   createHeldButton,
   createHoldWatch,
   createUiChat,
   createUiFeed,
-  foundRelays,
-  learnFrom,
   loadPicture,
   loadVisitorTheme,
   onChatChange,
   onPicturesChange,
-  publishBacked,
-  queryBacked,
-  relayBackup,
-  relaysWell,
   resolveTheme,
   rgb,
   saveVisitorTheme,
-  sendWell,
   setShowsChat,
   setShowsPictures,
   showsChat,
   showsPictures,
   vouchedWords
-} from "./shared-ICA3LMEK.js";
+} from "./shared-FYLN3PQO.js";
 import {
   arrivedSettings,
+  askWell,
   escapeDoes,
   escapeHeld,
+  foundRelays,
   fullscreenButton,
+  learnFrom,
   leaveFullscreen,
   onBrowserLeftFullscreen,
   onClientSignIn,
+  publishBacked,
+  queryBacked,
+  relayBackup,
+  relaysWell,
   reportSettings,
+  sendWell,
   setMenuPlace
-} from "./shared-4X7PNRMN.js";
+} from "./shared-LQ6USDK4.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/ui/model.ts
@@ -321,7 +321,7 @@ function createControls(opts) {
       const bar = [...pressable.filter((a) => a.hotbar && a.lead), ...pressable.filter((a) => a.hotbar && !a.lead)].slice(0, 6);
       const item = (a) => {
         const slot = bar.indexOf(a);
-        return { id: a.id, label: read(a.label), icon: (typeof a.icon === "function" ? a.icon() : a.icon) ?? null, on: a.on ? a.on() : null, tone: a.tone ?? "normal", key: slot === -1 ? "" : String(slot + 1), short: read(a.short) || read(a.label), kind: a.kind ?? "button", color: read(a.color), ...a.picture ? { picture: a.picture } : {} };
+        return { id: a.id, label: read(a.label), icon: (typeof a.icon === "function" ? a.icon() : a.icon) ?? null, on: a.on ? a.on() : null, tone: a.tone ?? "normal", key: slot === -1 ? "" : String(slot + 1), short: read(a.short) || read(a.label), kind: a.kind ?? "button", color: read(a.color), ...a.picture ? { picture: a.picture } : {}, mark: (typeof a.mark === "function" ? a.mark() : a.mark) ?? null, faint: a.faint?.() === true };
       };
       const known = new Set(sections.map((s) => s.id));
       const extra = [...new Set(showing.map((a) => a.section ?? "travel").filter((id) => !known.has(id)))].map((id) => ({ id, label: id }));
@@ -615,6 +615,16 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .tile:hover { border-color: rgba(var(--accent), .7); transform: translateY(-2px); }
 .tile[aria-pressed="true"] { border-color: rgb(var(--accent)); color: rgb(var(--ink)); box-shadow: 0 0 0 1px rgb(var(--accent)), 0 0 18px rgba(var(--accent), .35); }
 .tile span { overflow-wrap: anywhere; }
+/* A tile's mark, in its corner: the bag's says the thing is in your bag. Drawn in the accent, on the glass. */
+.tile { position: relative; }
+.tile .corner-mark { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 8px;
+  background: rgba(var(--glass), .85); border: 1px solid rgba(var(--accent), .55); color: rgb(var(--accent)); }
+.tile .corner-mark svg { width: 15px; height: 15px; }
+/* Faint: not theirs yet. Greyed, and still pressable: it brightens under the pointer, as any tile does. */
+.tile.faint { color: rgba(var(--ink), .55); background: rgba(var(--ink), .03); border-style: dashed; }
+.tile.faint .shown { filter: grayscale(1); opacity: .5; }
+.tile.faint:hover { color: rgba(var(--ink), .85); }
+.tile.faint:hover .shown { opacity: .8; }
 .row { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 8px 12px; border-radius: 10px; text-align: left;
   border: 1px solid rgba(var(--ink), .12); background: rgba(var(--ink), .03); transition: background .12s, border-color .12s; }
 .row:hover { background: rgba(var(--accent), .13); border-color: rgba(var(--accent), .7); }
@@ -1306,7 +1316,13 @@ function mountHud(controls, opts = {}) {
         canvas.getContext("2d")?.drawImage(picture, 0, 0, 192, 192);
         shown2.replaceChildren(canvas);
       }
-      const b = el("button", { class: "tile", type: "button", "aria-label": item.label, "aria-pressed": String(item.on === true) }, shown2, el("span", {}, item.label));
+      const b = el(
+        "button",
+        { class: item.faint ? "tile faint" : "tile", type: "button", "aria-label": item.label, "aria-pressed": String(item.on === true) },
+        shown2,
+        el("span", {}, item.label),
+        ...item.mark ? [el("i", { class: "corner-mark", "aria-hidden": "true" }, icon(item.mark))] : []
+      );
       b.addEventListener("click", () => press(item));
       return b;
     };

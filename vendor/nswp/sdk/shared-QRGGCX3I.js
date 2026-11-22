@@ -1,10 +1,13 @@
 import {
   arriveAs,
   arriveWith,
+  arrivedSettings,
+  askWell,
   currentForm,
   currentSettings,
+  reportSettings,
   resumeFullscreen
-} from "./shared-4X7PNRMN.js";
+} from "./shared-LQ6USDK4.js";
 
 // packages/sdk/src/index.ts
 import {
@@ -25,6 +28,9 @@ import {
   verifyRoomPass as verifyRoomPass2,
   WELL_KNOWN_PATH
 } from "@nswp/core";
+
+// packages/sdk/src/file-hosts.ts
+import { DEFAULT_RELAYS, FILE_HOST_LIST_KIND, FILE_HOSTS, fileAt, onFileHost, parseFileHostList } from "@nswp/core";
 
 // node_modules/@noble/hashes/_u64.js
 var fromNumH = (n) => n / 2 ** 32 | 0;
@@ -470,6 +476,104 @@ var sha256 = /* @__PURE__ */ createHasher(
   () => new _SHA256(),
   /* @__PURE__ */ oidNist(1)
 );
+
+// packages/sdk/src/file-hosts.ts
+var ANYWHERE_KEY = "nswp:files-anywhere";
+var watchers = /* @__PURE__ */ new Set();
+var anywhere = null;
+var keep = (on) => {
+  try {
+    if (on) globalThis.localStorage?.setItem(ANYWHERE_KEY, "on");
+    else globalThis.localStorage?.removeItem(ANYWHERE_KEY);
+  } catch {
+  }
+};
+function filesAnywhere() {
+  if (anywhere !== null) return anywhere;
+  const came = arrivedSettings().filesAnywhere;
+  let kept = null;
+  try {
+    kept = globalThis.localStorage?.getItem(ANYWHERE_KEY) ?? null;
+  } catch {
+  }
+  anywhere = came === false ? false : kept === "on";
+  if (came === false) keep(false);
+  reportSettings("files-anywhere", () => filesAnywhere() ? {} : { filesAnywhere: false });
+  return anywhere;
+}
+function setFilesAnywhere(on) {
+  filesAnywhere();
+  anywhere = on;
+  keep(on);
+  for (const fn of watchers) fn();
+}
+function onFileHostsChange(fn) {
+  watchers.add(fn);
+  return () => void watchers.delete(fn);
+}
+function forgetFileHosts() {
+  anywhere = null;
+  own = null;
+}
+var own = null;
+function learnFileHosts(pubkey, opts = {}) {
+  if (!pubkey || !/^[0-9a-f]{64}$/.test(pubkey)) {
+    own = null;
+    return Promise.resolve([]);
+  }
+  if (own?.pubkey === pubkey) return own.asked;
+  const mine = {
+    pubkey,
+    hosts: [],
+    asked: askWell({ kinds: [FILE_HOST_LIST_KIND], authors: [pubkey], limit: 4 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS, ...opts.query ? { query: opts.query } : {}, timeoutMs: 4e3, ...opts.now ? { now: opts.now } : {} }).then((got) => parseFileHostList(got.events, pubkey)).catch(() => []).then((hosts) => {
+      mine.hosts = hosts;
+      if (own === mine) for (const fn of watchers) fn();
+      return hosts;
+    })
+  };
+  own = mine;
+  return mine.asked;
+}
+function fileHosts() {
+  return [.../* @__PURE__ */ new Set([...own?.hosts ?? [], ...FILE_HOSTS])];
+}
+function keptElsewhere(hint) {
+  return !filesAnywhere() && !onFileHost(hint, fileHosts());
+}
+var FETCH_MS = 3e4;
+async function fetchWithin(url, most) {
+  try {
+    const res = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer", redirect: "error", signal: AbortSignal.timeout(FETCH_MS) });
+    if (!res.ok) return null;
+    const stated = Number(res.headers.get("content-length") ?? 0);
+    if (stated > most) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return bytes.length <= most ? bytes : null;
+  } catch {
+    return null;
+  }
+}
+function addressesFor(sha2562, hint, hosts = fileHosts(), anywhereOn = filesAnywhere()) {
+  const at = hosts.map((host) => fileAt(host, sha2562, hint));
+  const useHint = !!hint && (anywhereOn || onFileHost(hint, hosts));
+  return [...new Set(useHint ? [hint, ...at] : at)];
+}
+async function fetchByHashSaying(sha2562, hint, opts = {}) {
+  if (!/^[0-9a-f]{64}$/.test(sha2562)) return { bytes: null, wrong: false };
+  const most = opts.most ?? Infinity;
+  if (opts.viewer !== void 0) await learnFileHosts(opts.viewer, opts.hosts);
+  const get = opts.fetchBytes ?? ((url) => fetchWithin(url, most));
+  let wrong = false;
+  for (const url of addressesFor(sha2562, hint)) {
+    const bytes = await get(url).catch(() => null);
+    if (bytes && bytes.length <= most && bytesToHex(sha256(bytes)) === sha2562) return { bytes, wrong: false };
+    if (bytes) wrong = true;
+  }
+  return { bytes: null, wrong };
+}
+async function fetchByHash(sha2562, hint, opts = {}) {
+  return (await fetchByHashSaying(sha2562, hint, opts)).bytes;
+}
 
 // node_modules/@noble/curves/utils.js
 /*! noble-curves - MIT License (c) 2022 Paul Miller (paulmillr.com) */
@@ -2096,7 +2200,7 @@ import {
   CHAT_LIMITS,
   createChatGate,
   parseSay,
-  DEFAULT_RELAYS,
+  DEFAULT_RELAYS as DEFAULT_RELAYS2,
   getPublicKey,
   guestColor,
   guestName,
@@ -2238,7 +2342,7 @@ var RoomSession = class {
     this.self.look = seenLook(this.self, mine?.ok ? mine.value : void 0);
     this.name = (opts.name ?? "lobby").slice(0, ROOM_LIMITS.maxNameChars);
     this.topic = roomTopic(world, this.name);
-    this.relays = opts.relays ?? DEFAULT_RELAYS;
+    this.relays = opts.relays ?? DEFAULT_RELAYS2;
     this.maxMembers = opts.maxMembers ?? ROOM_LIMITS.defaultMaxMembers;
     this.iceServers = opts.iceServers ?? DEFAULT_ICE;
     for (const k of opts.blocked ?? []) if (/^[0-9a-f]{64}$/.test(k)) this.blocked.add(k);
@@ -3392,8 +3496,16 @@ function showFallback(dest) {
 }
 
 export {
-  bytesToHex,
-  sha256,
+  filesAnywhere,
+  setFilesAnywhere,
+  onFileHostsChange,
+  forgetFileHosts,
+  learnFileHosts,
+  fileHosts,
+  keptElsewhere,
+  addressesFor,
+  fetchByHashSaying,
+  fetchByHash,
   RoomSession,
   room,
   somethingBrought,
