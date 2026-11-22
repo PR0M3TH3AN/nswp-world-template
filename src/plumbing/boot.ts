@@ -598,6 +598,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   hooks.fps = fps;
   renderer.domElement.addEventListener("pointerdown", (e) => {
     if (gameControls()) return;
+    tappedTile = null;
     setPointer(e);
     raycaster.setFromCamera(pointer, camera);
     panelDrag = !renderer.xr.isPresenting && !!panels?.pointer("down", raycaster);
@@ -621,6 +622,10 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // A panel is in front of whatever is behind it.
     const onPanel = panels?.pick(raycaster);
     if (onPanel) return void panels!.press(onPanel);
+    // A tile tapped with a finger, which has nothing to hover with: it says what it means until the next press, as
+    // it would while a mouse rested on it. It is pointed at, not pressed, so nobody walks.
+    const tapped = e.pointerType === "touch" ? offerAt() : null;
+    if (tapped) return void (tappedTile = tapped);
     if (roomPresence?.pressAt(raycaster)) return;
     const any = anyGateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
     if (any && gateFar(any) <= DOOR_REACH) void go(any);
@@ -648,6 +653,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     }
   });
 
+  /** A tile tapped with a finger, kept pointed at until the next press anywhere. */
+  let tappedTile: { gate: PortalGate; offer: Offer } | null = null;
   /** The tile beside a door that the ray is on, and whose door it is. The ray is wherever the last aim left it. A tile is pointed at, never pressed. */
   const offerAt = (): { gate: PortalGate; offer: Offer } | null => {
     const mine = gates.filter(shown);
@@ -1047,7 +1054,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       raycaster.setFromCamera(pointer, camera);
       panelAimed = panels!.pick(raycaster);
       aimed = panelAimed ? null : gateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
-      tile = panelAimed || aimed ? null : offerAt();
+      tile = panelAimed || aimed ? null : (offerAt() ?? tappedTile);
       // Moving the intense way, the pointer's picture is the kit's to hide: the middle of the view is what points.
       if (!fps!.enabled) renderer.domElement.style.cursor = aimed || panelAimed ? "pointer" : "grab";
       // The casual way, with a pointer that hovers: a ring on the floor where a press would take them. With a finger
