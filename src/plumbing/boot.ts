@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { checkPreviewBytes, cleanItemsRule, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination, ITEM_RULES, worldOffers, type ItemsRule, type Offer } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
-import { addBagControls, addItemControls, type ItemControls, createBag, createItems, createDoorRatings, signerNamed, worldPeople, worldSigner, addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
+import { addBagControls, addItemControls, type ItemControls, createDragLook, createBag, createItems, createDoorRatings, signerNamed, worldPeople, worldSigner, addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
 import { addDoorControls, createControls, mountHud, type Controls, type DoorControls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
@@ -50,6 +50,12 @@ interface TestHooks {
   face(degrees: number, pitch?: number): void;
   /** Items in play, for tests: what is in the air, this visitor's health, what their item shows. */
   play?: () => unknown;
+  /** Take an item in hand by its coordinate, as Hold in the bag does; "" puts it away. */
+  hold?: (item: string) => Promise<unknown>;
+  /** What is under the thumb on a touch screen (the sight and the item's buttons), or null. */
+  thumbs?: () => unknown;
+  /** How far the view is tilted by dragging, in degrees: up is positive. */
+  tilt?: () => number;
   itemUse?: () => void;
   itemSecond?: () => void;
   /** Step towards a spot on the floor, as pointing at it and selecting would. */
@@ -565,7 +571,12 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   scene.add(reticle);
 
   let dragging = false;
+  // A drag looks round, as in every world: sideways it turns them, up and down it tilts the view within about sixty
+  // degrees, and walking brings it back level (the kit's `createDragLook`).
+  const dragLook = createDragLook({ rig, camera, scale: lookScale });
+  hooks.tilt = () => Math.round(THREE.MathUtils.radToDeg(dragLook.pitch) * 10) / 10;
   let lastX = 0;
+  let lastY = 0;
   let moved = 0;
   let downAt = 0;
   const setPointer = (e: PointerEvent) => pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
@@ -589,7 +600,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     if (onPanel) return void panels!.press(onPanel);
     // With something in hand that does something, a tap is its first press, sent where they tapped. A press held
     // is still how they walk, choose someone or go through a door.
-    if (itemControls?.tap(raycaster.ray, performance.now() - downAt)) return;
+    if (itemControls?.tap(raycaster.ray, performance.now() - downAt, "mouse")) return;
     // Someone's picture, over their head: pressing it chooses them.
     if (roomPresence?.pressAt(raycaster)) return;
     // Moving the intense way, a door is gone through by walking into it and no other way.
@@ -604,6 +615,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     panelDrag = !renderer.xr.isPresenting && !!panels?.pointer("down", raycaster);
     dragging = !panelDrag;
     lastX = e.clientX;
+    lastY = e.clientY;
     moved = 0;
     downAt = performance.now();
   });
@@ -626,6 +638,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // it would while a mouse rested on it. It is pointed at, not pressed, so nobody walks.
     const tapped = e.pointerType === "touch" ? offerAt() : null;
     if (tapped) return void (tappedTile = tapped);
+    // With something in hand that does something, a quick click at a desk is its first press, sent where they
+    // clicked; a press held is still how they walk. On a touch screen a tap is a walk: the presses are under the thumb.
+    if (itemControls?.tap(raycaster.ray, performance.now() - downAt, e.pointerType)) return;
     if (roomPresence?.pressAt(raycaster)) return;
     const any = anyGateFor(raycaster.intersectObjects(targets(), false)[0]?.object);
     if (any && gateFar(any) <= DOOR_REACH) void go(any);
@@ -642,9 +657,10 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   renderer.domElement.addEventListener("pointerleave", () => pointer.set(2, 2));
   addEventListener("pointermove", (e) => {
     if (dragging && !renderer.xr.isPresenting) {
-      rig.rotation.y += (e.clientX - lastX) * 0.005 * lookScale();
-      moved += Math.abs(e.clientX - lastX);
+      dragLook.drag(e.clientX - lastX, e.clientY - lastY);
+      moved += Math.abs(e.clientX - lastX) + Math.abs(e.clientY - lastY);
       lastX = e.clientX;
+      lastY = e.clientY;
     }
     if (!gameControls()) setPointer(e);
     if (panelDrag) {
@@ -838,10 +854,13 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // Where items are drawn, an item's own logic runs too, in its locked box (`item-box.html`, written by the build).
     const presence = createPresence({ scene, camera, rig, renderer, controllers, ...(itemsRule === "none" ? {} : { items, itemsRule: () => itemsRule, itemScripts: true, sounds, theme: () => ({ accent: controls.theme.accent, motion: controls.theme.motion }) }), labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => (refresh(), itemControls?.refresh()) });
     // What is in their hand, pressed: on the bar, by the mouse and R at a desk, by the trigger in a headset.
-    itemControls = addItemControls(controls, { play: () => presence.play, holdingHand: () => presence.holdingHand, dom: renderer.domElement, sight: (on) => presence.setSighting(on) });
+    itemControls = addItemControls(controls, { play: () => presence.play, holdingHand: () => presence.holdingHand, dom: renderer.domElement, sight: (on) => presence.setSighting(on), presenting: () => renderer.xr.isPresenting });
+    hooks.thumbs = () => itemControls?.thumbs() ?? null;
     hooks.play = () => presence.play?.info() ?? null;
     hooks.itemUse = () => presence.play?.use();
     hooks.itemSecond = () => presence.play?.second();
+    // Take an item in hand by its coordinate, as Hold in the bag does, for tests (as the kit's worlds have it).
+    hooks.hold = (item: string) => presence.setHolding(item);
     roomPresence = presence;
     // Their bag, and the one thing in their hand. A world looks through its visitor's bag and can't change it:
     // that is done at their own client. A guest has no bag, and no tab.
@@ -1011,6 +1030,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     let hover: [number, number] | null = null;
     let going: readonly (readonly [number, number])[] | null = null;
     if (renderer.xr.isPresenting) {
+      dragLook.update(dt, { walking: false, active: false });
       let button: string | null = null;
       for (const c of controllers) {
         if (!c.visible) continue;
@@ -1043,10 +1063,15 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       xrConsole.aim(button);
     } else {
       // Game controls have the visitor's movement when they are on, and aim from the middle of the view.
-      if (fps!.update(dt)) pointer.set(0, 0);
-      else {
+      if (fps!.update(dt)) {
+        pointer.set(0, 0);
+        dragLook.update(dt, { walking: false, active: false });
+      } else {
         walk(dt);
         stroll.update(dt);
+        // Walking, by a tap or by the keys, brings the view back level.
+        const keyed = ["KeyW", "KeyS", "KeyA", "KeyD", "ArrowUp", "ArrowDown"].some((k) => keys.has(k));
+        dragLook.update(dt, { walking: stroll.going || keyed, active: true });
         // They face the way they walk, so the next press ahead is a press where they are looking. Not while they
         // are turning the view themselves.
         if (stroll.going && !dragging) rig.rotation.y = stroll.face(rig.rotation.y, dt);
