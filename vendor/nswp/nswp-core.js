@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.81.0";
+var KIT_VERSION = "0.82.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4828,6 +4828,149 @@ function line(id, on) {
   return [on, WORDS[id][on ? 0 : 1]];
 }
 
+// packages/core/src/chat.ts
+var CHAT_LIMITS = {
+  /** The most characters in one thing said. Longer is cut, by the one saying it and again by the one reading. */
+  chars: 240,
+  /** A line is sent this many times, because the channel doesn't try again; a reader takes the first. */
+  repeats: 3,
+  repeatGapMs: 180,
+  /** No more than `burst` lines from one member in `perMs`. The rest are dropped, unseen. */
+  burst: 5,
+  perMs: 1e4,
+  /** How many lines a reader keeps for the visit. */
+  kept: 100,
+  /** How many ids are remembered for each member, to know a repeat from a new line. */
+  remembered: 32
+};
+var UNSEEN = [
+  [0, 31],
+  [127, 159],
+  [8203, 8204],
+  // 0x200d joins the parts of one emoji, and stays.
+  [8206, 8207],
+  [8232, 8239],
+  [8288, 8303],
+  [65279, 65279],
+  [65529, 65531]
+];
+var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
+function cleanLine(text2, chars) {
+  if (typeof text2 !== "string") return "";
+  let out = "";
+  for (const ch of text2.slice(0, chars * 8).normalize("NFC")) out += unseen(ch.codePointAt(0)) ? " " : ch;
+  out = out.replace(/\s+/g, " ").trim();
+  return [...out].slice(0, chars).join("").trim();
+}
+var cleanChat = (text2) => cleanLine(text2, CHAT_LIMITS.chars);
+function chatId() {
+  const bytes = new Uint8Array(4);
+  globalThis.crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function buildSay(text2, id = chatId()) {
+  const cleaned = cleanChat(text2);
+  if (!cleaned || !/^[0-9a-f]{8}$/.test(id)) return null;
+  return `say:${id}:${cleaned}`;
+}
+function parseSay(data) {
+  if (typeof data !== "string" || !data.startsWith("say:") || data[12] !== ":") return null;
+  const id = data.slice(4, 12);
+  if (!/^[0-9a-f]{8}$/.test(id)) return null;
+  const text2 = cleanChat(data.slice(13));
+  return text2 ? { id, text: text2 } : null;
+}
+function createChatGate(limits = CHAT_LIMITS) {
+  const ids = [];
+  let times = [];
+  const recent = (now) => times = times.filter((t) => now - t < limits.perMs);
+  return {
+    take(id, now) {
+      if (ids.includes(id)) return false;
+      ids.push(id);
+      if (ids.length > limits.remembered) ids.shift();
+      if (recent(now).length >= limits.burst) return false;
+      times.push(now);
+      return true;
+    },
+    room(now) {
+      return recent(now).length < limits.burst;
+    }
+  };
+}
+function bubbleSeconds(text2) {
+  return Math.min(12, 4 + [...text2].length * 0.06);
+}
+
+// packages/core/src/rating.ts
+var RATING_KIND = 37305;
+var RATING_LIMITS = {
+  /** Stars run from 1 to this. */
+  most: 5,
+  /** The longest the words may be, in characters. A review longer than that is a comment (NIP-22), not a rating. */
+  words: 280
+};
+var SITE_MARKS = ["nswp:world", "bitlogin:site"];
+function worldCoordinate(input) {
+  if (typeof input !== "string" || input.length > 200) return "";
+  const c = parseCoordinate(input);
+  return c && c.kind === WORLD_KIND && isHex64(c.pubkey) && c.identifier !== "" ? `${WORLD_KIND}:${c.pubkey}:${c.identifier}` : "";
+}
+function cleanStars(input) {
+  const n = typeof input === "string" && /^[1-5]$/.test(input) ? Number(input) : input;
+  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= RATING_LIMITS.most ? n : 0;
+}
+function buildRating(o) {
+  const world = worldCoordinate(o.world);
+  const stars = cleanStars(o.stars);
+  if (!world || !stars) return null;
+  return {
+    kind: RATING_KIND,
+    created_at: Math.floor(o.now),
+    tags: [
+      ["d", world],
+      ["a", world, ...o.relay ? [o.relay] : []],
+      ["rating", String(stars)],
+      ["alt", `A rating of a world: ${stars} of ${RATING_LIMITS.most}`]
+    ],
+    content: cleanLine(o.words ?? "", RATING_LIMITS.words)
+  };
+}
+function parseRating(event) {
+  if (!event || event.kind !== RATING_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
+  const world = worldCoordinate(getTags(event, "d")[0]?.[1]);
+  const stars = cleanStars(getTags(event, "rating")[0]?.[1]);
+  if (!world || !stars || getTags(event, "a")[0]?.[1] !== world) return null;
+  const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
+  return { by: event.pubkey, world, stars, words: cleanLine(typeof event.content === "string" ? event.content : "", RATING_LIMITS.words), at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
+}
+function tallyRatings(events, o) {
+  const world = worldCoordinate(o.world);
+  const counted = new Set(o.counted);
+  if (o.me) counted.add(o.me);
+  const publisher = world.split(":")[1];
+  const own = cleanOrigin(o.worldUrl);
+  const newest = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    const r = parseRating(event);
+    if (!r || r.world !== world || !counted.has(r.by) || r.by === publisher) continue;
+    if (own && r.askedAt.includes(own)) continue;
+    const had = newest.get(r.by);
+    if (had && had.at >= r.at) continue;
+    if (!verifyEvent(event)) continue;
+    newest.set(r.by, r);
+  }
+  const ratings = [...newest.values()].sort((a, b) => b.at - a.at);
+  const sum = ratings.reduce((n, r) => n + r.stars, 0);
+  return { count: ratings.length, average: ratings.length ? Math.round(sum / ratings.length * 10) / 10 : 0, mine: o.me && newest.get(o.me)?.stars || 0, ratings };
+}
+function tallyMark(tally) {
+  return tally && tally.count ? `\u2605 ${tally.average.toFixed(1)} from ${tally.count}` : "";
+}
+function tallyWords(tally) {
+  return tally.count ? `${tally.average.toFixed(1)} of ${RATING_LIMITS.most}, from ${tally.count}` : "";
+}
+
 // packages/core/src/owner-lists.ts
 var LIST_KIND = 30078;
 var LIST_NAMESPACE = "nswp";
@@ -4936,6 +5079,32 @@ function ownerListTemplate(o) {
     content: "",
     tags: [["d", listD(o.scope, o.subject, o.namespace)], ["v", "1"], ["scope", o.scope], ["subject", o.subject], ...people.map((p) => ["p", p])]
   };
+}
+var scopeOfChange = (change) => change === "allow" || change === "unallow" ? "user-allow" : "user-deny";
+function changeOwnerList(list, o) {
+  if (!isHex64(o.key) || !["allow", "unallow", "block", "unblock"].includes(o.change)) return null;
+  const scope = scopeOfChange(o.change);
+  const d = listD(scope, o.subject, o.namespace);
+  if (list && (list.kind !== LIST_KIND || list.tags.filter((t) => t[0] === "d").map((t) => t[1]).join("\n") !== d)) return null;
+  const was = list ? [...new Set(list.tags.filter((t) => t[0] === "p" && isHex64(t[1])).map((t) => t[1]))] : [];
+  const people = o.change === "allow" || o.change === "block" ? [...was, o.key] : was.filter((k) => k !== o.key);
+  const createdAt = list ? Math.max(o.now, list.created_at + 1) : o.now;
+  return ownerListTemplate({ scope, subject: o.subject, people, createdAt, ...o.namespace ? { namespace: o.namespace } : {} });
+}
+var NOT_READ = ["client", ...SITE_MARKS];
+function isOwnerListAsked(signed, o) {
+  if (!o.pubkey || !shaped(signed) || signed.kind !== LIST_KIND || signed.pubkey !== o.pubkey || signed.content !== "") return false;
+  if (o.list && signed.created_at <= o.list.created_at) return false;
+  let good = false;
+  try {
+    good = verifyEvent({ ...signed, tags: signed.tags.map((t) => [...t]) });
+  } catch {
+    good = false;
+  }
+  if (!good) return false;
+  const want = changeOwnerList(o.list, { subject: o.subject, change: o.change, key: o.key, now: signed.created_at, ...o.namespace ? { namespace: o.namespace } : {} });
+  if (!want || want.created_at !== signed.created_at) return false;
+  return JSON.stringify(signed.tags.filter((t) => !NOT_READ.includes(t[0] ?? ""))) === JSON.stringify(want.tags);
 }
 
 // packages/core/src/manifest.ts
@@ -5321,149 +5490,6 @@ function parseLayoutEvent(input) {
 }
 function checkPictureBytes(expectedSha256, bytes) {
   return bytes.length <= LAYOUT_LIMITS.pictureBytes && bytesToHex(sha256(bytes)) === expectedSha256;
-}
-
-// packages/core/src/chat.ts
-var CHAT_LIMITS = {
-  /** The most characters in one thing said. Longer is cut, by the one saying it and again by the one reading. */
-  chars: 240,
-  /** A line is sent this many times, because the channel doesn't try again; a reader takes the first. */
-  repeats: 3,
-  repeatGapMs: 180,
-  /** No more than `burst` lines from one member in `perMs`. The rest are dropped, unseen. */
-  burst: 5,
-  perMs: 1e4,
-  /** How many lines a reader keeps for the visit. */
-  kept: 100,
-  /** How many ids are remembered for each member, to know a repeat from a new line. */
-  remembered: 32
-};
-var UNSEEN = [
-  [0, 31],
-  [127, 159],
-  [8203, 8204],
-  // 0x200d joins the parts of one emoji, and stays.
-  [8206, 8207],
-  [8232, 8239],
-  [8288, 8303],
-  [65279, 65279],
-  [65529, 65531]
-];
-var unseen = (code) => UNSEEN.some(([from, to]) => code >= from && code <= to);
-function cleanLine(text2, chars) {
-  if (typeof text2 !== "string") return "";
-  let out = "";
-  for (const ch of text2.slice(0, chars * 8).normalize("NFC")) out += unseen(ch.codePointAt(0)) ? " " : ch;
-  out = out.replace(/\s+/g, " ").trim();
-  return [...out].slice(0, chars).join("").trim();
-}
-var cleanChat = (text2) => cleanLine(text2, CHAT_LIMITS.chars);
-function chatId() {
-  const bytes = new Uint8Array(4);
-  globalThis.crypto.getRandomValues(bytes);
-  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function buildSay(text2, id = chatId()) {
-  const cleaned = cleanChat(text2);
-  if (!cleaned || !/^[0-9a-f]{8}$/.test(id)) return null;
-  return `say:${id}:${cleaned}`;
-}
-function parseSay(data) {
-  if (typeof data !== "string" || !data.startsWith("say:") || data[12] !== ":") return null;
-  const id = data.slice(4, 12);
-  if (!/^[0-9a-f]{8}$/.test(id)) return null;
-  const text2 = cleanChat(data.slice(13));
-  return text2 ? { id, text: text2 } : null;
-}
-function createChatGate(limits = CHAT_LIMITS) {
-  const ids = [];
-  let times = [];
-  const recent = (now) => times = times.filter((t) => now - t < limits.perMs);
-  return {
-    take(id, now) {
-      if (ids.includes(id)) return false;
-      ids.push(id);
-      if (ids.length > limits.remembered) ids.shift();
-      if (recent(now).length >= limits.burst) return false;
-      times.push(now);
-      return true;
-    },
-    room(now) {
-      return recent(now).length < limits.burst;
-    }
-  };
-}
-function bubbleSeconds(text2) {
-  return Math.min(12, 4 + [...text2].length * 0.06);
-}
-
-// packages/core/src/rating.ts
-var RATING_KIND = 37305;
-var RATING_LIMITS = {
-  /** Stars run from 1 to this. */
-  most: 5,
-  /** The longest the words may be, in characters. A review longer than that is a comment (NIP-22), not a rating. */
-  words: 280
-};
-var SITE_MARKS = ["nswp:world", "bitlogin:site"];
-function worldCoordinate(input) {
-  if (typeof input !== "string" || input.length > 200) return "";
-  const c = parseCoordinate(input);
-  return c && c.kind === WORLD_KIND && isHex64(c.pubkey) && c.identifier !== "" ? `${WORLD_KIND}:${c.pubkey}:${c.identifier}` : "";
-}
-function cleanStars(input) {
-  const n = typeof input === "string" && /^[1-5]$/.test(input) ? Number(input) : input;
-  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= RATING_LIMITS.most ? n : 0;
-}
-function buildRating(o) {
-  const world = worldCoordinate(o.world);
-  const stars = cleanStars(o.stars);
-  if (!world || !stars) return null;
-  return {
-    kind: RATING_KIND,
-    created_at: Math.floor(o.now),
-    tags: [
-      ["d", world],
-      ["a", world, ...o.relay ? [o.relay] : []],
-      ["rating", String(stars)],
-      ["alt", `A rating of a world: ${stars} of ${RATING_LIMITS.most}`]
-    ],
-    content: cleanLine(o.words ?? "", RATING_LIMITS.words)
-  };
-}
-function parseRating(event) {
-  if (!event || event.kind !== RATING_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
-  const world = worldCoordinate(getTags(event, "d")[0]?.[1]);
-  const stars = cleanStars(getTags(event, "rating")[0]?.[1]);
-  if (!world || !stars || getTags(event, "a")[0]?.[1] !== world) return null;
-  const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
-  return { by: event.pubkey, world, stars, words: cleanLine(typeof event.content === "string" ? event.content : "", RATING_LIMITS.words), at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
-}
-function tallyRatings(events, o) {
-  const world = worldCoordinate(o.world);
-  const counted = new Set(o.counted);
-  if (o.me) counted.add(o.me);
-  const publisher = world.split(":")[1];
-  const own = cleanOrigin(o.worldUrl);
-  const newest = /* @__PURE__ */ new Map();
-  for (const event of events) {
-    const r = parseRating(event);
-    if (!r || r.world !== world || !counted.has(r.by) || r.by === publisher) continue;
-    if (own && r.askedAt.includes(own)) continue;
-    const had = newest.get(r.by);
-    if (had && had.at >= r.at) continue;
-    if (!verifyEvent(event)) continue;
-    newest.set(r.by, r);
-  }
-  const ratings = [...newest.values()].sort((a, b) => b.at - a.at);
-  const sum = ratings.reduce((n, r) => n + r.stars, 0);
-  return { count: ratings.length, average: ratings.length ? Math.round(sum / ratings.length * 10) / 10 : 0, mine: o.me && newest.get(o.me)?.stars || 0, ratings };
-}
-function tallyMark(tally) {
-  return tally && tally.count ? `\u2605 ${tally.average.toFixed(1)} from ${tally.count}` : "";
-}
-function tallyWords(tally) {
-  return tally.count ? `${tally.average.toFixed(1)} of ${RATING_LIMITS.most}, from ${tally.count}` : "";
 }
 
 // packages/core/src/bag.ts
@@ -9132,6 +9158,7 @@ export {
   categoryWords,
   changeBag,
   changeFollows,
+  changeOwnerList,
   chatId,
   checkDestination,
   checkEntryPlaces,
@@ -9220,6 +9247,7 @@ export {
   isHttpsUrl,
   isListSubject,
   isLocalHost,
+  isOwnerListAsked,
   isPlainObject,
   isPose,
   isPublicKey,
@@ -9315,6 +9343,7 @@ export {
   resolveOwnerList,
   roomTopic,
   saveAddress,
+  scopeOfChange,
   scoreForWorld,
   scoreWords,
   sealMessage,

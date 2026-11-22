@@ -70,8 +70,8 @@ var WRIST_W = 0.36;
 var ASPECT = H / W;
 var TAB_MIN = 52;
 var BUTTON_WITH_LINES = 72;
-function tabLayout(count) {
-  const n = Math.max(1, count);
+function tabLayout(count2) {
+  const n = Math.max(1, count2);
   const room2 = H - 150;
   if (room2 / n >= TAB_MIN) return { cols: 1, rows: n, tabH: Math.min(88, room2 / n), colW: 236, left: 284 };
   const rows = Math.ceil(n / 2);
@@ -1084,10 +1084,276 @@ function freshAction(controls, opts = {}) {
 }
 
 // packages/sdk/src/ui/identity.ts
-import { encodeNpub, getPublicKey, shortNpub, signerAt as signerAt2 } from "@nswp/core";
+import { encodeNpub as encodeNpub2, getPublicKey, shortNpub as shortNpub3, signerAt as signerAt2 } from "@nswp/core";
 
 // packages/sdk/src/front-room.ts
-import { ACCESS_MOST, accessFor, cleanAccess, cleanListing, DEFAULT_RELAYS, LIST_KIND, listD, LISTING_KIND, listingSeller, OWNER_LIST_LIMITS, parseManifest, priceWords, readListing, readReceipt, resolveOwnerList, worldSubject, WORLD_KIND } from "@nswp/core";
+import { ACCESS_MOST, accessFor, cleanAccess, cleanListing, DEFAULT_RELAYS as DEFAULT_RELAYS2, isHex64 as isHex642, LIST_KIND, listD, LISTING_KIND, listingSeller, OWNER_LIST_LIMITS, parseManifest, priceWords, readListing, readReceipt, isOwnerListAsked, resolveOwnerList, scopeOfChange, shortNpub as shortNpub2, worldSubject, WORLD_KIND } from "@nswp/core";
+
+// packages/sdk/src/following.ts
+import { decodeNpub, encodeNpub, shortNpub } from "@nswp/core";
+
+// packages/sdk/src/profiles.ts
+import { cleanAbout, cleanName, cleanPicture, DEFAULT_RELAYS, isHex64, queryRelays, verifyEvent } from "@nswp/core";
+var KEY = "nswp:profiles";
+var MOST = 400;
+var FRESH_MS = 24 * 3600 * 1e3;
+var AT_ONCE = 60;
+function readProfile(event) {
+  let meta = {};
+  try {
+    const parsed = JSON.parse(event.content);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) meta = parsed;
+  } catch {
+  }
+  let name = "";
+  for (const v of [meta.display_name, meta.displayName, meta.name]) {
+    if (!name && typeof v === "string") name = cleanName(v);
+  }
+  return { name, picture: cleanPicture(meta.picture), about: cleanAbout(meta.about), at: event.created_at };
+}
+function createProfiles(opts = {}) {
+  const now = opts.now ?? (() => Date.now());
+  const query = opts.query ?? queryRelays;
+  const store = (() => {
+    if (opts.storage !== void 0) return opts.storage;
+    try {
+      return globalThis.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const watchers3 = /* @__PURE__ */ new Set();
+  let kept2 = null;
+  const all = () => {
+    if (kept2) return kept2;
+    kept2 = {};
+    try {
+      const read = JSON.parse(store?.getItem(KEY) ?? "{}");
+      if (read && typeof read === "object" && !Array.isArray(read)) {
+        for (const [k, v] of Object.entries(read)) {
+          if (!isHex64(k) || !v || typeof v !== "object") continue;
+          kept2[k] = { name: cleanName(typeof v.name === "string" ? v.name : ""), picture: cleanPicture(v.picture), about: cleanAbout(v.about), at: typeof v.at === "number" ? v.at : 0, asked: typeof v.asked === "number" ? v.asked : 0 };
+        }
+      }
+    } catch {
+    }
+    return kept2;
+  };
+  const save = () => {
+    const entries = Object.entries(all());
+    if (entries.length > MOST) kept2 = Object.fromEntries(entries.sort((a, b) => b[1].asked - a[1].asked).slice(0, MOST));
+    try {
+      store?.setItem(KEY, JSON.stringify(kept2));
+    } catch {
+    }
+  };
+  return {
+    get: (pubkey) => all()[pubkey] ?? null,
+    async fetch(pubkeys) {
+      const book = all();
+      const wanted = [...new Set(pubkeys)].filter((k) => isHex64(k) && now() - (book[k]?.asked ?? 0) > FRESH_MS).slice(0, AT_ONCE);
+      if (wanted.length === 0) return;
+      const got = await askWell({ kinds: [0], authors: wanted, limit: wanted.length * 2 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS, query, timeoutMs: 4e3, now }).catch(() => null);
+      const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
+      for (const e of got?.events ?? []) {
+        if (e.kind !== 0 || !wanted.includes(e.pubkey) || !verifyEvent(e)) continue;
+        const had = book[e.pubkey];
+        if (had && had.at >= e.created_at) continue;
+        book[e.pubkey] = { ...readProfile(e), asked: now() };
+      }
+      if (answered) for (const k of wanted) book[k] = { ...book[k] ?? { name: "", picture: "", about: "", at: 0 }, asked: now() };
+      save();
+      for (const fn of watchers3) fn();
+    },
+    onChange(fn) {
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
+    }
+  };
+}
+
+// packages/sdk/src/following.ts
+var PAGE = 24;
+function keyIn(text) {
+  if (typeof text !== "string") return null;
+  const found = /npub1[02-9ac-hj-np-z]{58}/.exec(text)?.[0] ?? /\b[0-9a-f]{64}\b/i.exec(text)?.[0];
+  if (!found) return null;
+  try {
+    return decodeNpub(found);
+  } catch {
+    return null;
+  }
+}
+function addFollowingControls(controls, opts) {
+  const f = opts.follows;
+  const profiles = opts.profiles ?? createProfiles(opts.relays ? { relays: opts.relays } : {});
+  let shown2 = [];
+  let chosen = null;
+  let pages = 1;
+  let wasMe = null;
+  let looked = false;
+  const nameOf = (pubkey) => profiles.get(pubkey)?.name || shortNpub(pubkey);
+  const say = (text) => controls.say(text);
+  const press = (pubkey, name, adding) => {
+    const now = async () => {
+      const done = await (adding ? f.people.follow(pubkey, name) : f.people.unfollow(pubkey, name));
+      say(done.said);
+      if (done.ok && adding) void profiles.fetch([pubkey]);
+      refresh();
+    };
+    if (!f.pubkey()) return say("Sign in to follow people: it is under You.");
+    if (f.allowed()) return void now();
+    say(f.ask(() => void now()));
+  };
+  const byKey = async () => {
+    const me = f.pubkey();
+    if (!me) return say("Sign in to follow people: it is under You.");
+    let text = "";
+    const keyboard = opts.presenting?.() ? opts.keyboard?.() ?? null : null;
+    if (keyboard) text = await keyboard.ask({ title: "Their key: npub1\u2026 Paste it, or type it. Done follows them.", maxLength: 80 }).catch(() => null) ?? "";
+    else {
+      try {
+        text = await (opts.copied ? opts.copied() : navigator.clipboard.readText());
+      } catch {
+        return say("What you copied couldn't be read here. Copy their key (it starts npub1), allow this site to read what you copy, and press again.");
+      }
+    }
+    const key = keyIn(text);
+    if (!key) return say(keyboard ? "That isn't a key. A key starts npub1 and is 63 characters long." : "What you copied isn't a key. Copy their key (it starts npub1) and press again.");
+    if (key === me) return say("That is your own key.");
+    chosen = key;
+    await profiles.fetch([key]);
+    press(key, nameOf(key), true);
+  };
+  const refresh = () => {
+    for (const id of shown2) controls.remove(id);
+    shown2 = [];
+    const me = f.pubkey();
+    if (me !== wasMe) {
+      wasMe = me;
+      chosen = null;
+      pages = 1;
+      looked = false;
+    }
+    const allowed = !!me && f.allowed();
+    const follows = allowed ? f.people.follows() : null;
+    const add = (...actions) => {
+      for (const a of actions) shown2.push(a.id);
+      controls.add(...actions.map((a) => ({ section: "following", ...a })));
+    };
+    controls.addSection({
+      id: "following",
+      label: "Following",
+      icon: "list",
+      note: () => !me ? "Sign in to see who you follow." : !allowed ? "Who you follow is yours, and the same in every Nostr app. This place hasn't been let see to it: say so below, and your sign-in address asks you once." : follows === null ? looked ? "Who you follow couldn't be looked for just now." : "Looking for who you follow." : follows.length === 0 ? "You follow nobody yet. Follow someone from their card in People, or by their key. Who you follow is public." : `You follow ${follows.length === 1 ? "1 person" : `${follows.length} people`}. Select one to see who they are. It is your own Nostr follow list, and it is public.`,
+      card: () => {
+        if (!chosen || !follows) return null;
+        const p = profiles.get(chosen);
+        const following = follows.includes(chosen);
+        return {
+          title: nameOf(chosen),
+          tag: following ? "You follow them" : "Not followed",
+          proven: false,
+          sub: shortNpub(chosen),
+          copy: encodeNpub(chosen),
+          text: p?.about ?? "",
+          picture: showsPictures() ? p?.picture ?? "" : "",
+          color: "",
+          // What they have done, as they say: where they stand here, what they show.
+          now: opts.about?.lines(chosen) ?? []
+        };
+      }
+    });
+    if (!me) return;
+    if (!allowed) {
+      add({
+        id: "following-let",
+        icon: "check",
+        tone: "primary",
+        label: "Show who I follow, and let me change it here",
+        act: () => say(f.ask(() => void f.people.load().then(refresh)))
+      });
+      return;
+    }
+    if (follows === null) {
+      if (!looked) {
+        looked = true;
+        void f.people.load().then(refresh);
+      } else {
+        add({
+          id: "following-again",
+          icon: "turn",
+          label: "Look again",
+          act: () => {
+            looked = false;
+            refresh();
+          }
+        });
+      }
+      return;
+    }
+    add({ id: "following-key", icon: "key", label: () => opts.presenting?.() && opts.keyboard?.() ? "Follow someone by their key" : "Follow the key I copied", short: "By key", act: () => void byKey() });
+    if (chosen) {
+      const them = chosen;
+      const following = follows.includes(them);
+      add({ id: "following-toggle", icon: "check", on: () => following, label: following ? `Unfollow ${nameOf(them)}` : `Follow ${nameOf(them)}`, act: () => press(them, nameOf(them), !following) });
+      add(...opts.more?.({ pubkey: them, name: nameOf(them) }) ?? []);
+    }
+    const named = follows.filter((k) => profiles.get(k)?.name).sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+    const rest = follows.filter((k) => !profiles.get(k)?.name);
+    const listed = [...named, ...rest].slice(0, pages * PAGE);
+    void profiles.fetch(follows.slice(0, pages * PAGE * 2));
+    add(
+      ...listed.map((k) => ({
+        id: `following-${k.slice(0, 16)}`,
+        kind: "swatch",
+        color: `#${k.slice(0, 6)}`,
+        on: () => chosen === k,
+        label: () => nameOf(k),
+        act: () => {
+          chosen = chosen === k ? null : k;
+          refresh();
+        }
+      }))
+    );
+    if (follows.length > listed.length) {
+      add({
+        id: "following-more",
+        icon: "list",
+        label: `Show more (${listed.length} of ${follows.length})`,
+        act: () => {
+          pages++;
+          refresh();
+        }
+      });
+    }
+  };
+  let drawing = false;
+  const soon2 = () => {
+    if (drawing) return;
+    drawing = true;
+    queueMicrotask(() => {
+      drawing = false;
+      refresh();
+    });
+  };
+  profiles.onChange(soon2);
+  f.people.onChange(soon2);
+  opts.about?.onChange(soon2);
+  refresh();
+  return {
+    refresh,
+    choose(pubkey) {
+      chosen = pubkey;
+      void profiles.fetch([pubkey]);
+      refresh();
+    },
+    press,
+    profiles
+  };
+}
+
+// packages/sdk/src/front-room.ts
 var GATE_TIMES = { grace: 120, look: 300, goodFor: 86400 };
 var LISTS_KEY = "nswp:owner-lists";
 function rememberedLists() {
@@ -1183,6 +1449,8 @@ function createPaidGate(opts) {
   const asked = /* @__PURE__ */ new Map();
   let endsAt = 0;
   let buying = false;
+  let changing = false;
+  let starting = null;
   let disposed = false;
   let round = 0;
   let endTimer;
@@ -1313,7 +1581,7 @@ function createPaidGate(opts) {
     if (!want.length || disposed) return;
     const name = (l) => l.slice(71);
     const filter = { kinds: [LISTING_KIND], authors: [...new Set(want.map(listingSeller))], "#d": want.map(name) };
-    const got = await askWell(filter, { own: ownRelays, usual: opts.relays ?? DEFAULT_RELAYS, ...opts.query ? { query: opts.query } : {}, now }).catch(() => null);
+    const got = await askWell(filter, { own: ownRelays, usual: opts.relays ?? DEFAULT_RELAYS2, ...opts.query ? { query: opts.query } : {}, now }).catch(() => null);
     if (disposed) return;
     const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
     for (const l of want) {
@@ -1376,7 +1644,7 @@ function createPaidGate(opts) {
     if (!lists || disposed) return;
     const scopes = byInvitation ? ["user-deny", "user-allow"] : ["user-deny"];
     const filter = { kinds: [LIST_KIND], authors: [...new Set(lists.subjects.flatMap(rootOf))], "#d": lists.subjects.flatMap((s) => scopes.map((scope) => listD(scope, s))) };
-    const got = await askWell(filter, { own: ownRelays, usual: opts.relays ?? DEFAULT_RELAYS, ...opts.query ? { query: opts.query } : {}, now }).catch(() => null);
+    const got = await askWell(filter, { own: ownRelays, usual: opts.relays ?? DEFAULT_RELAYS2, ...opts.query ? { query: opts.query } : {}, now }).catch(() => null);
     if (disposed) return;
     const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
     applyLists(got?.events ?? [], answered);
@@ -1512,6 +1780,53 @@ function createPaidGate(opts) {
     get buying() {
       return buying;
     },
+    get keeper() {
+      const signer = opts.signer();
+      return signer && signer.state === "unlocked" && signer.pubkey && isKeeper(signer.pubkey) ? signer.pubkey : null;
+    },
+    get guests() {
+      return byInvitation ? [...invited] : null;
+    },
+    async changeList(change2, key) {
+      const signer = opts.signer();
+      const me = signer?.state === "unlocked" ? signer.pubkey : null;
+      if (disposed || !lists || !signer || !me || !isKeeper(me)) return { ok: false, said: "Only one of this world's keepers, signed in here, can change who comes in." };
+      if (!isHex642(key)) return { ok: false, said: "That isn't someone's key." };
+      if (isKeeper(key)) return { ok: false, said: "That's one of this world's keepers: always let in, and never kept out." };
+      const scope = scopeOfChange(change2);
+      if (scope === "user-allow" && !byInvitation) return { ok: false, said: "This world isn't by invitation, so there is no list of who is let in." };
+      if (changing) return { ok: false, said: "One change at a time: the last is still with your sign-in address." };
+      const subject = lists.subjects.find((s) => rootOf(s).includes(me));
+      const d = listD(scope, subject);
+      const found = rememberedLists()[d] ?? null;
+      let none = false;
+      if (!found) {
+        const standing = scope === "user-deny" ? listState : inviteState;
+        if (standing === "reading" || standing === "unanswered") return { ok: false, said: "The list couldn't be read just now, so it isn't changed: one started now could wipe a list a relay is holding. Try again in a moment." };
+        const what = `${change2} ${key}`;
+        if (!starting || starting.what !== what || sec() - starting.at > 60) {
+          starting = { what, at: sec() };
+          return { ok: false, again: true, said: `No ${scope === "user-allow" ? "guest" : "block"} list for this world was found. Press again to start one, naming only them.` };
+        }
+        none = true;
+      }
+      starting = null;
+      changing = true;
+      changed();
+      const signed = await signer.guests({ world: subject, list: found, change: change2, key, ...none ? { none: true } : {} }).catch(() => null);
+      changing = false;
+      if (!signed || disposed || !isOwnerListAsked(signed, { list: found, subject, change: change2, key, pubkey: me })) {
+        changed();
+        return { ok: false, said: "Nothing changed: your sign-in window said no, or can't change this world's list yet." };
+      }
+      rememberList(d, signed);
+      applyLists([signed]);
+      void look();
+      const sent = await sendWell(signed, { own: ownRelays, usual: opts.relays ?? DEFAULT_RELAYS2, ...opts.publish ? { publish: opts.publish } : {}, ...opts.query ? { query: opts.query } : {}, now }).catch(() => null);
+      const done = change2 === "allow" ? "Invited." : change2 === "unallow" ? "Taken off the list." : change2 === "block" ? "Kept out." : "No longer kept out.";
+      if (!sent || sent.took === 0) return { ok: true, said: `${done} It holds here, but no relay took the list yet, so nobody else sees the change.` };
+      return { ok: true, said: `${done} Anyone can read this list.` };
+    },
     async buy(listing) {
       const wanted = cleanListing(listing ?? offerList()[0]?.listing ?? "");
       const signer = opts.signer();
@@ -1548,7 +1863,7 @@ function createPaidGate(opts) {
       return () => void watchers3.delete(fn);
     },
     info() {
-      return { state, open: state === "free" || state === "open" || state === "ending", reason, why: why(), offers: offerList(), unread: Object.fromEntries(unread), until: state === "open" && held ? held.expiresAt : null, endsAt: endsAt ? Math.round(endsAt / 1e3) : null, signedIn: signedIn(), buying, listings: [...listings], lists: listState, ownerBlocked: ownerBlocked.length, namedOnly, byInvitation, invites: inviteState, invited: invited.length };
+      return { state, open: state === "free" || state === "open" || state === "ending", reason, why: why(), offers: offerList(), unread: Object.fromEntries(unread), until: state === "open" && held ? held.expiresAt : null, endsAt: endsAt ? Math.round(endsAt / 1e3) : null, signedIn: signedIn(), buying, listings: [...listings], lists: listState, changing, ownerBlocked: ownerBlocked.length, namedOnly, byInvitation, invites: inviteState, invited: invited.length };
     },
     dispose() {
       disposed = true;
@@ -1617,19 +1932,127 @@ function addGateControls(controls, gate, opts = {}) {
   };
   gate.onChange(refresh);
   refresh();
+  addOwnersScreen(controls, gate, opts);
   return { refresh, press };
 }
+var SCREEN_MOST = 40;
+function addOwnersScreen(controls, gate, opts) {
+  let profiles = null;
+  const nameOf = (key) => profiles?.get(key)?.name || shortNpub2(key);
+  const typed = [];
+  const rows = /* @__PURE__ */ new Set();
+  const inHeadset = () => !!opts.presenting?.();
+  const stepOut = "Take the headset off to change who comes in: your sign-in window can't be shown in here.";
+  controls.addSection({
+    id: "guests",
+    label: "Who comes in",
+    icon: "people",
+    note: () => {
+      if (!gate.keeper) return "";
+      const lists = [];
+      if (gate.byInvitation) lists.push(gate.invites === "read" ? `${count(gate.guests?.length ?? 0, "person", "people")} invited` : gate.invites === "not-found" ? "nobody invited yet" : "who is invited couldn't be read just now");
+      lists.push(gate.lists === "read" || gate.lists === "not-found" ? `${count(gate.ownerBlocked.length, "person", "people")} kept out` : "who is kept out couldn't be read just now");
+      return `Anyone can read this list. ${capital(lists.join(", "))}.${inHeadset() ? ` ${stepOut}` : ""}`;
+    }
+  });
+  const listed = () => [...gate.guests ?? [], ...gate.ownerBlocked];
+  const isGuest = (key) => (gate.guests ?? []).includes(key);
+  const change2 = (key, what) => {
+    if (inHeadset()) return controls.say(stepOut);
+    const name = nameOf(key);
+    const asking = what === "allow" ? `let ${name} in` : what === "unallow" ? `take ${name} off the list` : what === "block" ? `block ${name}` : `unblock ${name}`;
+    controls.say(`${gate.host || "Your sign-in address"} is asking you to ${asking}. Say yes there.`);
+    void gate.changeList(what, key).then((r) => {
+      controls.say(r.ok ? `${name}: ${r.said}` : r.said);
+      refresh();
+    });
+  };
+  const people = () => {
+    if (!gate.keeper) return [];
+    const me = gate.keeper;
+    const all = [...listed(), ...opts.here?.() ?? [], ...opts.follows?.() ?? [], ...typed];
+    return [...new Set(all)].filter((k) => isHex642(k) && k !== me).slice(0, SCREEN_MOST);
+  };
+  const addRows = (key) => {
+    controls.add(
+      {
+        id: `guests-allow-${key}`,
+        section: "guests",
+        icon: "door",
+        hidden: () => !gate.keeper || !gate.byInvitation,
+        label: () => isGuest(key) ? `${nameOf(key)}: invited. Take them off the list` : `Let ${nameOf(key)} in`,
+        short: () => isGuest(key) ? "Take off" : "Let in",
+        act: () => change2(key, isGuest(key) ? "unallow" : "allow")
+      },
+      {
+        id: `guests-block-${key}`,
+        section: "guests",
+        icon: "exit",
+        tone: "warn",
+        hidden: () => !gate.keeper,
+        label: () => gate.ownerBlocked.includes(key) ? `${nameOf(key)}: kept out. Unblock them` : `Block ${nameOf(key)}`,
+        short: () => gate.ownerBlocked.includes(key) ? "Unblock" : "Block",
+        act: () => change2(key, gate.ownerBlocked.includes(key) ? "unblock" : "block")
+      }
+    );
+  };
+  controls.add({
+    id: "guests-copied",
+    section: "guests",
+    icon: "you",
+    hidden: () => !gate.keeper,
+    label: "Someone whose key I copied",
+    short: "By key",
+    act: async () => {
+      let text = "";
+      try {
+        text = await (opts.copied ? opts.copied() : navigator.clipboard.readText());
+      } catch {
+        return controls.say("What you copied couldn't be read here. Copy someone's key (npub1\u2026), allow this site to read what you copy, and press again.");
+      }
+      const key = keyIn(text);
+      if (!key) return controls.say("That isn't someone's key. Copy their npub1\u2026 and press again.");
+      if (key === gate.keeper) return controls.say("That's your own key: you are always let in.");
+      typed.unshift(key);
+      refresh();
+      controls.say(`${nameOf(key)} is in the list below: let them in, or block them.`);
+    }
+  });
+  const refresh = () => {
+    const now = people();
+    if (now.length && !profiles) {
+      profiles = createProfiles();
+      profiles.onChange(() => controls.signal("gate"));
+    }
+    if (now.length) void profiles?.fetch(now);
+    for (const key of [...rows]) {
+      if (now.includes(key)) continue;
+      controls.remove(`guests-allow-${key}`);
+      controls.remove(`guests-block-${key}`);
+      rows.delete(key);
+    }
+    for (const key of now) {
+      if (rows.has(key)) continue;
+      addRows(key);
+      rows.add(key);
+    }
+  };
+  gate.onChange(refresh);
+  refresh();
+}
+var count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+var capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // packages/sdk/src/people.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS2, FOLLOWS_KIND, followsIn, isFollowAsked, isHex64, newestFollows, publishEvent, queryRelays, readRelayList, RELAY_LIST_KIND, verifyEvent } from "@nswp/core";
+import { DEFAULT_RELAYS as DEFAULT_RELAYS3, FOLLOWS_KIND, followsIn, isFollowAsked, isHex64 as isHex643, newestFollows, publishEvent as publishEvent2, queryRelays as queryRelays2, readRelayList, RELAY_LIST_KIND, verifyEvent as verifyEvent2 } from "@nswp/core";
 var KEPT_MOST = 4e5;
-var FRESH_MS = 6e4;
+var FRESH_MS2 = 6e4;
 function createPeople(opts) {
   const { hand } = opts;
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays;
-  const publish = opts.publish ?? publishEvent;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS2;
+  const query = opts.query ?? queryRelays2;
+  const publish = opts.publish ?? publishEvent2;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS3;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
     try {
@@ -1646,7 +2069,7 @@ function createPeople(opts) {
   const readKept = (who) => {
     try {
       const kept2 = JSON.parse(store?.getItem(keyFor(who)) ?? "null");
-      return verifyEvent(kept2) && kept2.kind === FOLLOWS_KIND && kept2.pubkey === who ? kept2 : null;
+      return verifyEvent2(kept2) && kept2.kind === FOLLOWS_KIND && kept2.pubkey === who ? kept2 : null;
     } catch {
       return null;
     }
@@ -1674,7 +2097,7 @@ function createPeople(opts) {
     const own = await ownRelays(who);
     const got = await askWell({ kinds: [FOLLOWS_KIND], authors: [who], limit: 4 }, { own, usual: usual(), query, timeoutMs: 4e3, now }).catch(() => null);
     const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
-    const found = newestFollows((got?.events ?? []).filter((e) => verifyEvent(e)), who);
+    const found = newestFollows((got?.events ?? []).filter((e) => verifyEvent2(e)), who);
     const list = found && kept2 ? kept2.created_at > found.created_at ? kept2 : found : found ?? kept2;
     if (kept2 && list === kept2 && answered && (!found || found.id !== kept2.id)) void sendWell(kept2, { own, usual: usual(), publish, query, now }).catch(() => null);
     if (list && list !== kept2) keep3(list);
@@ -1692,7 +2115,7 @@ function createPeople(opts) {
       return null;
     }
     if (known && known.who !== who) known = null;
-    if (!fresh && known && now() - known.at < FRESH_MS) return followsIn(known.list);
+    if (!fresh && known && now() - known.at < FRESH_MS2) return followsIn(known.list);
     looking ??= look(who).finally(() => {
       looking = null;
     });
@@ -1703,7 +2126,7 @@ function createPeople(opts) {
     const who = hand.pubkey();
     const them = name || "them";
     if (!who) return { ok: false, why: "signed-out", said: "Sign in to follow people." };
-    if (!isHex64(pubkey) || pubkey === who) return { ok: false, why: "refused", said: "That isn't someone who can be followed." };
+    if (!isHex643(pubkey) || pubkey === who) return { ok: false, why: "refused", said: "That isn't someone who can be followed." };
     if (!hand.ready()) return { ok: false, why: "not-allowed", said: "This place hasn't been let change who you follow." };
     await load2(true);
     const at = known && known.who === who ? known : null;
@@ -1746,12 +2169,12 @@ function createPeople(opts) {
 }
 
 // packages/sdk/src/saves.ts
-import { cleanSlot, DEFAULT_RELAYS as DEFAULT_RELAYS3, fitsInSave, publishEvent as publishEvent2, queryRelays as queryRelays2, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, SAVE_KIND, SAVE_SLOT, verifyEvent as verifyEvent2 } from "@nswp/core";
+import { cleanSlot, DEFAULT_RELAYS as DEFAULT_RELAYS4, fitsInSave, publishEvent as publishEvent3, queryRelays as queryRelays3, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, SAVE_KIND, SAVE_SLOT, verifyEvent as verifyEvent3 } from "@nswp/core";
 function createSaves(opts = {}) {
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays2;
-  const publish = opts.publish ?? publishEvent2;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS3;
+  const query = opts.query ?? queryRelays3;
+  const publish = opts.publish ?? publishEvent3;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS4;
   const signer = () => (typeof opts.signer === "function" ? opts.signer() : opts.signer) ?? null;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
@@ -1793,7 +2216,7 @@ function createSaves(opts = {}) {
     const d = await s.find(slot);
     if (!d) return null;
     const got = await askWell({ kinds: [SAVE_KIND], authors: [who], "#d": [d], limit: 4 }, { own: await ownRelays(who), usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
-    const newest = (got?.events ?? []).filter((e) => e.kind === SAVE_KIND && e.pubkey === who && e.tags.some((t) => t[0] === "d" && t[1] === d) && verifyEvent2(e)).sort((a, b) => b.created_at - a.created_at)[0];
+    const newest = (got?.events ?? []).filter((e) => e.kind === SAVE_KIND && e.pubkey === who && e.tags.some((t) => t[0] === "d" && t[1] === d) && verifyEvent3(e)).sort((a, b) => b.created_at - a.created_at)[0];
     if (!newest) return null;
     const opened = await s.open(newest);
     return opened && opened.slot === slot ? { data: opened.data, at: opened.at } : null;
@@ -1838,7 +2261,7 @@ function createSaves(opts = {}) {
 }
 
 // packages/sdk/src/signer.ts
-import { isAchievementAsked, cleanFileBytes, cleanFileName, cleanFileType, cleanInvoice, cleanListing as cleanListing2, cleanMessage, cleanTip, readReceipt as readReceipt2, fileUrlNames, cleanMore, cleanWalletUri, PROPOSE_KINDS, provesPayment, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex642, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent3, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { isListSubject, isOwnerListAsked as isOwnerListAsked2, isAchievementAsked, cleanFileBytes, cleanFileName, cleanFileType, cleanInvoice, cleanListing as cleanListing2, cleanMessage, cleanTip, readReceipt as readReceipt2, fileUrlNames, cleanMore, cleanWalletUri, PROPOSE_KINDS, provesPayment, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex644, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent4, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -1872,6 +2295,7 @@ var NONE = {
   open: async () => null,
   want: () => false,
   follow: async () => null,
+  guests: async () => null,
   seal: async () => null,
   unwrap: async () => null,
   reach: async () => null,
@@ -2034,7 +2458,7 @@ function createWorldSigner(opts) {
     }
     if (!waiting2.asked) return waiting2.done(null);
     const marked = Array.isArray(signed?.tags) && signed.tags.some((t) => t[0] === WORLD_TAG && t[1] === cleanOrigin(location.origin));
-    waiting2.done(verifyEvent3(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting2.asked, signed) ? signed : null);
+    waiting2.done(verifyEvent4(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(waiting2.asked, signed) ? signed : null);
   };
   void (async () => {
     try {
@@ -2127,7 +2551,7 @@ function createWorldSigner(opts) {
         if (reply.t !== "signed") return null;
         const signed = reply.event;
         const marked = Array.isArray(signed?.tags) && signed.tags.some((t) => t[0] === WORLD_TAG && t[1] === cleanOrigin(location.origin));
-        return verifyEvent3(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(asked, signed) ? signed : null;
+        return verifyEvent4(signed) && signed.pubkey === pubkey && marked && isWhatWasAsked(asked, signed) ? signed : null;
       });
     },
     wallet() {
@@ -2152,7 +2576,7 @@ function createWorldSigner(opts) {
     },
     tip(o) {
       const sats = cleanTip(o.sats);
-      if (state !== "unlocked" || !frame || sats === null || o.to !== void 0 && !isHex642(o.to)) return Promise.resolve(false);
+      if (state !== "unlocked" || !frame || sats === null || o.to !== void 0 && !isHex644(o.to)) return Promise.resolve(false);
       return putToThem({ t: "tip", id: `t${++n}`, sats, ...o.to ? { to: o.to } : {} }, (reply) => reply.t === "paid" ? true : null).then((paid) => paid === true);
     },
     buy(listing) {
@@ -2208,14 +2632,14 @@ function createWorldSigner(opts) {
     },
     save(slot, data) {
       if (state !== "unlocked" || !frame || !cleanSlot2(slot) || !fitsInSave2(data)) return Promise.resolve(null);
-      return askAbout({ t: "save", id: `s${++n}`, slot, data }, (reply) => reply.t === "signed" && verifyEvent3(reply.event) && looksLikeSave(reply.event, pubkey) ? reply.event : null);
+      return askAbout({ t: "save", id: `s${++n}`, slot, data }, (reply) => reply.t === "signed" && verifyEvent4(reply.event) && looksLikeSave(reply.event, pubkey) ? reply.event : null);
     },
     find(slot) {
       if (state !== "unlocked" || !frame || !cleanSlot2(slot)) return Promise.resolve(null);
       return askAbout({ t: "find", id: `f${++n}`, slot }, (reply) => reply.t === "found" ? reply.d : null);
     },
     open(event) {
-      if (state !== "unlocked" || !frame || !verifyEvent3(event) || !looksLikeSave(event, pubkey)) return Promise.resolve(null);
+      if (state !== "unlocked" || !frame || !verifyEvent4(event) || !looksLikeSave(event, pubkey)) return Promise.resolve(null);
       return askAbout({ t: "open", id: `o${++n}`, event }, (reply) => reply.t === "opened" ? { slot: reply.slot, data: reply.data, at: reply.at } : null);
     },
     want(asked) {
@@ -2227,12 +2651,18 @@ function createWorldSigner(opts) {
     follow(list, change2) {
       const add = "add" in change2 ? change2.add : void 0;
       const remove = "remove" in change2 ? change2.remove : void 0;
-      if (state !== "unlocked" || !frame || !more.includes("follows") || !isHex642(add ?? remove)) return Promise.resolve(null);
+      if (state !== "unlocked" || !frame || !more.includes("follows") || !isHex644(add ?? remove)) return Promise.resolve(null);
       return askAbout({ t: "follow", id: `w${++n}`, list, ...add ? { add } : { remove } }, (reply) => reply.t === "signed" && isFollowAsked2(reply.event, { list, ...add ? { add } : { remove }, pubkey }) ? reply.event : null);
+    },
+    guests(o) {
+      if (state !== "unlocked" || !frame || !pubkey || !isListSubject(o.world) || !isHex644(o.key)) return Promise.resolve(null);
+      if (o.list === null && o.none !== true) return Promise.resolve(null);
+      const asked = { list: o.list, subject: o.world, change: o.change, key: o.key, pubkey };
+      return putToThem({ t: "guests", id: `g${++n}`, world: o.world, list: o.list, change: o.change, key: o.key, ...o.none === true ? { none: true } : {} }, (reply) => reply.t === "signed" && isOwnerListAsked2(reply.event, asked) ? reply.event : null);
     },
     seal(to, text) {
       const words = cleanMessage(text);
-      if (state !== "unlocked" || !frame || !more.includes("messages") || !isHex642(to) || !words) return Promise.resolve(null);
+      if (state !== "unlocked" || !frame || !more.includes("messages") || !isHex644(to) || !words) return Promise.resolve(null);
       return askAbout({ t: "seal", id: `m${++n}`, to, text: words }, (reply) => reply.t === "sealed" && isSealAsked(reply, { pubkey, to, text: words }) ? { message: reply.message, seals: reply.seals } : null);
     },
     unwrap(wrap2) {
@@ -2345,18 +2775,18 @@ async function byName(identity) {
 }
 function identityWords() {
   const who = hereAs();
-  const name = who ? who.name || shortNpub(who.pubkey) : "";
+  const name = who ? who.name || shortNpub3(who.pubkey) : "";
   return who ? { signedIn: true, name, label: `Here as ${name}. Switch profile, or go as a guest`, short: "You" } : { signedIn: false, name: "", label: "You are a guest here. Sign in", short: "Sign in" };
 }
 function youCard() {
   const who = hereAs();
   const signer = signerNamed() ? worldSigner() : null;
   if (who) {
-    const npub = encodeNpub(who.pubkey);
-    return { title: who.name || shortNpub(who.pubkey), tag: "Signed in", proven: true, sub: shortNpub(who.pubkey), copy: npub, text: who.about ?? "", picture: who.picture ?? "", color: "", now: [] };
+    const npub = encodeNpub2(who.pubkey);
+    return { title: who.name || shortNpub3(who.pubkey), tag: "Signed in", proven: true, sub: shortNpub3(who.pubkey), copy: npub, text: who.about ?? "", picture: who.picture ?? "", color: "", now: [] };
   }
   if (signer?.state === "unlocked" && signer.pubkey) {
-    return { title: signer.name ?? shortNpub(signer.pubkey), tag: "Signed in to post", proven: false, sub: shortNpub(signer.pubkey), copy: encodeNpub(signer.pubkey), text: signer.about ?? "", picture: signer.picture ?? "", color: "", now: [] };
+    return { title: signer.name ?? shortNpub3(signer.pubkey), tag: "Signed in to post", proven: false, sub: shortNpub3(signer.pubkey), copy: encodeNpub2(signer.pubkey), text: signer.about ?? "", picture: signer.picture ?? "", color: "", now: [] };
   }
   return null;
 }
@@ -2463,7 +2893,7 @@ function signerAction(controls, opts = {}) {
   const signer = worldSigner();
   let was = signer.state;
   let wasAsking = false;
-  const short = () => shortNpub(signer.pubkey ?? "");
+  const short = () => shortNpub3(signer.pubkey ?? "");
   signer.onChange(() => {
     if (signer.state === "unlocked" && was !== "unlocked") {
       void Promise.race([seekPass(), soon(4e3)]).then(() => {
@@ -3123,9 +3553,9 @@ function createFigure(look, style = {}, facts = {}) {
 }
 
 // packages/sdk/src/blocks.ts
-import { cleanName, shortNpub as shortNpub2 } from "@nswp/core";
+import { cleanName as cleanName2, shortNpub as shortNpub4 } from "@nswp/core";
 var BLOCK_LIMIT = 500;
-var KEY = "nswp:blocked";
+var KEY2 = "nswp:blocked";
 var HEX = /^[0-9a-f]{64}$/;
 function cleanBlocked(input) {
   if (!Array.isArray(input)) return [];
@@ -3136,8 +3566,8 @@ function cleanBlocked(input) {
     const { key, name, at } = b;
     if (typeof key !== "string" || !HEX.test(key) || seen.has(key)) continue;
     seen.add(key);
-    const called = typeof name === "string" ? cleanName(name) : "";
-    out.push({ key, name: called || shortNpub2(key), at: typeof at === "number" && Number.isFinite(at) && at > 0 ? Math.floor(at) : 0 });
+    const called = typeof name === "string" ? cleanName2(name) : "";
+    out.push({ key, name: called || shortNpub4(key), at: typeof at === "number" && Number.isFinite(at) && at > 0 ? Math.floor(at) : 0 });
     if (out.length >= BLOCK_LIMIT) break;
   }
   return out;
@@ -3158,15 +3588,15 @@ var local = () => {
 };
 function loadBlocked(storage = local()) {
   try {
-    return cleanBlocked(JSON.parse(storage?.getItem(KEY) ?? "[]"));
+    return cleanBlocked(JSON.parse(storage?.getItem(KEY2) ?? "[]"));
   } catch {
     return [];
   }
 }
 function storeBlocked(list, storage = local()) {
   try {
-    if (list.length) storage?.setItem(KEY, JSON.stringify(cleanBlocked(list)));
-    else storage?.removeItem(KEY);
+    if (list.length) storage?.setItem(KEY2, JSON.stringify(cleanBlocked(list)));
+    else storage?.removeItem(KEY2);
   } catch {
   }
 }
@@ -3358,10 +3788,10 @@ function stepShape(foot, random = Math.random) {
     pan: side * (0.08 + random() * 0.1)
   };
 }
-function nextVariant(count, last, random = Math.random) {
-  if (count <= 1) return 0;
-  if (last < 0 || last >= count) return Math.min(count - 1, Math.floor(random() * count));
-  const i = Math.floor(random() * (count - 1));
+function nextVariant(count2, last, random = Math.random) {
+  if (count2 <= 1) return 0;
+  if (last < 0 || last >= count2) return Math.min(count2 - 1, Math.floor(random() * count2));
+  const i = Math.floor(random() * (count2 - 1));
   return i >= last ? i + 1 : i;
 }
 var DEFAULT_LEVELS = { off: false, effects: 0.7, music: 0.45, voices: 1, hearShared: false, shared: 0.7, hum: true };
@@ -3475,7 +3905,7 @@ import * as THREE7 from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 // packages/sdk/src/item-store.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS4, ITEM_KIND, itemCoordinate, MODEL_BUDGET, parseItem, queryRelays as queryRelays3, readGlb, SCRIPT_LIMITS, verifyEvent as verifyEvent4 } from "@nswp/core";
+import { DEFAULT_RELAYS as DEFAULT_RELAYS5, ITEM_KIND, itemCoordinate, MODEL_BUDGET, parseItem, queryRelays as queryRelays4, readGlb, SCRIPT_LIMITS, verifyEvent as verifyEvent5 } from "@nswp/core";
 var ITEM_BUDGET = {
   ...MODEL_BUDGET,
   /** The most one of an item's sounds may weigh, in bytes. */
@@ -3529,7 +3959,7 @@ async function fetchWithin(url, most) {
   }
 }
 function createItemStore(opts = {}) {
-  const query = opts.query ?? queryRelays3;
+  const query = opts.query ?? queryRelays4;
   const now = opts.now ?? (() => Date.now());
   const fetchBytes = opts.fetchBytes ?? ((url) => fetchWithin(url, ITEM_BUDGET.bytes));
   const described = /* @__PURE__ */ new Map();
@@ -3560,8 +3990,8 @@ function createItemStore(opts = {}) {
       let found = described.get(coordinate);
       if (!found) {
         const [, maker, ...rest] = coordinate.split(":");
-        found = askWell({ kinds: [ITEM_KIND], authors: [maker], "#d": [rest.join(":")], limit: 4 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS4, query, timeoutMs: 4e3, now }).then((got) => {
-          const newest = got.events.filter((e) => e.kind === ITEM_KIND && e.pubkey === maker && verifyEvent4(e)).sort((a, b) => b.created_at - a.created_at)[0];
+        found = askWell({ kinds: [ITEM_KIND], authors: [maker], "#d": [rest.join(":")], limit: 4 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS5, query, timeoutMs: 4e3, now }).then((got) => {
+          const newest = got.events.filter((e) => e.kind === ITEM_KIND && e.pubkey === maker && verifyEvent5(e)).sort((a, b) => b.created_at - a.created_at)[0];
           const item = newest ? parseItem(newest) : null;
           return item && item.id === coordinate ? item : null;
         }).catch(() => null).then((item) => {
@@ -4705,11 +5135,11 @@ function createPlay(o) {
       thing.floor = y;
     },
     info() {
-      const count = (state) => things.filter((t) => t.state === state).length;
+      const count2 = (state) => things.filter((t) => t.state === state).length;
       return {
-        flying: count("flying"),
-        stuck: count("stuck"),
-        falling: count("falling") + count("lying"),
+        flying: count2("flying"),
+        stuck: count2("stuck"),
+        falling: count2("falling") + count2("lying"),
         things: things.map((t) => ({ by: t.by, id: t.shot.id, state: t.state, on: t.on, onto: `${t.object.parent?.type ?? ""}:${t.object.parent?.name ?? ""}`, at: t.object.getWorldPosition(new THREE8.Vector3()).toArray().map((n) => Math.round(n * 100) / 100) })),
         sent,
         landed,
@@ -5739,281 +6169,17 @@ function createPresence(d) {
 
 // packages/sdk/src/room-controls.ts
 import * as THREE11 from "three";
-import { CHAT_LIMITS, cleanLightningAddress, DEFAULT_RELAYS as DEFAULT_RELAYS7, DELETION_KIND, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub5, verifyEvent as verifyEvent6 } from "@nswp/core";
-
-// packages/sdk/src/following.ts
-import { decodeNpub, encodeNpub as encodeNpub2, shortNpub as shortNpub3 } from "@nswp/core";
-
-// packages/sdk/src/profiles.ts
-import { cleanAbout, cleanName as cleanName2, cleanPicture, DEFAULT_RELAYS as DEFAULT_RELAYS5, isHex64 as isHex643, queryRelays as queryRelays4, verifyEvent as verifyEvent5 } from "@nswp/core";
-var KEY2 = "nswp:profiles";
-var MOST = 400;
-var FRESH_MS2 = 24 * 3600 * 1e3;
-var AT_ONCE = 60;
-function readProfile(event) {
-  let meta = {};
-  try {
-    const parsed = JSON.parse(event.content);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) meta = parsed;
-  } catch {
-  }
-  let name = "";
-  for (const v of [meta.display_name, meta.displayName, meta.name]) {
-    if (!name && typeof v === "string") name = cleanName2(v);
-  }
-  return { name, picture: cleanPicture(meta.picture), about: cleanAbout(meta.about), at: event.created_at };
-}
-function createProfiles(opts = {}) {
-  const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays4;
-  const store = (() => {
-    if (opts.storage !== void 0) return opts.storage;
-    try {
-      return globalThis.localStorage ?? null;
-    } catch {
-      return null;
-    }
-  })();
-  const watchers3 = /* @__PURE__ */ new Set();
-  let kept2 = null;
-  const all = () => {
-    if (kept2) return kept2;
-    kept2 = {};
-    try {
-      const read = JSON.parse(store?.getItem(KEY2) ?? "{}");
-      if (read && typeof read === "object" && !Array.isArray(read)) {
-        for (const [k, v] of Object.entries(read)) {
-          if (!isHex643(k) || !v || typeof v !== "object") continue;
-          kept2[k] = { name: cleanName2(typeof v.name === "string" ? v.name : ""), picture: cleanPicture(v.picture), about: cleanAbout(v.about), at: typeof v.at === "number" ? v.at : 0, asked: typeof v.asked === "number" ? v.asked : 0 };
-        }
-      }
-    } catch {
-    }
-    return kept2;
-  };
-  const save = () => {
-    const entries = Object.entries(all());
-    if (entries.length > MOST) kept2 = Object.fromEntries(entries.sort((a, b) => b[1].asked - a[1].asked).slice(0, MOST));
-    try {
-      store?.setItem(KEY2, JSON.stringify(kept2));
-    } catch {
-    }
-  };
-  return {
-    get: (pubkey) => all()[pubkey] ?? null,
-    async fetch(pubkeys) {
-      const book = all();
-      const wanted = [...new Set(pubkeys)].filter((k) => isHex643(k) && now() - (book[k]?.asked ?? 0) > FRESH_MS2).slice(0, AT_ONCE);
-      if (wanted.length === 0) return;
-      const got = await askWell({ kinds: [0], authors: wanted, limit: wanted.length * 2 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS5, query, timeoutMs: 4e3, now }).catch(() => null);
-      const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
-      for (const e of got?.events ?? []) {
-        if (e.kind !== 0 || !wanted.includes(e.pubkey) || !verifyEvent5(e)) continue;
-        const had = book[e.pubkey];
-        if (had && had.at >= e.created_at) continue;
-        book[e.pubkey] = { ...readProfile(e), asked: now() };
-      }
-      if (answered) for (const k of wanted) book[k] = { ...book[k] ?? { name: "", picture: "", about: "", at: 0 }, asked: now() };
-      save();
-      for (const fn of watchers3) fn();
-    },
-    onChange(fn) {
-      watchers3.add(fn);
-      return () => void watchers3.delete(fn);
-    }
-  };
-}
-
-// packages/sdk/src/following.ts
-var PAGE = 24;
-function keyIn(text) {
-  if (typeof text !== "string") return null;
-  const found = /npub1[02-9ac-hj-np-z]{58}/.exec(text)?.[0] ?? /\b[0-9a-f]{64}\b/i.exec(text)?.[0];
-  if (!found) return null;
-  try {
-    return decodeNpub(found);
-  } catch {
-    return null;
-  }
-}
-function addFollowingControls(controls, opts) {
-  const f = opts.follows;
-  const profiles = opts.profiles ?? createProfiles(opts.relays ? { relays: opts.relays } : {});
-  let shown2 = [];
-  let chosen = null;
-  let pages = 1;
-  let wasMe = null;
-  let looked = false;
-  const nameOf = (pubkey) => profiles.get(pubkey)?.name || shortNpub3(pubkey);
-  const say = (text) => controls.say(text);
-  const press = (pubkey, name, adding) => {
-    const now = async () => {
-      const done = await (adding ? f.people.follow(pubkey, name) : f.people.unfollow(pubkey, name));
-      say(done.said);
-      if (done.ok && adding) void profiles.fetch([pubkey]);
-      refresh();
-    };
-    if (!f.pubkey()) return say("Sign in to follow people: it is under You.");
-    if (f.allowed()) return void now();
-    say(f.ask(() => void now()));
-  };
-  const byKey = async () => {
-    const me = f.pubkey();
-    if (!me) return say("Sign in to follow people: it is under You.");
-    let text = "";
-    const keyboard = opts.presenting?.() ? opts.keyboard?.() ?? null : null;
-    if (keyboard) text = await keyboard.ask({ title: "Their key: npub1\u2026 Paste it, or type it. Done follows them.", maxLength: 80 }).catch(() => null) ?? "";
-    else {
-      try {
-        text = await (opts.copied ? opts.copied() : navigator.clipboard.readText());
-      } catch {
-        return say("What you copied couldn't be read here. Copy their key (it starts npub1), allow this site to read what you copy, and press again.");
-      }
-    }
-    const key = keyIn(text);
-    if (!key) return say(keyboard ? "That isn't a key. A key starts npub1 and is 63 characters long." : "What you copied isn't a key. Copy their key (it starts npub1) and press again.");
-    if (key === me) return say("That is your own key.");
-    chosen = key;
-    await profiles.fetch([key]);
-    press(key, nameOf(key), true);
-  };
-  const refresh = () => {
-    for (const id of shown2) controls.remove(id);
-    shown2 = [];
-    const me = f.pubkey();
-    if (me !== wasMe) {
-      wasMe = me;
-      chosen = null;
-      pages = 1;
-      looked = false;
-    }
-    const allowed = !!me && f.allowed();
-    const follows = allowed ? f.people.follows() : null;
-    const add = (...actions) => {
-      for (const a of actions) shown2.push(a.id);
-      controls.add(...actions.map((a) => ({ section: "following", ...a })));
-    };
-    controls.addSection({
-      id: "following",
-      label: "Following",
-      icon: "list",
-      note: () => !me ? "Sign in to see who you follow." : !allowed ? "Who you follow is yours, and the same in every Nostr app. This place hasn't been let see to it: say so below, and your sign-in address asks you once." : follows === null ? looked ? "Who you follow couldn't be looked for just now." : "Looking for who you follow." : follows.length === 0 ? "You follow nobody yet. Follow someone from their card in People, or by their key. Who you follow is public." : `You follow ${follows.length === 1 ? "1 person" : `${follows.length} people`}. Select one to see who they are. It is your own Nostr follow list, and it is public.`,
-      card: () => {
-        if (!chosen || !follows) return null;
-        const p = profiles.get(chosen);
-        const following = follows.includes(chosen);
-        return {
-          title: nameOf(chosen),
-          tag: following ? "You follow them" : "Not followed",
-          proven: false,
-          sub: shortNpub3(chosen),
-          copy: encodeNpub2(chosen),
-          text: p?.about ?? "",
-          picture: showsPictures() ? p?.picture ?? "" : "",
-          color: "",
-          // What they have done, as they say: where they stand here, what they show.
-          now: opts.about?.lines(chosen) ?? []
-        };
-      }
-    });
-    if (!me) return;
-    if (!allowed) {
-      add({
-        id: "following-let",
-        icon: "check",
-        tone: "primary",
-        label: "Show who I follow, and let me change it here",
-        act: () => say(f.ask(() => void f.people.load().then(refresh)))
-      });
-      return;
-    }
-    if (follows === null) {
-      if (!looked) {
-        looked = true;
-        void f.people.load().then(refresh);
-      } else {
-        add({
-          id: "following-again",
-          icon: "turn",
-          label: "Look again",
-          act: () => {
-            looked = false;
-            refresh();
-          }
-        });
-      }
-      return;
-    }
-    add({ id: "following-key", icon: "key", label: () => opts.presenting?.() && opts.keyboard?.() ? "Follow someone by their key" : "Follow the key I copied", short: "By key", act: () => void byKey() });
-    if (chosen) {
-      const them = chosen;
-      const following = follows.includes(them);
-      add({ id: "following-toggle", icon: "check", on: () => following, label: following ? `Unfollow ${nameOf(them)}` : `Follow ${nameOf(them)}`, act: () => press(them, nameOf(them), !following) });
-      add(...opts.more?.({ pubkey: them, name: nameOf(them) }) ?? []);
-    }
-    const named = follows.filter((k) => profiles.get(k)?.name).sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
-    const rest = follows.filter((k) => !profiles.get(k)?.name);
-    const listed = [...named, ...rest].slice(0, pages * PAGE);
-    void profiles.fetch(follows.slice(0, pages * PAGE * 2));
-    add(
-      ...listed.map((k) => ({
-        id: `following-${k.slice(0, 16)}`,
-        kind: "swatch",
-        color: `#${k.slice(0, 6)}`,
-        on: () => chosen === k,
-        label: () => nameOf(k),
-        act: () => {
-          chosen = chosen === k ? null : k;
-          refresh();
-        }
-      }))
-    );
-    if (follows.length > listed.length) {
-      add({
-        id: "following-more",
-        icon: "list",
-        label: `Show more (${listed.length} of ${follows.length})`,
-        act: () => {
-          pages++;
-          refresh();
-        }
-      });
-    }
-  };
-  let drawing = false;
-  const soon2 = () => {
-    if (drawing) return;
-    drawing = true;
-    queueMicrotask(() => {
-      drawing = false;
-      refresh();
-    });
-  };
-  profiles.onChange(soon2);
-  f.people.onChange(soon2);
-  opts.about?.onChange(soon2);
-  refresh();
-  return {
-    refresh,
-    choose(pubkey) {
-      chosen = pubkey;
-      void profiles.fetch([pubkey]);
-      refresh();
-    },
-    press,
-    profiles
-  };
-}
+import { CHAT_LIMITS, cleanLightningAddress, DEFAULT_RELAYS as DEFAULT_RELAYS7, DELETION_KIND, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub6, verifyEvent as verifyEvent6 } from "@nswp/core";
 
 // packages/sdk/src/messages.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS6, isHex64 as isHex644, looksLikeWrap as looksLikeWrap2, MESSAGE_RELAYS_KIND, publishEvent as publishEvent3, queryRelays as queryRelays5, readMessageRelays, readRelayList as readRelayList3, RELAY_LIST_KIND as RELAY_LIST_KIND3, WRAP_KIND, wrapSeal, writtenWith } from "@nswp/core";
+import { DEFAULT_RELAYS as DEFAULT_RELAYS6, isHex64 as isHex645, looksLikeWrap as looksLikeWrap2, MESSAGE_RELAYS_KIND, publishEvent as publishEvent4, queryRelays as queryRelays5, readMessageRelays, readRelayList as readRelayList3, RELAY_LIST_KIND as RELAY_LIST_KIND3, WRAP_KIND, wrapSeal, writtenWith } from "@nswp/core";
 var MOST2 = 300;
 var FRESH_MS3 = 45e3;
 function createMessages(opts) {
   const { hand } = opts;
   const now = opts.now ?? (() => Date.now());
   const query = opts.query ?? queryRelays5;
-  const publish = opts.publish ?? publishEvent3;
+  const publish = opts.publish ?? publishEvent4;
   const usual = () => opts.relays ?? DEFAULT_RELAYS6;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
@@ -6046,7 +6212,7 @@ function createMessages(opts) {
     try {
       const kept2 = JSON.parse(who && store?.getItem(seenKey(who)) || "{}");
       if (kept2 && typeof kept2 === "object" && !Array.isArray(kept2)) {
-        for (const [k, v] of Object.entries(kept2)) if (isHex644(k) && typeof v === "number") marks[k] = v;
+        for (const [k, v] of Object.entries(kept2)) if (isHex645(k) && typeof v === "number") marks[k] = v;
       }
     } catch {
     }
@@ -6156,7 +6322,7 @@ function createMessages(opts) {
       const me = hand.pubkey();
       const them = name || "them";
       if (!me || !hand.ready()) return { ok: false, said: "Sign in to write to people." };
-      if (!isHex644(to) || to === me) return { ok: false, said: "That isn't someone who can be written to." };
+      if (!isHex645(to) || to === me) return { ok: false, said: "That isn't someone who can be written to." };
       if (!inbox.length) return { ok: false, said: "Say where your own messages reach you first: without that you couldn't read back what you sent, or be answered." };
       const asked = await askWell({ kinds: [MESSAGE_RELAYS_KIND], authors: [to], limit: 4 }, { own: inbox, usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
       const theirs = readMessageRelays(asked?.events ?? [], to);
@@ -6208,7 +6374,7 @@ function createMessages(opts) {
 }
 
 // packages/sdk/src/messaging.ts
-import { shortNpub as shortNpub4, MESSAGE_LIMITS } from "@nswp/core";
+import { shortNpub as shortNpub5, MESSAGE_LIMITS } from "@nswp/core";
 import * as THREE10 from "three";
 var W2 = 768;
 var H2 = 900;
@@ -6222,7 +6388,7 @@ function addMessagingControls(controls, opts) {
   let requests = false;
   let wasMe = null;
   let fetching = false;
-  const nameOf = (pubkey) => profiles.get(pubkey)?.name || shortNpub4(pubkey);
+  const nameOf = (pubkey) => profiles.get(pubkey)?.name || shortNpub5(pubkey);
   const say = (text) => controls.say(text);
   const inHeadset = () => !!opts.presenting?.() && !!opts.panels;
   let panel = null;
@@ -6762,7 +6928,7 @@ function addRoomControls(controls, presence, opts = {}) {
           tag: who2.guest ? "Guest" : "By name",
           proven: !who2.guest,
           // A name is not unique and a picture can be copied: the key behind them is what tells two people apart.
-          sub: who2.identity ? shortNpub5(who2.identity) : "Nobody has vouched for who they are.",
+          sub: who2.identity ? shortNpub6(who2.identity) : "Nobody has vouched for who they are.",
           copy: who2.identity ? encodeNpub3(who2.identity) : "",
           text: who2.guest ? "" : who2.about ?? "",
           picture: !who2.guest && showsPictures() ? who2.picture ?? "" : "",
@@ -7144,7 +7310,7 @@ function addRoomControls(controls, presence, opts = {}) {
       controls.feed.detach();
       return closeFeedPanel();
     }
-    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub5(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts, ...notes.propose ? { remove: removeNote } : {} });
+    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub6(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts, ...notes.propose ? { remove: removeNote } : {} });
   };
   const drawFeedPanel = () => {
     if (!feedPanel) return;
@@ -9779,9 +9945,9 @@ var DOOR_SPACING = 2.5;
 
 // packages/sdk/src/door-layout.ts
 var SLACK = 1e-6;
-function doorRow(count, apart = DOOR_SPACING) {
+function doorRow(count2, apart = DOOR_SPACING) {
   const step = Math.max(apart, DOOR_SPACING);
-  const n = Math.max(0, Math.floor(count));
+  const n = Math.max(0, Math.floor(count2));
   return Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * step);
 }
 function doorArcStep(radius) {
@@ -10179,12 +10345,12 @@ function viewScale(metres, opts) {
 }
 
 // packages/sdk/src/scores.ts
-import { cleanBoard, cleanScore, DEFAULT_RELAYS as DEFAULT_RELAYS8, publishEvent as publishEvent4, queryRelays as queryRelays6, rankScores, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, SCORE_KIND, scoreWords, worldCoordinate } from "@nswp/core";
+import { cleanBoard, cleanScore, DEFAULT_RELAYS as DEFAULT_RELAYS8, publishEvent as publishEvent5, queryRelays as queryRelays6, rankScores, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, SCORE_KIND, scoreWords, worldCoordinate } from "@nswp/core";
 function createScores(opts) {
   const world = worldCoordinate(opts.world);
   const now = opts.now ?? (() => Date.now());
   const query = opts.query ?? queryRelays6;
-  const publish = opts.publish ?? publishEvent4;
+  const publish = opts.publish ?? publishEvent5;
   const usual = () => opts.relays ?? DEFAULT_RELAYS8;
   const boards = opts.boards.filter((b) => cleanBoard(b.id));
   const boardOf = (id) => boards.find((b) => b.id === id) ?? null;
@@ -10308,13 +10474,13 @@ function createScores(opts) {
 }
 
 // packages/sdk/src/scoring.ts
-import { shortNpub as shortNpub6 } from "@nswp/core";
+import { shortNpub as shortNpub7 } from "@nswp/core";
 function addScoreControls(controls, opts) {
   const { scores } = opts;
   let shown2 = [];
   const read = /* @__PURE__ */ new Map();
   const looking = /* @__PURE__ */ new Set();
-  const nameOf = (pubkey) => opts.profiles?.get(pubkey)?.name || shortNpub6(pubkey);
+  const nameOf = (pubkey) => opts.profiles?.get(pubkey)?.name || shortNpub7(pubkey);
   const look = (board, fresh = false) => {
     if (looking.has(board)) return;
     looking.add(board);
@@ -10396,12 +10562,12 @@ function addScoreControls(controls, opts) {
 }
 
 // packages/sdk/src/bag.ts
-import { BAG_KIND, bagIn, bagTints, changeBag, tintBag, DEFAULT_RELAYS as DEFAULT_RELAYS9, itemCoordinate as itemCoordinate3, newestBag, publishEvent as publishEvent5, queryRelays as queryRelays7, readRelayList as readRelayList6, RELAY_LIST_KIND as RELAY_LIST_KIND6, SITE_MARKS, verifyEvent as verifyEvent7 } from "@nswp/core";
+import { BAG_KIND, bagIn, bagTints, changeBag, tintBag, DEFAULT_RELAYS as DEFAULT_RELAYS9, itemCoordinate as itemCoordinate3, newestBag, publishEvent as publishEvent6, queryRelays as queryRelays7, readRelayList as readRelayList6, RELAY_LIST_KIND as RELAY_LIST_KIND6, SITE_MARKS, verifyEvent as verifyEvent7 } from "@nswp/core";
 var FRESH_MS4 = 6e4;
 function createBag(opts) {
   const now = opts.now ?? (() => Date.now());
   const query = opts.query ?? queryRelays7;
-  const publish = opts.publish ?? publishEvent5;
+  const publish = opts.publish ?? publishEvent6;
   const usual = () => opts.relays ?? DEFAULT_RELAYS9;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
@@ -11364,12 +11530,12 @@ function worldPersonLines(o) {
 }
 
 // packages/sdk/src/achievements.ts
-import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS11, publishEvent as publishEvent6, queryRelays as queryRelays9, readRelayList as readRelayList7, RELAY_LIST_KIND as RELAY_LIST_KIND7, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate3 } from "@nswp/core";
+import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS11, publishEvent as publishEvent7, queryRelays as queryRelays9, readRelayList as readRelayList7, RELAY_LIST_KIND as RELAY_LIST_KIND7, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate3 } from "@nswp/core";
 function createAchievements(opts) {
   const world = worldCoordinate3(opts.world);
   const now = opts.now ?? (() => Date.now());
   const query = opts.query ?? queryRelays9;
-  const publish = opts.publish ?? publishEvent6;
+  const publish = opts.publish ?? publishEvent7;
   const usual = () => opts.relays ?? DEFAULT_RELAYS11;
   const list = opts.list.filter((a) => cleanAchievementId(a.id) && a.title);
   const one = (id) => list.find((a) => a.id === id) ?? null;
@@ -12963,6 +13129,10 @@ export {
   watchFov,
   watchFresh,
   freshAction,
+  readProfile,
+  createProfiles,
+  keyIn,
+  addFollowingControls,
   GATE_TIMES,
   createPaidGate,
   addGateControls,
@@ -13006,10 +13176,6 @@ export {
   textSprite,
   speechSprite,
   createPresence,
-  readProfile,
-  createProfiles,
-  keyIn,
-  addFollowingControls,
   createMessages,
   addMessagingControls,
   addRoomControls,

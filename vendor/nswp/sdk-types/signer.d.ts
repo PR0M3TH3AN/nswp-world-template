@@ -1,4 +1,4 @@
-import { type Receipt, type NostrEvent, type Message, type SealedMessage, type SignerMore } from "@nswp/core";
+import { type OwnerListChange, type Receipt, type NostrEvent, type Message, type SealedMessage, type SignerMore } from "@nswp/core";
 /** "none": the visitor has no client here that offers one. "locked": there is one, and it hasn't been unlocked for this world. */
 export type SignerState = "none" | "locked" | "unlocked";
 export interface WorldSigner {
@@ -213,6 +213,20 @@ export interface WorldSigner {
         add: string;
     } | {
         remove: string;
+    }): Promise<NostrEvent | null>;
+    /**
+     * Change one person on this world's own lists, for a visitor who is one of its keepers (protocol/10-identity.md,
+     * "The owner's screen"). Asked on the sign-in address's own page every time: no standing permission is needed or
+     * granted. `list` is the newest list of theirs for `world` and that change found, or null with `none` true where
+     * it was looked for and there is none. What comes back is the new list, signed, for this page to send to relays:
+     * null if it is locked, or refused, or what came back isn't exactly that list with that one change.
+     */
+    guests(o: {
+        world: string;
+        list: NostrEvent | null;
+        change: OwnerListChange;
+        key: string;
+        none?: boolean;
     }): Promise<NostrEvent | null>;
     /**
      * Have a private message written and sealed, for a visitor who let this world send them
