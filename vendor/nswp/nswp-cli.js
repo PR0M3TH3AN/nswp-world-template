@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.78.0";
+var KIT_VERSION = "0.78.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -5202,7 +5202,7 @@ function readGlb(bytes, budget = MODEL_BUDGET) {
 }
 
 // packages/core/dist/list.js
-var LIST_LIMITS = { worlds: 200, titleChars: 200, descriptionChars: 1e3 };
+var LIST_LIMITS = { worlds: 200, titleChars: 200, descriptionChars: 1e3, ahead: 600 };
 function buildListEvent(l) {
   const tags = [["d", l.d], ["title", l.title]];
   if (l.description)

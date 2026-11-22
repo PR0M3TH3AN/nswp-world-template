@@ -133,7 +133,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-EQN44BFC.js";
+} from "./shared-PSSLPTKH.js";
 import "./shared-DPGOLCBO.js";
 import {
   PICTURE_LIMITS,
