@@ -435,10 +435,22 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .target.card b { font-weight: 650; }
 .target.card span { opacity: 0.86; font-size: 0.93em; line-height: 1.35; }
 .target.card span:last-child { opacity: 1; color: rgb(var(--accent)); }
-.hotbar { pointer-events: auto; display: flex; align-items: flex-start; justify-content: flex-start; gap: 10px; padding: 12px 14px 8px; border-radius: 20px 20px 10px 10px;
-  /* As wide as its keys, and no wider than the screen: with tabs pinned to it on a phone, it is slid along. */
-  max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+/* The bar: as wide as its keys, and no wider than the screen. Wider than that (tabs pinned to it on a phone), the
+   keys slide along it, with an arrow at each end like the menu's tabs. The arrows stand beside the keys, never over
+   them, and while it is too wide both places are kept, so the keys don't jump as one comes and goes. */
+.bar { pointer-events: auto; position: relative; display: flex; align-items: stretch; max-width: 100%; border-radius: 20px 20px 10px 10px; }
+.bar[hidden] { display: none; }
+.hotbar { display: flex; align-items: flex-start; justify-content: flex-start; gap: 10px; padding: 12px 14px 8px; min-width: 0;
+  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
 .hotbar::-webkit-scrollbar { display: none; }
+.bar .more { display: none; flex: none; width: 30px; place-items: center; font-size: 1.55em; line-height: 1;
+  color: rgb(var(--accent)); text-shadow: 0 0 10px rgb(var(--accent)); }
+.bar.over .more { display: grid; }
+.bar .more.left { border-radius: 20px 0 0 10px; }
+.bar .more.right { border-radius: 0 20px 10px 0; }
+/* Nothing more that way: its place is kept, empty, and it takes no press. */
+.bar .more.spent { visibility: hidden; pointer-events: none; }
+.bar .more:hover { color: rgb(var(--ink)); }
 .key { position: relative; flex: none; width: 62px; display: grid; justify-items: center; gap: 7px; text-align: center; }
 /* Between the place's own keys and the tabs the visitor pinned: a line, so it is plain which are theirs. */
 .hotbar .theirs { flex: none; align-self: stretch; width: 1px; margin: 2px 2px 8px; background: rgba(var(--ink), .2); }
@@ -630,8 +642,8 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .quiet .mark { margin-bottom: 2px; }
 .quiet:hover, .quiet[aria-expanded="true"] { border-color: rgb(var(--accent)); }
 :host([data-presence="quiet"]) .quiet { display: grid; }
-:host([data-presence="quiet"]) :is(.id, .menu, .hotbar, .target, .corner),
-:host([data-presence="hidden"]) :is(.id, .menu, .hotbar, .target, .corner, .says) { display: none; }
+:host([data-presence="quiet"]) :is(.id, .menu, .bar, .target, .corner),
+:host([data-presence="hidden"]) :is(.id, .menu, .bar, .target, .corner, .says) { display: none; }
 :host([data-corner="top-left"]) .quiet { top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); }
 :host([data-corner="top-right"]) .quiet { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
 :host([data-corner="bottom-left"]) .quiet { bottom: max(12px, env(safe-area-inset-bottom)); left: max(12px, env(safe-area-inset-left)); }
@@ -681,6 +693,7 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
   .menu span, .menu kbd, .key .num { display: none; }
   .menu { padding: 0 10px; }
   .hotbar { gap: 4px; padding: 10px 8px 6px; }
+  .bar .more { width: 26px; }
   .key { width: 54px; }
   .key .arch { width: 46px; height: 46px; border-radius: 23px 23px 6px 6px; }
   .key .sill { width: 50px; }
@@ -729,7 +742,10 @@ function mountHud(controls, opts = {}) {
   const menu = el("button", { class: "menu glass", type: "button", "aria-haspopup": "dialog", "aria-expanded": "false" }, icon("menu"), el("span", {}, "Menu"), el("kbd", {}, "M"));
   const quiet = el("button", { class: "quiet glass", type: "button", "aria-label": "Menu", "aria-haspopup": "dialog", "aria-expanded": "false" }, el("span", { class: "mark", "aria-hidden": "true" }));
   const target = el("div", { class: "target glass", "aria-live": "polite" });
-  const hotbar = el("nav", { class: "hotbar glass", "aria-label": "Controls" });
+  const hotbar = el("nav", { class: "hotbar", "aria-label": "Controls" });
+  const barBack = el("button", { class: "more left spent", type: "button", "aria-label": "Earlier keys", tabindex: "-1" }, "\u2039");
+  const barOn = el("button", { class: "more right spent", type: "button", "aria-label": "More keys", tabindex: "-1" }, "\u203A");
+  const bar = el("div", { class: "bar glass" }, barBack, hotbar, barOn);
   const says = el("div", { class: "says", role: "status" });
   const asFace = el("span", { class: "face", "aria-hidden": "true" });
   const asLead = el("small");
@@ -762,6 +778,53 @@ function mountHud(controls, opts = {}) {
     },
     { passive: false }
   );
+  const arrowsTake = () => bar.classList.contains("over") ? barBack.offsetWidth + barOn.offsetWidth : 0;
+  const tendBar = () => {
+    const over = hotbar.scrollWidth > hotbar.clientWidth + arrowsTake() + 1;
+    if (bar.classList.contains("over") !== over) bar.classList.toggle("over", over);
+    const most = hotbar.scrollWidth - hotbar.clientWidth;
+    barBack.classList.toggle("spent", !over || hotbar.scrollLeft <= 6);
+    barOn.classList.toggle("spent", !over || most <= 6 || hotbar.scrollLeft >= most - 6);
+  };
+  let sliding = 0;
+  const stopSliding = () => {
+    if (sliding) cancelAnimationFrame(sliding);
+    sliding = 0;
+  };
+  const slideBar = (by) => {
+    stopSliding();
+    const from = hotbar.scrollLeft;
+    const to = Math.max(0, Math.min(hotbar.scrollWidth - hotbar.clientWidth, from + by * Math.max(110, hotbar.clientWidth * 0.6)));
+    if (!controls.theme.motion || typeof requestAnimationFrame !== "function") {
+      hotbar.scrollLeft = to;
+      return void tendBar();
+    }
+    const began = performance.now();
+    const step = (t) => {
+      const k = Math.min(1, (t - began) / 240);
+      hotbar.scrollLeft = from + (to - from) * (1 - (1 - k) ** 3);
+      sliding = k < 1 ? requestAnimationFrame(step) : 0;
+      if (!sliding) tendBar();
+    };
+    sliding = requestAnimationFrame(step);
+  };
+  for (const type of ["pointerdown", "wheel", "touchstart"]) hotbar.addEventListener(type, stopSliding, { passive: true });
+  barBack.addEventListener("click", () => slideBar(-1));
+  barOn.addEventListener("click", () => slideBar(1));
+  hotbar.addEventListener("scroll", tendBar, { passive: true });
+  const barWatch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => tendBar());
+  barWatch?.observe(hotbar);
+  bar.addEventListener(
+    "wheel",
+    (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || hotbar.scrollWidth <= hotbar.clientWidth) return;
+      e.preventDefault();
+      hotbar.scrollLeft += e.deltaY;
+    },
+    { passive: false }
+  );
+  let barLed = "";
+  let barDrawn = "";
   const rows = el("div", { class: "rows" });
   const note = el("p", { class: "note" });
   const close = el("button", { class: "close", type: "button" }, "Close");
@@ -784,7 +847,7 @@ function mountHud(controls, opts = {}) {
   const chatSend = el("button", { type: "submit" }, "Send");
   const chatForm = el("form", {}, chatField, chatSend);
   const chat = el("section", { class: "chat", "aria-label": "Room chat", "data-state": "closed", "data-tab": "room" }, el("div", { class: "frame glass" }, el("header", {}, chatTitle, chatTabs, chatClose), feedLead, chatEmpty, chatLines, chatHint, feedSaid, chatForm));
-  root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, el("div", { class: "low" }, target, hotbar));
+  root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, el("div", { class: "low" }, target, bar));
   (opts.parent ?? document.body).append(host);
   let open = false;
   let section = "";
@@ -1115,36 +1178,50 @@ function mountHud(controls, opts = {}) {
     pinIt.disabled = !here?.pinned && view.pinsFull;
     pinWords.textContent = here?.pinned ? "On your bar. Take it off" : view.pinsFull ? "Your bar is full" : "Keep this tab on your bar";
     pinIt.title = here?.pinned ? "" : view.pinsFull ? "Take a tab off your bar to keep another on it." : "It stays on your bar in every world that has this tab.";
-    hotbar.replaceChildren(
-      ...view.hotbar.map((item, i) => {
-        const b = el(
-          "button",
-          { class: `key ${item.tone}`, type: "button", "aria-label": item.label, ...item.on === null ? {} : { "aria-pressed": String(item.on) } },
-          el("span", { class: "arch" }, icon(item.icon ?? "door")),
-          el("span", { class: "sill" }),
-          el("span", { class: "name" }, item.short),
-          el("kbd", { class: "num mono" }, item.key)
-        );
-        b.style.setProperty("--i", String(i));
-        b.addEventListener("click", () => press(item));
-        return b;
-      }),
-      ...view.pins.length && view.hotbar.length ? [el("i", { class: "theirs", "aria-hidden": "true" })] : [],
-      ...view.pins.map((pin, i) => {
-        const b = el(
-          "button",
-          { class: "key pin normal", type: "button", "aria-label": `${pin.label}: a tab you keep on your bar`, "aria-pressed": String(open && section === pin.id) },
-          el("span", { class: "arch" }, icon(pin.icon ?? "menu")),
-          el("span", { class: "sill" }),
-          el("span", { class: "name" }, pin.label),
-          el("kbd", { class: "num mono" }, pin.key)
-        );
-        b.style.setProperty("--i", String(view.hotbar.length + i));
-        b.addEventListener("click", () => openPin(pin.id));
-        return b;
-      })
-    );
-    hotbar.hidden = view.hotbar.length === 0 && view.pins.length === 0;
+    const barNow = JSON.stringify([view.hotbar, view.pins, open ? section : ""]);
+    if (barNow !== barDrawn) {
+      barDrawn = barNow;
+      hotbar.replaceChildren(
+        ...view.hotbar.map((item, i) => {
+          const b = el(
+            "button",
+            { class: `key ${item.tone}`, type: "button", "aria-label": item.label, ...item.on === null ? {} : { "aria-pressed": String(item.on) } },
+            el("span", { class: "arch" }, icon(item.icon ?? "door")),
+            el("span", { class: "sill" }),
+            el("span", { class: "name" }, item.short),
+            el("kbd", { class: "num mono" }, item.key)
+          );
+          b.style.setProperty("--i", String(i));
+          b.addEventListener("click", () => press(item));
+          return b;
+        }),
+        ...view.pins.length && view.hotbar.length ? [el("i", { class: "theirs", "aria-hidden": "true" })] : [],
+        ...view.pins.map((pin, i) => {
+          const b = el(
+            "button",
+            { class: "key pin normal", type: "button", "aria-label": `${pin.label}: a tab you keep on your bar`, "aria-pressed": String(open && section === pin.id) },
+            el("span", { class: "arch" }, icon(pin.icon ?? "menu")),
+            el("span", { class: "sill" }),
+            el("span", { class: "name" }, pin.label),
+            el("kbd", { class: "num mono" }, pin.key)
+          );
+          b.style.setProperty("--i", String(view.hotbar.length + i));
+          b.addEventListener("click", () => openPin(pin.id));
+          return b;
+        })
+      );
+      bar.hidden = view.hotbar.length === 0 && view.pins.length === 0;
+      const led = view.hotbar[0]?.id ?? "";
+      if (led !== barLed && led) {
+        stopSliding();
+        hotbar.scrollLeft = 0;
+      }
+      barLed = led;
+      barWatch?.disconnect();
+      barWatch?.observe(hotbar);
+      for (const k of hotbar.children) barWatch?.observe(k);
+      requestAnimationFrame(tendBar);
+    }
     tabs.replaceChildren(
       ...view.sections.map((s) => {
         const b = el("button", { class: "tab", type: "button", role: "tab", "aria-selected": String(s.id === section), tabindex: s.id === section ? "0" : "-1" }, icon(s.icon), s.label);
@@ -1395,11 +1472,11 @@ function mountHud(controls, opts = {}) {
     setChatOpen,
     bounds() {
       if (host.hidden) return [];
-      return [id, menu, quiet, hotbar, target, sheet, ...chatState === "open" ? [chat] : []].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0).map((r) => ({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }));
+      return [id, menu, quiet, bar, target, sheet, ...chatState === "open" ? [chat] : []].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0).map((r) => ({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }));
     },
     cover() {
       if (host.hidden || controls.presence !== "full") return { top: 0, bottom: 0 };
-      const low = hotbar.getBoundingClientRect();
+      const low = bar.getBoundingClientRect();
       const high = id.getBoundingClientRect();
       return { top: Math.round(high.bottom), bottom: Math.round(innerHeight - low.top) };
     },
@@ -1414,6 +1491,8 @@ function mountHud(controls, opts = {}) {
       clearInterval(tick);
       clearTimeout(asTimer);
       tabsWatch?.disconnect();
+      barWatch?.disconnect();
+      stopSliding();
       clearTimeout(peekTimer);
       clearTimeout(goingTimer);
       vv?.removeEventListener("resize", onViewport);

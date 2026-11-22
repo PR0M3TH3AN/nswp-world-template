@@ -7493,6 +7493,49 @@ var TAP_REACH = 6;
 var PATH_MOST = 12;
 var FACE_RATE = 2.8;
 var DRAG_LOOK = 5e-3;
+var TILT_LIMIT = 60 * Math.PI / 180;
+var LEVEL_RATE = 1.6;
+function dragTurn(yaw, pitch, dx, dy, speed = DRAG_LOOK) {
+  const clean = (v) => Number.isFinite(v) ? v : 0;
+  return { yaw: yaw + clean(dx) * speed, pitch: Math.min(TILT_LIMIT, Math.max(-TILT_LIMIT, clean(pitch) + clean(dy) * speed)) };
+}
+function levelled(pitch, dt, rate = LEVEL_RATE) {
+  const step = Math.max(0, dt) * rate;
+  return Math.abs(pitch) <= step ? 0 : pitch - Math.sign(pitch) * step;
+}
+function createDragLook(o) {
+  let pitch = 0;
+  let active = true;
+  return {
+    drag(dx, dy) {
+      if (!active) return;
+      const next = dragTurn(o.rig.rotation.y, pitch, dx, dy, DRAG_LOOK * (o.scale?.() ?? 1));
+      o.rig.rotation.y = next.yaw;
+      pitch = next.pitch;
+      o.camera.rotation.x = pitch;
+    },
+    update(dt, s) {
+      if (!s.active) {
+        if (active && pitch !== 0) o.camera.rotation.x = 0;
+        active = false;
+        pitch = 0;
+        return;
+      }
+      active = true;
+      if (s.walking && pitch !== 0) {
+        pitch = levelled(pitch, dt);
+        o.camera.rotation.x = pitch;
+      }
+    },
+    level() {
+      pitch = 0;
+      o.camera.rotation.x = 0;
+    },
+    get pitch() {
+      return pitch;
+    }
+  };
+}
 function reachOf(fromX, fromZ, toX, toZ, reach = TAP_REACH) {
   const dx = toX - fromX;
   const dz = toZ - fromZ;
@@ -10955,23 +10998,156 @@ function addBagControls(controls, opts) {
   return { refresh };
 }
 
+// packages/sdk/src/thumb-presses.ts
+var THUMBS_KEY = "nswp:thumbs";
+var THUMB_FIRST = 78;
+var THUMB_SECOND = 54;
+function thumbSide() {
+  try {
+    return globalThis.localStorage?.getItem(THUMBS_KEY) === "left" ? "left" : "right";
+  } catch {
+    return "right";
+  }
+}
+function setThumbSide(side) {
+  try {
+    if (side === "left") globalThis.localStorage?.setItem(THUMBS_KEY, "left");
+    else globalThis.localStorage?.removeItem(THUMBS_KEY);
+  } catch {
+  }
+}
+function createThumbPresses(o) {
+  if (typeof document === "undefined" || typeof document.createElement !== "function") return { show() {
+  }, info: () => ({ sight: false, side: "", buttons: [] }), dispose() {
+  } };
+  const host = document.createElement("div");
+  host.setAttribute("data-nswp", "thumb-presses");
+  host.style.cssText = "position:fixed;inset:0;z-index:2147483001;pointer-events:none;display:none";
+  const root = host.attachShadow({ mode: "open" });
+  root.innerHTML = `<style>
+    .sight { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+      border: 2px solid var(--ink); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(0, 0, 0, 0.35); }
+    .sight::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--ink); }
+    .pad { position: absolute; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 118px); width: ${THUMB_FIRST + THUMB_SECOND}px; height: ${THUMB_FIRST + THUMB_SECOND - 10}px; }
+    .pad.right { right: max(14px, env(safe-area-inset-right)); }
+    .pad.left { left: max(14px, env(safe-area-inset-left)); }
+    button { position: absolute; pointer-events: auto; border-radius: 50%; border: 2px solid var(--accent); color: var(--ink);
+      background: rgba(var(--glass-rgb), 0.55); font: 650 15px system-ui, "Segoe UI", Roboto, sans-serif; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+      display: flex; align-items: center; justify-content: center; padding: 0; touch-action: none; -webkit-tap-highlight-color: transparent;
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); user-select: none; -webkit-user-select: none; }
+    button:active, button.down { background: rgba(var(--accent-rgb), 0.45); }
+    button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+    .first { width: ${THUMB_FIRST}px; height: ${THUMB_FIRST}px; bottom: 0; background: rgba(var(--accent-rgb), 0.28); }
+    .second { width: ${THUMB_SECOND}px; height: ${THUMB_SECOND}px; top: 0; font-size: 12px; }
+    .right .first { right: 0; } .right .second { left: 0; }
+    .left .first { left: 0; } .left .second { right: 0; }
+    [hidden] { display: none !important; }
+  </style><div class="sight" part="sight"></div><div class="pad right"><button class="second" type="button"></button><button class="first" type="button"></button></div>`;
+  const sightEl = root.querySelector(".sight");
+  const pad = root.querySelector(".pad");
+  const first = root.querySelector(".first");
+  const second = root.querySelector(".second");
+  const press = (button, act) => {
+    button.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      button.classList.add("down");
+      act();
+    });
+    for (const end of ["pointerup", "pointercancel", "pointerleave"]) button.addEventListener(end, () => button.classList.remove("down"));
+    button.addEventListener("click", (e) => {
+      if (e.detail === 0) act();
+    });
+    button.addEventListener("contextmenu", (e) => e.preventDefault());
+  };
+  press(first, () => o.use());
+  press(second, () => o.second());
+  let showing = { side: "" };
+  let attached = false;
+  return {
+    show(does, side, theme) {
+      if (!does || !does.use && !does.second) {
+        host.style.display = "none";
+        showing = { side: "" };
+        return;
+      }
+      if (!attached) {
+        document.body.appendChild(host);
+        attached = true;
+      }
+      host.style.setProperty("--ink", theme.ink);
+      host.style.setProperty("--accent", theme.accent);
+      host.style.setProperty("--accent-rgb", rgb(theme.accent));
+      host.style.setProperty("--glass-rgb", rgb(theme.glass));
+      pad.className = `pad ${side}`;
+      first.textContent = does.use;
+      first.hidden = !does.use;
+      first.setAttribute("aria-label", does.use);
+      second.textContent = does.second;
+      second.hidden = !does.second;
+      second.setAttribute("aria-label", does.second);
+      sightEl.hidden = !does.use;
+      host.style.display = "block";
+      showing = { side };
+    },
+    info() {
+      if (host.style.display === "none") return { sight: false, side: "", buttons: [] };
+      const box = (b) => {
+        const r = b.getBoundingClientRect();
+        return { label: b.textContent ?? "", x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+      };
+      return { sight: !sightEl.hidden, side: showing.side, buttons: [first, second].filter((b) => !b.hidden).map(box) };
+    },
+    dispose() {
+      host.remove();
+      attached = false;
+    }
+  };
+}
+
 // packages/sdk/src/item-controls.ts
 var TAP_MS = 320;
 function addItemControls(controls, o) {
   let shown2 = "";
+  let menuOpen = false;
   const does = () => o.play()?.does ?? null;
+  const touch = () => currentForm() === "touch";
+  const thumbs = createThumbPresses({ use: () => o.play()?.use(), second: () => o.play()?.second() });
   const refresh = () => {
     const now = does();
-    const key = now ? `${now.use}|${now.second}` : "";
+    const onTouch = touch();
+    thumbs.show(now && onTouch && !menuOpen && !o.presenting?.() ? now : null, thumbSide(), controls.theme);
+    const key = now ? `${now.use}|${now.second}|${onTouch}` : "";
     if (key === shown2) return;
+    const taken = !shown2.startsWith(`${now?.use ?? ""}|${now?.second ?? ""}|`) || !shown2;
     shown2 = key;
     controls.remove("item-use");
     controls.remove("item-second");
     if (!now) return void sight(false);
-    if (now.use) controls.add({ id: "item-use", section: "bag", icon: "check", tone: "primary", hotbar: true, lead: true, label: now.use, short: now.use, act: () => o.play()?.use() });
-    if (now.second) controls.add({ id: "item-second", section: "bag", icon: "turn", hotbar: true, lead: true, label: now.second, short: now.second, act: () => o.play()?.second() });
-    if (now.use) controls.say(`Tap or click where you want to ${now.use.toLowerCase()}. Hold a press to walk.`);
+    if (now.use) controls.add({ id: "item-use", section: "bag", icon: "check", tone: "primary", hotbar: !onTouch, lead: !onTouch, label: now.use, short: now.use, act: () => o.play()?.use() });
+    if (now.second) controls.add({ id: "item-second", section: "bag", icon: "turn", hotbar: !onTouch, lead: !onTouch, label: now.second, short: now.second, act: () => o.play()?.second() });
+    if (now.use && taken) {
+      if (onTouch) controls.say(`${now.use} is by your ${thumbSide()} thumb, and goes where the ring in the middle is. Tap to walk; drag to look round.`);
+      else controls.say(`Click where you want to ${now.use.toLowerCase()}. Hold a press to walk.`);
+    }
   };
+  controls.add({
+    id: "item-thumbs",
+    section: "bag",
+    icon: "turn",
+    hidden: () => !touch() || !does(),
+    label: () => `Buttons by your ${thumbSide()} thumb`,
+    act: () => {
+      setThumbSide(thumbSide() === "left" ? "right" : "left");
+      refresh();
+    }
+  });
+  const stopSignals = controls.onSignal((name) => {
+    if (name !== "menuOpen" && name !== "menuClose") return;
+    menuOpen = name === "menuOpen";
+    refresh();
+  });
+  const watching = typeof setInterval === "function" ? setInterval(refresh, 250) : null;
   const typing = (e) => {
     const at = e.target;
     return !!at && (at.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(at.tagName ?? ""));
@@ -11003,7 +11179,8 @@ function addItemControls(controls, o) {
   refresh();
   return {
     refresh,
-    tap(ray, heldMs) {
+    tap(ray, heldMs, pointerType) {
+      if ((pointerType ?? (touch() ? "touch" : "mouse")) === "touch") return false;
       if (heldMs >= TAP_MS || !does()?.use) return false;
       o.play()?.use(ray.origin.clone().addScaledVector(ray.direction, 18));
       return true;
@@ -11013,7 +11190,12 @@ function addItemControls(controls, o) {
       o.play()?.use();
       return true;
     },
+    thumbs: () => thumbs.info(),
     dispose() {
+      if (watching) clearInterval(watching);
+      stopSignals();
+      thumbs.dispose();
+      controls.remove("item-thumbs");
       o.dom?.removeEventListener("mousedown", onDown);
       o.dom?.removeEventListener("contextmenu", onMenu);
       if (typeof document !== "undefined") document.removeEventListener("pointerlockchange", onLock);
@@ -12788,6 +12970,11 @@ export {
   PATH_MOST,
   FACE_RATE,
   DRAG_LOOK,
+  TILT_LIMIT,
+  LEVEL_RATE,
+  dragTurn,
+  levelled,
+  createDragLook,
   reachOf,
   dotsBetween,
   createStepPace,
