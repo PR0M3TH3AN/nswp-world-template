@@ -15,6 +15,8 @@ declare module "virtual:site" {
     carried: Record<string, string>;
     /** What each door's place offers, by the door's coordinate: the modes and capabilities its own announcement named, and the listings it says it is entered by, where it names any. Absent for a door not asked about since this was kept. */
     offered: Record<string, { modes: string[]; capabilities: string[]; access?: string[] }>;
+    /** What each door's place is called, by the door's coordinate, as its own announcement said when `npm run doors` last asked. */
+    titles: Record<string, string>;
   };
   export default site;
 }
