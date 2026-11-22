@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.79.0";
+var KIT_VERSION = "0.79.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4928,7 +4928,7 @@ function resolveOwnerList(events, q) {
   return { ...readOwnerList(candidates[0], { root, now }), futureDated };
 }
 function ownerListTemplate(o) {
-  const people = [...new Set(o.people)];
+  const people = [...new Set(o.people)].sort();
   if (!isListSubject(o.subject) || people.length > OWNER_LIST_LIMITS.write || !people.every(isHex64)) return null;
   return {
     kind: LIST_KIND,

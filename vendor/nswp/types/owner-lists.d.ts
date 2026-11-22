@@ -69,8 +69,9 @@ export declare function resolveOwnerList(events: readonly unknown[], q: {
 }): ListResolved;
 /**
  * A list to sign, for the kit's own writers (the `nswp` command, and later the owner's screen): the tags BitGate's
- * shape needs and one `p` for each person, at most `OWNER_LIST_LIMITS.write`. Null where it can't be written: a subject
- * that isn't one, a key that isn't one, or too many people.
+ * shape needs, in that order, and one `p` for each person, each once and in order of their keys (as a reader gives
+ * them back), at most `OWNER_LIST_LIMITS.write`. Null where it can't be written: a subject that isn't one, a key that
+ * isn't one, or too many people. `vectors/owner-list-writing.json` is what another writer is held to.
  */
 export declare function ownerListTemplate(o: {
     scope: ListScope;
