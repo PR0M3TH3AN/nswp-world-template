@@ -22,6 +22,7 @@ export interface PresenceOptions {
     worldRules?: () => {
         blocked: readonly string[];
         namedOnly: boolean;
+        invited?: readonly string[] | null;
     };
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;

@@ -43,7 +43,7 @@ export declare const GATE_TIMES: {
 /** "free": this world names nothing for sale. "checking": not known yet, and shut. "ending": open, for the last couple of minutes of a pass that has run out. */
 export type GateState = "free" | "checking" | "shut" | "open" | "ending";
 /** Why a gate is shut, or "" where it isn't. Stable words for a test or a world's own drawing to go by. */
-export type GateReason = "" | "no-manifest" | "not-own" | "no-signer" | "signed-out" | "nothing-held" | "run-out" | "taken-back" | "unchecked" | "blocked";
+export type GateReason = "" | "no-manifest" | "not-own" | "no-signer" | "signed-out" | "nothing-held" | "run-out" | "taken-back" | "unchecked" | "blocked" | "not-invited";
 /**
  * How the world owner's block list stands, as the gate last read it (protocol/10-identity.md, "A world's own
  * lists"). "none": this world keeps no lists. "reading": being read for the first time. "read": read, and it may name
@@ -115,6 +115,15 @@ export interface PaidGate {
     readonly namedOnly: boolean;
     /** How the owner's block list stands. */
     readonly lists: ListState;
+    /** Whether this world is by invitation (its manifest's `by_invitation`). */
+    readonly byInvitation: boolean;
+    /** How the owner's allow list stands, where the world is by invitation; "none" where it isn't. */
+    readonly invites: ListState;
+    /**
+     * Who may be in this world's rooms, where it is by invitation: the people its owner's allow list names, and the
+     * keepers. Null where the world isn't by invitation. Empty where the list couldn't be read: then only a keeper.
+     */
+    readonly invited: readonly string[] | null;
     /** The visitor's sign-in address, as a host to name in words. */
     readonly host: string;
     /** A purchase is with the visitor now, at their sign-in address. */

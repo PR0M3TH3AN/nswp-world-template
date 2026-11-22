@@ -30,14 +30,14 @@ export declare function kit(): string;
  */
 export declare function check(url: string): string;
 /**
- * What a world offers, for the tiles beside its door, as JSON: twelve lines
+ * What a world offers, for the tiles beside its door, as JSON: thirteen lines
  * in a set order, each with `id`, `on` (the world's announcement says it),
  * `name`, `words` (one sentence, for whichever case it is) and `onDoor`. The
- * seven a door shows also have `icon`: the kit's line drawing for it, as SVG
+ * eight a door shows also have `icon`: the kit's line drawing for it, as SVG
  * path data on a 24-unit square. Draw them lit where `on`, dark where not,
  * and say `words` when one is pointed at. `world` is JSON with what the
- * place's announcement says: `modes`, `capabilities`, and `items` and
- * `access` where it says them. Anything else in it is not read, and a world
+ * place's announcement says: `modes`, `capabilities`, and `items`, `access`
+ * and `byInvitation` (true) where it says them. Anything else in it is not read, and a world
  * it can't read offers nothing.
  */
 export declare function offers(world: string): string;

@@ -2299,8 +2299,10 @@ var RoomSession = class {
   ownerBlocked = /* @__PURE__ */ new Set();
   /** Session keys let go this visit for the world's rules (the owner's list, or no pass where one is needed): not answered again. */
   turnedAway = /* @__PURE__ */ new Set();
-  /** Whether this room shows only people whose pass checks out. */
+  /** Whether this room shows only people whose pass checks out: so where it is by invitation, too. */
   namedOnly;
+  /** Where the world is by invitation, who may be in its rooms; null where it isn't. */
+  invited = null;
   /** In a room that shows only named people: the members shown, by session key, and what arrived for each before. */
   announced = /* @__PURE__ */ new Set();
   waiting = /* @__PURE__ */ new Map();
@@ -2387,7 +2389,14 @@ var RoomSession = class {
     this.iceServers = opts.iceServers ?? DEFAULT_ICE;
     for (const k of opts.blocked ?? []) if (/^[0-9a-f]{64}$/.test(k)) this.blocked.add(k);
     for (const k of opts.ownerBlocked ?? []) if (/^[0-9a-f]{64}$/.test(k)) this.ownerBlocked.add(k);
-    this.namedOnly = opts.namedOnly === true;
+    this.invited = opts.invited ? new Set([...opts.invited].filter((k) => /^[0-9a-f]{64}$/.test(k))) : null;
+    this.namedOnly = opts.namedOnly === true || this.invited !== null;
+  }
+  /** Who may be in this world's rooms, as its gate last read the owner's allow list. Anyone here not on it is let go at once. */
+  setInvited(keys) {
+    if (keys === null || this.invited === null) return;
+    this.invited = new Set([...keys].filter((k) => /^[0-9a-f]{64}$/.test(k)));
+    for (const peer of [...this.peers.values()]) if (peer.member.identity && !this.invited.has(peer.member.identity)) this.turnAway(peer.member.pubkey);
   }
   /**
    * The keys the world's owner keeps out, as the world's gate last read them. Anyone here whose pass names one is
@@ -2688,7 +2697,7 @@ var RoomSession = class {
       this.drop(peer.member.pubkey, true);
       return;
     }
-    if (this.ownerBlocked.has(checked.value.pubkey)) return this.turnAway(peer.member.pubkey);
+    if (this.ownerBlocked.has(checked.value.pubkey) || this.invited && !this.invited.has(checked.value.pubkey)) return this.turnAway(peer.member.pubkey);
     peer.passUntil = checked.value.expiresAt;
     Object.assign(peer.member, { guest: false, identity: checked.value.pubkey, name: checked.value.name || shortNpub(checked.value.pubkey) });
     if (this.namedOnly && !this.announced.has(peer.member.pubkey)) {

@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.76.0";
+var KIT_VERSION = "0.77.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -3713,6 +3713,8 @@ function buildWorldEvent(w) {
     tags.push(["p", p, "", "co-creator"]);
   for (const listing of [w.access ?? []].flat())
     tags.push(["a", listing, "", "access"]);
+  if (w.byInvitation)
+    tags.push(["by-invitation"]);
   tags.push(["alt", `Spatial world listing: ${w.title}`]);
   return { kind: WORLD_KIND, created_at: w.createdAt ?? nowSeconds(), tags, content: w.description ?? "" };
 }
@@ -3935,6 +3937,11 @@ function parseWorldEvent(input, opts = {}) {
     else
       access.push(listing);
   }
+  const invitation = getTags({ tags }, "by-invitation");
+  if (invitation.length > 1)
+    c.warn("duplicate_tag", "tags.by-invitation", "by-invitation appears more than once.");
+  if (invitation.some((t) => t.length > 1))
+    c.warn("ignored_value", "tags.by-invitation", "by-invitation takes no value; what follows it is ignored.");
   const world = {
     d: d ?? "",
     title: title ?? "",
@@ -3974,6 +3981,8 @@ function parseWorldEvent(input, opts = {}) {
     world.manifest = manifest;
   if (access.length)
     world.access = access;
+  if (invitation.length)
+    world.byInvitation = true;
   return c.result(world);
 }
 function doorPictureOwed(world) {
@@ -3987,7 +3996,7 @@ function doorPictureOwed(world) {
 }
 
 // packages/core/dist/offers.js
-var DOOR_OFFERS = ["headset", "people", "voice", "items", "saves", "records", "paid"];
+var DOOR_OFFERS = ["headset", "people", "voice", "items", "saves", "records", "by-invitation", "paid"];
 var MORE_OFFERS = ["tips", "doors", "looks", "by-name", "home"];
 var OFFERS = [...DOOR_OFFERS, ...MORE_OFFERS];
 
@@ -4222,6 +4231,12 @@ function parseManifest(input, opts = {}) {
           c.warn("too_many_keepers", `${p}.keepers`, `Only the first ${KEEPERS_MOST} keepers are used.`);
         if (keepers.length)
           w.keepers = keepers.slice(0, KEEPERS_MOST);
+      }
+      if (raw.by_invitation !== void 0) {
+        if (raw.by_invitation === true)
+          w.byInvitation = true;
+        else if (raw.by_invitation !== false)
+          c.warn("invalid_field", `${p}.by_invitation`, "by_invitation must be true or false; ignored.");
       }
       if (raw.named_only !== void 0) {
         if (raw.named_only === true)

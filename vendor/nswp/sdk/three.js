@@ -133,7 +133,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-YS3HWVIA.js";
+} from "./shared-NA4YSRDI.js";
 import {
   currentForm,
   deviceForms,
@@ -143,7 +143,7 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-YXS6UB7I.js";
+} from "./shared-DCPZ4DZO.js";
 import {
   PICTURE_LIMITS,
   addDoorControls,
@@ -160,7 +160,7 @@ import {
   setShowsPictures,
   showsPictures,
   vouchedWords
-} from "./shared-CQLLTW2Z.js";
+} from "./shared-F5ECUL3F.js";
 import {
   arriveWith,
   arrivedSettings,
