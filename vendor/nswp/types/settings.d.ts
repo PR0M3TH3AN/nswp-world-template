@@ -36,6 +36,12 @@ export interface TravelSettings {
     full?: boolean;
     /** They prefer the intense way of moving at a desk: the mouse looks round and keys walk. */
     intense?: boolean;
+    /**
+     * How they prefer to move in a headset: `casual` (point at the floor to step there, turn a notch at a time) or
+     * `intense` (one stick walks and the other turns, smoothly). Both are said, so a world can tell someone who chose
+     * casual from someone never asked.
+     */
+    headset?: "casual" | "intense";
     /** How fast the view turns under a mouse or a finger, 1 being normal: from 0.25 to 3. */
     look?: number;
     /** How wide they see at a desk, top to bottom, in degrees: from 50 to 110. Left out, each world's own. */
