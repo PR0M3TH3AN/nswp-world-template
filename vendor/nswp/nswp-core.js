@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.78.0";
+var KIT_VERSION = "0.78.1";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -8408,7 +8408,7 @@ function isFollowAsked(signed, o) {
 }
 
 // packages/core/src/list.ts
-var LIST_LIMITS = { worlds: 200, titleChars: 200, descriptionChars: 1e3 };
+var LIST_LIMITS = { worlds: 200, titleChars: 200, descriptionChars: 1e3, ahead: 600 };
 function buildListEvent(l) {
   const tags = [["d", l.d], ["title", l.title]];
   if (l.description) tags.push(["description", l.description]);
@@ -8466,6 +8466,35 @@ function parseListEvent(input, opts = {}) {
     if (d !== void 0) list.coordinate = coordinate({ kind: CURATION_SET_KIND, pubkey, identifier: d });
   }
   return c.result(list);
+}
+function resolveList(events, q) {
+  const now = q.now ?? nowSeconds();
+  const at = parseCoordinate(q.coordinate);
+  const futureDated = [];
+  if (!at || at.kind !== CURATION_SET_KIND) return { list: null, id: null, futureDated };
+  const candidates = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const e of events) {
+    if (!hasEventShape(e)) continue;
+    const ev = e;
+    if (ev.kind !== CURATION_SET_KIND || ev.pubkey !== at.pubkey || seen.has(ev.id) || !Number.isInteger(ev.created_at)) continue;
+    const ds = ev.tags.filter((t) => t[0] === "d");
+    if (ds.length !== 1 || ds[0][1] !== at.identifier) continue;
+    let signed = false;
+    try {
+      signed = verifyEvent(ev);
+    } catch {
+      signed = false;
+    }
+    if (!signed) continue;
+    seen.add(ev.id);
+    if (ev.created_at > now + LIST_LIMITS.ahead) futureDated.push(ev.id);
+    else candidates.push(ev);
+  }
+  candidates.sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1));
+  const newest = candidates[0];
+  const r = newest ? parseListEvent(newest, { requireSigned: true }) : null;
+  return r?.ok ? { list: r.value, id: newest.id, futureDated } : { list: null, id: null, futureDated };
 }
 
 // packages/core/src/bridge.ts
@@ -9200,6 +9229,7 @@ export {
   readSignerReply,
   readSignerRequest,
   relayScore,
+  resolveList,
   resolveOwnerList,
   roomTopic,
   saveAddress,
