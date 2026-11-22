@@ -36,7 +36,7 @@ import {
   showsChat,
   showsPictures,
   vouchedWords
-} from "./shared-CQLLTW2Z.js";
+} from "./shared-F5ECUL3F.js";
 import {
   arrivedSettings,
   onClientSignIn,

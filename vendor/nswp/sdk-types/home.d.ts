@@ -28,7 +28,7 @@ export interface PortalGateOptions {
     textColor?: string;
     /**
      * What the place it leads to offers, as that place's own announcement says: the core's `worldOffers`. The door
-     * shows the seven a door shows, lit and dark, beside its frame. Left out, the door shows none: nothing is known.
+     * shows the eight a door shows, lit and dark, beside its frame. Left out, the door shows none: nothing is known.
      */
     offers?: readonly Offer[];
 }

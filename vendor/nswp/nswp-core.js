@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.76.0";
+var KIT_VERSION = "0.77.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4522,6 +4522,7 @@ function buildWorldEvent(w) {
   if (w.manifest) tags.push(["manifest", w.manifest]);
   for (const p of w.coCreators ?? []) tags.push(["p", p, "", "co-creator"]);
   for (const listing of [w.access ?? []].flat()) tags.push(["a", listing, "", "access"]);
+  if (w.byInvitation) tags.push(["by-invitation"]);
   tags.push(["alt", `Spatial world listing: ${w.title}`]);
   return { kind: WORLD_KIND, created_at: w.createdAt ?? nowSeconds(), tags, content: w.description ?? "" };
 }
@@ -4706,6 +4707,9 @@ function parseWorldEvent(input, opts = {}) {
     else if (access.length >= ACCESS_MOST) c.warn("too_many_listings", "tags.a", `Only the first ${ACCESS_MOST} access listings are used.`);
     else access.push(listing);
   }
+  const invitation = getTags({ tags }, "by-invitation");
+  if (invitation.length > 1) c.warn("duplicate_tag", "tags.by-invitation", "by-invitation appears more than once.");
+  if (invitation.some((t) => t.length > 1)) c.warn("ignored_value", "tags.by-invitation", "by-invitation takes no value; what follows it is ignored.");
   const world = {
     d: d ?? "",
     title: title ?? "",
@@ -4735,6 +4739,7 @@ function parseWorldEvent(input, opts = {}) {
   if (items) world.items = items;
   if (manifest) world.manifest = manifest;
   if (access.length) world.access = access;
+  if (invitation.length) world.byInvitation = true;
   return c.result(world);
 }
 function checkPreviewBytes(preview, bytes) {
@@ -4759,7 +4764,7 @@ function previewOnWorldOrigin(world, preview) {
 }
 
 // packages/core/src/offers.ts
-var DOOR_OFFERS = ["headset", "people", "voice", "items", "saves", "records", "paid"];
+var DOOR_OFFERS = ["headset", "people", "voice", "items", "saves", "records", "by-invitation", "paid"];
 var MORE_OFFERS = ["tips", "doors", "looks", "by-name", "home"];
 var OFFERS = [...DOOR_OFFERS, ...MORE_OFFERS];
 var NAMES = {
@@ -4769,6 +4774,7 @@ var NAMES = {
   items: "Items",
   saves: "Saves",
   records: "Scores",
+  "by-invitation": "By invitation",
   paid: "Paid",
   tips: "Tips",
   doors: "Doors",
@@ -4781,6 +4787,7 @@ var WORDS = {
   people: ["You can meet other people here.", "It doesn't say you can meet other people here."],
   voice: ["You can talk with people here.", "It doesn't say you can talk with people here."],
   saves: ["Your progress is kept for you here.", "It doesn't say it keeps your progress."],
+  "by-invitation": ["Only people its owner invited may go in.", "It doesn't say it is by invitation."],
   paid: ["It costs money to go in.", "It doesn't say it costs anything to go in."],
   tips: ["You can tip this place.", "It doesn't say it takes tips."],
   doors: ["It has doors on to other places.", "It doesn't say it has doors on to other places."],
@@ -4805,6 +4812,8 @@ function worldOffers(world) {
     ],
     // What costs money to go into names what is sold (the `access` tag). Saying it takes payments is not that.
     // Only a listing counts: a list with nothing in it, or nothing in it that is a listing, is a free world.
+    // Its announcement says so outright: the tag, and nothing else. A world's manifest saying it is not a door's word.
+    "by-invitation": line("by-invitation", world.byInvitation === true),
     paid: line("paid", cleanAccess(world.access).length > 0),
     tips: line("tips", says("tips")),
     doors: line("doors", says("spatial-portals")),
@@ -5039,6 +5048,10 @@ function parseManifest(input, opts = {}) {
         if (keepers.length > KEEPERS_MOST) c.warn("too_many_keepers", `${p}.keepers`, `Only the first ${KEEPERS_MOST} keepers are used.`);
         if (keepers.length) w.keepers = keepers.slice(0, KEEPERS_MOST);
       }
+      if (raw.by_invitation !== void 0) {
+        if (raw.by_invitation === true) w.byInvitation = true;
+        else if (raw.by_invitation !== false) c.warn("invalid_field", `${p}.by_invitation`, "by_invitation must be true or false; ignored.");
+      }
       if (raw.named_only !== void 0) {
         if (raw.named_only === true) w.namedOnly = true;
         else if (raw.named_only !== false) c.warn("invalid_field", `${p}.named_only`, "named_only must be true or false; ignored.");
@@ -5112,7 +5125,7 @@ function accessFor(manifest, url) {
   if (d === void 0) return null;
   const sellers = Object.keys(manifest.publishers).filter((key) => manifest.publishers[key].worlds.includes(d));
   const w = manifest.worlds[d];
-  return { d, listings: [...w.access ?? []], sellers, keepers: w.keepers ? [...w.keepers] : null, namedOnly: w.namedOnly === true };
+  return { d, listings: [...w.access ?? []], sellers, keepers: w.keepers ? [...w.keepers] : null, namedOnly: w.namedOnly === true, byInvitation: w.byInvitation === true };
 }
 async function fetchManifest(urlOrOrigin, fetchImpl = fetch, timeoutMs = 8e3) {
   const url = wellKnownUrl(urlOrOrigin);

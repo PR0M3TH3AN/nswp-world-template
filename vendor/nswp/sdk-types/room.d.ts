@@ -63,6 +63,12 @@ export interface JoinOptions {
      * heard only once their pass has checked out, and one who shows none within a few seconds is let go.
      */
     namedOnly?: boolean;
+    /**
+     * Where the world is by invitation: the identity keys that may be in its rooms (the people its owner invited,
+     * and the keepers). A member is shown and heard only once their pass names one of them, as for `namedOnly`, and
+     * anyone else is let go. Left out or null, the world isn't by invitation.
+     */
+    invited?: Iterable<string> | null;
 }
 export type RoomStatus = "connecting" | "open" | "no-relays" | "closed";
 interface Events {
@@ -121,8 +127,10 @@ export declare class RoomSession {
     private ownerBlocked;
     /** Session keys let go this visit for the world's rules (the owner's list, or no pass where one is needed): not answered again. */
     private readonly turnedAway;
-    /** Whether this room shows only people whose pass checks out. */
+    /** Whether this room shows only people whose pass checks out: so where it is by invitation, too. */
     readonly namedOnly: boolean;
+    /** Where the world is by invitation, who may be in its rooms; null where it isn't. */
+    private invited;
     /** In a room that shows only named people: the members shown, by session key, and what arrived for each before. */
     private readonly announced;
     private readonly waiting;
@@ -161,6 +169,8 @@ export declare class RoomSession {
     private timers;
     private closed;
     constructor(opts?: JoinOptions);
+    /** Who may be in this world's rooms, as its gate last read the owner's allow list. Anyone here not on it is let go at once. */
+    setInvited(keys: Iterable<string> | null): void;
     /**
      * The keys the world's owner keeps out, as the world's gate last read them. Anyone here whose pass names one is
      * let go at once: to them, this visitor has left. Nobody is told, and nothing is kept.

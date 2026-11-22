@@ -35,6 +35,8 @@ export interface ManifestWorld {
     keepers?: string[];
     /** In this world's rooms a visitor's kit shows and hears only people whose pass checks out: no guests. */
     namedOnly?: boolean;
+    /** Only people a keeper's allow list names (and the keepers) may go in; its rooms show only them. */
+    byInvitation?: boolean;
 }
 export interface Manifest {
     schema: string;
@@ -88,6 +90,7 @@ export declare function accessFor(manifest: Manifest, url: string): {
     sellers: string[];
     keepers: string[] | null;
     namedOnly: boolean;
+    byInvitation: boolean;
 } | null;
 export interface FetchManifestResult {
     url: string;

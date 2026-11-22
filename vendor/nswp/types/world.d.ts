@@ -53,6 +53,8 @@ export interface WorldInput {
      * signed by the key that signs this announcement. Left out, the world is free.
      */
     access?: string | string[];
+    /** It is by invitation: only people its owner invited may go in (its manifest says whose lists count). Written as `["by-invitation"]`. */
+    byInvitation?: boolean;
     createdAt?: number;
 }
 export interface World {
@@ -92,6 +94,8 @@ export interface World {
      * listing's coordinate whose seller is the key that signed this announcement. Left out, the world is free.
      */
     access?: string[];
+    /** Its announcement says it is by invitation (`["by-invitation"]`). Left out where it doesn't. */
+    byInvitation?: true;
     createdAt: number;
 }
 /**
