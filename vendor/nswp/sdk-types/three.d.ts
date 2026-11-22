@@ -19,6 +19,7 @@ import type { Controls } from "./ui/model.js";
 import type { GoOptions } from "./index.js";
 export { createPresence, speechSprite, textSprite, type AvatarInfo, type Presence, type PresenceOptions } from "./presence.js";
 export { addRoomControls, type RoomFollows, type RoomNotes, type Travelling } from "./room-controls.js";
+export { addDoorControls, vouchedWords, type DoorControls, type DoorControlsOptions, type MenuDoor } from "./door-controls.js";
 export interface CaptureOptions {
     /** Width of the panorama in pixels; the height is half of it. Default 2048, at most 4096. */
     width?: number;

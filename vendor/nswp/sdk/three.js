@@ -133,7 +133,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-MB6ALDOF.js";
+} from "./shared-B7FKT2D7.js";
 import {
   currentForm,
   deviceForms,
@@ -146,6 +146,7 @@ import {
 } from "./shared-GX7O2PJA.js";
 import {
   PICTURE_LIMITS,
+  addDoorControls,
   askWell,
   foundRelays,
   learnFrom,
@@ -157,8 +158,9 @@ import {
   relaysWell,
   sendWell,
   setShowsPictures,
-  showsPictures
-} from "./shared-EHWKQMP4.js";
+  showsPictures,
+  vouchedWords
+} from "./shared-CQLLTW2Z.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -215,6 +217,7 @@ export {
   addBagControls,
   addCameraControls,
   addDeskControls,
+  addDoorControls,
   addFollowingControls,
   addGateControls,
   addItemControls,
@@ -340,6 +343,7 @@ export {
   usedForm,
   viewScale,
   visitorFov,
+  vouchedWords,
   wasRefreshed,
   watchFov,
   watchFresh,

@@ -43,6 +43,7 @@ var ICONS = {
   // What a door says its world offers (door-offers.ts), where no drawing above already says it.
   bag: "M6 8h12l1.2 12H4.8L6 8ZM9 8V6.5a3 3 0 0 1 6 0V8",
   trophy: "M8 4h8v5a4 4 0 0 1-8 0V4ZM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M10 17h4",
+  tip: "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z",
   coin: "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16ZM14.6 9.6c-.5-1-1.4-1.6-2.6-1.6-1.5 0-2.6.8-2.6 2s1 1.7 2.6 2 2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.1-.6-2.6-1.6M12 6.5V8M12 16v1.5"
 };
 
@@ -565,6 +566,90 @@ function ago(at, nowSec) {
   return new Date(at * 1e3).toISOString().slice(0, 10);
 }
 
+// packages/sdk/src/offer-icons.ts
+var OFFER_ICONS = {
+  headset: "vr",
+  people: "people",
+  voice: "mic",
+  items: "bag",
+  saves: "save",
+  records: "trophy",
+  paid: "coin"
+};
+var OFFER_LINE_ICONS = {
+  ...OFFER_ICONS,
+  tips: "tip",
+  doors: "door",
+  looks: "look",
+  "by-name": "key",
+  home: "home"
+};
+
+// packages/sdk/src/door-controls.ts
+function vouchedWords(door) {
+  if (door.vouched === "verified") return "Verified for this site";
+  if (door.vouched === "listed") return door.listedBy ? `Listed by ${door.listedBy}, not verified` : "Listed, not verified";
+  return "";
+}
+function addDoorControls(controls, opts) {
+  const section = opts.section ?? "travel";
+  let shown3 = [];
+  let chosenId = null;
+  const find = () => chosenId ? opts.doors().find((d) => d.id === chosenId) ?? null : null;
+  const card = (door) => ({
+    title: door.title,
+    tag: vouchedWords(door),
+    proven: door.vouched === "verified",
+    sub: door.url,
+    copy: "",
+    text: door.offers ? "" : "Its maker hasn't said anything about it themselves, so nothing is said here about what it offers.",
+    picture: "",
+    // No face: a door isn't a person. A renderer draws the first letter of its name in the colour of a door.
+    color: "",
+    now: []
+  });
+  const refresh = () => {
+    for (const id of shown3) controls.remove(id);
+    shown3 = [];
+    const door = find();
+    if (chosenId && !door) chosenId = null;
+    const add = (...actions) => {
+      for (const a of actions) shown3.push(a.id);
+      controls.add(...actions.map((a) => ({ section, ...a })));
+    };
+    if (!door) {
+      opts.doors().forEach(
+        (d, i) => add({ id: `door-detail:${i}`, icon: "door", label: d.title, short: "Door", act: () => choose(d.id) })
+      );
+      return;
+    }
+    add(
+      { id: "door-travel", icon: "door", label: "Travel here", tone: "primary", act: () => opts.travel(door) },
+      ...opts.also?.(door) ?? [],
+      { id: "door-back", icon: "list", label: "Back to every door", act: () => choose(null) },
+      ...(door.offers ?? []).map(
+        (o) => ({ id: `door-offer:${o.id}`, kind: "line", icon: OFFER_LINE_ICONS[o.id], label: o.words, on: () => o.on, act: () => {
+        } })
+      )
+    );
+  };
+  const choose = (id) => {
+    chosenId = id;
+    refresh();
+  };
+  const given = {
+    id: section,
+    ...opts.label ? { label: opts.label } : {},
+    card: () => {
+      const door = find();
+      return door ? card(door) : null;
+    }
+  };
+  controls.addSection(given);
+  refresh();
+  return { refresh, choose, chosen: find };
+}
+
 // packages/sdk/src/ui/summon.ts
 var SUMMON_KEY = "Backquote";
 var SUMMON_HOLD = 600;
@@ -643,6 +728,9 @@ export {
   FEED_LIMITS,
   createUiFeed,
   ago,
+  OFFER_ICONS,
+  vouchedWords,
+  addDoorControls,
   SUMMON_KEY,
   SUMMON_HOLD,
   SUMMON_SLOP,
