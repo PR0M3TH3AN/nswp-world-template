@@ -106,7 +106,11 @@ export declare function jumped(): void;
 export declare function moved(metres: number): void;
 /** They walked into something. */
 export declare function bump(): void;
-/** A few words shown for a moment, where the menu shows them. */
+/** The line in the menu that says the world is still loading, though the visitor is in: null ends it. */
+export declare function loadingLine(state: {
+    fraction?: number;
+    words?: string;
+} | null): void;
 export declare function say(text: string): void;
 /**
  * Say what the visitor is pointing at, or "" for nothing. `detail` is a JSON

@@ -144,12 +144,22 @@ export interface UiKeys {
     /** The key that opens the chat panel to write in, or null for none. Enter does too, while this is a key. */
     chat: string | null;
 }
+/**
+ * The world is still loading, though the visitor is in it (`setLoading`): its own words for what, and how far along,
+ * from 0 to 1, or null where it can't say.
+ */
+export interface UiLoading {
+    fraction: number | null;
+    words: string;
+}
 export interface UiView {
     title: string;
     address: string;
     target: string;
     /** A few more lines about what is pointed at. */
     detail: string[];
+    /** Still loading, though the visitor is in: a line in the HUD and the headset console. Null when it isn't. */
+    loading: UiLoading | null;
     presence: Presence;
     corner: Corner;
     keys: UiKeys;
@@ -183,6 +193,15 @@ export interface Controls {
     setTarget(text: string, detail?: string[]): void;
     /** A few words shown for a moment. */
     say(text: string): void;
+    /**
+     * The world is still loading, though the visitor is in it: a slim line in the HUD and the headset console says so,
+     * in the world's own words (plain text, at most 80 characters) and with how far along it is (0 to 1) where it can
+     * say. Nothing is held up by it: the console, the way home and everything else work throughout. Null ends it.
+     */
+    setLoading(state: {
+        fraction?: number;
+        words?: string;
+    } | null): void;
     /** Do an action by its id, as pressing it would. Returns false if it isn't there or isn't showing. */
     run(id: string): boolean;
     /** Change the look. `keep` also remembers it as this visitor's choice, for this site. */
@@ -248,5 +267,10 @@ export interface ControlsOptions {
  * in the order it added them.
  */
 export declare const STANDARD_ORDER: readonly string[];
+/** A world's word that it is still loading, as the console shows it: plain text, one line, a fraction or none. */
+export declare function cleanLoading(state: {
+    fraction?: unknown;
+    words?: unknown;
+} | null | undefined): UiLoading | null;
 export declare function createControls(opts: ControlsOptions): Controls;
 export { DEFAULT_THEME };
