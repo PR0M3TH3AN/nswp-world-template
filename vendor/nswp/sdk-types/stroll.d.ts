@@ -61,6 +61,54 @@ export declare const PATH_MOST = 12;
 export declare const FACE_RATE = 2.8;
 /** How far dragging turns a visitor on a flat screen, in radians a pixel. Dragging right brings what was on the left round. */
 export declare const DRAG_LOOK = 0.005;
+/**
+ * How far a drag tilts the view up or down on a flat screen moving the casual way, at most, in radians: about sixty
+ * degrees either way (the owner, 2026-11-22: "B, as recommended", with the tilt "about 60 degrees up and down").
+ * Enough to look at someone on a balcony or something at their feet; never so far that up and down are lost.
+ */
+export declare const TILT_LIMIT: number;
+/** How fast the view comes back to level once they walk, in radians a second: from the full tilt in under a second. */
+export declare const LEVEL_RATE = 1.6;
+/**
+ * Where a visitor looks after a drag of (dx, dy) pixels on a flat screen, moving the casual way: a drag sideways
+ * turns them as it always has, and a drag up or down tilts the view, held within `TILT_LIMIT`. The drag takes the
+ * world with it, as the sideways one does: dragging down brings what was above into view.
+ */
+export declare function dragTurn(yaw: number, pitch: number, dx: number, dy: number, speed?: number): {
+    yaw: number;
+    pitch: number;
+};
+/** The tilt a moment later while they walk: eased back towards level, never past it. */
+export declare function levelled(pitch: number, dt: number, rate?: number): number;
+/**
+ * Looking round by dragging, on a flat screen moving the casual way: the rig turns, the camera tilts. While it isn't
+ * theirs to move (the intense way of moving holds the view to the mouse, a headset holds it to the head), it leaves
+ * the view alone, and hands it over level.
+ */
+export declare function createDragLook(o: {
+    rig: {
+        rotation: {
+            y: number;
+        };
+    };
+    camera: {
+        rotation: {
+            x: number;
+        };
+    };
+    scale?: () => number;
+}): {
+    /** A drag of (dx, dy) pixels. */
+    drag(dx: number, dy: number): void;
+    /** Call every frame: `walking` while a walk is under way (a tap's, or the keys'); `active` while the view is the drag's to move. */
+    update(dt: number, s: {
+        walking: boolean;
+        active: boolean;
+    }): void;
+    /** Bring the view level now. */
+    level(): void;
+    readonly pitch: number;
+};
 /** The spot a tap leads to: the one tapped, or the point `reach` metres towards it when it is further off. */
 export declare function reachOf(fromX: number, fromZ: number, toX: number, toZ: number, reach?: number): [number, number];
 /**

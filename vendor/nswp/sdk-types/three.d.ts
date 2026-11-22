@@ -95,7 +95,7 @@ export { LIBRARY_LIMITS, PANEL_LIMITS, PANEL_LOOKS, type LibraryItem, type Panel
 export { createStay, wasRefreshed, type Stay, type Stood } from "./stay.js";
 export { watchFresh, type Fresh, type FreshOptions } from "./fresh.js";
 export { freshAction } from "./ui/fresh.js";
-export { createStepPace, createStroll, dotsBetween, DOUBLE_TAP, DRAG_LOOK, FACE_RATE, KEY_TURN, PATH_MOST, reachOf, RUN, TAP_REACH, TOP_SPEED, WALK_SPEED, type StepPace, type Stroll } from "./stroll.js";
+export { createDragLook, createStepPace, createStroll, dotsBetween, DOUBLE_TAP, DRAG_LOOK, dragTurn, FACE_RATE, LEVEL_RATE, levelled, TILT_LIMIT, KEY_TURN, PATH_MOST, reachOf, RUN, TAP_REACH, TOP_SPEED, WALK_SPEED, type StepPace, type Stroll } from "./stroll.js";
 export { createFloorMarks, type FloorMarks } from "./floor-mark.js";
 export { DOOR_REACH, DOOR_SPACING } from "./gate-size.js";
 export { doorArcStep, doorRow, doorsOnArc, doorsTooClose, type DoorPlace } from "./door-layout.js";
