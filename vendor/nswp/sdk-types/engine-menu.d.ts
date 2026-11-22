@@ -41,6 +41,17 @@ export declare function check(url: string): string;
  * it can't read offers nothing.
  */
 export declare function offers(world: string): string;
+/** Mount the console before the world has asked for it. `home` goes home (or to their doors) from here, the engine not yet listening. */
+export declare function earlyMenu(o: {
+    title: string;
+    accent?: string;
+    home: () => boolean;
+}): void;
+/**
+ * The crossing's room changed. Out of "arriving", the line the early console put up goes (the world says its own, if
+ * any); and a console the world never asked for goes too, once its doors have opened, or as the visitor leaves.
+ */
+export declare function roomChanged(state: string): void;
 /**
  * Put the kit's menu over the engine's canvas, and start its sounds. Call it
  * once, after `start()`. `options` is JSON:

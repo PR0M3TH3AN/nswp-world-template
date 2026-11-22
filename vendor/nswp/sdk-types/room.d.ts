@@ -19,6 +19,12 @@ export interface Member {
     recording: boolean;
     /** The item they say they are holding, by its coordinate (protocol/17-items.md). Left out when they hold nothing. */
     holding?: string;
+    /**
+     * They joined after this visitor did: their joining hello was signed after this visitor joined. Such a person is
+     * the one arriving, and steps aside themselves if they find themselves inside this visitor (protocol/01-worlds.md,
+     * "Places to arrive"): this visitor is never moved for them.
+     */
+    joinedAfterYou?: boolean;
     /** They are offering their screen to the room. It is sent only to members who ask to watch. */
     sharing?: boolean;
     /** They are offering their music to people near them. It is sent only to members who ask to hear it. */
@@ -168,6 +174,9 @@ export declare class RoomSession {
     private readonly words;
     private timers;
     private closed;
+    /** When this visitor joined, in unix seconds, and who has joined since (by a joining hello signed after it). */
+    private joinedAt;
+    private readonly newer;
     constructor(opts?: JoinOptions);
     /** Who may be in this world's rooms, as its gate last read the owner's allow list. Anyone here not on it is let go at once. */
     setInvited(keys: Iterable<string> | null): void;

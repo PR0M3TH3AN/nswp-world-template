@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { doorPictureOwed, KIT_VERSION, parseManifest, parseWorldEvent, portalTarget, verifyOrigin } from "../vendor/nswp/nswp-core.js";
+import { checkEntryPlaces, doorPictureOwed, KIT_VERSION, parseManifest, parseWorldEvent, portalTarget, verifyOrigin } from "../vendor/nswp/nswp-core.js";
 import { dist, readConfig, readDoors, readSigned, root, templates, upToDate, validate } from "./lib.mjs";
 
 let failed = 0;
@@ -41,6 +41,13 @@ if (v.errors.length === 0) ok("world.json and home.json are valid");
   if (/^0+$/.test(item.args?.[1] ?? "")) warn(`home.json: frame ${i + 1} has a made-up hash, so its picture will never show. Put the file in pictures/ and name it there instead.`);
   else warn(`home.json: frame ${i + 1} shows a picture from another address. It can't be checked from here; a picture that doesn't match its hash stays blank.`);
 });
+// Places to arrive (NSWP-01): each entry point a set, enough of them, a metre or more apart, so people arriving
+// together land apart. One spot written the old way still works, with a ring round it: a warning, not a failure.
+{
+  const issues = checkEntryPlaces(files.config.entryPoints ?? {}, { capabilities: files.config.world.capabilities ?? [] });
+  for (const i of issues) (i.level === "error" ? bad : warn)(`world.json: ${i.message}`);
+  if (!issues.length) ok(`every entry point in world.json has its places to arrive (${Object.keys(files.config.entryPoints ?? {}).length})`);
+}
 const placeholder = new URL(files.config.world.url).hostname === "example.com";
 if (placeholder) warn("world.json still has the placeholder address (example.com). Set `url` before you announce this world.");
 

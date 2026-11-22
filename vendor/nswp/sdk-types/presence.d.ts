@@ -7,12 +7,25 @@
  * world each person as plain shapes and pictures to draw for itself (engine-people.ts), from this one copy.
  */
 import * as THREE from "three";
+import { type EntryPlace } from "@nswp/core";
 import { type Figure, type FigureStyle } from "./figure.js";
 import { type JoinOptions, type Member, type RoomSession } from "./room.js";
 import { type Items } from "./items.js";
 import { type Play, type PlayOptions } from "./play.js";
 import type { ItemBoxOptions } from "./item-box.js";
 export interface PresenceOptions {
+    /**
+     * Where the visitor arrived, for stepping them aside if they join and find themselves inside someone (protocol/
+     * 01-worlds.md, "Places to arrive"): the places of the entry point they came by (`entryPlaces`), where they may
+     * stand, and whether they are stepping or turning now. Asked when they join. Only the one arriving is ever moved,
+     * once, soon after they join, and never while they are stepping or turning; in a headset it is the same instant cut
+     * a step is, never a slide. Left out, they are stepped a little way round their spot as before (`spawnOffset`).
+     */
+    arrival?: () => {
+        places: readonly EntryPlace[];
+        canStand?: (x: number, z: number) => boolean;
+        moving?: () => boolean;
+    } | null;
     /**
      * The world's own rules for its rooms (protocol/10-identity.md, "A world's own lists"), as its gate last read
      * them: the identity keys its owner keeps out, and whether its rooms show only named people. Asked each time a

@@ -13,3 +13,12 @@ export declare function engineAllowsItems(rule: unknown, scripts: boolean | Item
 export declare function onEnginePresence(fn: () => void): void;
 /** The presence, made when first asked for. Null until the world has its menu. */
 export declare function enginePresence(): Presence | null;
+/**
+ * Where the visitor should arrive (protocol/01-worlds.md, "Places to arrive"; `NSWP.entryPlace`): `json` is the
+ * places of the entry point they came by, as the engine's scene has them (`places`: each `position` [x, y, z] and
+ * `yaw`, its own spot first; only places a visitor may stand on), and `least` if the world is for meeting people (8).
+ * Fewer than the least are filled with a ring round the first. Returns JSON with `index` and the `place` to stand
+ * them on, picked with whoever is in the room the visitor has joined, if any; and keeps the places, so that if they
+ * join and find themselves inside someone the kit steps them aside (a frame's `nudge`).
+ */
+export declare function entryPlace(json?: string): string;
