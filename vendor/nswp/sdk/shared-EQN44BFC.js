@@ -1,14 +1,10 @@
 import {
   arrival,
   bytesToHex,
-  currentForm,
-  fullscreenAction,
-  holdFullscreen,
   portal,
   room,
-  sha256,
-  startingForm
-} from "./shared-DCPZ4DZO.js";
+  sha256
+} from "./shared-DPGOLCBO.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -28,14 +24,18 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-F5ECUL3F.js";
+} from "./shared-ICA3LMEK.js";
 import {
   arrivedSettings,
   askClientForSignIn,
   clientSignsInAt,
+  currentForm,
+  fullscreenAction,
+  holdFullscreen,
   onClientScreen,
-  reportSettings
-} from "./shared-UMAJ2QEI.js";
+  reportSettings,
+  startingForm
+} from "./shared-4X7PNRMN.js";
 import {
   LiveKeys,
   TextEntry,
@@ -3260,6 +3260,7 @@ function pieceName(address) {
   return name.slice(0, 60) || "a piece with no name";
 }
 var STEP_LEVEL = 0.45;
+var JUMP_STEPS = { louder: 1.35, gap: 0.09 };
 var STRIDE = 0.75;
 var HEARD = { near: 2, far: 25, floor: 0.14, fall: 6 };
 function heardFrom(place) {
@@ -9794,6 +9795,10 @@ function createFps(o) {
   const onKey = (e) => {
     if (!active() || typing(e)) return;
     if (e.code === "Escape") {
+      if (e.defaultPrevented) {
+        if (looking()) letGo();
+        return;
+      }
       if (looking()) {
         letGo();
         o.hud?.setOpen(true);
@@ -9817,19 +9822,9 @@ function createFps(o) {
   const onBlur = () => {
     for (const k of Object.keys(held)) held[k] = false;
   };
-  const onFullscreen = () => {
-    const keyboard = navigator.keyboard;
-    try {
-      if (document.fullscreenElement && active()) void keyboard?.lock?.(["Escape"])?.catch?.(() => {
-      });
-      else keyboard?.unlock?.();
-    } catch {
-    }
-  };
   o.dom.addEventListener("mousedown", onDown);
   document.addEventListener("mousemove", onMove);
   document.addEventListener("pointerlockchange", onLock);
-  document.addEventListener("fullscreenchange", onFullscreen);
   addEventListener("keydown", onKey);
   addEventListener("keyup", onKeyUp);
   addEventListener("blur", onBlur);
@@ -9856,7 +9851,6 @@ function createFps(o) {
       dot.style.display = "none";
       o.dom.style.cursor = "";
     }
-    onFullscreen();
   };
   o.controls.add({
     id: "fps",
@@ -9940,7 +9934,6 @@ function createFps(o) {
       o.dom.removeEventListener("mousedown", onDown);
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("pointerlockchange", onLock);
-      document.removeEventListener("fullscreenchange", onFullscreen);
       removeEventListener("keydown", onKey);
       removeEventListener("keyup", onKeyUp);
       removeEventListener("blur", onBlur);
@@ -9990,7 +9983,7 @@ function createJump(o = {}) {
   };
 }
 function addJump(controls, o) {
-  const jump = createJump({ onJump: () => o.sounds?.play("step"), onLand: () => o.sounds?.play("land") });
+  const jump = createJump({ onJump: () => o.sounds?.jumped ? o.sounds.jumped() : o.sounds?.play("step"), onLand: () => o.sounds?.play("land") });
   const typing = (e) => {
     const t = e.composedPath?.()[0] ?? e.target;
     return !!t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
@@ -11472,7 +11465,12 @@ function createSounds(o = {}) {
     const now = ctx.currentTime;
     if (now - (last.get(cue) ?? -1) < (GAP2[cue] ?? 0.03)) return;
     last.set(cue, now);
-    const shape = cue === "step" ? stepShape(foot++) : from ? heardFrom(from) : null;
+    sound(cue, now, from);
+  };
+  const sound = (cue, at, from, louder = 1) => {
+    const now = at;
+    const stepped = cue === "step" ? stepShape(foot++) : null;
+    const shape = stepped ? { ...stepped, gain: stepped.gain * louder } : from ? heardFrom(from) : null;
     const out = shape ? shaped(shape) : effects;
     const files2 = own.get(cue) ?? fromKit.get(cue);
     if (files2?.length) {
@@ -11485,10 +11483,18 @@ function createSounds(o = {}) {
       level.gain.value = files2[which].gain;
       src.connect(level);
       level.connect(out);
-      src.start();
+      src.start(now);
       return;
     }
     for (const part of cueRecipe(cue)) playPart(part, now + 5e-3, out, shape?.rate ?? 1);
+  };
+  const jumped = () => {
+    if (disposed || levels.off || levels.effects <= 0 || ctx.state !== "running") return;
+    if (theme.cues.step === null) return;
+    const now = ctx.currentTime;
+    sound("step", now, void 0, JUMP_STEPS.louder);
+    sound("step", now + JUMP_STEPS.gap, void 0, JUMP_STEPS.louder);
+    last.set("step", now + JUMP_STEPS.gap);
   };
   let walked = 0;
   const moved = (metres) => {
@@ -11796,6 +11802,7 @@ function createSounds(o = {}) {
     play,
     moved,
     bump: () => play("bump"),
+    jumped,
     get levels() {
       return levels;
     },
@@ -11834,15 +11841,15 @@ function createSounds(o = {}) {
         return null;
       }
     },
-    playForeign(sound, from) {
+    playForeign(sound2, from) {
       if (disposed || levels.off || levels.effects <= 0 || ctx.state !== "running") return;
       const far = from && Number.isFinite(from.distance) ? Math.max(0, from.distance) : 0;
       const reach = far <= FOREIGN_SOUND.fades ? 1 : Math.max(0, 1 - (far - FOREIGN_SOUND.fades) / (FOREIGN_SOUND.gone - FOREIGN_SOUND.fades));
       if (reach <= 0) return;
       const src = ctx.createBufferSource();
-      src.buffer = sound.buffer;
+      src.buffer = sound2.buffer;
       const level = ctx.createGain();
-      level.gain.value = sound.gain * reach;
+      level.gain.value = sound2.gain * reach;
       src.connect(level);
       level.connect(from ? shaped(heardFrom(from)) : effects);
       src.start();

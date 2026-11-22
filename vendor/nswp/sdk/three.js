@@ -133,17 +133,8 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-NA4YSRDI.js";
-import {
-  currentForm,
-  deviceForms,
-  formFor,
-  fullscreenWaiting,
-  prefersFullscreen,
-  resumeFullscreen,
-  startingForm,
-  usedForm
-} from "./shared-DCPZ4DZO.js";
+} from "./shared-EQN44BFC.js";
+import "./shared-DPGOLCBO.js";
 import {
   PICTURE_LIMITS,
   addDoorControls,
@@ -160,17 +151,25 @@ import {
   setShowsPictures,
   showsPictures,
   vouchedWords
-} from "./shared-F5ECUL3F.js";
+} from "./shared-ICA3LMEK.js";
 import {
   arriveWith,
   arrivedSettings,
   askClientForSignIn,
   clientPanelOpen,
   clientSignsInAt,
+  currentForm,
   currentSettings,
+  deviceForms,
+  formFor,
+  fullscreenWaiting,
   onClientSignIn,
-  reportSettings
-} from "./shared-UMAJ2QEI.js";
+  prefersFullscreen,
+  reportSettings,
+  resumeFullscreen,
+  startingForm,
+  usedForm
+} from "./shared-4X7PNRMN.js";
 import {
   browserVoice,
   computerVoice,

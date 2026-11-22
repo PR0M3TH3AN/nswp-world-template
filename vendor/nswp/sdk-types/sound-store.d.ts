@@ -111,6 +111,17 @@ export interface StepShape {
 /** How loud the loudest step is, beside any other cue. */
 export declare const STEP_LEVEL = 0.45;
 /**
+ * A jump is heard as two footsteps back to back, a little louder than a step (the owner, 2026-11-21: "play two of
+ * our random footstep sounds back to back and slightly louder"). `louder`: how much a step's level is raised, 1.35
+ * times (about 2.6 dB), which keeps the loudest jump step at 0.61 beside any other cue, still quieter than every one
+ * of them. `gap`: the seconds from the first step to the second. Each is a footstep of its own (`stepShape`), so no
+ * two jumps sound the same either.
+ */
+export declare const JUMP_STEPS: {
+    readonly louder: 1.35;
+    readonly gap: 0.09;
+};
+/**
  * The shape of the step a foot makes: `foot` counts steps, so even ones are
  * the left foot and odd ones the right. The two feet differ a little and
  * steadily, and every step differs a little more by chance.

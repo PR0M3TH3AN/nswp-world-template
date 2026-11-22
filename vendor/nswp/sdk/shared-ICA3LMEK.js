@@ -1,7 +1,7 @@
 import {
   arrivedSettings,
   reportSettings
-} from "./shared-UMAJ2QEI.js";
+} from "./shared-4X7PNRMN.js";
 
 // packages/sdk/src/ui/icons.ts
 var ICONS = {
@@ -24,6 +24,8 @@ var ICONS = {
   pin: "M9 4h6l-1 6 3 3H7l3-3-1-6ZM12 13v7",
   step: "M12 21s-6-5.2-6-10a6 6 0 0 1 12 0c0 4.800-6 10-6 10ZM12 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z",
   size: "M4 18 9 6l5 12M5.700 14h6.600M15 18l3.500-8 3.500 8M16 15.700h5",
+  /** Filling the screen: four corners drawn out. */
+  full: "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5",
   motion: "M3 12h4l3-7 4 14 3-7h4",
   check: "M5 12.500 10 17.500 19 7",
   camera: "M4 8h3l1.5-2h7L17 8h3v11H4ZM12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z",
