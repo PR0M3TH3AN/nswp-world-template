@@ -1195,7 +1195,7 @@ function mountHud(controls, opts = {}) {
     sayWho(view.sections.find((section2) => section2.id === "you")?.card ?? null);
     full.hidden = !fullscreenButton.shown() || view.presence === "hidden" || asWho.classList.contains("shown");
     const loads = view.loading;
-    loadingLine.hidden = !loads;
+    loadingLine.hidden = !loads || open;
     if (loads) {
       loadingWhat.textContent = loads.words || "Still loading";
       loadingMuch.textContent = loads.fraction === null ? "" : `${Math.floor(loads.fraction * 100)}%`;

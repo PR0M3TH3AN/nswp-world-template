@@ -26,6 +26,8 @@ export interface EngineWorld {
     presenting: boolean;
     /** Their item is up at their eye, as the engine last said. */
     sighting: boolean;
+    /** They are stepping, walking or turning now, as the engine last said: nobody is moved under them then. */
+    moving: boolean;
 }
 /** The one place every part of this script works in. Made when first asked for. */
 export declare function engineWorld(): EngineWorld;

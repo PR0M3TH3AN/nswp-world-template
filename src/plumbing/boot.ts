@@ -15,7 +15,7 @@
  * and gaze-and-pinch all produce, so nothing here is specific to one headset.
  */
 import * as THREE from "three";
-import { checkPreviewBytes, cleanItemsRule, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination, ITEM_RULES, worldOffers, type ItemsRule, type Offer } from "@nswp/core";
+import { checkPreviewBytes, cleanItemsRule, decodeNaddr, encodeNaddr, parseLayoutEvent, portalTarget, parseWorldEvent, queryRelays, verifyEvent, WORLD_KIND, type Layout, type PortalDestination, ITEM_RULES, worldOffers, type ItemsRule, type Offer, entryPlaces, leastEntryPlaces } from "@nswp/core";
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
 import { addBagControls, addItemControls, type ItemControls, createDragLook, createBag, createItems, createDoorRatings, signerNamed, worldPeople, worldSigner, addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
@@ -52,6 +52,8 @@ interface TestHooks {
   play?: () => unknown;
   /** Take an item in hand by its coordinate, as Hold in the bag does; "" puts it away. */
   hold?: (item: string) => Promise<unknown>;
+  /** The places of the entry point the visitor came by, and whether each may be stood on. */
+  entryPlaces?: () => { at: number[]; ok: boolean }[];
   /** What is under the thumb on a touch screen (the sight and the item's buttons), or null. */
   thumbs?: () => unknown;
   /** How far the view is tilted by dragging, in degrees: up is positive. */
@@ -852,7 +854,18 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     // so a model is fetched for the Bag tab in a world with no items too, and for nothing else there.
     const items = createItems({ relays: config.relays });
     // Where items are drawn, an item's own logic runs too, in its locked box (`item-box.html`, written by the build).
-    const presence = createPresence({ scene, camera, rig, renderer, controllers, ...(itemsRule === "none" ? {} : { items, itemsRule: () => itemsRule, itemScripts: true, sounds, theme: () => ({ accent: controls.theme.accent, motion: controls.theme.motion }) }), labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => (refresh(), itemControls?.refresh()) });
+    // Where they arrived: if they join and find themselves inside someone, the kit steps them to the first clear
+    // place of the entry point they came by, once, while they are still (NSWP-01, "Places to arrive").
+    const arrivalPlaces = entryPlaces(entry, leastEntryPlaces(config.world.capabilities ?? []));
+    hooks.entryPlaces = () => arrivalPlaces.map((p) => ({ at: [p.position[0], p.position[2]], ok: canStand(p.position[0], p.position[2]) }));
+    const stillMoving = () => {
+      if (renderer.xr.isPresenting) {
+        const info = input?.info();
+        return !!info && (info.aiming.length > 0 || info.narrow > 0.01 || info.slots.some((sl) => Math.hypot(sl.pad.stick[0], sl.pad.stick[1]) > 0.2));
+      }
+      return dragging || stroll.going || ["KeyW", "KeyS", "KeyA", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].some((k) => keys.has(k));
+    };
+    const presence = createPresence({ scene, camera, rig, renderer, controllers, arrival: () => ({ places: arrivalPlaces, canStand, moving: stillMoving }), ...(itemsRule === "none" ? {} : { items, itemsRule: () => itemsRule, itemScripts: true, sounds, theme: () => ({ accent: controls.theme.accent, motion: controls.theme.motion }) }), labelColor: "#f2f3f6", look: () => arrival.look(), identity: () => arrival.identity(), figureStyle: handle.figureStyle, onChange: () => (refresh(), itemControls?.refresh()) });
     // What is in their hand, pressed: on the bar, by the mouse and R at a desk, by the trigger in a headset.
     itemControls = addItemControls(controls, { play: () => presence.play, holdingHand: () => presence.holdingHand, dom: renderer.domElement, sight: (on) => presence.setSighting(on), presenting: () => renderer.xr.isPresenting });
     hooks.thumbs = () => itemControls?.thumbs() ?? null;

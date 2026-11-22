@@ -19,7 +19,10 @@ export declare function shouldInitiate(self: string, other: string): boolean;
 export declare function guestName(pubkey: string): string;
 /** A stable colour per session key, as a 24-bit RGB number. */
 export declare function guestColor(pubkey: string): number;
-/** Spreads arrivals around a spawn point so people don't appear inside each other. */
+/**
+ * Spreads arrivals around a spawn point so people don't appear inside each other.
+ * @deprecated A guess that checks nothing: use `entryPlaces` and `pickEntryPlace` (entry-places.ts). Kept so nothing outside the kit breaks.
+ */
 export declare function spawnOffset(pubkey: string, radius?: number): {
     x: number;
     z: number;
@@ -27,6 +30,7 @@ export declare function spawnOffset(pubkey: string, radius?: number): {
 export type SignalMessage = {
     t: "hello";
     v: 1;
+    first?: true;
 } | {
     t: "welcome";
 } | {
@@ -39,7 +43,13 @@ export type SignalMessage = {
     t: "bye";
 };
 /** A public "I'm here" on the room's topic. Carries nothing but the session key. */
-export declare function buildHello(topic: string, sessionKey: Uint8Array, createdAt?: number): NostrEvent;
+/**
+ * A hello to the room. `first` marks the one sent on joining, not the one repeated every 20 seconds: whoever hears
+ * it knows this member joined after them (protocol/06-rooms.md; for "Places to arrive", protocol/01-worlds.md).
+ */
+export declare function buildHello(topic: string, sessionKey: Uint8Array, createdAt?: number, opts?: {
+    first?: boolean;
+}): NostrEvent;
 /** A message for one member, encrypted to their session key (NIP-44). */
 export declare function buildSignal(topic: string, sessionKey: Uint8Array, to: string, message: Exclude<SignalMessage, {
     t: "hello";

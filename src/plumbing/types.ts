@@ -22,8 +22,13 @@ export interface WorldConfig {
    */
   signer?: string;
   relays: string[];
-  /** Where visitors can arrive. `main-entrance` is the default. Positions are metres; yaw is degrees, 0 facing −Z. */
-  entryPoints: Record<string, { position: [number, number, number]; yaw: number }>;
+  /**
+   * Where visitors can arrive. `main-entrance` is the default. Positions are metres; yaw is degrees, 0 facing −Z.
+   * Each is a set of places (NSWP-01, "Places to arrive"): its own spot first, then `places`, eight in all for a
+   * world with rooms (four otherwise), each a metre or more from the others and where a visitor may stand, so that
+   * people arriving together land apart. `npm run check` says if there are too few.
+   */
+  entryPoints: Record<string, { position: [number, number, number]; yaw: number; places?: { position: [number, number, number]; yaw: number }[] }>;
   sky?: string;
   /**
    * This world's own sounds. Each is a file in the `sounds/` folder, by name: `{ "cues": { "step": "sounds/step.ogg",

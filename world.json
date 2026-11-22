@@ -21,7 +21,19 @@
   "signer": "https://bitlogin.network/",
   "relays": ["wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://nostr.mom"],
   "entryPoints": {
-    "main-entrance": { "position": [0, 0, 4], "yaw": 0 }
+    "main-entrance": {
+      "position": [0, 0, 4],
+      "yaw": 0,
+      "places": [
+        { "position": [-1.2, 0, 4], "yaw": 0 },
+        { "position": [1.2, 0, 4], "yaw": 0 },
+        { "position": [-2.4, 0, 4], "yaw": 0 },
+        { "position": [2.4, 0, 4], "yaw": 0 },
+        { "position": [0, 0, 5.2], "yaw": 0 },
+        { "position": [-1.2, 0, 5.2], "yaw": 0 },
+        { "position": [1.2, 0, 5.2], "yaw": 0 }
+      ]
+    }
   },
   "sky": "#04070b"
 }

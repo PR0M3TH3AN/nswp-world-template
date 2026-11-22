@@ -12,6 +12,7 @@ export * from "./relay.js";
 export * from "./relay-discovery.js";
 export * from "./nip44.js";
 export * from "./room.js";
+export * from "./entry-places.js";
 export * from "./chat.js";
 export * from "./signing.js";
 export * from "./invoice.js";

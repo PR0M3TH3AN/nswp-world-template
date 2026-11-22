@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.80.0";
+var KIT_VERSION = "0.81.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6839,8 +6839,8 @@ function validMessage(m) {
       return false;
   }
 }
-function buildHello(topic, sessionKey, createdAt = nowSeconds()) {
-  return finalizeEvent({ kind: ROOM_SIGNAL_KIND, created_at: createdAt, tags: [["x", topic]], content: JSON.stringify({ t: "hello", v: 1 }) }, sessionKey);
+function buildHello(topic, sessionKey, createdAt = nowSeconds(), opts = {}) {
+  return finalizeEvent({ kind: ROOM_SIGNAL_KIND, created_at: createdAt, tags: [["x", topic]], content: JSON.stringify({ t: "hello", v: 1, ...opts.first ? { first: true } : {} }) }, sessionKey);
 }
 function buildSignal(topic, sessionKey, to, message, createdAt = nowSeconds()) {
   const content = nip44Encrypt(JSON.stringify(message), getConversationKey(sessionKey, to));
@@ -6901,6 +6901,71 @@ function unpackPose(data) {
   if (flags === 1 || flags === 3) pose.left = get(7);
   if (flags === 2 || flags === 3) pose.right = get(14);
   return pose;
+}
+
+// packages/core/src/entry-places.ts
+var ENTRY_PLACES_LEAST = 4;
+var ENTRY_PLACES_ROOMS = 8;
+var ENTRY_CLEAR = 1;
+var ENTRY_RING = 1.3;
+function leastEntryPlaces(capabilities = []) {
+  return capabilities.includes("rooms") || capabilities.includes("multiplayer") ? ENTRY_PLACES_ROOMS : ENTRY_PLACES_LEAST;
+}
+var finite = (n) => typeof n === "number" && Number.isFinite(n);
+var placeOk = (p) => !!p && typeof p === "object" && Array.isArray(p.position) && p.position.length === 3 && p.position.every(finite) && finite(p.yaw);
+function entryPlaces(point, least = ENTRY_PLACES_LEAST) {
+  const own = { position: [...point.position], yaw: point.yaw };
+  const given = (point.places ?? []).filter(placeOk).map((p) => ({ position: [...p.position], yaw: p.yaw }));
+  const places = [own, ...given];
+  const missing = Math.max(0, least - places.length);
+  for (let i = 0; i < missing; i++) {
+    const a = point.yaw * Math.PI / 180 + Math.PI / 2 + i * 2 * Math.PI / missing;
+    places.push({ position: [own.position[0] + Math.cos(a) * ENTRY_RING, own.position[1], own.position[2] - Math.sin(a) * ENTRY_RING], yaw: point.yaw });
+  }
+  return places;
+}
+function pickEntryPlace(places, others = [], canStand = () => true) {
+  if (!places.length) return -1;
+  const near = (p) => others.reduce((best, [x, z]) => Math.min(best, Math.hypot(p.position[0] - x, p.position[2] - z)), Number.POSITIVE_INFINITY);
+  const standing = places.map((p, i) => ({ i, room: near(p), ok: safe(canStand, p) })).filter((p) => p.ok);
+  if (!standing.length) return 0;
+  const clear = standing.find((p) => p.room >= ENTRY_CLEAR);
+  if (clear) return clear.i;
+  return standing.reduce((best, p) => p.room > best.room ? p : best).i;
+}
+function safe(canStand, p) {
+  try {
+    return canStand(p.position[0], p.position[2]) === true;
+  } catch {
+    return false;
+  }
+}
+function checkEntryPlaces(entryPoints, opts = {}) {
+  const least = leastEntryPlaces(opts.capabilities);
+  const issues = [];
+  for (const [entry, point] of Object.entries(entryPoints ?? {})) {
+    if (!placeOk(point)) {
+      issues.push({ level: "error", code: "invalid", entry, message: `Entry point "${entry}" needs a position [x, y, z] and a yaw.` });
+      continue;
+    }
+    if (!point.places) {
+      issues.push({ level: "warn", code: "single_spot", entry, message: `Entry point "${entry}" is one spot: give it places (at least ${least}, counting its own spot) so people arriving together land apart. Until then a ring round it is used.` });
+      continue;
+    }
+    const bad = point.places.filter((p) => !placeOk(p)).length;
+    if (bad) issues.push({ level: "error", code: "invalid", entry, message: `Entry point "${entry}" has ${bad} place${bad === 1 ? "" : "s"} without a position [x, y, z] and a yaw.` });
+    const places = [point, ...point.places.filter(placeOk)];
+    if (places.length < least) issues.push({ level: "error", code: "too_few", entry, message: `Entry point "${entry}" has ${places.length} place${places.length === 1 ? "" : "s"}, counting its own spot; it needs at least ${least}.` });
+    for (let i = 0; i < places.length; i++) {
+      for (let j = i + 1; j < places.length; j++) {
+        const d = Math.hypot(places[i].position[0] - places[j].position[0], places[i].position[2] - places[j].position[2]);
+        if (d < ENTRY_CLEAR) {
+          issues.push({ level: "error", code: "too_close", entry, message: `Entry point "${entry}": places ${i + 1} and ${j + 1} are ${d.toFixed(2)} m apart; they must be at least ${ENTRY_CLEAR} m apart.` });
+        }
+      }
+    }
+  }
+  return issues;
 }
 
 // packages/core/src/pass.ts
@@ -7899,15 +7964,15 @@ var PLAY_LIMITS = {
 };
 var NAME4 = /^[a-z][a-z0-9-]{0,23}$/;
 var num3 = (x) => String(Math.round(x * 1e3) / 1e3);
-var finite = (xs, most) => xs.every((x) => Number.isFinite(x) && Math.abs(x) <= most);
+var finite2 = (xs, most) => xs.every((x) => Number.isFinite(x) && Math.abs(x) <= most);
 function buildShot(o) {
   const shot = cleanShot(o);
   return shot ? `shot:${shot.id},${shot.name},${[...shot.from, ...shot.velocity, shot.stick].map(num3).join(",")}` : null;
 }
 function cleanShot(o) {
   if (!o || !Number.isInteger(o.id) || o.id < 0 || o.id > 4294967295 || typeof o.name !== "string" || !NAME4.test(o.name)) return null;
-  if (!Array.isArray(o.from) || o.from.length !== 3 || !finite(o.from, PLAY_LIMITS.far)) return null;
-  if (!Array.isArray(o.velocity) || o.velocity.length !== 3 || !finite(o.velocity, 1e6)) return null;
+  if (!Array.isArray(o.from) || o.from.length !== 3 || !finite2(o.from, PLAY_LIMITS.far)) return null;
+  if (!Array.isArray(o.velocity) || o.velocity.length !== 3 || !finite2(o.velocity, 1e6)) return null;
   const speed = Math.hypot(...o.velocity);
   if (speed < 0.01) return null;
   const k = Math.min(1, PLAY_LIMITS.speed / speed);
@@ -7925,7 +7990,7 @@ function shotAt(shot, t) {
   return [shot.from[0] + shot.velocity[0] * t, shot.from[1] + shot.velocity[1] * t - 0.5 * GRAVITY * t * t, shot.from[2] + shot.velocity[2] * t];
 }
 function buildHit(o) {
-  if (!o || !isHex64(o.by) || !Number.isInteger(o.id) || o.id < 0 || !Array.isArray(o.at) || o.at.length !== 3 || !finite(o.at, 4)) return null;
+  if (!o || !isHex64(o.by) || !Number.isInteger(o.id) || o.id < 0 || !Array.isArray(o.at) || o.at.length !== 3 || !finite2(o.at, 4)) return null;
   return `hit:${o.by},${o.id},${o.at.map(num3).join(",")}`;
 }
 function parseHit(text2) {
@@ -8923,6 +8988,10 @@ export {
   DOOR_OFFERS,
   DOWNLOAD_WARN_MB,
   ENTRY_ASSERTION_KIND,
+  ENTRY_CLEAR,
+  ENTRY_PLACES_LEAST,
+  ENTRY_PLACES_ROOMS,
+  ENTRY_RING,
   FILE_LIMITS,
   FOLLOWS_KIND,
   FOLLOW_LIMITS,
@@ -9065,6 +9134,7 @@ export {
   changeFollows,
   chatId,
   checkDestination,
+  checkEntryPlaces,
   checkPictureBytes,
   checkPreviewBytes,
   claimsKey,
@@ -9121,6 +9191,7 @@ export {
   encodeNaddr,
   encodeNpub,
   encodeSettings,
+  entryPlaces,
   fetchManifest,
   fileUrlNames,
   finalizeEvent,
@@ -9163,6 +9234,7 @@ export {
   kitAge,
   latestAddressable,
   learnRelays,
+  leastEntryPlaces,
   listD,
   listingSeller,
   localMap,
@@ -9213,6 +9285,7 @@ export {
   parseTints,
   parseWorldEvent,
   pickDiscovered,
+  pickEntryPlace,
   pickRelays,
   portalTarget,
   prepareForWorld,

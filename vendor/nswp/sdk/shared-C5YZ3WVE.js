@@ -4,7 +4,7 @@ import {
   portal,
   room,
   sha256
-} from "./shared-DPGOLCBO.js";
+} from "./shared-QY5YFQ6P.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -2573,7 +2573,7 @@ function figureAction(controls, leaving = () => ({})) {
 
 // packages/sdk/src/presence.ts
 import * as THREE9 from "three";
-import { bubbleSeconds, buildTints, cleanItemsRule as cleanItemsRule2, cleanTints, itemCoordinate as itemCoordinate2, parseTints, decodeLook, spawnOffset } from "@nswp/core";
+import { bubbleSeconds, buildTints, cleanItemsRule as cleanItemsRule2, cleanTints, ENTRY_CLEAR, itemCoordinate as itemCoordinate2, parseTints, pickEntryPlace, decodeLook, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE6 from "three";
@@ -4732,6 +4732,7 @@ function createPlay(o) {
 }
 
 // packages/sdk/src/presence.ts
+var ARRIVING_SECONDS = 6;
 var SEND_EVERY_MS = 66;
 var FADE_START = 0.9;
 var FADE_END = 0.45;
@@ -4811,6 +4812,25 @@ function createPresence(d) {
   let sendTimer;
   let micTrack = null;
   let offsetApplied = false;
+  let arriving = null;
+  let clock = 0;
+  const tendArrival = () => {
+    if (!arriving) return;
+    const head = d.camera.getWorldPosition(new THREE9.Vector3());
+    if (clock > arriving.until || Math.hypot(head.x - arriving.from.x, head.z - arriving.from.z) > ENTRY_CLEAR) return void (arriving = null);
+    const others = [...avatars.values()].filter((a) => a.target && !a.member.joinedAfterYou).map((a) => {
+      const h = a.head.getWorldPosition(new THREE9.Vector3());
+      return [h.x, h.z];
+    });
+    if (!others.some(([x, z]) => Math.hypot(x - head.x, z - head.z) < ENTRY_CLEAR)) return;
+    if (arriving.moving?.()) return;
+    const i = pickEntryPlace(arriving.places, others, arriving.canStand);
+    const to = arriving.places[i];
+    arriving = null;
+    if (!to) return;
+    d.rig.position.x += to.position[0] - head.x;
+    d.rig.position.z += to.position[2] - head.z;
+  };
   let plainSeed;
   let dot = null;
   const glow = (color) => {
@@ -5267,10 +5287,15 @@ function createPresence(d) {
     const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {}, blocked: blockedKeys(), ownerBlocked: rules.blocked, namedOnly: rules.namedOnly, invited: invitedOnly });
     session = s;
     if (!offsetApplied) {
-      const off = spawnOffset(s.self.pubkey);
-      d.rig.position.x += off.x;
-      d.rig.position.z += off.z;
       offsetApplied = true;
+      const at = d.arrival?.() ?? null;
+      if (at && at.places.length) {
+        arriving = { until: clock + ARRIVING_SECONDS, from: d.camera.getWorldPosition(new THREE9.Vector3()), places: at.places, ...at.canStand ? { canStand: at.canStand } : {}, ...at.moving ? { moving: at.moving } : {} };
+      } else {
+        const off = spawnOffset(s.self.pubkey);
+        d.rig.position.x += off.x;
+        d.rig.position.z += off.z;
+      }
     }
     s.on("status", changed);
     s.on("recording", (m, on) => {
@@ -5325,7 +5350,7 @@ function createPresence(d) {
     s.on("pose", (m, pose) => {
       const a = avatars.get(m.pubkey);
       if (!a) return;
-      if (!a.target) stepApart(s.self.pubkey, m.pubkey, pose);
+      if (!a.target && !d.arrival) stepApart(s.self.pubkey, m.pubkey, pose);
       a.target = pose;
     });
     s.on("video", (m, stream) => {
@@ -5622,6 +5647,8 @@ function createPresence(d) {
       return dest.stream.getAudioTracks()[0];
     },
     update(dt) {
+      clock += dt;
+      tendArrival();
       tendMusic(dt);
       placeMine(dt);
       const k = 1 - Math.exp(-dt * 14);

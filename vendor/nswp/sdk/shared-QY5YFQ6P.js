@@ -2207,6 +2207,9 @@ var RoomSession = class {
   words = createChatGate();
   timers = [];
   closed = false;
+  /** When this visitor joined, in unix seconds, and who has joined since (by a joining hello signed after it). */
+  joinedAt = Math.floor(Date.now() / 1e3);
+  newer = /* @__PURE__ */ new Set();
   constructor(opts = {}) {
     const world = opts.world ?? `${location.origin}${location.pathname}`;
     this.origin = new URL(world).origin;
@@ -2323,6 +2326,7 @@ var RoomSession = class {
     return [...this.sockets.values()].filter((s) => s.readyState === WebSocket.OPEN).length;
   }
   start() {
+    this.joinedAt = Math.floor(Date.now() / 1e3);
     for (const url of this.relays) this.connectRelay(url);
     this.timers.push(
       setInterval(() => this.announce(), HELLO_EVERY_MS),
@@ -2350,7 +2354,7 @@ var RoomSession = class {
     this.sockets.set(url, ws);
     ws.onopen = () => {
       ws.send(JSON.stringify(["REQ", "room", { kinds: [ROOM_SIGNAL_KIND], "#x": [this.topic], since: Math.floor(Date.now() / 1e3) - 5 }]));
-      ws.send(JSON.stringify(["EVENT", buildHello(this.topic, this.key)]));
+      ws.send(JSON.stringify(["EVENT", buildHello(this.topic, this.key, void 0, { first: Math.floor(Date.now() / 1e3) - this.joinedAt < 15 })]));
       this.setStatus("open");
     };
     ws.onmessage = (msg) => {
@@ -2392,6 +2396,8 @@ var RoomSession = class {
         case "welcome": {
           if (existing) return;
           if (this.peers.size >= this.maxMembers - 1) return;
+          const at = raw.created_at;
+          if (message.t === "hello" && message.first === true && typeof at === "number" && (at > this.joinedAt || at === this.joinedAt && from > this.self.pubkey)) this.newer.add(from);
           if (shouldInitiate(this.self.pubkey, from)) await this.offerTo(from);
           else if (message.t === "hello") this.publish(buildSignal(this.topic, this.key, from, { t: "welcome" }));
           return;
@@ -2421,7 +2427,7 @@ var RoomSession = class {
   createPeer(pubkey) {
     const pc = new RTCPeerConnection({ iceServers: this.iceServers });
     const peer = {
-      member: { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: generatedLook(pubkey), recording: false },
+      member: { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: generatedLook(pubkey), recording: false, ...this.newer.has(pubkey) ? { joinedAfterYou: true } : {} },
       pc,
       refused: 0,
       words: createChatGate(),
