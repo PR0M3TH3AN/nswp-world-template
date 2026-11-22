@@ -19,7 +19,7 @@ import { checkPreviewBytes, cleanItemsRule, decodeNaddr, encodeNaddr, parseLayou
 import { arrival, configure, portal, somethingBrought, takeBrought, watchBrought } from "nswp-sdk";
 import { createPortalGate, PORTAL_HEIGHT, PORTAL_WIDTH, type PortalGate } from "nswp-sdk/home";
 import { addBagControls, addItemControls, type ItemControls, createBag, createItems, createDoorRatings, signerNamed, worldPeople, worldSigner, addCameraControls, addPanelControls, addRoomControls, lookScale, createFps, type Fps, addSoundControls, createSounds, addJump, createFloorMarks, currentForm, DOOR_REACH, createStepPace, createStroll, reachOf, RUN, KEY_TURN, WALK_SPEED, TAP_REACH, addViewControls, capturePanorama, panoramaTexture, createConsole, createCrossing, createPanels, createPresence, createStay, createXrInput, type Camera, type GrabOptions, type Panels, type Presence, type XrConsole, type XrInput } from "nswp-sdk/three";
-import { createControls, mountHud, type Controls } from "nswp-sdk/ui";
+import { addDoorControls, createControls, mountHud, type Controls, type DoorControls } from "nswp-sdk/ui";
 import site from "virtual:site";
 import configJson from "../../world.json";
 import type { BuildScene, PortalOptions, SceneContext, WorldConfig } from "./types.js";
@@ -206,7 +206,15 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
    * world a door leads to until someone goes there. It is checked against its hash before it is drawn, and a
    * door with none keeps its field of light.
    */
+  /** The doors in the Travel tab: made once the scene is built and its doors are known (below). */
+  let doorList: DoorControls | null = null;
   const lookedThrough = new Set<PortalGate>();
+  /** What each door's place offers, as `npm run doors` noted it: the tiles beside it, and its details in Travel. */
+  const offeredBy = new Map<PortalGate, Offer[]>();
+  /** Where each door leads, as noted, for its details before relays have named it. */
+  const placeOf = new Map<PortalGate, string>();
+  /** What each door's place is called, as noted, for its details before relays have named it. */
+  const titleOf = new Map<PortalGate, string>();
   const doorWindows: THREE.Object3D[] = [];
   const showThrough = (which: PortalGate[]) => {
     for (const gate of which) {
@@ -225,7 +233,15 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
         const said = site.offered?.[coordinate];
         const rule = site.carried?.[coordinate];
         const items = (ITEM_RULES as readonly string[]).includes(rule ?? "") ? (rule as ItemsRule) : undefined;
-        if (said) gate.setOffers(worldOffers({ modes: said.modes, capabilities: said.capabilities, ...(items ? { items } : {}), ...(said.access ? { access: said.access } : {}) }));
+        if (said) {
+          const offers = worldOffers({ modes: said.modes, capabilities: said.capabilities, ...(items ? { items } : {}), ...(said.access ? { access: said.access } : {}) });
+          gate.setOffers(offers);
+          offeredBy.set(gate, offers);
+        }
+        const noted = site.places?.[coordinate];
+        if (noted) placeOf.set(gate, noted);
+        const called = site.titles?.[coordinate];
+        if (called) titleOf.set(gate, called);
       } catch {
         /* not an address this page can read */
       }
@@ -282,8 +298,9 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       ownGates.push(gate);
       // A portal added later (an exit that appears, say) gets its name looked up too, and its picture.
       if (built) {
-        void namePortals([gate], config.relays, state);
+        void namePortals([gate], config.relays, state).then(() => doorList?.refresh());
         showThrough([gate]);
+        doorList?.refresh();
       }
       return gate;
     },
@@ -296,7 +313,7 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
   built = true;
   showThrough(gates);
   hooks.portals = () => gates.map((g) => ({ label: g.group.userData.label ?? "", destination: g.destination, position: g.group.getWorldPosition(new THREE.Vector3()).toArray() }));
-  void namePortals(gates, config.relays, state);
+  void namePortals(gates, config.relays, state).then(() => doorList?.refresh());
 
   // ------------------------------------------------------------- leaving
   // Every way out goes through an Airlock: a plain page that shows the real
@@ -410,6 +427,23 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
     for (let o: THREE.Object3D | null = g.group; o; o = o.parent) if (!o.visible) return false;
     return true;
   };
+  // Every door, in the Travel tab, through the kit's door details: chosen, a door shows its card and what its world
+  // offers, as the tiles beside it do, and "Travel here" takes it the same way pointing at it does.
+  doorList = addDoorControls(controls, {
+    doors: () =>
+      gates.filter(shown).map((g) => ({
+        id: String(gates.indexOf(g)),
+        title: String(g.group.userData.label ?? titleOf.get(g) ?? "A doorway"),
+        url: g.destination.url ?? placeOf.get(g) ?? "",
+        // A door in a world doesn't ask whether the place's site vouches for it: the Airlock does, on the way.
+        vouched: "unknown" as const,
+        offers: offeredBy.get(g) ?? null,
+      })),
+    travel: (door) => {
+      const gate = gates[Number(door.id)];
+      if (gate) void go(gate);
+    },
+  });
   hooks.step = (x, z) => {
     raycaster.ray.origin.copy(camera.getWorldPosition(new THREE.Vector3()));
     raycaster.ray.direction.set(x, 0, z).sub(raycaster.ray.origin).normalize();

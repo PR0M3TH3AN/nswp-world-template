@@ -4,6 +4,7 @@
     "title": "The Gallery",
     "category": "experience",
     "url": "https://gallery.bitblocks.network/",
+    "items": "allowed",
     "modes": [
       "immersive-vr",
       "inline-3d"
@@ -11,7 +12,9 @@
     "capabilities": [
       "webxr",
       "spatial-portals",
-      "rooms"
+      "rooms",
+      "voice",
+      "avatars"
     ]
   },
   "37300:546f9f791aba0984777051d93605b66e87ce0dc88fb0053fbe8475eec19aa00c:nswp-reference-world-b": {
@@ -27,7 +30,9 @@
     "capabilities": [
       "webxr",
       "spatial-portals",
-      "rooms"
+      "rooms",
+      "voice",
+      "avatars"
     ]
   }
 }
