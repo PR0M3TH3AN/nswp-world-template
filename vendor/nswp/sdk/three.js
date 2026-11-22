@@ -133,7 +133,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-B7FKT2D7.js";
+} from "./shared-4PECIHLL.js";
 import {
   currentForm,
   deviceForms,
@@ -143,7 +143,7 @@ import {
   resumeFullscreen,
   startingForm,
   usedForm
-} from "./shared-GX7O2PJA.js";
+} from "./shared-YXS6UB7I.js";
 import {
   PICTURE_LIMITS,
   addDoorControls,

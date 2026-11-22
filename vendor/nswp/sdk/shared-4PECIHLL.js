@@ -8,7 +8,7 @@ import {
   room,
   sha256,
   startingForm
-} from "./shared-GX7O2PJA.js";
+} from "./shared-YXS6UB7I.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -1008,8 +1008,25 @@ function freshAction(controls, opts = {}) {
 import { encodeNpub, getPublicKey, shortNpub, signerAt as signerAt2 } from "@nswp/core";
 
 // packages/sdk/src/front-room.ts
-import { ACCESS_MOST, accessFor, cleanAccess, cleanListing, DEFAULT_RELAYS, LISTING_KIND, listingSeller, parseManifest, priceWords, readListing, readReceipt, WORLD_KIND } from "@nswp/core";
+import { ACCESS_MOST, accessFor, cleanAccess, cleanListing, DEFAULT_RELAYS, LIST_KIND, listD, LISTING_KIND, listingSeller, OWNER_LIST_LIMITS, parseManifest, priceWords, readListing, readReceipt, resolveOwnerList, worldSubject, WORLD_KIND } from "@nswp/core";
 var GATE_TIMES = { grace: 120, look: 300, goodFor: 86400 };
+var LISTS_KEY = "nswp:owner-lists";
+function rememberedLists() {
+  try {
+    const kept2 = JSON.parse(globalThis.localStorage?.getItem(LISTS_KEY) ?? "{}");
+    return kept2 && typeof kept2 === "object" && !Array.isArray(kept2) ? kept2 : {};
+  } catch {
+    return {};
+  }
+}
+function rememberList(d, event) {
+  try {
+    const all = { ...rememberedLists(), [d]: event };
+    const kept2 = Object.entries(all).sort((a, b) => (b[1]?.created_at ?? 0) - (a[1]?.created_at ?? 0)).slice(0, 24);
+    globalThis.localStorage?.setItem(LISTS_KEY, JSON.stringify(Object.fromEntries(kept2)));
+  } catch {
+  }
+}
 var GOOD_KEY = "nswp:receipts:good";
 function goodAt() {
   try {
@@ -1097,6 +1114,13 @@ function createPaidGate(opts) {
   let unwatch = null;
   let seeking2 = 0;
   let seekTimer;
+  let paid = false;
+  let lists = null;
+  let listState = "none";
+  let ownerBlocked = [];
+  let namedOnly = false;
+  let listRetries = 0;
+  let listTimer;
   const changed = () => {
     for (const fn of [...watchers3]) {
       try {
@@ -1181,6 +1205,11 @@ function createPaidGate(opts) {
       clearTimeout(seekTimer);
       seekTimer = setTimeout(() => void look(), 3e3);
     }
+    if (isBlocked(buyer)) return shut("blocked");
+    if (!paid) {
+      if (lists && buyer && listState === "reading") return;
+      return set("open", "");
+    }
     if (!signer || !buyer) return shut(signer ? "signed-out" : "no-signer");
     if (held && held.buyer !== buyer) held = null;
     const got = await Promise.all(listings.map((l) => signer.have(l).then((r) => r ? believe(r.event, l, buyer) : null).catch(() => null)));
@@ -1217,6 +1246,40 @@ function createPaidGate(opts) {
     clearTimeout(retryTimer);
     if ([...unread.values()].some((w) => w === "no-relay" || w === "not-found")) retryTimer = setTimeout(() => void readOffers(), Math.min(2e4 * 2 ** retries++, GATE_TIMES.look * 1e3));
   };
+  const isBlocked = (key) => !!lists && !!key && ownerBlocked.includes(key) && !lists.root.includes(key);
+  const applyLists = (events, answered = true) => {
+    if (!lists) return;
+    const kept2 = rememberedLists();
+    const blocked = /* @__PURE__ */ new Set();
+    let state2 = "not-found";
+    for (const subject of lists.subjects) {
+      const d = listD("user-deny", subject);
+      const all = [...events, ...kept2[d] ? [kept2[d]] : []];
+      const r = resolveOwnerList(all, { scope: "user-deny", subject, root: lists.root, now: sec() });
+      const newest = all.filter((e) => e && e.kind === LIST_KIND && lists.root.includes(e.pubkey) && e.created_at <= sec() + OWNER_LIST_LIMITS.ahead && Array.isArray(e.tags) && e.tags.some((t) => t[0] === "d" && t[1] === d)).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0];
+      if (newest && (!kept2[d] || newest.created_at > kept2[d].created_at || newest.created_at === kept2[d].created_at && newest.id < kept2[d].id)) rememberList(d, newest);
+      if (r.ok) {
+        for (const key of r.entries) blocked.add(key);
+        state2 = "read";
+      } else if (r.reason !== "not_found" && state2 !== "read") state2 = "unreadable";
+    }
+    listState = answered ? state2 : "unanswered";
+    const next = [...blocked].sort();
+    const differs = next.join() !== ownerBlocked.join();
+    ownerBlocked = next;
+    if (differs) changed();
+  };
+  const readLists = async () => {
+    if (!lists || disposed) return;
+    const filter = { kinds: [LIST_KIND], authors: [...lists.root], "#d": lists.subjects.map((s) => listD("user-deny", s)) };
+    const got = await askWell(filter, { own: ownRelays, usual: opts.relays ?? DEFAULT_RELAYS, ...opts.query ? { query: opts.query } : {}, now }).catch(() => null);
+    if (disposed) return;
+    const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
+    applyLists(got?.events ?? [], answered);
+    clearTimeout(listTimer);
+    if (answered) listRetries = 0;
+    else listTimer = setTimeout(() => void readLists().then(() => look()), Math.min(2e4 * 2 ** listRetries++, GATE_TIMES.look * 1e3));
+  };
   const begin = async () => {
     let access = null;
     let file = null;
@@ -1240,17 +1303,31 @@ function createPaidGate(opts) {
     }
     retries = 0;
     worldName = access.d;
+    namedOnly = access.namedOnly;
     listings = cleanAccess(opts.listings ? [...opts.listings] : access.listings, access.sellers);
     const named = file?.worlds?.[access.d]?.access;
     const meant = opts.listings ? opts.listings.length > 0 : Array.isArray(named) ? named.length > 0 : named !== void 0;
-    if (!meant) return set("free", "");
-    if (listings.length === 0) return set("shut", "not-own");
-    void readOffers();
+    paid = meant;
+    if (access.keepers && access.sellers.length) {
+      lists = { root: access.keepers, subjects: access.sellers.map((key) => worldSubject(key, access.d)) };
+      listState = "reading";
+    }
+    if (!meant && !lists) return set("free", "");
+    if (meant && listings.length === 0) return set("shut", "not-own");
+    if (lists) {
+      const remembered = lists.subjects.some((s) => rememberedLists()[listD("user-deny", s)]);
+      if (remembered) {
+        applyLists([]);
+        void readLists().then(() => look());
+      } else await readLists();
+      if (disposed) return;
+    }
+    if (meant) void readOffers();
     const signer = opts.signer();
     if (signer) await signer.whenAnswered(4e3).catch(() => void 0);
     if (disposed) return;
     if (signer && !unwatch) unwatch = signer.onChange(() => void look());
-    lookTimer = setInterval(() => void look(), GATE_TIMES.look * 1e3);
+    lookTimer = setInterval(() => void (lists ? readLists().then(() => look()) : look()), GATE_TIMES.look * 1e3);
     await look();
   };
   if (state !== "free") void begin();
@@ -1262,6 +1339,7 @@ function createPaidGate(opts) {
     if (state === "ending") return "Your time here has run out. This part closes in two minutes. Buy again to stay.";
     if (reason === "no-manifest") return "This world couldn't read its own list of what it is sold by, so the way stays shut. It is being read again.";
     if (reason === "not-own") return "What this world says it is sold by isn't its own to sell, so nothing here can be bought. That is the world's to put right.";
+    if (reason === "blocked") return "The owner of this world has asked you not to come in.";
     const list = offerList();
     const firstUnread = [...unread.values()][0];
     const sale = list.length ? `Past here is for people who have bought it: ${list.map((o) => `${o.name}, ${o.words}`).join("; or ")}.` : `Past here is for people who have bought it. ${firstUnread ? unreadWords(firstUnread) : "What it costs is being read."}`;
@@ -1297,6 +1375,15 @@ function createPaidGate(opts) {
     get signedIn() {
       return signedIn();
     },
+    get ownerBlocked() {
+      return ownerBlocked;
+    },
+    get namedOnly() {
+      return namedOnly;
+    },
+    get lists() {
+      return listState;
+    },
     get host() {
       return host();
     },
@@ -1307,7 +1394,7 @@ function createPaidGate(opts) {
       const wanted = cleanListing(listing ?? offerList()[0]?.listing ?? "");
       const signer = opts.signer();
       if (disposed || buying || !wanted || !offers.has(wanted) || !signer || signer.state !== "unlocked") return false;
-      if (state === "free" || state === "open") return false;
+      if (state === "free" || state === "open" || reason === "blocked" || isBlocked(signer.pubkey)) return false;
       buying = true;
       changed();
       const got = await signer.buy(wanted).catch(() => null);
@@ -1315,6 +1402,10 @@ function createPaidGate(opts) {
       const receipt = got ? believe(got.event, wanted, opts.signer()?.state === "unlocked" ? opts.signer().pubkey : null) : null;
       if (!receipt || disposed) {
         changed();
+        return false;
+      }
+      if (isBlocked(receipt.buyer)) {
+        shut("blocked");
         return false;
       }
       keepGood(receipt.fulfillment, now());
@@ -1327,14 +1418,15 @@ function createPaidGate(opts) {
       if (state === "free" || disposed) return;
       if (reason === "no-manifest") return begin();
       retries = 0;
-      await Promise.all([readOffers(), look()]);
+      await Promise.all([readOffers(), readLists()]);
+      await look();
     },
     onChange(fn) {
       watchers3.add(fn);
       return () => void watchers3.delete(fn);
     },
     info() {
-      return { state, open: state === "free" || state === "open" || state === "ending", reason, why: why(), offers: offerList(), unread: Object.fromEntries(unread), until: state === "open" && held ? held.expiresAt : null, endsAt: endsAt ? Math.round(endsAt / 1e3) : null, signedIn: signedIn(), buying, listings: [...listings] };
+      return { state, open: state === "free" || state === "open" || state === "ending", reason, why: why(), offers: offerList(), unread: Object.fromEntries(unread), until: state === "open" && held ? held.expiresAt : null, endsAt: endsAt ? Math.round(endsAt / 1e3) : null, signedIn: signedIn(), buying, listings: [...listings], lists: listState, ownerBlocked: ownerBlocked.length, namedOnly };
     },
     dispose() {
       disposed = true;
@@ -1342,6 +1434,7 @@ function createPaidGate(opts) {
       clearTimeout(graceTimer);
       clearTimeout(retryTimer);
       clearTimeout(seekTimer);
+      clearTimeout(listTimer);
       clearInterval(lookTimer);
       unwatch?.();
       watchers3.clear();
@@ -1370,7 +1463,7 @@ function addGateControls(controls, gate, opts = {}) {
       else controls.say("That didn't finish, and the way is still shut. If you did pay, press Buy again: it finds what you paid for and charges nothing more.");
     });
   };
-  const showing = () => (gate.state === "shut" || gate.state === "ending") && gate.reason !== "no-manifest" && gate.reason !== "not-own" && gate.reason !== "no-signer";
+  const showing = () => (gate.state === "shut" || gate.state === "ending") && gate.reason !== "no-manifest" && gate.reason !== "not-own" && gate.reason !== "no-signer" && gate.reason !== "blocked";
   for (let i = 0; i < ACCESS_MOST; i++) {
     const offer = () => gate.offers[i];
     controls.add({
@@ -2213,7 +2306,24 @@ function worldSaves() {
   return kept ??= createSaves({ signer: () => signerNamed() ? worldSigner() : null });
 }
 function worldGate(opts = {}) {
-  return createPaidGate({ ...opts, signer: () => signerNamed() ? worldSigner() : null });
+  const gate = createPaidGate({ ...opts, signer: () => signerNamed() ? worldSigner() : null });
+  if (!pageGate) {
+    pageGate = gate;
+    gate.onChange(() => {
+      for (const fn of [...rulesWatchers]) fn();
+    });
+    for (const fn of [...rulesWatchers]) fn();
+  }
+  return gate;
+}
+var pageGate = null;
+var rulesWatchers = /* @__PURE__ */ new Set();
+function pageRules() {
+  return pageGate ? { blocked: pageGate.ownerBlocked, namedOnly: pageGate.namedOnly } : { blocked: [], namedOnly: false };
+}
+function onPageRules(fn) {
+  rulesWatchers.add(fn);
+  return () => void rulesWatchers.delete(fn);
 }
 var followed = null;
 function worldPeople() {
@@ -4559,6 +4669,8 @@ function speechSprite(text, width = 0.8) {
   return sprite;
 }
 function createPresence(d) {
+  const rulesNow = () => d.worldRules?.() ?? pageRules();
+  if (!d.worldRules) onPageRules(() => session?.setOwnerBlocked(rulesNow().blocked));
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
   const listener = new THREE9.AudioListener();
@@ -5017,7 +5129,10 @@ function createPresence(d) {
     }
     const look = typeof d.look === "function" ? d.look() : d.look;
     const identity = await byName(typeof d.identity === "function" ? d.identity() : d.identity);
-    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {}, blocked: blockedKeys() });
+    const rules = rulesNow();
+    if (rules.namedOnly && !identity) throw new Error("this world's rooms show only people who are signed in. Sign in, then join.");
+    if (identity && rules.blocked.includes(identity.pass.pubkey)) throw new Error("the owner of this world has asked you not to come in.");
+    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {}, blocked: blockedKeys(), ownerBlocked: rules.blocked, namedOnly: rules.namedOnly });
     session = s;
     if (!offsetApplied) {
       const off = spawnOffset(s.self.pubkey);
@@ -5348,6 +5463,9 @@ function createPresence(d) {
       keptBlocks = withoutBlocked(keptBlocks, key);
       storeBlocked(keptBlocks);
       changed();
+    },
+    rulesChanged() {
+      session?.setOwnerBlocked(rulesNow().blocked);
     },
     blocked() {
       return [...keptBlocks.map((b) => ({ key: b.key, name: b.name, kept: true })), ...[...blockedNow].map(([key, name]) => ({ key, name, kept: false }))];

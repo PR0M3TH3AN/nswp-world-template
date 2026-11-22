@@ -91,6 +91,17 @@ export declare function worldSaves(): Saves;
  */
 export declare function worldGate(opts?: Omit<PaidGateOptions, "signer">): PaidGate;
 /**
+ * The world's own rules for its rooms, as this page's gate last read them from the world's own manifest and its
+ * owner's list (protocol/10-identity.md, "A world's own lists"): who the owner keeps out, and whether only named
+ * people are shown. Nothing and false where the page has no gate. A room joined here takes them (presence.ts).
+ */
+export declare function pageRules(): {
+    blocked: readonly string[];
+    namedOnly: boolean;
+};
+/** Be told when those rules may have changed. Returns how to stop. */
+export declare function onPageRules(fn: () => void): () => void;
+/**
  * Who this world's visitor follows, and following for them (people.ts, protocol/14-people-and-messages.md): for a
  * visitor who is signed in here and has let this world do so. One for the page, using the page's one signer.
  * Nothing is asked of a relay about them until this is used.

@@ -52,6 +52,17 @@ export interface JoinOptions {
      * name, or session keys from this visit. Nobody on it is connected to.
      */
     blocked?: Iterable<string>;
+    /**
+     * Identity keys the world's owner keeps out (protocol/10-identity.md, "A world's own lists"): someone whose pass
+     * names one is not shown, heard or answered here. Kept apart from `blocked`, which is the visitor's own: this is
+     * never kept, never reported and never carried on to another world.
+     */
+    ownerBlocked?: Iterable<string>;
+    /**
+     * This world's rooms show only people whose pass checks out (its manifest's `named_only`): a member is shown and
+     * heard only once their pass has checked out, and one who shows none within a few seconds is let go.
+     */
+    namedOnly?: boolean;
 }
 export type RoomStatus = "connecting" | "open" | "no-relays" | "closed";
 interface Events {
@@ -92,6 +103,11 @@ export interface SaidLine {
     /** When it was read here, in milliseconds. A line carries no time of its own. */
     at: number;
 }
+/**
+ * How long a member has to show a pass in a room that shows only named people. A pass is said as the channel
+ * opens and three more times, a second and a half apart, so a member who has one has shown it well before this.
+ */
+export declare const NAMED_WAIT_MS = 7000;
 export declare class RoomSession {
     readonly self: Member;
     readonly name: string;
@@ -101,6 +117,15 @@ export declare class RoomSession {
     private readonly relays;
     /** Keys this visitor won't be in a room with: session keys, and the identity keys behind names. */
     private readonly blocked;
+    /** Identity keys the world's owner keeps out. Never the visitor's own: never kept or carried on. */
+    private ownerBlocked;
+    /** Session keys let go this visit for the world's rules (the owner's list, or no pass where one is needed): not answered again. */
+    private readonly turnedAway;
+    /** Whether this room shows only people whose pass checks out. */
+    readonly namedOnly: boolean;
+    /** In a room that shows only named people: the members shown, by session key, and what arrived for each before. */
+    private readonly announced;
+    private readonly waiting;
     private readonly maxMembers;
     private readonly iceServers;
     private readonly sockets;
@@ -136,6 +161,13 @@ export declare class RoomSession {
     private timers;
     private closed;
     constructor(opts?: JoinOptions);
+    /**
+     * The keys the world's owner keeps out, as the world's gate last read them. Anyone here whose pass names one is
+     * let go at once: to them, this visitor has left. Nobody is told, and nothing is kept.
+     */
+    setOwnerBlocked(keys: Iterable<string>): void;
+    /** Let someone go for the world's rules, and answer them no more this visit. */
+    private turnAway;
     /**
      * Stop being in a room with someone. The connection to them is closed and
      * no new one is made, by their session key and, if they came by name, by

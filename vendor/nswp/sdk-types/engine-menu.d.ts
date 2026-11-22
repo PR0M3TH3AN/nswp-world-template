@@ -78,9 +78,10 @@ export declare function who(): string;
  * stands is the world's to choose. While `open` is false, nobody goes past. It is false until the gate knows.
  * `run("gate-buy")` presses the control, for a gate that is pressed in the world.
  *
- * What it is entered by is the world's own manifest's word (`access`). `options` is JSON: `paid` false says this
- * world's own settings name nothing for sale, and then nothing is made, read or asked: the answer is "free". A
- * world that isn't paid has no need to call this at all.
+ * What it is entered by, whose lists count and whether its rooms show only named people are the world's own
+ * manifest's word (`access`, `keepers`, `named_only`); the gate stops someone its owner keeps out, and the room
+ * takes the same rules. `options` is JSON: `paid` false says this world's own settings ask for none of that, and
+ * then nothing is made, read or asked: the answer is "free". Such a world has no need to call this at all.
  */
 export declare function gate(options?: string): string;
 /**

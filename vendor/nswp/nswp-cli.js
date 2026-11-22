@@ -1276,15 +1276,15 @@ var SHA2_32B = class extends HashMD {
     this.H = IV[7] | 0;
   }
   get() {
-    const { A, B, C, D, E, F, G, H } = this;
-    return [A, B, C, D, E, F, G, H];
+    const { A, B, C, D: D2, E, F, G, H } = this;
+    return [A, B, C, D2, E, F, G, H];
   }
   // prettier-ignore
-  set(A, B, C, D, E, F, G, H) {
+  set(A, B, C, D2, E, F, G, H) {
     this.A = A | 0;
     this.B = B | 0;
     this.C = C | 0;
-    this.D = D | 0;
+    this.D = D2 | 0;
     this.E = E | 0;
     this.F = F | 0;
     this.G = G | 0;
@@ -1304,7 +1304,7 @@ var SHA2_32B = class extends HashMD {
       const s1 = rotr(W2, 17) ^ rotr(W2, 19) ^ W2 >>> 10;
       SHA256_W[i] = s1 + SHA256_W[i - 7] + s0 + SHA256_W[i - 16] | 0;
     }
-    let { A, B, C, D, E, F, G, H } = this;
+    let { A, B, C, D: D2, E, F, G, H } = this;
     for (let i = 0; i < 64; i++) {
       const sigma1 = rotr(E, 6) ^ rotr(E, 11) ^ rotr(E, 25);
       const T1 = H + sigma1 + Chi(E, F, G) + SHA256_K[i] + SHA256_W[i] | 0;
@@ -1313,8 +1313,8 @@ var SHA2_32B = class extends HashMD {
       H = G;
       G = F;
       F = E;
-      E = D + T1 | 0;
-      D = C;
+      E = D2 + T1 | 0;
+      D2 = C;
       C = B;
       B = A;
       A = T1 + T2 | 0;
@@ -1322,12 +1322,12 @@ var SHA2_32B = class extends HashMD {
     A = A + this.A | 0;
     B = B + this.B | 0;
     C = C + this.C | 0;
-    D = D + this.D | 0;
+    D2 = D2 + this.D | 0;
     E = E + this.E | 0;
     F = F + this.F | 0;
     G = G + this.G | 0;
     H = H + this.H | 0;
-    this.set(A, B, C, D, E, F, G, H);
+    this.set(A, B, C, D2, E, F, G, H);
   }
   roundClean() {
     clean(SHA256_W);
@@ -1750,8 +1750,8 @@ function FpLegendre(Fp, n) {
   const powered = F.pow(n, p1mod2);
   const yes = F.eql(powered, F.ONE);
   const zero = F.eql(powered, F.ZERO);
-  const no = F.eql(powered, F.neg(F.ONE));
-  if (!yes && !zero && !no)
+  const no2 = F.eql(powered, F.neg(F.ONE));
+  if (!yes && !zero && !no2)
     throw new Error("invalid Legendre symbol result");
   return yes ? 1 : zero ? 0 : -1;
 }
@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.74.1";
+var KIT_VERSION = "0.75.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -3072,6 +3072,16 @@ var HEX64 = /^[0-9a-f]{64}$/;
 var HEX128 = /^[0-9a-f]{128}$/;
 function isHex64(v) {
   return typeof v === "string" && HEX64.test(v);
+}
+function isPublicKey(v) {
+  if (!isHex64(v))
+    return false;
+  try {
+    schnorr.utils.lift_x(BigInt(`0x${v}`));
+    return true;
+  } catch {
+    return false;
+  }
 }
 function nowSeconds() {
   return Math.floor(Date.now() / 1e3);
@@ -3528,6 +3538,26 @@ function decodeNaddr(s) {
   }
   return relays.length ? { kind, pubkey, identifier, relays } : { kind, pubkey, identifier };
 }
+function decodeNpub(s) {
+  const text = s.trim();
+  const real = (hex) => {
+    if (!isPublicKey(hex))
+      throw new NswpError("npub_invalid", "not a public key: no key has that value");
+    return hex;
+  };
+  if (/^[0-9a-f]{64}$/i.test(text))
+    return real(text.toLowerCase());
+  let decoded;
+  try {
+    decoded = bech32.decode(text, BECH32_LIMIT);
+  } catch (cause) {
+    throw new NswpError("npub_invalid", "not a public key: expected npub1\u2026 or 64 hex characters", { cause });
+  }
+  const bytes = bech32.fromWords(decoded.words);
+  if (decoded.prefix !== "npub" || bytes.length !== 32)
+    throw new NswpError("npub_invalid", "not a public key: expected npub1\u2026 or 64 hex characters");
+  return real(bytesToHex(Uint8Array.from(bytes)));
+}
 function coordinate(p) {
   return `${p.kind}:${p.pubkey}:${p.identifier}`;
 }
@@ -3961,7 +3991,107 @@ var DOOR_OFFERS = ["headset", "people", "voice", "items", "saves", "records", "p
 var MORE_OFFERS = ["tips", "doors", "looks", "by-name", "home"];
 var OFFERS = [...DOOR_OFFERS, ...MORE_OFFERS];
 
+// packages/core/dist/owner-lists.js
+var LIST_KIND = 30078;
+var LIST_NAMESPACE = "nswp";
+var OWNER_LIST_LIMITS = { read: 2e3, write: 500, ahead: 600, root: 4 };
+var NAMESPACE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+var D = /^([^:]*):governance:([^:]*):v([^:]*):([\s\S]*)$/;
+var HEX = (n) => new RegExp(`^[0-9a-f]{${n}}$`);
+var HEX1282 = HEX(128);
+var no = (reason) => ({ ok: false, reason });
+function isListSubject(subject) {
+  if (typeof subject !== "string")
+    return false;
+  const m = /^(0|[1-9][0-9]{0,4}):([0-9a-f]{64}):([\s\S]*)$/.exec(subject);
+  if (!m || Number(m[1]) > 65535)
+    return false;
+  const name = m[3];
+  if (!name || new TextEncoder().encode(name).length > 512)
+    return false;
+  return !/[\u0000-\u001f\u007f]/.test(name);
+}
+function listD(scope, subject, namespace = LIST_NAMESPACE) {
+  return `${namespace}:governance:${scope}:v1:${subject}`;
+}
+function cleanRoot(root) {
+  const keys = Array.isArray(root) ? root : [root];
+  if (keys.length < 1 || keys.length > OWNER_LIST_LIMITS.root || !keys.every(isHex64))
+    return null;
+  return [...new Set(keys)];
+}
+var shaped = (e) => {
+  const v = e;
+  return !!v && typeof v === "object" && isHex64(v.id) && isHex64(v.pubkey) && typeof v.sig === "string" && HEX1282.test(v.sig) && Number.isInteger(v.kind) && Number.isInteger(v.created_at) && typeof v.content === "string" && Array.isArray(v.tags) && v.tags.every((t) => Array.isArray(t) && t.every((x) => typeof x === "string"));
+};
+function readOwnerList(event, o = {}) {
+  const now = o.now ?? Math.floor(Date.now() / 1e3);
+  if (!shaped(event))
+    return no("not_an_event");
+  const e = event;
+  if (e.kind !== LIST_KIND)
+    return no("wrong_kind");
+  const ds = e.tags.filter((t) => t[0] === "d");
+  const m = ds.length === 1 ? D.exec(ds[0][1] ?? "") : null;
+  if (!m || !NAMESPACE.test(m[1]) || !/^[0-9]+$/.test(m[3]))
+    return no("bad_d");
+  const [, , scope, version, subject] = m;
+  if (version !== "1")
+    return no("unsupported_version");
+  if (scope !== "user-allow" && scope !== "user-deny")
+    return no("unsupported_scope");
+  if (!isListSubject(subject))
+    return no("bad_subject");
+  const one = (name, value) => {
+    const found = e.tags.filter((t) => t[0] === name);
+    return found.length === 1 && found[0][1] === value;
+  };
+  if (!one("v", version) || !one("scope", scope) || !one("subject", subject))
+    return no("tag_mismatch");
+  const root = o.root === void 0 ? [subject.slice(subject.indexOf(":") + 1, subject.indexOf(":") + 65)] : cleanRoot(o.root);
+  if (!root || !root.includes(e.pubkey))
+    return no("wrong_signer");
+  if (e.content !== "")
+    return no("content_not_empty");
+  const people = e.tags.filter((t) => t[0] === "p");
+  if (people.length > OWNER_LIST_LIMITS.read)
+    return no("too_many_entries");
+  if (e.created_at > now + OWNER_LIST_LIMITS.ahead)
+    return no("from_the_future");
+  let signed = false;
+  try {
+    signed = verifyEvent({ ...e, tags: e.tags.map((t) => [...t]) });
+  } catch {
+    signed = false;
+  }
+  if (!signed)
+    return no("bad_signature");
+  const entries = [];
+  let skipped = 0;
+  for (const t of people) {
+    const key = t[1];
+    if (!isHex64(key))
+      skipped++;
+    else if (!entries.includes(key))
+      entries.push(key);
+  }
+  entries.sort();
+  return { ok: true, scope, subject, signer: e.pubkey, entries, skipped };
+}
+function ownerListTemplate(o) {
+  const people = [...new Set(o.people)];
+  if (!isListSubject(o.subject) || people.length > OWNER_LIST_LIMITS.write || !people.every(isHex64))
+    return null;
+  return {
+    kind: LIST_KIND,
+    created_at: o.createdAt,
+    content: "",
+    tags: [["d", listD(o.scope, o.subject, o.namespace)], ["v", "1"], ["scope", o.scope], ["subject", o.subject], ...people.map((p) => ["p", p])]
+  };
+}
+
 // packages/core/dist/manifest.js
+var KEEPERS_MOST = OWNER_LIST_LIMITS.root;
 var stringArray = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
 var ENTRY_POINT = /^[A-Za-z0-9._-]{1,128}$/;
 function wellKnownUrl(urlOrOrigin) {
@@ -4082,6 +4212,22 @@ function parseManifest(input, opts = {}) {
           if (access.length)
             w.access = access;
         }
+      }
+      if (raw.keepers !== void 0) {
+        const said2 = Array.isArray(raw.keepers) ? raw.keepers : [];
+        const keepers = [...new Set(said2.filter(isHex64))];
+        if (!Array.isArray(raw.keepers) || keepers.length !== said2.length)
+          c.warn("invalid_keeper", `${p}.keepers`, "keepers must be a list of 64 lowercase hex keys; anything else is left out.");
+        if (keepers.length > KEEPERS_MOST)
+          c.warn("too_many_keepers", `${p}.keepers`, `Only the first ${KEEPERS_MOST} keepers are used.`);
+        if (keepers.length)
+          w.keepers = keepers.slice(0, KEEPERS_MOST);
+      }
+      if (raw.named_only !== void 0) {
+        if (raw.named_only === true)
+          w.namedOnly = true;
+        else if (raw.named_only !== false)
+          c.warn("invalid_field", `${p}.named_only`, "named_only must be true or false; ignored.");
       }
       worlds2[id] = w;
     }
@@ -4487,7 +4633,7 @@ var ITEM_LIMITS = {
   /** The longest a trail behind a thing sent out may be, in seconds of its flight. */
   trail: 0.6
 };
-var HEX = /^#[0-9a-f]{6}$/;
+var HEX2 = /^#[0-9a-f]{6}$/;
 var PLAIN = /^[a-z][a-z0-9-]{0,23}$/;
 var ITEM_BEHAVIORS = ["holdable", "sittable", "touchable", "readable", "wearable"];
 var ITEM_FITS = ["place", "head", "back", "hand-left", "hand-right", "side"];
@@ -4646,7 +4792,7 @@ function buildItem(o) {
   }
   for (const t of (o.tints ?? []).slice(0, ITEM_LIMITS.tints)) {
     const label = cleanLine(t?.label ?? "", ITEM_LIMITS.label);
-    if (!t || !PLAIN.test(t.slot) || !label || !HEX.test(t.color))
+    if (!t || !PLAIN.test(t.slot) || !label || !HEX2.test(t.color))
       return null;
     tags.push(["tint", t.slot, label, t.color]);
   }
@@ -4700,7 +4846,7 @@ function parseItem(event) {
     }).filter((e) => e !== null),
     does: Object.fromEntries(getTags(event, "does").filter((t) => t[1] === "use" || t[1] === "second").map((t) => [t[1], cleanLine(t[2], ITEM_LIMITS.label)]).filter((d2) => d2[1])),
     aim: readAim(tag("aim")),
-    tints: getTags(event, "tint").slice(0, ITEM_LIMITS.tints).map((t) => ({ slot: t[1] ?? "", label: cleanLine(t[2], ITEM_LIMITS.label), color: t[3] ?? "" })).filter((t, i, all) => PLAIN.test(t.slot) && t.label !== "" && HEX.test(t.color) && all.findIndex((x) => x.slot === t.slot) === i),
+    tints: getTags(event, "tint").slice(0, ITEM_LIMITS.tints).map((t) => ({ slot: t[1] ?? "", label: cleanLine(t[2], ITEM_LIMITS.label), color: t[3] ?? "" })).filter((t, i, all) => PLAIN.test(t.slot) && t.label !== "" && HEX2.test(t.color) && all.findIndex((x) => x.slot === t.slot) === i),
     license: cleanLine(tag("license")?.[1], 40),
     at: Number.isInteger(event.created_at) ? event.created_at : 0
   };
@@ -5441,6 +5587,61 @@ function worldCoordinate2(s) {
   }
   return s;
 }
+function signWorldList(which, world, people) {
+  const keyFile = flag("key-file");
+  const scope = which === "block" ? "user-deny" : which === "allow" ? "user-allow" : null;
+  if (!scope || !world || !keyFile) {
+    console.log(`${BAD} usage: nswp sign-world-list <block|allow> <world: naddr or 37300:<key>:<d>> [people: npub or hex ...] --key-file <path> [--out <file>]`);
+    return 1;
+  }
+  let subject;
+  try {
+    subject = worldCoordinate2(world);
+  } catch (e) {
+    console.log(`${BAD} ${e instanceof Error ? e.message : String(e)}`);
+    return 1;
+  }
+  if (!subject.startsWith(`${WORLD_KIND}:`) || !isListSubject(subject)) {
+    console.log(`${BAD} ${world} is not a world: give its naddr, or 37300:<the key that announced it>:<its d>.`);
+    return 1;
+  }
+  const keys = [];
+  for (const p of people.flatMap((x) => x.split(",")).map((x) => x.trim()).filter(Boolean)) {
+    let key = p;
+    try {
+      if (p.startsWith("npub1")) key = decodeNpub(p);
+    } catch {
+      key = "";
+    }
+    if (!/^[0-9a-f]{64}$/.test(key)) {
+      console.log(`${BAD} ${p.slice(0, 24)} is not a person's key (npub, or 64 lowercase hex).`);
+      return 1;
+    }
+    keys.push(key);
+  }
+  const template = ownerListTemplate({ scope, subject, people: keys, createdAt: Math.floor(Date.now() / 1e3) });
+  if (!template) {
+    console.log(`${BAD} A list may name at most ${OWNER_LIST_LIMITS.write} people.`);
+    return 1;
+  }
+  const secret = readKey(keyFile);
+  const event = finalizeEvent(template, secret);
+  const read = readOwnerList(event, { root: [getPublicKey(secret)] });
+  if (!read.ok) {
+    console.log(`${BAD} The list didn't read back (${read.reason}).`);
+    return 1;
+  }
+  const text = `${JSON.stringify(event, null, 2)}
+`;
+  const outPath = flag("out");
+  if (outPath) writeFileSync(outPath, text);
+  else process.stdout.write(text);
+  const who = read.entries.length === 1 ? "1 person" : `${read.entries.length} people`;
+  console.error(`${OK} ${scope === "user-deny" ? "Block" : "Guest"} list for ${subject}: ${who}${outPath ? ` \u2192 ${outPath}` : ""}`);
+  console.error(`${WARN} Anyone can read this list.${scope === "user-deny" ? " A block list shows whom you blocked." : " A guest list shows who is invited."}`);
+  console.error(`${WARN} It counts only where the world's own manifest names ${getPublicKey(secret).slice(0, 12)}\u2026 in "keepers". It replaces the list before it: whoever isn't named on it is no longer on it.`);
+  return 0;
+}
 function signList(inputPath) {
   const keyFile = flag("key-file");
   if (!keyFile) {
@@ -5545,6 +5746,8 @@ async function main() {
     case "sign-list":
       if (arg) return signList(arg);
       break;
+    case "sign-world-list":
+      return signWorldList(arg, positional[2], positional.slice(3));
     case "make-item":
       if (arg) return makeItem(arg);
       break;
@@ -5570,6 +5773,8 @@ async function main() {
   nswp keygen <key-file>                                  create a publisher key (hex, mode 600)
   nswp sign-world <input.json> --key-file <f> [--out f]   sign a world announcement from a WorldInput file
   nswp sign-list <input.json> --key-file <f> [--out f]    sign a list of worlds: { "d", "title", "description", "worlds": [addresses] }
+  nswp sign-world-list <block|allow> <world> [people...] --key-file <f> [--out f]
+                                                          sign a world owner's whole list of who is kept out or let in (anyone can read it)
   nswp make-item <model.glb> --title <name> --host <https://\u2026/> [--d name] [--summary words] [--out f] [--files dir]
                                                           describe an item from a model made in any tool (NSWP-17)
   nswp sign-item <input.json> --key-file <f> [--out f | --out-dir d]
