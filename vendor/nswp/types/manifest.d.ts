@@ -2,6 +2,19 @@
 export declare const KEEPERS_MOST: 4;
 import { type Issue, type Result } from "./result.js";
 import type { World } from "./world.js";
+/** Above this many megabytes, a world's first download is a lot to ask (spec §10.1, "Budgets": "initial world download warned above 50 MB"). */
+export declare const DOWNLOAD_WARN_MB = 50;
+/**
+ * How big a world says its first download is, for an Airlock to say before the visitor crosses
+ * (protocol/02-doors.md, "What an Airlock does"): `mb`, the words to show, and `heavy` above `DOWNLOAD_WARN_MB`.
+ * It is the world's own claim, from its manifest's `budgets.initial_download_mb`, and nothing here checks it: the
+ * words say so. Null where the world says nothing, or something that isn't a size.
+ */
+export declare function worldDownload(world: Pick<ManifestWorld, "budgets"> | null | undefined): {
+    mb: number;
+    words: string;
+    heavy: boolean;
+} | null;
 export interface ManifestWorld {
     entry: {
         url: string;

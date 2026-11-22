@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.79.1";
+var KIT_VERSION = "0.80.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4940,6 +4940,14 @@ function ownerListTemplate(o) {
 
 // packages/core/src/manifest.ts
 var KEEPERS_MOST = OWNER_LIST_LIMITS.root;
+var DOWNLOAD_WARN_MB = 50;
+function worldDownload(world) {
+  const mb = world?.budgets?.initialDownloadMb;
+  if (typeof mb !== "number" || !Number.isFinite(mb) || mb < 0) return null;
+  const size = mb < 1 ? "less than 1 MB" : mb < 10 ? `about ${Math.round(mb * 10) / 10} MB` : mb < 1e3 ? `about ${Math.round(mb)} MB` : `about ${Math.round(mb / 100) / 10} GB`;
+  const heavy = mb > DOWNLOAD_WARN_MB;
+  return { mb, words: `The world says ${size} to download${heavy ? ": a lot on a phone's data" : ""}`, heavy };
+}
 var stringArray = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
 var ENTRY_POINT = /^[A-Za-z0-9._-]{1,128}$/;
 function wellKnownUrl(urlOrOrigin) {
@@ -8913,6 +8921,7 @@ export {
   DISCOVERY,
   DISCOVERY_RELAYS,
   DOOR_OFFERS,
+  DOWNLOAD_WARN_MB,
   ENTRY_ASSERTION_KIND,
   FILE_LIMITS,
   FOLLOWS_KIND,
@@ -9271,6 +9280,7 @@ export {
   wayWithoutDestination,
   wellKnownUrl,
   worldCoordinate,
+  worldDownload,
   worldOffers,
   worldSubject,
   wrapSeal,

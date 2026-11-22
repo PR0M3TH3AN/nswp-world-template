@@ -178,6 +178,15 @@ function savePins(pins) {
   } catch {
   }
 }
+var LOADING_WORDS = 80;
+function cleanLoading(state) {
+  if (!state || typeof state !== "object") return null;
+  const raw = typeof state.words === "string" ? state.words : "";
+  const words = [...raw.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim()].slice(0, LOADING_WORDS).join("").trim();
+  const f = state.fraction;
+  const fraction = typeof f === "number" && Number.isFinite(f) ? Math.min(1, Math.max(0, f)) : null;
+  return { fraction, words };
+}
 function createControls(opts) {
   const sections = STANDARD.map((s) => ({ ...s }));
   for (const s of opts.sections ?? []) addSection(s);
@@ -202,6 +211,7 @@ function createControls(opts) {
   let theme = resolveTheme(opts.theme, visitor);
   let target = "";
   let detail = [];
+  let loading = null;
   let presence = PRESENCES.includes(opts.presence) ? opts.presence : "full";
   let corner = CORNERS.includes(opts.corner) ? opts.corner : "top-left";
   let keys = cleanKeys({ menu: "m", hotbar: true, chat: "t" }, opts.keys);
@@ -261,6 +271,12 @@ function createControls(opts) {
       claimed = next;
       changed();
     },
+    setLoading(state) {
+      const next = cleanLoading(state);
+      if (JSON.stringify(next) === JSON.stringify(loading)) return;
+      loading = next;
+      changed();
+    },
     setTarget(text, more = []) {
       const next = text ? more.filter((line) => typeof line === "string" && line.trim()).slice(0, 4) : [];
       if (text === target && next.join("\n") === detail.join("\n")) return;
@@ -315,6 +331,7 @@ function createControls(opts) {
         address: opts.address ?? "",
         target,
         detail,
+        loading,
         sections: shown,
         hotbar: bar.map(item),
         // Only tabs this place has: a tab pinned in another world that isn't here is kept, and not shown.
@@ -430,6 +447,19 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .low { position: absolute; left: 0; right: 0; bottom: max(10px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 12px; }
 .target { max-width: min(92vw, 640px); padding: 6px 14px; border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .target:empty { visibility: hidden; }
+/* Still loading, though they are in (controls.setLoading): the world's words, how far, and a line that fills. Above
+   what is pointed at, and pressing nothing. */
+.loading { position: relative; overflow: hidden; max-width: min(92vw, 520px); padding: 6px 16px 8px; border-radius: 999px;
+  display: flex; gap: 10px; align-items: baseline; white-space: nowrap; font-size: .92em; }
+.loading[hidden] { display: none; }
+.loading .what { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.loading .much { flex: none; color: rgb(var(--accent)); font-variant-numeric: tabular-nums; }
+.loading .fill { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; transform-origin: left; transform: scaleX(var(--f, 0));
+  background: rgb(var(--accent)); box-shadow: 0 0 8px rgb(var(--accent)); }
+/* How far isn't known: a short light runs along the line. */
+.loading.unknown .fill { width: 30%; transform: none; animation: loading-run 1.6s ease-in-out infinite; }
+:host(:not(.moving)) .loading.unknown .fill { animation: none; width: 100%; opacity: .5; }
+@keyframes loading-run { from { translate: -100% 0; } to { translate: 340% 0; } }
 /* What is pointed at, with a few lines about it: a small card, always this size, never in the way of the thing itself. */
 .target.card { max-width: min(92vw, 460px); padding: 10px 16px; border-radius: 14px; white-space: normal; text-align: left; display: grid; gap: 3px; }
 .target.card b { font-weight: 650; }
@@ -643,7 +673,7 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .quiet:hover, .quiet[aria-expanded="true"] { border-color: rgb(var(--accent)); }
 :host([data-presence="quiet"]) .quiet { display: grid; }
 :host([data-presence="quiet"]) :is(.id, .menu, .bar, .target, .corner),
-:host([data-presence="hidden"]) :is(.id, .menu, .bar, .target, .corner, .says) { display: none; }
+:host([data-presence="hidden"]) :is(.id, .menu, .bar, .target, .corner, .says, .loading) { display: none; }
 :host([data-corner="top-left"]) .quiet { top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); }
 :host([data-corner="top-right"]) .quiet { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
 :host([data-corner="bottom-left"]) .quiet { bottom: max(12px, env(safe-area-inset-bottom)); left: max(12px, env(safe-area-inset-left)); }
@@ -742,6 +772,10 @@ function mountHud(controls, opts = {}) {
   const menu = el("button", { class: "menu glass", type: "button", "aria-haspopup": "dialog", "aria-expanded": "false" }, icon("menu"), el("span", {}, "Menu"), el("kbd", {}, "M"));
   const quiet = el("button", { class: "quiet glass", type: "button", "aria-label": "Menu", "aria-haspopup": "dialog", "aria-expanded": "false" }, el("span", { class: "mark", "aria-hidden": "true" }));
   const target = el("div", { class: "target glass", "aria-live": "polite" });
+  const loadingWhat = el("span", { class: "what", "aria-live": "polite" });
+  const loadingMuch = el("span", { class: "much" });
+  const loadingFill = el("i", { class: "fill", "aria-hidden": "true" });
+  const loadingLine = el("div", { class: "loading glass", hidden: "" }, loadingWhat, loadingMuch, loadingFill);
   const hotbar = el("nav", { class: "hotbar", "aria-label": "Controls" });
   const barBack = el("button", { class: "more left spent", type: "button", "aria-label": "Earlier keys", tabindex: "-1" }, "\u2039");
   const barOn = el("button", { class: "more right spent", type: "button", "aria-label": "More keys", tabindex: "-1" }, "\u203A");
@@ -847,7 +881,7 @@ function mountHud(controls, opts = {}) {
   const chatSend = el("button", { type: "submit" }, "Send");
   const chatForm = el("form", {}, chatField, chatSend);
   const chat = el("section", { class: "chat", "aria-label": "Room chat", "data-state": "closed", "data-tab": "room" }, el("div", { class: "frame glass" }, el("header", {}, chatTitle, chatTabs, chatClose), feedLead, chatEmpty, chatLines, chatHint, feedSaid, chatForm));
-  root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, el("div", { class: "low" }, target, bar));
+  root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, el("div", { class: "low" }, loadingLine, target, bar));
   (opts.parent ?? document.body).append(host);
   let open = false;
   let section = "";
@@ -1160,6 +1194,14 @@ function mountHud(controls, opts = {}) {
     address.textContent = view.address;
     sayWho(view.sections.find((section2) => section2.id === "you")?.card ?? null);
     full.hidden = !fullscreenButton.shown() || view.presence === "hidden" || asWho.classList.contains("shown");
+    const loads = view.loading;
+    loadingLine.hidden = !loads;
+    if (loads) {
+      loadingWhat.textContent = loads.words || "Still loading";
+      loadingMuch.textContent = loads.fraction === null ? "" : `${Math.floor(loads.fraction * 100)}%`;
+      loadingLine.classList.toggle("unknown", loads.fraction === null);
+      loadingFill.style.setProperty("--f", String(loads.fraction ?? 0));
+    }
     const shown = [view.target, ...view.detail].join("\n");
     if (target.dataset.shown !== shown) {
       target.dataset.shown = shown;
@@ -1472,7 +1514,7 @@ function mountHud(controls, opts = {}) {
     setChatOpen,
     bounds() {
       if (host.hidden) return [];
-      return [id, menu, quiet, bar, target, sheet, ...chatState === "open" ? [chat] : []].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0).map((r) => ({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }));
+      return [id, menu, quiet, bar, target, loadingLine, sheet, ...chatState === "open" ? [chat] : []].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0).map((r) => ({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }));
     },
     cover() {
       if (host.hidden || controls.presence !== "full") return { top: 0, bottom: 0 };

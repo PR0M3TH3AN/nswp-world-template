@@ -233,7 +233,8 @@ function createConsole(controls, opts) {
     const view = controls.view();
     const t = view.theme;
     if (!view.sections.some((s) => s.id === section)) section = view.sections[0]?.id ?? "";
-    const signature = JSON.stringify([view.title, view.address, view.sections, section, aimed, t, linePage]);
+    const loads = view.loading ? { words: view.loading.words, much: view.loading.fraction === null ? null : Math.floor(view.loading.fraction * 100) } : null;
+    const signature = JSON.stringify([view.title, view.address, loads, view.sections, section, aimed, t, linePage]);
     if (signature === painted) return;
     painted = signature;
     const A = rgb(t.accent);
@@ -269,7 +270,15 @@ function createConsole(controls, opts) {
     g.fillText(fit(g, view.title, W - 300), 112, 62);
     g.font = `400 ${Math.round(24 * k)}px ${MONO}`;
     g.fillStyle = `rgba(${I}, 0.66)`;
-    g.fillText(fit(g, view.address, W - 300), 112, 96);
+    g.fillText(fit(g, view.address, loads ? (W - 300) / 2 - 16 : W - 300), 112, 96);
+    if (loads) {
+      g.font = `500 ${Math.round(24 * k)}px ${SANS}`;
+      g.fillStyle = `rgb(${A})`;
+      g.textAlign = "right";
+      const said = `${loads.words || "Still loading"}${loads.much === null ? "" : `  ${loads.much}%`}`;
+      g.fillText(fit(g, said, (W - 300) / 2 - 16), W - 172, 96);
+      g.textAlign = "left";
+    }
     const button = (r, draw) => {
       regions.push(r);
       draw(aimed === r.id);
@@ -287,6 +296,10 @@ function createConsole(controls, opts) {
     });
     g.fillStyle = `rgba(${A}, 0.22)`;
     g.fillRect(28, 122, W - 56, 2);
+    if (loads) {
+      g.fillStyle = `rgba(${A}, ${loads.much === null ? 0.45 : 1})`;
+      g.fillRect(28, 121, (W - 56) * (loads.much === null ? 1 : loads.much / 100), 4);
+    }
     const tabs = tabLayout(view.sections.length);
     const tabIcon = Math.min(36, tabs.tabH - 18);
     view.sections.forEach((s, i) => {
