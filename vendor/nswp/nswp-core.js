@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.74.1";
+var KIT_VERSION = "0.75.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -503,15 +503,15 @@ var SHA2_32B = class extends HashMD {
     this.H = IV[7] | 0;
   }
   get() {
-    const { A, B, C, D, E, F, G, H } = this;
-    return [A, B, C, D, E, F, G, H];
+    const { A, B, C, D: D2, E, F, G, H } = this;
+    return [A, B, C, D2, E, F, G, H];
   }
   // prettier-ignore
-  set(A, B, C, D, E, F, G, H) {
+  set(A, B, C, D2, E, F, G, H) {
     this.A = A | 0;
     this.B = B | 0;
     this.C = C | 0;
-    this.D = D | 0;
+    this.D = D2 | 0;
     this.E = E | 0;
     this.F = F | 0;
     this.G = G | 0;
@@ -531,7 +531,7 @@ var SHA2_32B = class extends HashMD {
       const s1 = rotr(W2, 17) ^ rotr(W2, 19) ^ W2 >>> 10;
       SHA256_W[i] = s1 + SHA256_W[i - 7] + s0 + SHA256_W[i - 16] | 0;
     }
-    let { A, B, C, D, E, F, G, H } = this;
+    let { A, B, C, D: D2, E, F, G, H } = this;
     for (let i = 0; i < 64; i++) {
       const sigma1 = rotr(E, 6) ^ rotr(E, 11) ^ rotr(E, 25);
       const T1 = H + sigma1 + Chi(E, F, G) + SHA256_K[i] + SHA256_W[i] | 0;
@@ -540,8 +540,8 @@ var SHA2_32B = class extends HashMD {
       H = G;
       G = F;
       F = E;
-      E = D + T1 | 0;
-      D = C;
+      E = D2 + T1 | 0;
+      D2 = C;
       C = B;
       B = A;
       A = T1 + T2 | 0;
@@ -549,12 +549,12 @@ var SHA2_32B = class extends HashMD {
     A = A + this.A | 0;
     B = B + this.B | 0;
     C = C + this.C | 0;
-    D = D + this.D | 0;
+    D2 = D2 + this.D | 0;
     E = E + this.E | 0;
     F = F + this.F | 0;
     G = G + this.G | 0;
     H = H + this.H | 0;
-    this.set(A, B, C, D, E, F, G, H);
+    this.set(A, B, C, D2, E, F, G, H);
   }
   roundClean() {
     clean(SHA256_W);
@@ -1050,8 +1050,8 @@ function FpLegendre(Fp, n) {
   const powered = F.pow(n, p1mod2);
   const yes = F.eql(powered, F.ONE);
   const zero = F.eql(powered, F.ZERO);
-  const no3 = F.eql(powered, F.neg(F.ONE));
-  if (!yes && !zero && !no3)
+  const no4 = F.eql(powered, F.neg(F.ONE));
+  if (!yes && !zero && !no4)
     throw new Error("invalid Legendre symbol result");
   return yes ? 1 : zero ? 0 : -1;
 }
@@ -4356,34 +4356,34 @@ function cleanShareLabel(input) {
   return text2;
 }
 function readShares(tags, seller) {
-  const no3 = (why) => ({ ok: false, why });
-  if (!Array.isArray(tags)) return no3("not-a-share");
+  const no4 = (why) => ({ ok: false, why });
+  if (!Array.isArray(tags)) return no4("not-a-share");
   const mine = tags.filter((t) => Array.isArray(t) && t[0] === SHARE_TAG);
   if (mine.length === 0) return { ok: true, shares: [] };
-  if (!isHex64(seller)) return no3("no-seller");
-  if (mine.length > SHARE_LIMITS.most) return no3("too-many");
+  if (!isHex64(seller)) return no4("no-seller");
+  if (mine.length > SHARE_LIMITS.most) return no4("too-many");
   const shares = [];
   for (const t of mine) {
     const [, to, parts, label] = t;
-    if (t.length < 3 || t.length > 4) return no3("not-a-share");
-    if (to !== SHARE_CLIENT && !isHex64(to)) return no3("not-a-share");
-    if (typeof parts !== "string" || !/^[1-9][0-9]{0,4}$/.test(parts) || Number(parts) > SHARE_LIMITS.whole) return no3("not-a-share");
+    if (t.length < 3 || t.length > 4) return no4("not-a-share");
+    if (to !== SHARE_CLIENT && !isHex64(to)) return no4("not-a-share");
+    if (typeof parts !== "string" || !/^[1-9][0-9]{0,4}$/.test(parts) || Number(parts) > SHARE_LIMITS.whole) return no4("not-a-share");
     const word = label === void 0 ? to === SHARE_CLIENT ? "client" : to === seller ? "seller" : "share" : cleanShareLabel(label);
-    if (!word) return no3("not-a-share");
-    if (shares.some((s) => s.to === to)) return no3("twice");
+    if (!word) return no4("not-a-share");
+    if (shares.some((s) => s.to === to)) return no4("twice");
     shares.push({ to, parts: Number(parts), label: word });
   }
-  if (!shares.some((s) => s.to === seller)) return no3("no-seller");
-  if (shares.reduce((sum, s) => sum + s.parts, 0) !== SHARE_LIMITS.whole) return no3("not-whole");
+  if (!shares.some((s) => s.to === seller)) return no4("no-seller");
+  if (shares.reduce((sum, s) => sum + s.parts, 0) !== SHARE_LIMITS.whole) return no4("not-whole");
   return { ok: true, shares };
 }
 function splitPrice(price, shares, seller, o = {}) {
-  const no3 = (why) => ({ ok: false, why });
+  const no4 = (why) => ({ ok: false, why });
   const charge = o.charge ?? 0;
-  if (typeof price !== "number" || !Number.isSafeInteger(price) || price < 1 || !Number.isSafeInteger(price * SHARE_LIMITS.whole)) return no3("not-a-price");
-  if (!Number.isSafeInteger(charge) || charge < 0) return no3("not-a-price");
-  if (!isHex64(seller)) return no3("no-seller");
-  if (shares.length > 0 && !shares.some((s) => s.to === seller)) return no3("no-seller");
+  if (typeof price !== "number" || !Number.isSafeInteger(price) || price < 1 || !Number.isSafeInteger(price * SHARE_LIMITS.whole)) return no4("not-a-price");
+  if (!Number.isSafeInteger(charge) || charge < 0) return no4("not-a-price");
+  if (!isHex64(seller)) return no4("no-seller");
+  if (shares.length > 0 && !shares.some((s) => s.to === seller)) return no4("no-seller");
   const client = isHex64(o.client) && o.client !== seller ? o.client : null;
   const others = /* @__PURE__ */ new Map();
   for (const s of shares) {
@@ -4400,7 +4400,7 @@ function splitPrice(price, shares, seller, o = {}) {
   const parts = [...others].map(([to, p]) => ({ to, sats: p.sats, label: p.label, seller: false }));
   parts.sort((a, b) => a.sats - b.sats || (a.to < b.to ? -1 : 1));
   parts.push({ to: seller, sats: left, label, seller: true });
-  if (parts.some((p) => p.sats < SHARE_LIMITS.least)) return no3("too-small");
+  if (parts.some((p) => p.sats < SHARE_LIMITS.least)) return no4("too-small");
   return { ok: true, parts };
 }
 
@@ -4819,7 +4819,118 @@ function line(id, on) {
   return [on, WORDS[id][on ? 0 : 1]];
 }
 
+// packages/core/src/owner-lists.ts
+var LIST_KIND = 30078;
+var LIST_NAMESPACE = "nswp";
+var OWNER_LIST_LIMITS = { read: 2e3, write: 500, ahead: 600, root: 4 };
+var NAMESPACE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+var D = /^([^:]*):governance:([^:]*):v([^:]*):([\s\S]*)$/;
+var HEX = (n) => new RegExp(`^[0-9a-f]{${n}}$`);
+var HEX1282 = HEX(128);
+var no3 = (reason) => ({ ok: false, reason });
+function isListSubject(subject) {
+  if (typeof subject !== "string") return false;
+  const m = /^(0|[1-9][0-9]{0,4}):([0-9a-f]{64}):([\s\S]*)$/.exec(subject);
+  if (!m || Number(m[1]) > 65535) return false;
+  const name = m[3];
+  if (!name || new TextEncoder().encode(name).length > 512) return false;
+  return !/[\u0000-\u001f\u007f]/.test(name);
+}
+function worldSubject(publisher, d) {
+  return `37300:${publisher}:${d}`;
+}
+function listD(scope, subject, namespace = LIST_NAMESPACE) {
+  return `${namespace}:governance:${scope}:v1:${subject}`;
+}
+function cleanRoot(root) {
+  const keys = Array.isArray(root) ? root : [root];
+  if (keys.length < 1 || keys.length > OWNER_LIST_LIMITS.root || !keys.every(isHex64)) return null;
+  return [...new Set(keys)];
+}
+var shaped = (e) => {
+  const v = e;
+  return !!v && typeof v === "object" && isHex64(v.id) && isHex64(v.pubkey) && typeof v.sig === "string" && HEX1282.test(v.sig) && Number.isInteger(v.kind) && Number.isInteger(v.created_at) && typeof v.content === "string" && Array.isArray(v.tags) && v.tags.every((t) => Array.isArray(t) && t.every((x) => typeof x === "string"));
+};
+function readOwnerList(event, o = {}) {
+  const now = o.now ?? Math.floor(Date.now() / 1e3);
+  if (!shaped(event)) return no3("not_an_event");
+  const e = event;
+  if (e.kind !== LIST_KIND) return no3("wrong_kind");
+  const ds = e.tags.filter((t) => t[0] === "d");
+  const m = ds.length === 1 ? D.exec(ds[0][1] ?? "") : null;
+  if (!m || !NAMESPACE.test(m[1]) || !/^[0-9]+$/.test(m[3])) return no3("bad_d");
+  const [, , scope, version, subject] = m;
+  if (version !== "1") return no3("unsupported_version");
+  if (scope !== "user-allow" && scope !== "user-deny") return no3("unsupported_scope");
+  if (!isListSubject(subject)) return no3("bad_subject");
+  const one = (name, value) => {
+    const found = e.tags.filter((t) => t[0] === name);
+    return found.length === 1 && found[0][1] === value;
+  };
+  if (!one("v", version) || !one("scope", scope) || !one("subject", subject)) return no3("tag_mismatch");
+  const root = o.root === void 0 ? [subject.slice(subject.indexOf(":") + 1, subject.indexOf(":") + 65)] : cleanRoot(o.root);
+  if (!root || !root.includes(e.pubkey)) return no3("wrong_signer");
+  if (e.content !== "") return no3("content_not_empty");
+  const people = e.tags.filter((t) => t[0] === "p");
+  if (people.length > OWNER_LIST_LIMITS.read) return no3("too_many_entries");
+  if (e.created_at > now + OWNER_LIST_LIMITS.ahead) return no3("from_the_future");
+  let signed = false;
+  try {
+    signed = verifyEvent({ ...e, tags: e.tags.map((t) => [...t]) });
+  } catch {
+    signed = false;
+  }
+  if (!signed) return no3("bad_signature");
+  const entries = [];
+  let skipped = 0;
+  for (const t of people) {
+    const key = t[1];
+    if (!isHex64(key)) skipped++;
+    else if (!entries.includes(key)) entries.push(key);
+  }
+  entries.sort();
+  return { ok: true, scope, subject, signer: e.pubkey, entries, skipped };
+}
+function resolveOwnerList(events, q) {
+  const now = q.now ?? Math.floor(Date.now() / 1e3);
+  const d = listD(q.scope, q.subject, q.namespace ?? LIST_NAMESPACE);
+  const root = q.root === void 0 ? isListSubject(q.subject) ? [q.subject.split(":")[1]] : null : cleanRoot(q.root);
+  if (!root) return { ok: false, reason: "wrong_signer", futureDated: [] };
+  const candidates = [];
+  const futureDated = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const e of events) {
+    if (!shaped(e) || e.kind !== LIST_KIND || !root.includes(e.pubkey) || seen.has(e.id)) continue;
+    const ds = e.tags.filter((t) => t[0] === "d");
+    if (ds.length !== 1 || ds[0][1] !== d) continue;
+    let signed = false;
+    try {
+      signed = verifyEvent({ ...e, tags: e.tags.map((t) => [...t]) });
+    } catch {
+      signed = false;
+    }
+    if (!signed) continue;
+    seen.add(e.id);
+    if (e.created_at > now + OWNER_LIST_LIMITS.ahead) futureDated.push(e.id);
+    else candidates.push(e);
+  }
+  if (!candidates.length) return { ok: false, reason: "not_found", futureDated };
+  candidates.sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1));
+  return { ...readOwnerList(candidates[0], { root, now }), futureDated };
+}
+function ownerListTemplate(o) {
+  const people = [...new Set(o.people)];
+  if (!isListSubject(o.subject) || people.length > OWNER_LIST_LIMITS.write || !people.every(isHex64)) return null;
+  return {
+    kind: LIST_KIND,
+    created_at: o.createdAt,
+    content: "",
+    tags: [["d", listD(o.scope, o.subject, o.namespace)], ["v", "1"], ["scope", o.scope], ["subject", o.subject], ...people.map((p) => ["p", p])]
+  };
+}
+
 // packages/core/src/manifest.ts
+var KEEPERS_MOST = OWNER_LIST_LIMITS.root;
 var stringArray = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
 var ENTRY_POINT = /^[A-Za-z0-9._-]{1,128}$/;
 function wellKnownUrl(urlOrOrigin) {
@@ -4921,6 +5032,17 @@ function parseManifest(input, opts = {}) {
           if (access.length) w.access = access;
         }
       }
+      if (raw.keepers !== void 0) {
+        const said2 = Array.isArray(raw.keepers) ? raw.keepers : [];
+        const keepers = [...new Set(said2.filter(isHex64))];
+        if (!Array.isArray(raw.keepers) || keepers.length !== said2.length) c.warn("invalid_keeper", `${p}.keepers`, "keepers must be a list of 64 lowercase hex keys; anything else is left out.");
+        if (keepers.length > KEEPERS_MOST) c.warn("too_many_keepers", `${p}.keepers`, `Only the first ${KEEPERS_MOST} keepers are used.`);
+        if (keepers.length) w.keepers = keepers.slice(0, KEEPERS_MOST);
+      }
+      if (raw.named_only !== void 0) {
+        if (raw.named_only === true) w.namedOnly = true;
+        else if (raw.named_only !== false) c.warn("invalid_field", `${p}.named_only`, "named_only must be true or false; ignored.");
+      }
       worlds[id] = w;
     }
   }
@@ -4989,7 +5111,8 @@ function accessFor(manifest, url) {
   const d = Object.keys(manifest.worlds).find((id) => normalizeUrl(manifest.worlds[id].entry.url) === here);
   if (d === void 0) return null;
   const sellers = Object.keys(manifest.publishers).filter((key) => manifest.publishers[key].worlds.includes(d));
-  return { d, listings: [...manifest.worlds[d].access ?? []], sellers };
+  const w = manifest.worlds[d];
+  return { d, listings: [...w.access ?? []], sellers, keepers: w.keepers ? [...w.keepers] : null, namedOnly: w.namedOnly === true };
 }
 async function fetchManifest(urlOrOrigin, fetchImpl = fetch, timeoutMs = 8e3) {
   const url = wellKnownUrl(urlOrOrigin);
@@ -5908,7 +6031,7 @@ function fragmentSaysImmersive(hash) {
 function wayWithoutDestination(hash) {
   const parts = hash.replace(/^#/, "").split("&").filter(Boolean);
   const reported = parts.find((p) => /^blocked=[0-9a-f,]+$/.test(p));
-  const set = parts.find((p) => /^set=[A-Za-z0-9_-]{1,400}$/.test(p));
+  const set = parts.find((p) => p.startsWith("set=") && p.length - 4 <= SETTINGS_LINK_LIMIT && /^set=[A-Za-z0-9_-]+$/.test(p));
   if (parts.some((p) => p !== "xr=1" && p !== "doors=1" && p !== "joined=1" && p !== "mic=1" && p !== "moving=intense" && p !== reported && p !== set)) return null;
   const settings = set ? decodeSettings(set.slice(4)) : {};
   const joined = parts.includes("joined=1");
@@ -7541,7 +7664,7 @@ var ITEM_LIMITS = {
   /** The longest a trail behind a thing sent out may be, in seconds of its flight. */
   trail: 0.6
 };
-var HEX = /^#[0-9a-f]{6}$/;
+var HEX2 = /^#[0-9a-f]{6}$/;
 var PLAIN = /^[a-z][a-z0-9-]{0,23}$/;
 var ITEM_BEHAVIORS = ["holdable", "sittable", "touchable", "readable", "wearable"];
 var ITEM_FITS = ["place", "head", "back", "hand-left", "hand-right", "side"];
@@ -7670,7 +7793,7 @@ function buildItem(o) {
   }
   for (const t of (o.tints ?? []).slice(0, ITEM_LIMITS.tints)) {
     const label = cleanLine(t?.label ?? "", ITEM_LIMITS.label);
-    if (!t || !PLAIN.test(t.slot) || !label || !HEX.test(t.color)) return null;
+    if (!t || !PLAIN.test(t.slot) || !label || !HEX2.test(t.color)) return null;
     tags.push(["tint", t.slot, label, t.color]);
   }
   const license = cleanLine(o.license ?? "", 40);
@@ -7723,7 +7846,7 @@ function parseItem(event) {
       getTags(event, "does").filter((t) => t[1] === "use" || t[1] === "second").map((t) => [t[1], cleanLine(t[2], ITEM_LIMITS.label)]).filter((d2) => d2[1])
     ),
     aim: readAim(tag("aim")),
-    tints: getTags(event, "tint").slice(0, ITEM_LIMITS.tints).map((t) => ({ slot: t[1] ?? "", label: cleanLine(t[2], ITEM_LIMITS.label), color: t[3] ?? "" })).filter((t, i, all) => PLAIN.test(t.slot) && t.label !== "" && HEX.test(t.color) && all.findIndex((x) => x.slot === t.slot) === i),
+    tints: getTags(event, "tint").slice(0, ITEM_LIMITS.tints).map((t) => ({ slot: t[1] ?? "", label: cleanLine(t[2], ITEM_LIMITS.label), color: t[3] ?? "" })).filter((t, i, all) => PLAIN.test(t.slot) && t.label !== "" && HEX2.test(t.color) && all.findIndex((x) => x.slot === t.slot) === i),
     license: cleanLine(tag("license")?.[1], 40),
     at: Number.isInteger(event.created_at) ? event.created_at : 0
   };
@@ -8756,7 +8879,7 @@ export {
   GRAVITY,
   HANDOFF_PROTOCOL,
   HEALTH,
-  HEX,
+  HEX2 as HEX,
   HOME_CAPABILITY,
   HOME_LAYOUT_KIND,
   INPUTS,
@@ -8771,13 +8894,16 @@ export {
   ITEM_LIMITS,
   ITEM_MOMENTS,
   ITEM_RULES,
+  KEEPERS_MOST,
   KIT_VERSION,
   LAYOUT_ACCESS,
   LAYOUT_LIMITS,
   LEAST_PRICE_SATS,
   LIMITS,
   LISTING_KIND,
+  LIST_KIND,
   LIST_LIMITS,
+  LIST_NAMESPACE,
   LOCAL_MAP_LIMIT,
   LOCAL_MAP_PATH,
   LOCAL_MAP_WAIT,
@@ -8796,6 +8922,7 @@ export {
   NswpError,
   OFFERS,
   ORDINARY_KINDS,
+  OWNER_LIST_LIMITS,
   PASS_LIMITS,
   PERF_TIERS,
   PERSON_SHAPE,
@@ -8914,6 +9041,7 @@ export {
   cleanPicture,
   cleanRead,
   cleanRelayUrl,
+  cleanRoot,
   cleanScore,
   cleanSettings,
   cleanShareLabel,
@@ -8967,6 +9095,7 @@ export {
   isForm,
   isHex64,
   isHttpsUrl,
+  isListSubject,
   isLocalHost,
   isPlainObject,
   isPose,
@@ -8982,6 +9111,7 @@ export {
   kitAge,
   latestAddressable,
   learnRelays,
+  listD,
   listingSeller,
   localMap,
   lookFromTags,
@@ -9005,6 +9135,7 @@ export {
   openSave,
   openSignal,
   openWrap,
+  ownerListTemplate,
   packBrought,
   packPose,
   paidWorldReaches,
@@ -9046,6 +9177,7 @@ export {
   readListing,
   readMessage,
   readMessageRelays,
+  readOwnerList,
   readReceipt,
   readRelayFinding,
   readRelayList,
@@ -9054,6 +9186,7 @@ export {
   readSignerReply,
   readSignerRequest,
   relayScore,
+  resolveOwnerList,
   roomTopic,
   saveAddress,
   scoreForWorld,
@@ -9095,6 +9228,7 @@ export {
   wellKnownUrl,
   worldCoordinate,
   worldOffers,
+  worldSubject,
   wrapSeal,
   writeRelaysFor,
   writtenWith

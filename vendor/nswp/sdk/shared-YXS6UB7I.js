@@ -2273,6 +2273,7 @@ var HELLO_EVERY_MS = 2e4;
 var RECORDING_HOLD_MS = 6e3;
 var CONNECT_TIMEOUT_MS = 25e3;
 var SILENT_TIMEOUT_MS = 8e3;
+var NAMED_WAIT_MS = 7e3;
 var GATHER_TIMEOUT_MS = 2500;
 var hexToBytes3 = (hex) => {
   if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error("not a key");
@@ -2294,6 +2295,15 @@ var RoomSession = class {
   relays;
   /** Keys this visitor won't be in a room with: session keys, and the identity keys behind names. */
   blocked = /* @__PURE__ */ new Set();
+  /** Identity keys the world's owner keeps out. Never the visitor's own: never kept or carried on. */
+  ownerBlocked = /* @__PURE__ */ new Set();
+  /** Session keys let go this visit for the world's rules (the owner's list, or no pass where one is needed): not answered again. */
+  turnedAway = /* @__PURE__ */ new Set();
+  /** Whether this room shows only people whose pass checks out. */
+  namedOnly;
+  /** In a room that shows only named people: the members shown, by session key, and what arrived for each before. */
+  announced = /* @__PURE__ */ new Set();
+  waiting = /* @__PURE__ */ new Map();
   maxMembers;
   iceServers;
   sockets = /* @__PURE__ */ new Map();
@@ -2376,6 +2386,25 @@ var RoomSession = class {
     this.maxMembers = opts.maxMembers ?? ROOM_LIMITS.defaultMaxMembers;
     this.iceServers = opts.iceServers ?? DEFAULT_ICE;
     for (const k of opts.blocked ?? []) if (/^[0-9a-f]{64}$/.test(k)) this.blocked.add(k);
+    for (const k of opts.ownerBlocked ?? []) if (/^[0-9a-f]{64}$/.test(k)) this.ownerBlocked.add(k);
+    this.namedOnly = opts.namedOnly === true;
+  }
+  /**
+   * The keys the world's owner keeps out, as the world's gate last read them. Anyone here whose pass names one is
+   * let go at once: to them, this visitor has left. Nobody is told, and nothing is kept.
+   */
+  setOwnerBlocked(keys) {
+    this.ownerBlocked = new Set([...keys].filter((k) => /^[0-9a-f]{64}$/.test(k)));
+    for (const peer of [...this.peers.values()]) if (peer.member.identity && this.ownerBlocked.has(peer.member.identity)) this.turnAway(peer.member.pubkey);
+  }
+  /** Let someone go for the world's rules, and answer them no more this visit. */
+  turnAway(pubkey) {
+    this.turnedAway.add(pubkey);
+    try {
+      this.publish(buildSignal(this.topic, this.key, pubkey, { t: "bye" }));
+    } catch {
+    }
+    this.drop(pubkey, true);
   }
   /**
    * Stop being in a room with someone. The connection to them is closed and
@@ -2410,6 +2439,14 @@ var RoomSession = class {
     return () => this.listeners[event].delete(fn);
   }
   emit(event, ...args) {
+    const about = args[0];
+    if (this.namedOnly && about && typeof about === "object" && about !== this.self && !this.announced.has(about.pubkey)) {
+      if (event === "audio" || event === "music" || event === "video") {
+        const kept = this.waiting.get(about.pubkey) ?? [];
+        this.waiting.set(about.pubkey, [...kept.filter((w) => w.kind !== event), { kind: event, stream: args[1] }]);
+      }
+      return;
+    }
     for (const fn of this.listeners[event]) {
       try {
         fn(...args);
@@ -2419,7 +2456,7 @@ var RoomSession = class {
     }
   }
   get members() {
-    return [...this.peers.values()].filter((p) => p.open).map((p) => p.member);
+    return [...this.peers.values()].filter((p) => p.open && (!this.namedOnly || this.announced.has(p.member.pubkey))).map((p) => p.member);
   }
   /** How many relays are currently connected. */
   get relayCount() {
@@ -2487,7 +2524,7 @@ var RoomSession = class {
     const opened = openSignal(raw, this.key, this.topic);
     if (!opened || this.closed) return;
     const { from, message } = opened;
-    if (this.blocked.has(from)) return;
+    if (this.blocked.has(from) || this.turnedAway.has(from)) return;
     const existing = this.peers.get(from);
     try {
       switch (message.t) {
@@ -2551,6 +2588,7 @@ var RoomSession = class {
       if (peer.open || this.peers.get(peer.member.pubkey) !== peer) return;
       peer.open = true;
       peer.lastSeen = Date.now();
+      peer.openedAt = Date.now();
       this.emit("member", peer.member);
       this.introduce(ch);
     };
@@ -2650,8 +2688,15 @@ var RoomSession = class {
       this.drop(peer.member.pubkey, true);
       return;
     }
+    if (this.ownerBlocked.has(checked.value.pubkey)) return this.turnAway(peer.member.pubkey);
     peer.passUntil = checked.value.expiresAt;
     Object.assign(peer.member, { guest: false, identity: checked.value.pubkey, name: checked.value.name || shortNpub(checked.value.pubkey) });
+    if (this.namedOnly && !this.announced.has(peer.member.pubkey)) {
+      this.announced.add(peer.member.pubkey);
+      if (peer.open) this.emit("member", peer.member);
+      for (const w of this.waiting.get(peer.member.pubkey) ?? []) this.emit(w.kind, peer.member, w.stream);
+      this.waiting.delete(peer.member.pubkey);
+    }
     if (checked.value.picture) peer.member.picture = checked.value.picture;
     else delete peer.member.picture;
     if (checked.value.about) peer.member.about = checked.value.about;
@@ -2661,8 +2706,12 @@ var RoomSession = class {
   }
   /** A pass that has run out leaves a guest behind. */
   expire(now) {
-    for (const peer of this.peers.values()) {
+    for (const peer of [...this.peers.values()]) {
       if (!peer.passUntil || now < peer.passUntil) continue;
+      if (this.namedOnly) {
+        this.turnAway(peer.member.pubkey);
+        continue;
+      }
       delete peer.passUntil;
       delete peer.shown;
       delete peer.member.identity;
@@ -2972,11 +3021,13 @@ var RoomSession = class {
     const peer = this.peers.get(pubkey);
     if (!peer) return;
     this.peers.delete(pubkey);
+    this.waiting.delete(pubkey);
     try {
       peer.pc.close();
     } catch {
     }
     if (announce && peer.open) this.emit("leave", peer.member);
+    this.announced.delete(pubkey);
   }
   sweep() {
     const now = Date.now();
@@ -2987,6 +3038,7 @@ var RoomSession = class {
       this.markTune(peer);
       void this.feedTune(peer);
       if (!peer.open && now - peer.startedAt > CONNECT_TIMEOUT_MS) this.drop(pubkey, false);
+      else if (this.namedOnly && peer.open && !this.announced.has(pubkey) && now - (peer.openedAt ?? now) > NAMED_WAIT_MS) this.turnAway(pubkey);
       else if (peer.open && now - peer.lastSeen > SILENT_TIMEOUT_MS) this.drop(pubkey, true);
     }
     this.expire(Math.floor(now / 1e3));

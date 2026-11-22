@@ -1,3 +1,5 @@
+/** The most keys whose lists count for one world. */
+export declare const KEEPERS_MOST: 4;
 import { type Issue, type Result } from "./result.js";
 import type { World } from "./world.js";
 export interface ManifestWorld {
@@ -25,6 +27,14 @@ export interface ManifestWorld {
      * listing's coordinate whose seller is a key this file names as a publisher of this world. Left out, it is free.
      */
     access?: string[];
+    /**
+     * Whose lists count for this world (protocol/10-identity.md, "A world's own lists"): at most four keys. Left out,
+     * the world's publishers in this file; but a world that writes neither this nor a word that needs a list reads no
+     * list at all.
+     */
+    keepers?: string[];
+    /** In this world's rooms a visitor's kit shows and hears only people whose pass checks out: no guests. */
+    namedOnly?: boolean;
 }
 export interface Manifest {
     schema: string;
@@ -76,6 +86,8 @@ export declare function accessFor(manifest: Manifest, url: string): {
     d: string;
     listings: string[];
     sellers: string[];
+    keepers: string[] | null;
+    namedOnly: boolean;
 } | null;
 export interface FetchManifestResult {
     url: string;

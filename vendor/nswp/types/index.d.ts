@@ -18,6 +18,7 @@ export * from "./invoice.js";
 export * from "./files.js";
 export * from "./receipt.js";
 export * from "./listing.js";
+export * from "./owner-lists.js";
 export * from "./shares.js";
 export * from "./save.js";
 export * from "./rating.js";

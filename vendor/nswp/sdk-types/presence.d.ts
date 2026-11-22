@@ -13,6 +13,16 @@ import { type Items } from "./items.js";
 import { type Play, type PlayOptions } from "./play.js";
 import type { ItemBoxOptions } from "./item-box.js";
 export interface PresenceOptions {
+    /**
+     * The world's own rules for its rooms (protocol/10-identity.md, "A world's own lists"), as its gate last read
+     * them: the identity keys its owner keeps out, and whether its rooms show only named people. Asked each time a
+     * room is joined, and again when `rulesChanged()` is called. Left out, the page's own gate's (`pageRules` in
+     * ui/identity.ts), taken again whenever that gate reads a change; with no gate, a room is as it always was.
+     */
+    worldRules?: () => {
+        blocked: readonly string[];
+        namedOnly: boolean;
+    };
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
     /** The object that moves the visitor around; the camera is inside it. */
@@ -117,7 +127,13 @@ export interface Presence {
     /** The private room's name, or null in a world's open room. */
     readonly roomName: string | null;
     readonly micOn: boolean;
+    /**
+     * Join the room. Refused, with plain words in the error, where the world's rules would keep this visitor out of
+     * it: a guest in a world whose rooms show only named people, or someone the world's owner keeps out.
+     */
     join(name: string | null): Promise<void>;
+    /** The world's rules for its rooms have changed (its gate read a newer list): the room here takes them at once. */
+    rulesChanged(): void;
     leave(): void;
     setMicrophone(track: MediaStreamTrack | null): Promise<void>;
     /** A quiet test tone to use in place of a microphone. */
