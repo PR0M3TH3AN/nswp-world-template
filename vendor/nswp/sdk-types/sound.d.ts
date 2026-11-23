@@ -1,6 +1,6 @@
-import { type SoundPlace, type Cue, type Song, type SoundLevels, type SoundTheme } from "./sound-store.js";
+import { type SoundPlace, type Cue, type Song, type SoundLevels, type SoundTheme, type JukeHow } from "./sound-store.js";
 import type { Controls } from "./ui/model.js";
-export { CUES, type Cue, type Song, type SoundLevels, type SoundPlace, type SoundTheme } from "./sound-store.js";
+export { CUES, type Cue, type JukeHow, type Song, type SoundLevels, type SoundPlace, type SoundTheme } from "./sound-store.js";
 export interface SoundsOptions {
     /** The page's sound context, if it has one already (three.js keeps one: `THREE.AudioContext.getContext()`). */
     context?: AudioContext;
@@ -16,10 +16,11 @@ export interface SoundsOptions {
      * can't be had, the defaults are the ones made in the browser.
      */
     kit?: string;
-    /** Keep the visitor's volumes and songs under these names. Left out, the kit's own, for this site. */
+    /** Keep the visitor's volumes, their songs and how their music is played under these names. Left out, the kit's own, for this site. */
     keep?: {
         levels?: string;
         songs?: string;
+        how?: string;
     };
 }
 export interface Jukebox {
@@ -33,9 +34,21 @@ export interface Jukebox {
     /** Play a song, or carry on with the current one. Returns false if it couldn't be played. */
     play(id?: string): Promise<boolean>;
     pause(): void;
+    /** The song after this one: in the order they were added, or in an order of chance where shuffle is on. */
     next(): Promise<boolean>;
+    /** Back to the start of this song, or, in its first few seconds, to the song before it. */
+    previous(): Promise<boolean>;
+    /** Move within the current song: to this many seconds from its start. */
+    seek(seconds: number): void;
     readonly playing: boolean;
     readonly current: Song | null;
+    /** How far into the current song it is, in seconds. */
+    readonly position: number;
+    /** How long the current song is, in seconds: 0 until the browser has read that much of it. */
+    readonly duration: number;
+    /** How their music is played: shuffle, what happens at the end, and whether play and pause are on their bar. */
+    readonly how: JukeHow;
+    setHow(patch: Partial<JukeHow>): void;
     /**
      * What the jukebox is playing, as a line that can be sent to someone else:
      * for sharing music with people nearby, which is the visitor's to turn on.

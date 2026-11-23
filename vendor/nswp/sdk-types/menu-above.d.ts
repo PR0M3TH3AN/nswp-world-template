@@ -52,6 +52,13 @@ export interface MenuAboveOptions {
     signOut?: () => void;
     /** Leave for home, carrying what the visitor carries: the client's Home was pressed. */
     home?: () => void;
+    /**
+     * This page is of its client's own origin (a client's own room, in the client's frame), and fills the visitor's
+     * own tabs itself: it describes those too, and its own rows under Travel. It only changes what this page says. A
+     * client takes the visitor's tabs only from a page whose origin is exactly its own, whatever the page says of
+     * itself, so any other page gains nothing by setting this.
+     */
+    own?: boolean;
     /** For tests and other carriers: the page above. By default the one this page is framed by (client-frame.ts). */
     above?: {
         framed(): boolean;
@@ -72,7 +79,7 @@ export interface MenuAboveOptions {
  * What a world says of itself, from what its own menu would have drawn. Only the tabs that are the world's to fill
  * are in it: nothing of the visitor's own tabs is ever said upward.
  */
-export declare function describeWorld(view: UiView, state?: Partial<MenuState>, help?: string): Record<string, unknown>;
+export declare function describeWorld(view: UiView, state?: Partial<MenuState>, help?: string, own?: boolean): Record<string, unknown>;
 /**
  * Meet the client above, for a world's controls. Call it once, as the world starts and before any menu is mounted;
  * then mount the world's own menu only if `ready` says no client has it, and put it away if `onChange` says one

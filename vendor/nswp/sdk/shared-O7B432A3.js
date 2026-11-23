@@ -21,6 +21,16 @@ var ICONS = {
   door: "M7 21V10a5 5 0 0 1 10 0v11M5 21h14M14.5 14h.01",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.700l1-1",
   save: "M7 4h10v17l-5-3.5L7 21V4Z",
+  /** For the visitor's own music: play, pause, the song after and before, a little way on and back, and how it goes. */
+  play: "M7 4.5v15l12-7.5Z",
+  pause: "M8 5v14M16 5v14",
+  next: "M6 5.5v13l10-6.5ZM19 5v14",
+  previous: "M18 5.5v13L8 12ZM5 5v14",
+  rewind: "M11 7v10l-7-5ZM20 7v10l-7-5Z",
+  forward: "M13 7v10l7-5ZM4 7v10l7-5Z",
+  shuffle: "M3 7h4l8 10h5M3 17h4l2.5-3.1M12.5 10.100 15 7h5M17 4l3 3-3 3M17 14l3 3-3 3",
+  repeat: "M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4",
+  music: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
   pin: "M9 4h6l-1 6 3 3H7l3-3-1-6ZM12 13v7",
   step: "M12 21s-6-5.2-6-10a6 6 0 0 1 12 0c0 4.800-6 10-6 10ZM12 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z",
   size: "M4 18 9 6l5 12M5.700 14h6.600M15 18l3.500-8 3.500 8M16 15.700h5",
@@ -785,7 +795,7 @@ function createControls(opts) {
       const a = actions.find((x) => x.id === id);
       if (!a || a.hidden?.() || a.kind === "line") return false;
       for (const fn of signals) fn("press");
-      void Promise.resolve().then(() => a.kind === "file" ? a.act(void 0, file) : a.act(a.kind === "field" ? typed : void 0)).catch(() => {
+      void Promise.resolve().then(() => a.kind === "file" ? a.act(void 0, file) : a.act(a.kind === "field" || a.kind === "slider" ? typed : void 0)).catch(() => {
       }).finally(changed);
       return true;
     },
@@ -811,11 +821,11 @@ function createControls(opts) {
     },
     view() {
       const showing = inOrder(actions.filter((a) => !a.hidden?.()));
-      const pressable = showing.filter((a) => a.kind !== "line");
+      const pressable = showing.filter((a) => a.kind !== "line" && a.kind !== "slider");
       const bar = [...pressable.filter((a) => a.hotbar && a.lead), ...pressable.filter((a) => a.hotbar && !a.lead)].slice(0, 6);
       const item = (a) => {
         const slot = bar.indexOf(a);
-        return { id: a.id, label: read(a.label), icon: (typeof a.icon === "function" ? a.icon() : a.icon) ?? null, on: a.on ? a.on() : null, tone: a.tone ?? "normal", key: slot === -1 ? "" : String(slot + 1), short: read(a.short) || read(a.label), kind: a.kind ?? "button", ...a.kind === "copy" ? { copy: read(a.copy) } : {}, ...a.kind === "file" ? { accept: a.accept ?? [] } : {}, color: read(a.color), ...a.picture ? { picture: a.picture } : {}, mark: (typeof a.mark === "function" ? a.mark() : a.mark) ?? null, faint: a.faint?.() === true };
+        return { id: a.id, label: read(a.label), icon: (typeof a.icon === "function" ? a.icon() : a.icon) ?? null, on: a.on ? a.on() : null, tone: a.tone ?? "normal", key: slot === -1 ? "" : String(slot + 1), short: read(a.short) || read(a.label), kind: a.kind ?? "button", ...a.kind === "copy" ? { copy: read(a.copy) } : {}, ...a.kind === "file" ? { accept: a.accept ?? [] } : {}, ...a.kind === "slider" && a.slider ? { slider: a.slider } : {}, color: read(a.color), ...a.picture ? { picture: a.picture } : {}, mark: (typeof a.mark === "function" ? a.mark() : a.mark) ?? null, faint: a.faint?.() === true };
       };
       const known = new Set(sections.map((s) => s.id));
       const extra = [...new Set(showing.map((a) => a.section ?? "travel").filter((id) => !known.has(id)))].map((id) => ({ id, label: id }));

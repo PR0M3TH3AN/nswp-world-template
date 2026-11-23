@@ -21,3 +21,5 @@ export { addDeskControls } from "./desk.js";
 export { addSoundControls, createSounds, type SoundControlsOptions, type Sounds } from "./sound.js";
 export { helpWords } from "./ui/help.js";
 export { askDeskMoving, chatSwitch, deskMovingSwitch, modelsSwitch, picturesSwitch, VISITOR_SWITCHES } from "./visitor-switches.js";
+export { arriveWith, changeSettings, currentSettings, type TravelSettings } from "./settings.js";
+export { fullscreenAction, watchEscape } from "./ui/fullscreen.js";
