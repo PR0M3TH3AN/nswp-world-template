@@ -19,6 +19,7 @@
  */
 import { type Item } from "@nswp/core";
 import * as THREE from "three";
+import { allowScript, mayHold, scriptAllowed } from "./hold.js";
 import { type ItemBoxOptions } from "./item-box.js";
 import type { Items } from "./items.js";
 import type { Sounds } from "./sound.js";
@@ -224,26 +225,7 @@ export interface PlaySnapshot {
         name: string;
     }[];
 }
-/** Whether this visitor has let an item's script run: by its hash, so a changed script is asked about again. */
-export declare function scriptAllowed(sha256: string): boolean;
-export declare function allowScript(sha256: string): void;
-/**
- * Whether a thing may be taken in hand here, and the words for it where it may not: the same rules and the same
- * words whatever draws the world. `asked` remembers the script the visitor was last told about, so that a second
- * press on the same item is their yes to it.
- */
-export declare function mayHold(described: Item | null, o: {
-    rule: string;
-    scripts: boolean;
-    asked: {
-        sha: string;
-    };
-}): {
-    ok: true;
-} | {
-    ok: false;
-    said: string;
-};
+export { allowScript, mayHold, scriptAllowed };
 export declare const paintHealth: (g: CanvasRenderingContext2D, w: number, h: number, o: {
     value: number;
     full: number;

@@ -5,6 +5,12 @@ import type { Controls, UiAction } from "./ui/model.js";
  * hum's switch and the visitor's own music (sound.ts).
  */
 export declare const VISITOR_SWITCHES: readonly string[];
+/**
+ * Whether a row is the visitor's own, by its id: one of the switches above, anything of their own music (`juke-`),
+ * or one of their songs (`song-`, a row for each, whose words are the song's name). A world never describes these
+ * to a client: what a visitor listens to is not a world's to say.
+ */
+export declare const visitorsOwnRow: (id: string) => boolean;
 /** Whether this visitor sees pictures at all. It is theirs, and goes with them from world to world. */
 export declare const picturesSwitch: (controls: Pick<Controls, "say">) => UiAction;
 /** Whether this visitor sees people's own models, where a world draws them. Theirs, and it travels. */

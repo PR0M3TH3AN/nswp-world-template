@@ -11,9 +11,9 @@
  * Nothing in it is sent anywhere. It is kept for this site, in this browser.
  */
 import * as THREE from "three";
+import { fileStore } from "./file-store.js";
 import { type LibraryItem } from "./panel-store.js";
-/** Do one thing to the kept files. Returns undefined where this browser keeps nothing. */
-export declare function fileStore<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T | undefined>;
+export { fileStore };
 export interface Library {
     readonly group: THREE.Group;
     /** Everything kept, newest first. */

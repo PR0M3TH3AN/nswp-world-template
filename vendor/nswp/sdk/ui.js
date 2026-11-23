@@ -25,7 +25,7 @@ import {
   showsChat,
   showsPictures,
   vouchedWords
-} from "./shared-STBQBWFU.js";
+} from "./shared-O7B432A3.js";
 import {
   askWell,
   escapeDoes,
@@ -251,6 +251,9 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
   width: min(480px, calc(100vw - 20px)); max-height: min(70vh, 640px); display: flex; flex-direction: column; pointer-events: auto;
   border-radius: 22px 22px 12px 12px; overflow: hidden; }
 .sheet[hidden] { display: none; }
+/* Everything outside the sheet while it is up: a press there closes the menu, and is nothing else. */
+.outside { position: absolute; inset: 0; pointer-events: auto; background: none; }
+.outside[hidden] { display: none; }
 /* Where there is room, at a desk, the menu is larger: more of a list at once, and rows side by side. */
 @media (min-width: 900px) and (min-height: 560px) {
   .sheet { width: min(780px, calc(100vw - 40px)); max-height: min(74vh, 780px); }
@@ -324,6 +327,15 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .field input:focus-visible { outline: 2px solid rgb(var(--ink)); outline-offset: 2px; }
 .field button { min-height: 40px; padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(var(--accent), .7); background: rgba(var(--accent), .13); }
 .field .to { grid-column: 1 / -1; margin: 0; font-size: .86em; color: rgba(var(--ink), .6); }
+/* A bar that is moved along: what it is of, the bar, and where it is in words. */
+.slide { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 12px; margin: 0; padding: 8px 12px;
+  border-radius: 10px; border: 1px solid rgba(var(--ink), .12); background: rgba(var(--ink), .03); }
+.slide.on { border-color: rgba(var(--accent), .5); }
+.slide.on svg { color: rgb(var(--accent)); }
+.slide .name { min-width: 0; grid-column: 2 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slide input { grid-column: 1 / 3; width: 100%; min-height: 28px; margin: 0; accent-color: rgb(var(--accent)); }
+.slide input:focus-visible { outline: 2px solid rgb(var(--ink)); outline-offset: 2px; }
+.slide .time { font-size: .86em; color: rgba(var(--ink), .7); white-space: nowrap; }
 /* A row that takes a file: its button, and under it where the file goes. */
 .takes { grid-column: 1 / -1; display: grid; gap: 4px; }
 .takes .to { margin: 0; padding: 0 12px; font-size: .86em; color: rgba(var(--ink), .6); }
@@ -593,7 +605,8 @@ function mountMenu(port, opts = {}) {
   const chatSend = el("button", { type: "submit" }, "Send");
   const chatForm = el("form", {}, chatField, chatSend);
   const chat = el("section", { class: "chat", "aria-label": "Room chat", "data-state": "closed", "data-tab": "room" }, el("div", { class: "frame glass" }, chatWhose, el("header", {}, chatTitle, chatTabs, chatClose), feedLead, chatEmpty, chatLines, chatHint, feedSaid, chatForm));
-  root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, el("div", { class: "low" }, loadingLine, target, bar));
+  const outside = el("div", { class: "outside", "aria-hidden": "true", hidden: "" });
+  root.append(style, outside, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, el("div", { class: "low" }, loadingLine, target, bar));
   (opts.parent ?? document.body).append(host);
   let open = false;
   let section = "";
@@ -666,6 +679,59 @@ function mountMenu(port, opts = {}) {
   const clearFields = () => {
     for (const f of fields.values()) f.input.value = "";
     fields.clear();
+    sliders.clear();
+    if (looking) clearInterval(looking);
+    looking = null;
+  };
+  const sliders = /* @__PURE__ */ new Map();
+  let looking = null;
+  const showSlider = (s) => {
+    const max = s.item.slider?.max() ?? 0;
+    s.range.max = String(Math.max(1, Math.floor(max)));
+    s.range.disabled = !(max > 0);
+    if (s.held) return;
+    s.range.value = String(Math.floor(s.item.slider?.value() ?? 0));
+    s.time.textContent = s.item.slider?.text?.() ?? "";
+  };
+  const drawSlider = (item) => {
+    let s = sliders.get(item.id);
+    if (!s) {
+      const range = el("input", { type: "range", min: "0", step: "1", value: "0" });
+      const name = el("span", { class: "name" });
+      const time = el("span", { class: "time mono" });
+      const box = el("label", { class: "slide" }, icon(item.icon), name, range, time);
+      const made = { box, name, range, time, item, held: false };
+      s = made;
+      const letGo = () => made.held = false;
+      range.addEventListener("pointerdown", () => made.held = true);
+      range.addEventListener("input", () => made.held = true);
+      range.addEventListener("change", () => {
+        letGo();
+        controls.run(made.item.id, range.value);
+        setTimeout(() => showSlider(made), 150);
+      });
+      range.addEventListener("pointerup", () => setTimeout(letGo, 0));
+      range.addEventListener("blur", letGo);
+      sliders.set(item.id, s);
+    }
+    s.item = item;
+    s.name.textContent = item.label;
+    s.range.setAttribute("aria-label", item.label);
+    s.box.classList.toggle("on", item.on === true);
+    showSlider(s);
+    looking ??= setInterval(() => {
+      let seen = false;
+      for (const each of sliders.values()) {
+        if (!each.box.isConnected) continue;
+        seen = true;
+        showSlider(each);
+      }
+      if (!seen && looking) {
+        clearInterval(looking);
+        looking = null;
+      }
+    }, 500);
+    return s.box;
   };
   const openPin = (id2) => {
     controls.signal("press");
@@ -1136,9 +1202,9 @@ function mountMenu(port, opts = {}) {
           run = null;
           if (whose) laid2.push(el("p", { class: "from" }, whose));
         }
-        if (item.kind === "button" || item.kind === "line" || item.kind === "copy" || item.kind === "field" || item.kind === "file" || item.kind === "save") {
+        if (item.kind === "button" || item.kind === "line" || item.kind === "copy" || item.kind === "field" || item.kind === "file" || item.kind === "save" || item.kind === "slider") {
           run = null;
-          laid2.push(item.kind === "line" ? drawLine(item) : item.kind === "field" ? drawField(item, view.title) : item.kind === "file" ? drawFile(item, view.title) : drawRow(item));
+          laid2.push(item.kind === "line" ? drawLine(item) : item.kind === "field" ? drawField(item, view.title) : item.kind === "file" ? drawFile(item, view.title) : item.kind === "slider" ? drawSlider(item) : drawRow(item));
           continue;
         }
         if (run?.kind !== item.kind) {
@@ -1164,12 +1230,15 @@ function mountMenu(port, opts = {}) {
     }
     const still = new Set(view.sections.flatMap((s) => s.items.filter((i) => i.kind === "field").map((i) => i.id)));
     for (const id2 of [...fields.keys()]) if (!still.has(id2)) fields.delete(id2);
+    const bars = new Set(view.sections.flatMap((s) => s.items.filter((i) => i.kind === "slider").map((i) => i.id)));
+    for (const id2 of [...sliders.keys()]) if (!bars.has(id2)) sliders.delete(id2);
     if (fresh && about) rows.scrollTop = 0;
     rows.hidden = !current?.items.length && !current?.card;
     note.textContent = current?.note ?? "";
     said.hidden = !current?.said;
     said.replaceChildren(...current?.said ? [el("b", {}, current.said.from), current.said.note] : []);
     sheet.hidden = !open;
+    outside.hidden = !open;
     menu.setAttribute("aria-expanded", String(open));
     quiet.setAttribute("aria-expanded", String(open));
   };
@@ -1177,6 +1246,10 @@ function mountMenu(port, opts = {}) {
     let at = document.activeElement;
     while (at?.shadowRoot?.activeElement) at = at.shadowRoot.activeElement;
     return at;
+  };
+  const keysElsewhere = () => {
+    const at = focused();
+    return !!at && at !== document.body && at !== document.documentElement && at !== host && at.getRootNode() !== root;
   };
   let cameFrom = null;
   const setOpen = (next, at) => {
@@ -1195,13 +1268,16 @@ function mountMenu(port, opts = {}) {
     open = next;
     if (!open) clearFields();
     controls.signal(open ? "menuOpen" : "menuClose");
+    const givenAway = !open && keysElsewhere();
     draw();
     if (open) return void tabs.querySelector('[aria-selected="true"]')?.focus();
     const back = cameFrom;
     cameFrom = null;
+    if (givenAway) return;
     if (back?.isConnected && back !== document.body && getComputedStyle(back).display !== "none") back.focus({ preventScroll: true });
     else focused()?.blur();
   };
+  outside.addEventListener("click", () => setOpen(false));
   setMenuPlace(() => {
     if (!open || sheet.hidden) return null;
     const r = sheet.getBoundingClientRect();
@@ -1375,6 +1451,7 @@ function mountMenu(port, opts = {}) {
     },
     remove() {
       clearInterval(tick);
+      if (looking) clearInterval(looking);
       clearTimeout(asTimer);
       tabsWatch?.disconnect();
       barWatch?.disconnect();

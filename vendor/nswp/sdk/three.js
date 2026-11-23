@@ -138,7 +138,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-LIQX6D2Y.js";
+} from "./shared-JN7XYZWL.js";
 import "./shared-GPDS23MY.js";
 import {
   PICTURE_LIMITS,
@@ -149,7 +149,7 @@ import {
   setShowsPictures,
   showsPictures,
   vouchedWords
-} from "./shared-STBQBWFU.js";
+} from "./shared-O7B432A3.js";
 import {
   arriveWith,
   arrivedSettings,

@@ -234,6 +234,35 @@ export interface Song {
 /** A name for a song from its file's name: no folder, no ending, nothing invisible. */
 export declare function songTitle(fileName: unknown): string;
 export declare function cleanSongs(input: unknown): Song[];
+/** How the visitor's own music is played. Theirs, kept with their songs, for this site. */
+export interface JukeHow {
+    /** The songs in an order of chance, not the order they were added. */
+    shuffle: boolean;
+    /** What happens at the end: stop after the last song, go round again, or play this one again. */
+    repeat: "off" | "all" | "one";
+    /** Play and pause kept on their bar, with what is playing named under it. */
+    bar: boolean;
+}
+export declare const JUKE_REPEATS: readonly ["off", "all", "one"];
+/** As it was before there was a choice: the list goes round. */
+export declare const DEFAULT_HOW: JukeHow;
+/** How far "back" and "forward" move within a song, in seconds. */
+export declare const SKIP_SECONDS = 15;
+/** "Previous", this far into a song or further, goes to the song's start; sooner than that, to the song before. */
+export declare const RESTART_AFTER = 3;
+export declare function cleanHow(input: unknown): JukeHow;
+/** A time in a song as a clock shows it: 0:07, 3:45, 1:02:03. */
+export declare function songClock(seconds: number): string;
+/**
+ * The songs in an order of chance, with the one playing first, so that turning shuffle on changes nothing they are
+ * hearing. Every song once.
+ */
+export declare function shuffledSongs(ids: readonly string[], first: string | null, random?: () => number): string[];
+/**
+ * The song after the current one in an order (`step` 1), or before it (-1). Past either end it goes round where
+ * `round` says so, and is null where it doesn't. With no current song, or one that isn't in the order, the first.
+ */
+export declare function songBeside(order: readonly string[], current: string | null, step: 1 | -1, round: boolean): string | null;
 /** Whether a file may be kept as a song, and if not, why, in words for the visitor. */
 export declare function songRefusal(file: {
     type?: string;

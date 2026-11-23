@@ -22,7 +22,7 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-STBQBWFU.js";
+} from "./shared-O7B432A3.js";
 import {
   arrivedSettings,
   askClientForSignIn,
@@ -336,7 +336,7 @@ function createConsole(controls, opts) {
       });
     });
     const current = view.sections.find((s) => s.id === section);
-    const items = (current?.items ?? []).filter((item) => item.kind !== "line");
+    const items = (current?.items ?? []).filter((item) => item.kind !== "line" && item.kind !== "slider");
     const lines = (current?.items ?? []).filter((item) => item.kind === "line");
     noteNow = current?.note ?? "";
     g.font = `400 ${Math.round(24 * k)}px ${SANS}`;
@@ -678,7 +678,7 @@ function createConsole(controls, opts) {
         mount,
         section: open ? current?.id ?? "" : "",
         sections: open ? view.sections.map((s) => s.label) : [],
-        buttons: open ? [...current?.items.filter((i) => i.kind !== "line").map((i) => i.label) ?? [], ...linePages > 1 ? [`Page ${linePage + 1} of ${linePages}`] : []] : opener.visible ? ["Menu"] : [],
+        buttons: open ? [...current?.items.filter((i) => i.kind !== "line" && i.kind !== "slider").map((i) => i.label) ?? [], ...linePages > 1 ? [`Page ${linePage + 1} of ${linePages}`] : []] : opener.visible ? ["Menu"] : [],
         lines: open ? current?.items.filter((i) => i.kind === "line").map((i) => i.label) ?? [] : [],
         linesPage: { page: open ? linePage + 1 : 0, pages: open ? linePages : 0 },
         note: open ? current?.note ?? "" : "",
@@ -3036,7 +3036,7 @@ function figureAction(controls, leaving = () => ({})) {
 
 // packages/sdk/src/presence.ts
 import * as THREE10 from "three";
-import { bubbleSeconds, buildTints, cleanItemsRule as cleanItemsRule2, cleanTints, ENTRY_CLEAR, itemCoordinate as itemCoordinate2, parseTints, pickEntryPlace, decodeLook, spawnOffset } from "@nswp/core";
+import { bubbleSeconds, buildTints, cleanItemsRule as cleanItemsRule3, cleanTints, ENTRY_CLEAR, itemCoordinate as itemCoordinate2, parseTints, pickEntryPlace, decodeLook, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
 import * as THREE6 from "three";
@@ -3922,6 +3922,36 @@ function cleanSongs(input) {
   }
   return out;
 }
+var JUKE_REPEATS = ["off", "all", "one"];
+var DEFAULT_HOW = { shuffle: false, repeat: "all", bar: false };
+var SKIP_SECONDS = 15;
+var RESTART_AFTER = 3;
+function cleanHow(input) {
+  const h = input && typeof input === "object" ? input : {};
+  return { shuffle: h.shuffle === true, repeat: JUKE_REPEATS.includes(h.repeat) ? h.repeat : DEFAULT_HOW.repeat, bar: h.bar === true };
+}
+function songClock(seconds) {
+  const s = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+  const two = (n) => String(n).padStart(2, "0");
+  const [h, m, sec] = [Math.floor(s / 3600), Math.floor(s % 3600 / 60), s % 60];
+  return h ? `${h}:${two(m)}:${two(sec)}` : `${m}:${two(sec)}`;
+}
+function shuffledSongs(ids, first, random = Math.random) {
+  const rest = ids.filter((id) => id !== first);
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  return first !== null && ids.includes(first) ? [first, ...rest] : rest;
+}
+function songBeside(order, current, step, round) {
+  if (order.length === 0) return null;
+  const at = current === null ? -1 : order.indexOf(current);
+  if (at === -1) return order[0];
+  const to = at + step;
+  if (to >= 0 && to < order.length) return order[to];
+  return round ? order[(to + order.length) % order.length] : null;
+}
 function songRefusal(file, have) {
   const ext = (file.name ?? "").split(".").pop()?.toLowerCase() ?? "";
   const isSound = (file.type ?? "").startsWith("audio/") || SOUND_LIMITS.extensions.includes(ext);
@@ -4203,7 +4233,7 @@ import {
   buildHit,
   buildShot,
   buildState,
-  cleanItemsRule,
+  cleanItemsRule as cleanItemsRule2,
   isPose,
   createRate as createRate2,
   GRAVITY,
@@ -4219,6 +4249,39 @@ import {
   struck
 } from "@nswp/core";
 import * as THREE8 from "three";
+
+// packages/sdk/src/hold.ts
+import { cleanItemsRule } from "@nswp/core";
+var SCRIPT_KEPT = "nswp:item-scripts";
+function scriptAllowed(sha256) {
+  try {
+    return JSON.parse(globalThis.localStorage?.getItem(SCRIPT_KEPT) ?? "[]").includes(sha256);
+  } catch {
+    return false;
+  }
+}
+function allowScript(sha256) {
+  try {
+    const kept2 = JSON.parse(globalThis.localStorage?.getItem(SCRIPT_KEPT) ?? "[]").filter((x) => typeof x === "string" && x !== sha256);
+    globalThis.localStorage?.setItem(SCRIPT_KEPT, JSON.stringify([...kept2, sha256].slice(-64)));
+  } catch {
+  }
+}
+function mayHold(described, o) {
+  if (cleanItemsRule(o.rule) === "none") return { ok: false, said: "Nothing carried is drawn or works in this place." };
+  if (!showsItems()) return { ok: false, said: "You have items turned off. Turn them on to hold one." };
+  if (!described) return { ok: false, said: "That item's description couldn't be found." };
+  if (!(described.behaviors.includes("holdable") || described.fits.includes("hand-right") || described.fits.includes("hand-left"))) return { ok: false, said: `${described.title} isn't something to hold.` };
+  if (described.use === "granted") return { ok: false, said: `${described.title} has to be granted by its maker, which can't be checked here yet.` };
+  if (described.script && o.scripts && !scriptAllowed(described.script.sha256)) {
+    if (o.asked.sha !== described.script.sha256) {
+      o.asked.sha = described.script.sha256;
+      return { ok: false, said: `${described.title} does things of its own, with code written by its maker (${described.maker.slice(0, 8)}\u2026). It runs shut away on your device: it can't reach the network, your account or anything of this world. Press Hold again to let it.` };
+    }
+    allowScript(described.script.sha256);
+  }
+  return { ok: true };
+}
 
 // packages/sdk/src/item-box.ts
 import { cleanAsk, createRate, ITEM_ASKS } from "@nswp/core";
@@ -4283,36 +4346,6 @@ function runInBox(script, on, opts = {}) {
 }
 
 // packages/sdk/src/play.ts
-var SCRIPT_KEPT = "nswp:item-scripts";
-function scriptAllowed(sha256) {
-  try {
-    return JSON.parse(globalThis.localStorage?.getItem(SCRIPT_KEPT) ?? "[]").includes(sha256);
-  } catch {
-    return false;
-  }
-}
-function allowScript(sha256) {
-  try {
-    const kept2 = JSON.parse(globalThis.localStorage?.getItem(SCRIPT_KEPT) ?? "[]").filter((x) => typeof x === "string" && x !== sha256);
-    globalThis.localStorage?.setItem(SCRIPT_KEPT, JSON.stringify([...kept2, sha256].slice(-64)));
-  } catch {
-  }
-}
-function mayHold(described, o) {
-  if (cleanItemsRule(o.rule) === "none") return { ok: false, said: "Nothing carried is drawn or works in this place." };
-  if (!showsItems()) return { ok: false, said: "You have items turned off. Turn them on to hold one." };
-  if (!described) return { ok: false, said: "That item's description couldn't be found." };
-  if (!(described.behaviors.includes("holdable") || described.fits.includes("hand-right") || described.fits.includes("hand-left"))) return { ok: false, said: `${described.title} isn't something to hold.` };
-  if (described.use === "granted") return { ok: false, said: `${described.title} has to be granted by its maker, which can't be checked here yet.` };
-  if (described.script && o.scripts && !scriptAllowed(described.script.sha256)) {
-    if (o.asked.sha !== described.script.sha256) {
-      o.asked.sha = described.script.sha256;
-      return { ok: false, said: `${described.title} does things of its own, with code written by its maker (${described.maker.slice(0, 8)}\u2026). It runs shut away on your device: it can't reach the network, your account or anything of this world. Press Hold again to let it.` };
-    }
-    allowScript(described.script.sha256);
-  }
-  return { ok: true };
-}
 function drawn(width, height, paint) {
   if (typeof document === "undefined") {
     const blank = new THREE8.Sprite(new THREE8.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
@@ -4417,8 +4450,8 @@ function createPlay(o) {
   let landed = 0;
   let taken = 0;
   let nextId = Math.floor(Math.random() * 1e3);
-  const active = () => cleanItemsRule(o.rule()) !== "none" && showsItems();
-  const muted = (pubkey) => cleanItemsRule(o.rule()) === "allowed" && !!o.itemsMuted?.(pubkey);
+  const active = () => cleanItemsRule2(o.rule()) !== "none" && showsItems();
+  const muted = (pubkey) => cleanItemsRule2(o.rule()) === "allowed" && !!o.itemsMuted?.(pubkey);
   const hud = new THREE8.Group();
   hud.userData.nswpNoHit = true;
   if (!o.deferred) o.camera.add(hud);
@@ -5541,7 +5574,7 @@ function createPresence(d) {
       a.head.add(a.light);
     }
   };
-  const itemsRule = () => d.items ? cleanItemsRule2(d.itemsRule?.()) : "none";
+  const itemsRule = () => d.items ? cleanItemsRule3(d.itemsRule?.()) : "none";
   const canBeHeld = (item) => item.behaviors.includes("holdable") || item.fits.includes("hand-right") || item.fits.includes("hand-left");
   let mine = "";
   let holdTurn = Promise.resolve();
@@ -9646,6 +9679,8 @@ function createKeyboard(o) {
 
 // packages/sdk/src/library.ts
 import * as THREE15 from "three";
+
+// packages/sdk/src/file-store.ts
 var DB = "nswp-panels";
 function files() {
   return new Promise((resolve, reject) => {
@@ -9667,6 +9702,8 @@ async function fileStore(mode, run) {
     return void 0;
   }
 }
+
+// packages/sdk/src/library.ts
 async function thumbnail(file, kind) {
   const draw = (source, w, h) => {
     if (!w || !h) return "";
@@ -11200,125 +11237,6 @@ function createBag(opts) {
 
 // packages/sdk/src/bagging.ts
 import { cleanSettings, decodeNaddr as decodeNaddr2, ITEM_KIND as ITEM_KIND2, itemCoordinate as itemCoordinate4, TINT_PALETTE } from "@nswp/core";
-
-// packages/sdk/src/item-preview.ts
-import * as THREE18 from "three";
-var KEPT = 36;
-function createItemPreviews(o) {
-  const size = o.size ?? 256;
-  const watchers3 = /* @__PURE__ */ new Set();
-  const ready = /* @__PURE__ */ new Map();
-  let stage;
-  const keyOf = (item, tints) => `${item.id}|${item.model.sha256}|${JSON.stringify(tints ?? {})}`;
-  const stageNow = () => {
-    if (stage !== void 0) return stage;
-    if (typeof document === "undefined") return stage = null;
-    try {
-      const renderer = new THREE18.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
-      renderer.setPixelRatio(1);
-      renderer.setSize(size, size, false);
-      renderer.setClearColor(0, 0);
-      const scene = new THREE18.Scene();
-      scene.add(new THREE18.HemisphereLight(16777215, 2699837, 1.7));
-      const key = new THREE18.DirectionalLight(16777215, 2.4);
-      key.position.set(1.6, 2.6, 2.2);
-      const rim = new THREE18.DirectionalLight(12572927, 1.3);
-      rim.position.set(-2, 1.2, -2.4);
-      const pivot = new THREE18.Group();
-      scene.add(key, rim, pivot);
-      const camera = new THREE18.PerspectiveCamera(28, 1, 0.01, 50);
-      return stage = { renderer, scene, camera, pivot };
-    } catch {
-      return stage = null;
-    }
-  };
-  const draw = (made, angle, onto) => {
-    const s = stageNow();
-    if (!s) return null;
-    s.pivot.clear();
-    s.pivot.add(made.object);
-    made.object.position.copy(made.middle).multiplyScalar(-1);
-    s.pivot.rotation.set(0, angle, 0);
-    const away = made.radius / Math.sin(THREE18.MathUtils.degToRad(s.camera.fov / 2)) * 1.08;
-    s.camera.position.set(0, away * 0.3, away * 0.95);
-    s.camera.lookAt(0, 0, 0);
-    s.camera.near = Math.max(5e-3, away - made.radius * 2);
-    s.camera.far = away + made.radius * 2;
-    s.camera.updateProjectionMatrix();
-    s.renderer.render(s.scene, s.camera);
-    s.pivot.clear();
-    const canvas = onto ?? document.createElement("canvas");
-    if (!onto) canvas.width = canvas.height = size;
-    const g = canvas.getContext("2d");
-    if (!g) return null;
-    g.clearRect(0, 0, size, size);
-    g.drawImage(s.renderer.domElement, 0, 0, size, size);
-    return canvas;
-  };
-  const want = (item, tints) => {
-    const key = keyOf(item, tints);
-    const had = ready.get(key);
-    if (had !== void 0) return had;
-    if (!stageNow()) return null;
-    ready.set(key, null);
-    for (const old of ready.keys()) {
-      if (ready.size <= KEPT) break;
-      if (old !== key) ready.delete(old);
-    }
-    void o.model(item, tints).then(
-      (object) => {
-        if (!ready.has(key)) return;
-        let frames = 0;
-        let solids = 0;
-        object.traverse((part) => {
-          const mesh = part;
-          if (!mesh.isMesh) return;
-          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          if (materials.every((m) => m.wireframe === true)) frames++;
-          else solids++;
-        });
-        if (frames > 0 && solids === 0) return void again(key);
-        const box = new THREE18.Box3().setFromObject(object);
-        const ball = box.getBoundingSphere(new THREE18.Sphere());
-        if (!Number.isFinite(ball.radius) || ball.radius <= 0) return void ready.delete(key);
-        ready.set(key, { object, middle: ball.center.clone(), radius: ball.radius, still: null, live: null });
-        for (const fn of watchers3) fn();
-      },
-      () => void again(key)
-    );
-    return null;
-  };
-  const AGAIN_MS3 = 6e3;
-  const tries = /* @__PURE__ */ new Map();
-  function again(key) {
-    const n = (tries.get(key) ?? 0) + 1;
-    tries.set(key, n);
-    if (n > 5) return;
-    setTimeout(() => {
-      if (ready.get(key) !== null) return;
-      ready.delete(key);
-      for (const fn of watchers3) fn();
-    }, AGAIN_MS3 * n);
-  }
-  return {
-    still(item, tints) {
-      const made = want(item, tints);
-      if (!made) return null;
-      return made.still ??= draw(made, -0.62, null);
-    },
-    turning(item, tints, moving = true) {
-      const made = want(item, tints);
-      if (!made) return null;
-      const angle = moving ? (typeof performance === "undefined" ? 0 : performance.now()) / 1e3 * 0.7 : -0.62;
-      return made.live = draw(made, angle, made.live);
-    },
-    onChange(fn) {
-      watchers3.add(fn);
-    }
-  };
-}
-
-// packages/sdk/src/bagging.ts
 var HELD_KEY = "nswp:holding";
 function keptHolding() {
   try {
@@ -11358,8 +11276,7 @@ function addBagControls(controls, opts) {
   let asking = "";
   let taking = "";
   const say = (text) => controls.say(text);
-  const model = items.model;
-  const previews = opts.previews === void 0 ? model ? createItemPreviews({ model: (item, tints) => model(item, tints) }) : null : opts.previews;
+  const previews = opts.previews ?? null;
   const still = (item) => () => {
     const described = items.known(item);
     return described && previews && showsItems() ? previews.still(described, bag.tints(item)) : null;
@@ -11707,6 +11624,130 @@ function addBagControls(controls, opts) {
   }, 400);
   watch.unref?.();
   return { refresh };
+}
+
+// packages/sdk/src/item-preview.ts
+import * as THREE18 from "three";
+var KEPT = 36;
+function createItemPreviews(o) {
+  const size = o.size ?? 256;
+  const watchers3 = /* @__PURE__ */ new Set();
+  const ready = /* @__PURE__ */ new Map();
+  let stage;
+  const keyOf = (item, tints) => `${item.id}|${item.model.sha256}|${JSON.stringify(tints ?? {})}`;
+  const stageNow = () => {
+    if (stage !== void 0) return stage;
+    if (typeof document === "undefined") return stage = null;
+    try {
+      const renderer = new THREE18.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
+      renderer.setPixelRatio(1);
+      renderer.setSize(size, size, false);
+      renderer.setClearColor(0, 0);
+      const scene = new THREE18.Scene();
+      scene.add(new THREE18.HemisphereLight(16777215, 2699837, 1.7));
+      const key = new THREE18.DirectionalLight(16777215, 2.4);
+      key.position.set(1.6, 2.6, 2.2);
+      const rim = new THREE18.DirectionalLight(12572927, 1.3);
+      rim.position.set(-2, 1.2, -2.4);
+      const pivot = new THREE18.Group();
+      scene.add(key, rim, pivot);
+      const camera = new THREE18.PerspectiveCamera(28, 1, 0.01, 50);
+      return stage = { renderer, scene, camera, pivot };
+    } catch {
+      return stage = null;
+    }
+  };
+  const draw = (made, angle, onto) => {
+    const s = stageNow();
+    if (!s) return null;
+    s.pivot.clear();
+    s.pivot.add(made.object);
+    made.object.position.copy(made.middle).multiplyScalar(-1);
+    s.pivot.rotation.set(0, angle, 0);
+    const away = made.radius / Math.sin(THREE18.MathUtils.degToRad(s.camera.fov / 2)) * 1.08;
+    s.camera.position.set(0, away * 0.3, away * 0.95);
+    s.camera.lookAt(0, 0, 0);
+    s.camera.near = Math.max(5e-3, away - made.radius * 2);
+    s.camera.far = away + made.radius * 2;
+    s.camera.updateProjectionMatrix();
+    s.renderer.render(s.scene, s.camera);
+    s.pivot.clear();
+    const canvas = onto ?? document.createElement("canvas");
+    if (!onto) canvas.width = canvas.height = size;
+    const g = canvas.getContext("2d");
+    if (!g) return null;
+    g.clearRect(0, 0, size, size);
+    g.drawImage(s.renderer.domElement, 0, 0, size, size);
+    return canvas;
+  };
+  const want = (item, tints) => {
+    const key = keyOf(item, tints);
+    const had = ready.get(key);
+    if (had !== void 0) return had;
+    if (!stageNow()) return null;
+    ready.set(key, null);
+    for (const old of ready.keys()) {
+      if (ready.size <= KEPT) break;
+      if (old !== key) ready.delete(old);
+    }
+    void o.model(item, tints).then(
+      (object) => {
+        if (!ready.has(key)) return;
+        let frames = 0;
+        let solids = 0;
+        object.traverse((part) => {
+          const mesh = part;
+          if (!mesh.isMesh) return;
+          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          if (materials.every((m) => m.wireframe === true)) frames++;
+          else solids++;
+        });
+        if (frames > 0 && solids === 0) return void again(key);
+        const box = new THREE18.Box3().setFromObject(object);
+        const ball = box.getBoundingSphere(new THREE18.Sphere());
+        if (!Number.isFinite(ball.radius) || ball.radius <= 0) return void ready.delete(key);
+        ready.set(key, { object, middle: ball.center.clone(), radius: ball.radius, still: null, live: null });
+        for (const fn of watchers3) fn();
+      },
+      () => void again(key)
+    );
+    return null;
+  };
+  const AGAIN_MS3 = 6e3;
+  const tries = /* @__PURE__ */ new Map();
+  function again(key) {
+    const n = (tries.get(key) ?? 0) + 1;
+    tries.set(key, n);
+    if (n > 5) return;
+    setTimeout(() => {
+      if (ready.get(key) !== null) return;
+      ready.delete(key);
+      for (const fn of watchers3) fn();
+    }, AGAIN_MS3 * n);
+  }
+  return {
+    still(item, tints) {
+      const made = want(item, tints);
+      if (!made) return null;
+      return made.still ??= draw(made, -0.62, null);
+    },
+    turning(item, tints, moving = true) {
+      const made = want(item, tints);
+      if (!made) return null;
+      const angle = moving ? (typeof performance === "undefined" ? 0 : performance.now()) / 1e3 * 0.7 : -0.62;
+      return made.live = draw(made, angle, made.live);
+    },
+    onChange(fn) {
+      watchers3.add(fn);
+    }
+  };
+}
+
+// packages/sdk/src/bag-pictures.ts
+function addBagControls2(controls, opts) {
+  const model = opts.items.model;
+  const previews = opts.previews === void 0 ? model ? createItemPreviews({ model: (item, tints) => model(item, tints) }) : null : opts.previews;
+  return addBagControls(controls, { ...opts, previews });
 }
 
 // packages/sdk/src/thumb-presses.ts
@@ -12253,6 +12294,7 @@ function createSounds(o = {}) {
   const theme = cleanTheme(o.theme, base);
   const levelsKey = o.keep?.levels ?? "nswp:sound";
   const songsKey = o.keep?.songs ?? "nswp:jukebox";
+  const howKey = o.keep?.how ?? "nswp:jukebox:how";
   const read = (key) => {
     try {
       return JSON.parse(localStorage.getItem(key) ?? "null");
@@ -12269,6 +12311,7 @@ function createSounds(o = {}) {
   const came = arrivedSettings().sound;
   let levels = cleanLevels({ ...read(levelsKey), ...came });
   let songs = cleanSongs(read(songsKey));
+  let how = cleanHow(read(howKey));
   let disposed = false;
   if (came) write(levelsKey, levels);
   const stopReporting = reportSettings(
@@ -12707,9 +12750,23 @@ function createSounds(o = {}) {
       source.connect(ownMusic);
       juke.tap = ctx.createMediaStreamDestination();
       source.connect(juke.tap);
-      juke.audio.addEventListener("ended", () => void jukebox.next());
+      juke.audio.addEventListener("ended", () => {
+        if (how.repeat === "one") return void jukebox.play(juke.current?.id);
+        const after2 = songBeside(order(), juke.current?.id ?? null, 1, how.repeat === "all");
+        if (after2) return void jukebox.play(after2);
+        juke.audio.currentTime = 0;
+        stopOwn();
+      });
+      juke.audio.addEventListener("durationchange", () => changed());
     }
     return { audio: juke.audio, tap: juke.tap };
+  };
+  let chance = [];
+  const order = () => {
+    const ids = songs.map((s) => s.id);
+    if (!how.shuffle) return ids;
+    if (chance.length !== ids.length || ids.some((id) => !chance.includes(id))) chance = shuffledSongs(ids, juke.current?.id ?? null);
+    return chance;
   };
   const jukebox = {
     list: () => [...songs],
@@ -12761,16 +12818,47 @@ function createSounds(o = {}) {
       return true;
     },
     pause: stopOwn,
+    // Asked for by a press, both go round: the last song's "next" is the first, whatever happens at a song's own end.
     async next() {
-      if (songs.length === 0) return false;
-      const at = songs.findIndex((s) => s.id === juke.current?.id);
-      return jukebox.play(songs[(at + 1) % songs.length].id);
+      const to = songBeside(order(), juke.current?.id ?? null, 1, true);
+      return to ? jukebox.play(to) : false;
+    },
+    async previous() {
+      if (juke.current && (juke.audio?.currentTime ?? 0) >= RESTART_AFTER) {
+        jukebox.seek(0);
+        return juke.playing ? true : jukebox.play();
+      }
+      const to = songBeside(order(), juke.current?.id ?? null, -1, true);
+      return to ? jukebox.play(to) : false;
+    },
+    seek(seconds) {
+      if (!juke.audio || !juke.current || !Number.isFinite(seconds)) return;
+      const most = Number.isFinite(juke.audio.duration) ? juke.audio.duration : seconds;
+      juke.audio.currentTime = Math.max(0, Math.min(seconds, most));
+      changed();
     },
     get playing() {
       return juke.playing;
     },
     get current() {
       return juke.current;
+    },
+    get position() {
+      return juke.current ? juke.audio?.currentTime ?? 0 : 0;
+    },
+    get duration() {
+      const d = juke.current ? juke.audio?.duration ?? 0 : 0;
+      return Number.isFinite(d) && d > 0 ? d : 0;
+    },
+    get how() {
+      return how;
+    },
+    setHow(patch) {
+      const was = how.shuffle;
+      how = cleanHow({ ...how, ...patch });
+      if (how.shuffle && !was) chance = [];
+      write(howKey, how);
+      changed();
     },
     output: () => player().tap.stream.getAudioTracks()[0]
   };
@@ -12873,7 +12961,30 @@ function addSoundControls(controls, sounds, opts = {}) {
     controls.say(added ? `${added === 1 ? "1 song" : `${added} songs`} added. Only you hear your music.${refused ? ` ${refused}` : ""}` : refused || "Nothing was added.");
     refresh();
   });
+  const juke = sounds.jukebox;
+  const clock = () => juke.duration ? `${songClock(juke.position)} of ${songClock(juke.duration)}` : songClock(juke.position);
+  const REPEAT_WORDS = { off: "Repeat: off", all: "Repeat: all your songs", one: "Repeat: this song" };
+  const playRow = () => ({
+    id: "juke-play",
+    section: "sound",
+    icon: () => juke.playing ? "pause" : "play",
+    on: () => juke.playing,
+    hidden: () => juke.list().length === 0,
+    hotbar: juke.how.bar && juke.list().length > 0,
+    label: () => juke.playing ? "Pause your music" : "Play your music",
+    short: () => juke.current?.title ?? "Your music",
+    act: async () => {
+      if (juke.playing) return juke.pause();
+      if (!await juke.play()) controls.say("Your music couldn't be played.");
+    }
+  });
+  let barWas = juke.how.bar && juke.list().length > 0;
   const refresh = () => {
+    const bar = juke.how.bar && juke.list().length > 0;
+    if (bar !== barWas) {
+      barWas = bar;
+      controls.add(playRow());
+    }
     for (const id of listed) controls.remove(id);
     const songs = sounds.jukebox.list();
     listed = songs.map((s) => `song-${s.id}`);
@@ -12944,32 +13055,89 @@ function addSoundControls(controls, sounds, opts = {}) {
       label: () => sounds.levels.hum ? "The room's hum: on" : "The room's hum: off",
       act: () => sounds.setLevels({ hum: !sounds.levels.hum })
     },
+    // ---- The visitor's own music. What is playing and where in it, with a bar to move along; the song before, play
+    // and pause, the song after; a little way back and on, for a menu that draws no bar (a headset's console); how it
+    // goes; then adding, taking out, and the songs themselves. The same rows wherever this is drawn.
+    {
+      id: "juke-place",
+      section: "sound",
+      icon: "music",
+      kind: "slider",
+      hidden: () => !juke.current,
+      on: () => juke.playing,
+      // "Your music", since the place may be playing a piece of its own, named in the row above.
+      label: () => `${juke.playing ? "Your music" : "Your music, paused"}: ${juke.current?.title ?? ""}`,
+      slider: { value: () => juke.position, max: () => juke.duration, text: clock },
+      act: (to) => juke.seek(Number(to))
+    },
+    {
+      id: "juke-previous",
+      section: "sound",
+      icon: "previous",
+      hidden: () => !juke.current,
+      label: "Previous song",
+      short: "Previous",
+      act: async () => void await juke.previous()
+    },
+    playRow(),
+    {
+      id: "juke-next",
+      section: "sound",
+      icon: "next",
+      hidden: () => juke.list().length < 2,
+      label: "Next song",
+      short: "Next",
+      act: () => void juke.next()
+    },
+    {
+      id: "juke-back",
+      section: "sound",
+      icon: "rewind",
+      hidden: () => !juke.current,
+      label: `Back ${SKIP_SECONDS} seconds`,
+      act: () => juke.seek(juke.position - SKIP_SECONDS)
+    },
+    {
+      id: "juke-forward",
+      section: "sound",
+      icon: "forward",
+      hidden: () => !juke.current,
+      label: `Forward ${SKIP_SECONDS} seconds`,
+      act: () => juke.seek(juke.position + SKIP_SECONDS)
+    },
+    {
+      id: "juke-shuffle",
+      section: "sound",
+      icon: "shuffle",
+      on: () => juke.how.shuffle,
+      hidden: () => juke.list().length < 2,
+      label: () => juke.how.shuffle ? "Shuffle: on" : "Shuffle: off",
+      act: () => juke.setHow({ shuffle: !juke.how.shuffle })
+    },
+    {
+      id: "juke-repeat",
+      section: "sound",
+      icon: "repeat",
+      on: () => juke.how.repeat !== "off",
+      hidden: () => juke.list().length === 0,
+      label: () => REPEAT_WORDS[juke.how.repeat],
+      act: () => juke.setHow({ repeat: JUKE_REPEATS[(JUKE_REPEATS.indexOf(juke.how.repeat) + 1) % JUKE_REPEATS.length] })
+    },
+    {
+      id: "juke-bar",
+      section: "sound",
+      icon: "pin",
+      on: () => juke.how.bar,
+      hidden: () => juke.list().length === 0,
+      label: () => juke.how.bar ? "Play and pause on your bar: on" : "Play and pause on your bar: off",
+      act: () => juke.setHow({ bar: !juke.how.bar })
+    },
     {
       id: "juke-add",
       section: "sound",
       icon: "save",
       label: "Add music from this device",
       act: () => picker.click()
-    },
-    {
-      id: "juke-play",
-      section: "sound",
-      icon: "note",
-      on: () => sounds.jukebox.playing,
-      hidden: () => sounds.jukebox.list().length === 0,
-      label: () => sounds.jukebox.playing ? "Pause your music" : "Play your music",
-      act: async () => {
-        if (sounds.jukebox.playing) return sounds.jukebox.pause();
-        if (!await sounds.jukebox.play()) controls.say("Your music couldn't be played.");
-      }
-    },
-    {
-      id: "juke-next",
-      section: "sound",
-      icon: "turn",
-      hidden: () => sounds.jukebox.list().length < 2,
-      label: "Next song",
-      act: () => void sounds.jukebox.next()
     },
     {
       id: "juke-remove",
@@ -13711,10 +13879,10 @@ export {
   withinBudget,
   fitToSize,
   createItems,
-  runInBox,
   scriptAllowed,
   allowScript,
   mayHold,
+  runInBox,
   paintHealth,
   createPlay,
   textSprite,
@@ -13782,7 +13950,7 @@ export {
   addScoreControls,
   createBag,
   itemIn,
-  addBagControls,
+  addBagControls2 as addBagControls,
   TAP_MS,
   addItemControls,
   createDoorRatings,
