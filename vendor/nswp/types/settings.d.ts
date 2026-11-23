@@ -54,6 +54,11 @@ export interface TravelSettings {
      */
     pictures?: boolean;
     /**
+     * Whether they see people's own models (protocol/05-looks.md, "A model of your own"). Left out, they do, where a
+     * world draws them. Turned off, everyone is drawn as their simple look.
+     */
+    models?: boolean;
+    /**
      * Whether they see what other people write in a room, and may write there themselves. Left out, they do.
      * Turned off, nothing anyone writes is shown to them, and nobody is told.
      */

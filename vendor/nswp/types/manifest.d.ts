@@ -22,10 +22,17 @@ export interface ManifestWorld {
     };
     entryPoints: string[];
     capabilities: string[];
+    /**
+     * What it draws of people's looks (protocol/05-looks.md, "A model of your own"): the model formats it draws
+     * (`vrm`, `glb`; none, and everyone is drawn as their simple look), how heavy and how tall it lets one be, and
+     * `dress: "own"` where it dresses everyone itself and draws nobody's look.
+     */
     avatar?: {
         formats: string[];
         maxFileSizeMb?: number;
         maxTriangles?: number;
+        height?: [number, number];
+        dress?: "own";
     };
     multiplayer?: {
         endpoint: string;

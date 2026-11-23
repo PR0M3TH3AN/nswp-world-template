@@ -7,7 +7,7 @@ import {
   portal,
   room,
   setFilesAnywhere
-} from "./shared-QRGGCX3I.js";
+} from "./shared-GPDS23MY.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -22,23 +22,28 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-FYLN3PQO.js";
+} from "./shared-STBQBWFU.js";
 import {
   arrivedSettings,
   askClientForSignIn,
   askWell,
   clientSignsInAt,
+  copiedRefused,
   currentForm,
   foundRelays,
   fullscreenAction,
+  handUp,
   holdFullscreen,
   learnFrom,
+  mayShareScreen,
   onClientScreen,
   relayBackup,
   reportSettings,
+  savesWait,
+  screenNotHere,
   sendWell,
   startingForm
-} from "./shared-LQ6USDK4.js";
+} from "./shared-TGCMK7IG.js";
 import {
   LiveKeys,
   TextEntry,
@@ -50,7 +55,7 @@ import {
 } from "./shared-UBZ34GUM.js";
 
 // packages/sdk/src/three.ts
-import * as THREE20 from "three";
+import * as THREE21 from "three";
 
 // packages/sdk/src/turn.ts
 import * as THREE from "three";
@@ -790,11 +795,12 @@ function whenSessionGranted(fn) {
 var NOT_A_PRESS = /* @__PURE__ */ new Set(["Tab", "Shift", "Control", "Alt", "Meta", "CapsLock", "ContextMenu"]);
 var TRYING_MS = 2e3;
 var GIVE_UP_MS = 12e3;
-function offerHeadset(title, enter, stay) {
+function offerHeadset(title, enter, stay, opts = {}) {
+  const asked = opts.asked === true;
   const scrim = document.createElement("div");
   scrim.id = "nswp-enter";
   scrim.setAttribute("role", "dialog");
-  scrim.setAttribute("aria-label", `You've arrived at ${title}`);
+  scrim.setAttribute("aria-label", asked ? `Launch VR in ${title}` : `You've arrived at ${title}`);
   Object.assign(scrim.style, { position: "fixed", inset: "0", zIndex: "50", display: "grid", placeContent: "center", justifyItems: "center", gap: "18px", padding: "24px", background: "rgba(4, 7, 11, 0.62)", textAlign: "center", cursor: "pointer" });
   const heading = document.createElement("p");
   heading.textContent = title;
@@ -802,12 +808,12 @@ function offerHeadset(title, enter, stay) {
   const go = document.createElement("button");
   go.type = "button";
   go.id = "nswp-enter-vr";
-  go.textContent = "Enter VR";
+  go.textContent = "Launch";
   Object.assign(go.style, { font: "700 clamp(24px, 5vw, 40px)/1 system-ui, sans-serif", minWidth: "min(78vw, 520px)", minHeight: "120px", padding: "0 32px", border: "0", borderRadius: "18px", background: "#eef5fb", color: "#04070b", cursor: "pointer" });
   const hint2 = document.createElement("p");
   hint2.id = "nswp-enter-hint";
   hint2.setAttribute("aria-live", "polite");
-  hint2.textContent = "Press anywhere, with anything, to go back in.";
+  hint2.textContent = asked ? "Press anywhere, with anything, to start VR." : "Press anywhere, with anything, to go back in.";
   Object.assign(hint2.style, { margin: "0", font: "500 clamp(18px, 3vw, 24px)/1.3 system-ui, sans-serif", color: "#eef5fb" });
   const flat = document.createElement("button");
   flat.type = "button";
@@ -894,7 +900,15 @@ function load() {
   const came = arrivedSettings();
   prefs = { look: clampLook(came.look ?? kept2.look), fov: came.fov !== void 0 ? clampFov(came.fov) : clampFov(kept2.fov) };
   if (came.look !== void 0 || came.fov !== void 0) keep(prefs);
-  reportSettings("desk", () => ({ look: load().look, ...load().fov === null ? {} : { fov: load().fov } }));
+  reportSettings(
+    "desk",
+    () => ({ look: load().look, ...load().fov === null ? {} : { fov: load().fov } }),
+    // Their client's menu changed one (settings.ts, `changeSettings`).
+    (now) => {
+      if (now.look !== void 0) setLookScale(now.look);
+      if (now.fov !== void 0) setVisitorFov(now.fov);
+    }
+  );
   return prefs;
 }
 var change = (next) => {
@@ -1217,17 +1231,18 @@ function addFollowingControls(controls, opts) {
     if (f.allowed()) return void now();
     say(f.ask(() => void now()));
   };
-  const byKey = async () => {
+  const byKey = async (typed) => {
     const me = f.pubkey();
     if (!me) return say("Sign in to follow people: it is under You.");
-    let text = "";
+    let text = typed ?? "";
     const keyboard = opts.presenting?.() ? opts.keyboard?.() ?? null : null;
-    if (keyboard) text = await keyboard.ask({ title: "Their key: npub1\u2026 Paste it, or type it. Done follows them.", maxLength: 80 }).catch(() => null) ?? "";
+    if (typed !== void 0) {
+    } else if (keyboard) text = await keyboard.ask({ title: "Their key: npub1\u2026 Paste it, or type it. Done follows them.", maxLength: 80 }).catch(() => null) ?? "";
     else {
       try {
         text = await (opts.copied ? opts.copied() : navigator.clipboard.readText());
       } catch {
-        return say("What you copied couldn't be read here. Copy their key (it starts npub1), allow this site to read what you copy, and press again.");
+        return say(copiedRefused("Copy their key (it starts npub1)"));
       }
     }
     const key = keyIn(text);
@@ -1304,7 +1319,7 @@ function addFollowingControls(controls, opts) {
       }
       return;
     }
-    add({ id: "following-key", icon: "key", label: () => opts.presenting?.() && opts.keyboard?.() ? "Follow someone by their key" : "Follow the key I copied", short: "By key", act: () => void byKey() });
+    add({ id: "following-key", icon: "key", kind: "field", label: "Follow by key (npub1\u2026)", short: "By key", act: (typed) => void byKey(typed) });
     if (chosen) {
       const them = chosen;
       const following = follows.includes(them);
@@ -1912,7 +1927,7 @@ function addGateControls(controls, gate, opts = {}) {
       else controls.say("That didn't finish, and the way is still shut. If you did pay, press Buy again: it finds what you paid for and charges nothing more.");
     });
   };
-  const showing = () => (gate.state === "shut" || gate.state === "ending") && gate.reason !== "no-manifest" && gate.reason !== "not-own" && gate.reason !== "no-signer" && gate.reason !== "blocked" && gate.reason !== "not-invited";
+  const showing2 = () => (gate.state === "shut" || gate.state === "ending") && gate.reason !== "no-manifest" && gate.reason !== "not-own" && gate.reason !== "no-signer" && gate.reason !== "blocked" && gate.reason !== "not-invited";
   for (let i = 0; i < ACCESS_MOST; i++) {
     const offer = () => gate.offers[i];
     controls.add({
@@ -1929,14 +1944,14 @@ function addGateControls(controls, gate, opts = {}) {
         if (gate.byInvitation && !gate.signedIn) return "Sign in, to show you are invited";
         return gate.signedIn ? "Ask again what this costs" : "Sign in, to show what you hold";
       },
-      hidden: () => !showing() || !offer() && (i > 0 || gate.offers.length > 0),
+      hidden: () => !showing2() || !offer() && (i > 0 || gate.offers.length > 0),
       act: () => press(offer()?.listing)
     });
   }
   const refresh = () => {
     const closed = gate.state === "shut" || gate.state === "ending";
     if (!closed) saidFor = "";
-    else if (saidFor !== gate.state && (gate.state === "ending" || gate.read || !showing())) {
+    else if (saidFor !== gate.state && (gate.state === "ending" || gate.read || !showing2())) {
       saidFor = gate.state;
       controls.say(gate.why);
     }
@@ -2013,14 +2028,20 @@ function addOwnersScreen(controls, gate, opts) {
     section: "guests",
     icon: "you",
     hidden: () => !gate.keeper,
-    label: "Someone whose key I copied",
+    // A row typed into: the key is pasted or typed in the menu's own box and taken at the press. So it works in a
+    // world shown in its client's frame, which a browser never lets read what was copied. Where the menu has no box
+    // (a headset's console draws the row as a button), what was copied is read, as before.
+    kind: "field",
+    label: "Add someone by key (npub1\u2026)",
     short: "By key",
-    act: async () => {
-      let text = "";
-      try {
-        text = await (opts.copied ? opts.copied() : navigator.clipboard.readText());
-      } catch {
-        return controls.say("What you copied couldn't be read here. Copy someone's key (npub1\u2026), allow this site to read what you copy, and press again.");
+    act: async (given) => {
+      let text = given ?? "";
+      if (given === void 0) {
+        try {
+          text = await (opts.copied ? opts.copied() : navigator.clipboard.readText());
+        } catch {
+          return controls.say(copiedRefused("Copy someone's key (npub1\u2026)"));
+        }
       }
       const key = keyIn(text);
       if (!key) return controls.say("That isn't someone's key. Copy their npub1\u2026 and press again.");
@@ -3014,7 +3035,7 @@ function figureAction(controls, leaving = () => ({})) {
 }
 
 // packages/sdk/src/presence.ts
-import * as THREE9 from "three";
+import * as THREE10 from "three";
 import { bubbleSeconds, buildTints, cleanItemsRule as cleanItemsRule2, cleanTints, ENTRY_CLEAR, itemCoordinate as itemCoordinate2, parseTints, pickEntryPlace, decodeLook, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
@@ -3943,7 +3964,7 @@ function showsItems() {
   }
   shown = came ?? kept2 !== "off";
   if (came !== void 0) keep2(shown);
-  reportSettings("items", () => ({ items: showsItems() }));
+  reportSettings("items", () => ({ items: showsItems() }), (now) => void (now.items !== void 0 && now.items !== shown && setShowsItems(now.items)));
   return shown;
 }
 function setShowsItems(on) {
@@ -5172,8 +5193,223 @@ function createPlay(o) {
   };
 }
 
+// packages/sdk/src/look-models.ts
+import { AVATAR_KIND, decodeNaddr, DEFAULT_RELAYS as DEFAULT_RELAYS6, glbJson, LOOK_BUDGET, LOOK_MODELS_AT_ONCE, LOOK_NOTE_LIMIT, verifyEvent as verifyEvent6, lookFacing, readGlb as readGlb2, withoutRequired } from "@nswp/core";
+import * as THREE9 from "three";
+import { GLTFLoader as GLTFLoader2 } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
+
+// packages/sdk/src/models-switch.ts
+var MODELS_KEY = "nswp:models";
+var showing = null;
+var modelWatchers = /* @__PURE__ */ new Set();
+var keepModels = (on) => {
+  try {
+    if (on) globalThis.localStorage?.removeItem(MODELS_KEY);
+    else globalThis.localStorage?.setItem(MODELS_KEY, "off");
+  } catch {
+  }
+};
+function showsModels() {
+  if (showing !== null) return showing;
+  const came = arrivedSettings().models;
+  let kept2 = null;
+  try {
+    kept2 = globalThis.localStorage?.getItem(MODELS_KEY) ?? null;
+  } catch {
+  }
+  showing = came ?? kept2 !== "off";
+  if (came !== void 0) keepModels(showing);
+  reportSettings("models", () => ({ models: showsModels() }), (now) => void (now.models !== void 0 && now.models !== showing && setShowsModels(now.models)));
+  return showing;
+}
+function setShowsModels(on) {
+  showsModels();
+  showing = on;
+  keepModels(on);
+  for (const fn of modelWatchers) fn();
+}
+function onModelsChange(fn) {
+  modelWatchers.add(fn);
+  return () => void modelWatchers.delete(fn);
+}
+
+// packages/sdk/src/look-models.ts
+function lookBudget(world) {
+  const mb = world?.maxFileSizeMb;
+  const tris = world?.maxTriangles;
+  return {
+    ...LOOK_BUDGET,
+    bytes: typeof mb === "number" && Number.isFinite(mb) && mb >= 0 ? Math.min(LOOK_BUDGET.bytes, Math.floor(mb * 1e6)) : LOOK_BUDGET.bytes,
+    triangles: typeof tris === "number" && Number.isFinite(tris) && tris >= 0 ? Math.min(LOOK_BUDGET.triangles, Math.floor(tris)) : LOOK_BUDGET.triangles
+  };
+}
+var AGAIN_MS2 = 4e3;
+function createLookModels(opts = {}) {
+  const viewer = opts.viewer ?? (() => arrival.identity()?.pubkey ?? null);
+  const hosts = { ...opts.relays ? { relays: opts.relays } : {}, ...opts.query ? { query: opts.query } : {}, ...opts.now ? { now: opts.now } : {} };
+  const files2 = /* @__PURE__ */ new Map();
+  const scenes = /* @__PURE__ */ new Map();
+  const refusals = /* @__PURE__ */ new Map();
+  onFileHostsChange(() => {
+    for (const [sha, why] of refusals)
+      if (why === "elsewhere") {
+        refusals.delete(sha);
+        for (const key of [...files2.keys()]) if (key.startsWith(sha)) files2.delete(key);
+        for (const key of [...scenes.keys()]) if (key.startsWith(sha)) scenes.delete(key);
+      }
+  });
+  const keyOf = (model, budget) => `${model.sha256}:${budget.bytes}:${budget.triangles}`;
+  const forgetSoon = (kept2, key, asked) => setTimeout(() => {
+    if (kept2.get(key) === asked) kept2.delete(key);
+  }, AGAIN_MS2);
+  const bytes = (model, budget = LOOK_BUDGET) => {
+    const key = keyOf(model, budget);
+    let got = files2.get(key);
+    if (!got) {
+      const asking = fetchByHashSaying(model.sha256, model.url, { most: budget.bytes, viewer: viewer(), hosts, ...opts.fetchBytes ? { fetchBytes: opts.fetchBytes } : {} }).then(({ bytes: b, wrong }) => {
+        if (!b) {
+          if (keptElsewhere(model.url)) refusals.set(model.sha256, "elsewhere");
+          else {
+            refusals.set(model.sha256, wrong ? "refused" : "missing");
+            if (!wrong) forgetSoon(files2, key, asking);
+          }
+          return null;
+        }
+        const read = readGlb2(b, budget);
+        if (!read.ok) {
+          refusals.set(model.sha256, "refused");
+          return null;
+        }
+        refusals.delete(model.sha256);
+        return { bytes: b, count: read.count };
+      });
+      got = asking;
+      files2.set(key, got);
+    }
+    return got;
+  };
+  const scene = (model, budget) => {
+    const key = keyOf(model, budget);
+    let got = scenes.get(key);
+    if (!got) {
+      got = bytes(model, budget).then(async (checked) => {
+        if (!checked) {
+          scenes.delete(key);
+          return null;
+        }
+        const plain = withoutRequired(checked.bytes);
+        const json = glbJson(checked.bytes);
+        if (!plain || !json) return null;
+        try {
+          const read = await new GLTFLoader2().parseAsync(plain.buffer.slice(plain.byteOffset, plain.byteOffset + plain.byteLength), "");
+          const root = read.scene;
+          if (lookFacing(json) === "+z") root.rotation.y = Math.PI;
+          root.traverse((o) => {
+            const mesh = o;
+            if (!mesh.isMesh) return;
+            for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+              const std = m;
+              if (!std.isMeshStandardMaterial) continue;
+              std.metalness = 0;
+              std.metalnessMap = null;
+              std.roughness = Math.max(std.roughness, 0.6);
+              std.needsUpdate = true;
+            }
+          });
+          root.userData.lookClips = read.animations;
+          return root;
+        } catch {
+          refusals.set(model.sha256, "unreadable");
+          return null;
+        }
+      });
+      scenes.set(key, got);
+    }
+    return got;
+  };
+  return {
+    bytes,
+    async object(model, budget = LOOK_BUDGET) {
+      const root = await scene(model, budget);
+      if (!root) return null;
+      const copy = clone(root);
+      copy.updateMatrixWorld(true);
+      const box = new THREE9.Box3().setFromObject(copy);
+      const tall = box.max.y - box.min.y;
+      const holder = new THREE9.Group();
+      if (!(tall > 0) || !Number.isFinite(tall)) return null;
+      const scale = model.height / tall;
+      copy.scale.multiplyScalar(scale);
+      copy.updateMatrixWorld(true);
+      const fitted = new THREE9.Box3().setFromObject(copy);
+      const centre = fitted.getCenter(new THREE9.Vector3());
+      copy.position.x -= centre.x;
+      copy.position.z -= centre.z;
+      copy.position.y -= fitted.min.y;
+      holder.add(copy);
+      holder.userData.lookClips = root.userData.lookClips ?? [];
+      holder.userData.lookHeight = model.height;
+      return holder;
+    },
+    why: (model) => refusals.get(model.sha256) ?? null
+  };
+}
+async function ownLookNote(opts = {}) {
+  const naddr = opts.naddr === void 0 ? arrival.avatar() : opts.naddr;
+  const author = opts.author === void 0 ? arrival.identity()?.pubkey ?? null : opts.author;
+  if (!naddr || !author) return null;
+  let at;
+  try {
+    at = decodeNaddr(naddr);
+  } catch {
+    return null;
+  }
+  if (at.kind !== AVATAR_KIND || at.pubkey !== author) return null;
+  const relays = [.../* @__PURE__ */ new Set([...(at.relays ?? []).filter((r) => r.startsWith("wss://")).slice(0, 3), ...opts.relays ?? DEFAULT_RELAYS6])];
+  const got = await askWell({ kinds: [AVATAR_KIND], authors: [author], "#d": [at.identifier], limit: 4 }, { own: [], usual: relays, ...opts.query ? { query: opts.query } : {}, timeoutMs: 4e3, ...opts.now ? { now: opts.now } : {} }).catch(() => null);
+  const newest = (got?.events ?? []).filter((e) => e.kind === AVATAR_KIND && e.pubkey === author && verifyEvent6(e) && e.tags.some((t) => t[0] === "d" && t[1] === at.identifier)).sort((a, b) => b.created_at - a.created_at)[0];
+  return newest && JSON.stringify(newest).length <= LOOK_NOTE_LIMIT ? newest : null;
+}
+function worldDrawsModels(world) {
+  return !!world && world.dress !== "own" && (world.formats.includes("vrm") || world.formats.includes("glb"));
+}
+function chooseLooks(people, world, shows, most = LOOK_MODELS_AT_ONCE) {
+  const out = /* @__PURE__ */ new Map();
+  const draws = worldDrawsModels(world);
+  const may = [];
+  for (const p of people) {
+    if (!p.format) out.set(p.key, "none");
+    else if (!draws || !world.formats.includes(p.format)) out.set(p.key, "world");
+    else if (!shows) out.set(p.key, "off");
+    else if (p.simple) out.set(p.key, "person");
+    else may.push({ key: p.key, metres: Number.isFinite(p.metres) ? p.metres : Infinity });
+  }
+  may.sort((a, b) => a.metres - b.metres);
+  may.forEach((p, i) => out.set(p.key, i < Math.max(0, most) ? "draw" : "crowd"));
+  return out;
+}
+
 // packages/sdk/src/presence.ts
+import { LOOK_HEIGHT, lookHeight, markGrid as markGrid2 } from "@nswp/core";
 var ARRIVING_SECONDS = 6;
+var STANDING_EYES = 1.6;
+function markSprite(mark) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 64;
+  const g = canvas.getContext("2d");
+  g.fillStyle = "rgba(10,15,21,0.85)";
+  g.beginPath();
+  g.roundRect(2, 2, 60, 60, 12);
+  g.fill();
+  g.fillStyle = "#ffffff";
+  markGrid2(mark).forEach((row, y) => row.forEach((on, x) => on && g.fillRect(9 + x * 9.5, 9 + y * 9.5, 8, 8)));
+  const map = new THREE10.CanvasTexture(canvas);
+  map.colorSpace = THREE10.SRGBColorSpace;
+  const sprite = new THREE10.Sprite(new THREE10.SpriteMaterial({ map, depthWrite: false }));
+  sprite.scale.set(0.11, 0.11, 1);
+  return sprite;
+}
 var SEND_EVERY_MS = 66;
 var FADE_START = 0.9;
 var FADE_END = 0.45;
@@ -5195,9 +5431,9 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE9.CanvasTexture(canvas);
-  tex.colorSpace = THREE9.SRGBColorSpace;
-  const sprite = new THREE9.Sprite(new THREE9.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE10.CanvasTexture(canvas);
+  tex.colorSpace = THREE10.SRGBColorSpace;
+  const sprite = new THREE10.Sprite(new THREE10.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
@@ -5226,9 +5462,9 @@ function speechSprite(text, width = 0.8) {
   g.font = font;
   g.textBaseline = "middle";
   rows.forEach((row, i) => g.fillText(row, PAD, PAD * 0.7 + LINE * (i + 0.5), canvas.width - PAD * 2));
-  const tex = new THREE9.CanvasTexture(canvas);
-  tex.colorSpace = THREE9.SRGBColorSpace;
-  const sprite = new THREE9.Sprite(new THREE9.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
+  const tex = new THREE10.CanvasTexture(canvas);
+  tex.colorSpace = THREE10.SRGBColorSpace;
+  const sprite = new THREE10.Sprite(new THREE10.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
   const metres = width / FULL;
   sprite.scale.set(canvas.width * metres, canvas.height * metres, 1);
   sprite.center.set(0.5, 0);
@@ -5244,7 +5480,7 @@ function createPresence(d) {
   if (!d.worldRules) onPageRules(takeRules);
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE9.AudioListener();
+  const listener = new THREE10.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -5257,10 +5493,10 @@ function createPresence(d) {
   let clock = 0;
   const tendArrival = () => {
     if (!arriving) return;
-    const head = d.camera.getWorldPosition(new THREE9.Vector3());
+    const head = d.camera.getWorldPosition(new THREE10.Vector3());
     if (clock > arriving.until || Math.hypot(head.x - arriving.from.x, head.z - arriving.from.z) > ENTRY_CLEAR) return void (arriving = null);
     const others = [...avatars.values()].filter((a) => a.target && !a.member.joinedAfterYou).map((a) => {
-      const h = a.head.getWorldPosition(new THREE9.Vector3());
+      const h = a.head.getWorldPosition(new THREE10.Vector3());
       return [h.x, h.z];
     });
     if (!others.some(([x, z]) => Math.hypot(x - head.x, z - head.z) < ENTRY_CLEAR)) return;
@@ -5290,9 +5526,9 @@ function createPresence(d) {
       fade.addColorStop(1, "rgba(255,255,255,0)");
       g.fillStyle = fade;
       g.fillRect(0, 0, 64, 64);
-      dot = new THREE9.CanvasTexture(canvas);
+      dot = new THREE10.CanvasTexture(canvas);
     }
-    return new THREE9.Sprite(new THREE9.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
+    return new THREE10.Sprite(new THREE10.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
   };
   const showRecording = (a, on) => {
     if (on && !a.light) {
@@ -5333,8 +5569,8 @@ function createPresence(d) {
   let sightWant = false;
   let sightK = 0;
   let fovBase = null;
-  const hip = new THREE9.Vector3();
-  const up = new THREE9.Vector3();
+  const hip = new THREE10.Vector3();
+  const up = new THREE10.Vector3();
   const endSight = () => {
     sightWant = false;
     sightK = 0;
@@ -5346,9 +5582,9 @@ function createPresence(d) {
     setAimScale(1);
   };
   const bob = { x: 0, y: 0 };
-  const walked = { at: new THREE9.Vector3(), has: false, far: 0, k: 0 };
+  const walked = { at: new THREE10.Vector3(), has: false, far: 0, k: 0 };
   const sway = (dt, still) => {
-    const at = d.rig.getWorldPosition(new THREE9.Vector3());
+    const at = d.rig.getWorldPosition(new THREE10.Vector3());
     const moved = walked.has ? Math.hypot(at.x - walked.at.x, at.z - walked.at.z) : 0;
     walked.at.copy(at);
     walked.has = true;
@@ -5369,9 +5605,9 @@ function createPresence(d) {
     if (now < 0) {
       const size = described?.size ?? [0.2, 0.3, 0.2];
       const acts = !!described?.does.use;
-      const tall1 = Math.tan(THREE9.MathUtils.degToRad((fovBase ?? d.camera.fov) / 2));
+      const tall1 = Math.tan(THREE10.MathUtils.degToRad((fovBase ?? d.camera.fov) / 2));
       const narrow = d.camera.aspect < 1;
-      const far = THREE9.MathUtils.clamp(size[1] / (2 * tall1 * (narrow ? 0.24 : acts ? 0.4 : 0.3)), 0.4, 0.95);
+      const far = THREE10.MathUtils.clamp(size[1] / (2 * tall1 * (narrow ? 0.24 : acts ? 0.4 : 0.3)), 0.4, 0.95);
       const tall = tall1 * far;
       const wide = tall * d.camera.aspect;
       hip.set(narrow ? wide * 0.5 : Math.min(wide * 0.6, wide - size[0] * 0.6), narrow ? -tall * 0.56 : -tall * 0.99, -far);
@@ -5382,7 +5618,7 @@ function createPresence(d) {
         mineModel.position.lerpVectors(hip, up, sightK);
         if (sightK > 2e-3 || fovBase !== null) {
           fovBase ??= d.camera.fov;
-          const share = THREE9.MathUtils.lerp(1, Math.max(0.45, aim.zoom), sightK);
+          const share = THREE10.MathUtils.lerp(1, Math.max(0.45, aim.zoom), sightK);
           d.camera.fov = fovBase * share;
           d.camera.updateProjectionMatrix();
           setAimScale(share);
@@ -5415,7 +5651,7 @@ function createPresence(d) {
     },
     ...d.deferredPlay ? { deferred: true } : {},
     me: () => session?.self.pubkey ?? null,
-    people: () => [...avatars.values()].filter((a) => a.target && a.root.visible).map((a) => ({ pubkey: a.member.pubkey, head: a.head.getWorldPosition(new THREE9.Vector3()), body: a.torso, over: a.head, root: a.root, holding: a.heldItem ?? "", held: a.held ?? null })),
+    people: () => [...avatars.values()].filter((a) => a.target && a.root.visible).map((a) => ({ pubkey: a.member.pubkey, head: a.head.getWorldPosition(new THREE10.Vector3()), body: a.torso, over: a.head, root: a.root, holding: a.heldItem ?? "", held: a.held ?? null })),
     itemsMuted: (pubkey) => itemMutes.has(pubkey),
     tell: (said) => session?.tellPlay(said),
     tintsOf: (pubkey) => pubkey === null ? mineTints : avatars.get(pubkey)?.tints ?? {},
@@ -5427,8 +5663,8 @@ function createPresence(d) {
       const i = hand();
       const c = i >= 0 ? d.controllers[i] : null;
       if (!c) return null;
-      const from = c.getWorldPosition(new THREE9.Vector3());
-      return { from, to: from.clone().add(new THREE9.Vector3(0, 0, -18).applyQuaternion(c.getWorldQuaternion(new THREE9.Quaternion()))) };
+      const from = c.getWorldPosition(new THREE10.Vector3());
+      return { from, to: from.clone().add(new THREE10.Vector3(0, 0, -18).applyQuaternion(c.getWorldQuaternion(new THREE10.Quaternion()))) };
     },
     ...d.solid ? { solid: d.solid } : {},
     ...d.onStruck ? { onStruck: d.onStruck } : {},
@@ -5474,10 +5710,13 @@ function createPresence(d) {
     if (a.beam) figure.head.add(a.beam);
     if (a.bubble) figure.head.add(a.bubble);
     a.root.add(figure.group);
+    if (a.model) figure.metal.visible = false;
+    if (a.mark) figure.head.add(a.mark);
     a.figure = figure;
     a.head = figure.head;
     a.torso = figure.torso;
     a.hands = figure.hands;
+    placeOverHead(a);
     a.materials = [figure.metal, a.label.material, ...a.picture ? [a.picture.material] : []].map((material) => {
       const opacity = material === a.label.material || material === a.picture?.material ? 1 : material.opacity;
       material.transparent = true;
@@ -5520,9 +5759,9 @@ function createPresence(d) {
     if (!from) return void dress(a, a.member.look);
     void loadPicture(from).then((canvas) => {
       if (!canvas || a.pictureFrom !== from || !avatars.has(a.member.pubkey)) return;
-      const map = new THREE9.CanvasTexture(canvas);
-      map.colorSpace = THREE9.SRGBColorSpace;
-      const sprite = new THREE9.Sprite(new THREE9.SpriteMaterial({ map, depthWrite: false }));
+      const map = new THREE10.CanvasTexture(canvas);
+      map.colorSpace = THREE10.SRGBColorSpace;
+      const sprite = new THREE10.Sprite(new THREE10.SpriteMaterial({ map, depthWrite: false }));
       sprite.scale.set(0.2, 0.2, 1);
       sprite.position.set(0, 0.63, 0);
       sprite.userData.person = a.member.pubkey;
@@ -5536,8 +5775,87 @@ function createPresence(d) {
   });
   let onPerson = () => {
   };
+  const lookModels = d.lookModels ?? createLookModels();
+  const simpleKeys = /* @__PURE__ */ new Set();
+  let sinceModels = 1;
+  const worldLooks = () => d.looks?.() ?? null;
+  const drawsModels = () => worldDrawsModels(worldLooks());
+  const chosenLooks = () => {
+    d.camera.getWorldPosition(headAt);
+    return chooseLooks(
+      [...avatars.values()].map((a) => ({ key: a, format: a.target ? a.member.model?.format ?? null : null, metres: a.head.position.distanceTo(headAt), simple: simpleKeys.has(a.member.pubkey) })),
+      worldLooks(),
+      showsModels()
+    );
+  };
+  const whyNot = (a) => {
+    const m = a.member.model;
+    if (!m) return "none";
+    const why = chosenLooks().get(a) ?? "none";
+    return why === "draw" ? lookModels.why(m) ?? "loading" : why;
+  };
+  const dropModel = (a) => {
+    a.model?.removeFromParent();
+    a.mark?.removeFromParent();
+    a.mark?.material.map?.dispose();
+    a.mark?.material.dispose();
+    delete a.model;
+    delete a.modelFor;
+    delete a.mark;
+    a.lift = 0;
+    a.figure.metal.visible = true;
+    placeOverHead(a);
+  };
+  const placeOverHead = (a) => {
+    const lift = a.lift ?? 0;
+    a.label.position.y = 0.42 + lift;
+    if (a.picture) a.picture.position.y = 0.63 + lift;
+    if (a.mark) a.mark.position.y = 0.3 + lift;
+  };
+  const wearModel = (a, key, model, mark) => {
+    dropModel(a);
+    a.model = model;
+    a.modelFor = key;
+    a.root.add(model);
+    a.figure.metal.visible = false;
+    a.mark = markSprite(mark);
+    a.figure.head.add(a.mark);
+    a.lift = (model.userData.lookHeight ?? LOOK_HEIGHT.standard) - LOOK_HEIGHT.standard;
+    placeOverHead(a);
+    changed();
+  };
+  onModelsChange(() => sinceModels = 1);
+  const tendModels = (dt) => {
+    sinceModels += dt;
+    if (sinceModels < 0.5) return;
+    sinceModels = 0;
+    const w = worldLooks();
+    const chosen = chosenLooks();
+    const budget = lookBudget(w);
+    for (const a of avatars.values()) {
+      const m = a.member.model;
+      if (!m || chosen.get(a) !== "draw") {
+        delete a.wantModel;
+        if (a.model) dropModel(a);
+        continue;
+      }
+      const height = lookHeight(m.height, w?.height);
+      const key = `${m.sha256}:${height}`;
+      if (a.modelFor === key || a.wantModel === key) continue;
+      a.wantModel = key;
+      void lookModels.object({ ...m, height }, budget).then((model) => {
+        if (!avatars.has(a.member.pubkey) || a.wantModel !== key) return;
+        if (!model) {
+          if (a.model) dropModel(a);
+          changed();
+          return;
+        }
+        wearModel(a, key, model, a.member.look.mark);
+      });
+    }
+  };
   const makeAvatar = (member) => {
-    const root = new THREE9.Group();
+    const root = new THREE10.Group();
     root.visible = false;
     root.userData.nswpNoHit = true;
     const label = textSprite(member.name, labelColor, 0.5);
@@ -5564,7 +5882,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE9.PositionalAudio(listener);
+    const pa = new THREE10.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(MUSIC_RANGE);
     pa.setVolume(0);
@@ -5592,8 +5910,8 @@ function createPresence(d) {
     return Math.sqrt(buf.reduce((sum, x) => sum + x * x, 0) / buf.length);
   };
   const levelBuf = new Float32Array(512);
-  const headAt = new THREE9.Vector3();
-  const theirs = new THREE9.Vector3();
+  const headAt = new THREE10.Vector3();
+  const theirs = new THREE10.Vector3();
   const tendMusic = (dt) => {
     if (!session) return;
     d.camera.getWorldPosition(headAt);
@@ -5641,7 +5959,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE9.PositionalAudio(listener);
+    const pa = new THREE10.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -5665,10 +5983,11 @@ function createPresence(d) {
     d.scene.remove(a.root);
     dropPicture(a);
     dropBubble(a);
+    dropModel(a);
     a.figure.dispose();
   };
-  const v = new THREE9.Vector3();
-  const q = new THREE9.Quaternion();
+  const v = new THREE10.Vector3();
+  const q = new THREE10.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -5730,13 +6049,14 @@ function createPresence(d) {
     if (rules.namedOnly && !identity) throw new Error("this world's rooms show only people who are signed in. Sign in, then join.");
     if (identity && rules.blocked.includes(identity.pass.pubkey)) throw new Error("the owner of this world has asked you not to come in.");
     if (identity && invitedOnly && !invitedOnly.includes(identity.pass.pubkey)) throw new Error("this world is by invitation, and its owner hasn't invited you.");
-    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {}, blocked: blockedKeys(), ownerBlocked: rules.blocked, namedOnly: rules.namedOnly, invited: invitedOnly });
+    const avatar = identity ? await (typeof d.avatar === "function" ? d.avatar() : d.avatar !== void 0 ? d.avatar : drawsModels() ? ownLookNote() : null) : null;
+    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {}, ...avatar ? { avatar } : {}, blocked: blockedKeys(), ownerBlocked: rules.blocked, namedOnly: rules.namedOnly, invited: invitedOnly });
     session = s;
     if (!offsetApplied) {
       offsetApplied = true;
       const at = d.arrival?.() ?? null;
       if (at && at.places.length) {
-        arriving = { until: clock + ARRIVING_SECONDS, from: d.camera.getWorldPosition(new THREE9.Vector3()), places: at.places, ...at.jump ? { jump: at.jump } : {}, ...at.canStand ? { canStand: at.canStand } : {}, ...at.moving ? { moving: at.moving } : {} };
+        arriving = { until: clock + ARRIVING_SECONDS, from: d.camera.getWorldPosition(new THREE10.Vector3()), places: at.places, ...at.jump ? { jump: at.jump } : {}, ...at.canStand ? { canStand: at.canStand } : {}, ...at.moving ? { moving: at.moving } : {} };
       } else {
         const off = spawnOffset(s.self.pubkey);
         (at?.jump ?? ((fn) => fn()))(() => {
@@ -5761,6 +6081,7 @@ function createPresence(d) {
     s.on("look", (m, look2) => {
       const a = avatars.get(m.pubkey);
       if (a) dress(a, look2);
+      sinceModels = 1;
       changed();
     });
     s.on("identity", (m) => {
@@ -5818,9 +6139,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE9.Vector3();
-  const tq = new THREE9.Quaternion();
-  const euler = new THREE9.Euler();
+  const tp = new THREE10.Vector3();
+  const tq = new THREE10.Quaternion();
+  const euler = new THREE10.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -5976,11 +6297,11 @@ function createPresence(d) {
       const a = avatars.get(pubkey);
       if (!a?.target) return null;
       d.camera.getWorldPosition(v);
-      const to = new THREE9.Vector3().fromArray(a.target.head.position).sub(v);
+      const to = new THREE10.Vector3().fromArray(a.target.head.position).sub(v);
       const distance = to.length();
       if (distance < 1e-3) return { distance: 0, pan: 0 };
-      const right = new THREE9.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
-      const pan = THREE9.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
+      const right = new THREE10.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
+      const pan = THREE10.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
       return { distance: Math.round(distance * 100) / 100, pan: Math.round(pan * 100) / 100 };
     },
     pressAt(raycaster) {
@@ -6049,6 +6370,23 @@ function createPresence(d) {
     isMuted(pubkey) {
       return mutedKeys.has(pubkey);
     },
+    showSimple(pubkey, on) {
+      if (on) simpleKeys.add(pubkey);
+      else simpleKeys.delete(pubkey);
+      sinceModels = 1;
+      changed();
+    },
+    isSimple(pubkey) {
+      return simpleKeys.has(pubkey);
+    },
+    drawsModels: () => drawsModels(),
+    lookInfo() {
+      return [...avatars.values()].map((a) => {
+        const m = a.member.model;
+        const drawn2 = !!a.model;
+        return { pubkey: a.member.pubkey, model: m?.sha256 ?? null, drawn: drawn2 ? "model" : "simple", why: drawn2 ? null : whyNot(a), height: drawn2 ? a.model?.userData.lookHeight ?? null : null };
+      });
+    },
     block(pubkey) {
       const gone = session?.block(pubkey);
       if (!gone) return null;
@@ -6103,7 +6441,7 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE9.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE10.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
         a.near = near;
         a.materials[0].material.tick?.(performance.now() / 1e3);
@@ -6113,7 +6451,7 @@ function createPresence(d) {
           if (t > (a.bubbleUntil ?? 0)) dropBubble(a);
           else {
             a.bubble.material.opacity = near * Math.min(1, (t - (a.bubbleFrom ?? t)) / 160, ((a.bubbleUntil ?? t) - t) / 600);
-            a.bubble.position.y = a.picture ? 0.78 : 0.5;
+            a.bubble.position.y = (a.picture ? 0.78 : 0.5) + (a.lift ?? 0);
           }
         }
         const snap = a.placed ? k : 1;
@@ -6123,6 +6461,11 @@ function createPresence(d) {
         euler.setFromQuaternion(a.head.quaternion, "YXZ");
         a.torso.position.set(a.head.position.x, a.head.position.y - 0.45, a.head.position.z);
         a.torso.rotation.set(0, euler.y, 0);
+        if (a.model) {
+          a.model.position.set(a.head.position.x, a.head.position.y - STANDING_EYES, a.head.position.z);
+          a.model.rotation.set(0, euler.y, 0);
+          a.model.visible = near > 0.5;
+        }
         const hands = [a.target.left, a.target.right];
         hands.forEach((t, i) => {
           const mesh = a.hands[i];
@@ -6132,6 +6475,7 @@ function createPresence(d) {
           } else mesh.visible = false;
         });
       }
+      tendModels(dt);
       play?.update(dt);
     },
     drawn() {
@@ -6186,1540 +6530,18 @@ function createPresence(d) {
 }
 
 // packages/sdk/src/room-controls.ts
-import * as THREE11 from "three";
-import { CHAT_LIMITS, cleanLightningAddress, DEFAULT_RELAYS as DEFAULT_RELAYS7, DELETION_KIND, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub6, verifyEvent as verifyEvent6 } from "@nswp/core";
-
-// packages/sdk/src/messages.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS6, isHex64 as isHex645, looksLikeWrap as looksLikeWrap2, MESSAGE_RELAYS_KIND, publishEvent as publishEvent4, queryRelays as queryRelays5, readMessageRelays, readRelayList as readRelayList3, RELAY_LIST_KIND as RELAY_LIST_KIND3, WRAP_KIND, wrapSeal, writtenWith } from "@nswp/core";
-var MOST2 = 300;
-var FRESH_MS3 = 45e3;
-function createMessages(opts) {
-  const { hand } = opts;
-  const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays5;
-  const publish = opts.publish ?? publishEvent4;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS6;
-  const store = (() => {
-    if (opts.storage !== void 0) return opts.storage;
-    try {
-      return globalThis.localStorage ?? null;
-    } catch {
-      return null;
-    }
-  })();
-  const watchers3 = /* @__PURE__ */ new Set();
-  const newcomers = /* @__PURE__ */ new Set();
-  const changed = () => {
-    for (const fn of watchers3) fn();
-  };
-  let who = null;
-  let state = "off";
-  let inbox = [];
-  let own = { read: [], write: [] };
-  let monitors = { open: [], closed: [] };
-  const read = /* @__PURE__ */ new Map();
-  const tried = /* @__PURE__ */ new Set();
-  let looked = 0;
-  let looking = null;
-  let first = true;
-  const seenKey = (me) => `nswp:messages:seen:${me}`;
-  let marks = null;
-  const seenAt = () => {
-    if (marks) return marks;
-    marks = {};
-    try {
-      const kept2 = JSON.parse(who && store?.getItem(seenKey(who)) || "{}");
-      if (kept2 && typeof kept2 === "object" && !Array.isArray(kept2)) {
-        for (const [k, v] of Object.entries(kept2)) if (isHex645(k) && typeof v === "number") marks[k] = v;
-      }
-    } catch {
-    }
-    return marks;
-  };
-  const reset = (me) => {
-    who = me;
-    state = me && hand.ready() ? "looking" : "off";
-    inbox = [];
-    own = { read: [], write: [] };
-    read.clear();
-    tried.clear();
-    marks = null;
-    looked = 0;
-    first = true;
-  };
-  const threads = () => {
-    const by = /* @__PURE__ */ new Map();
-    if (!who) return by;
-    for (const m of read.values()) {
-      const peer = writtenWith(m, who);
-      if (!peer) continue;
-      by.set(peer, [...by.get(peer) ?? [], m]);
-    }
-    for (const list of by.values()) list.sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1));
-    return by;
-  };
-  const unreadIn = (peer, list) => list.filter((m) => m.from === peer && m.at > (seenAt()[peer] ?? 0)).length;
-  const knownTo = (peer, list) => !!opts.known?.(peer) || list.some((m) => m.from === who);
-  const look = async (me) => {
-    const lists = await askWell({ kinds: [RELAY_LIST_KIND3, MESSAGE_RELAYS_KIND], authors: [me], limit: 8 }, { own: [], usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
-    if (hand.pubkey() !== me) return;
-    const answered = !!lists && Object.values(lists.relays).some((said) => said === "eose");
-    const relayList = readRelayList3(lists?.events ?? [], me);
-    own = { read: relayList?.read ?? [], write: relayList?.write ?? [] };
-    const found = readMessageRelays(lists?.events ?? [], me);
-    if (found.length) inbox = found;
-    if (!inbox.length) {
-      if (answered && relayBackup()) monitors = await foundRelays({ query, now }).catch(() => monitors);
-      if (hand.pubkey() !== me) return;
-      state = answered ? "no-inbox" : "unreachable";
-      looked = now();
-      return changed();
-    }
-    const got = await query(inbox, { kinds: [WRAP_KIND], "#p": [me], limit: MOST2 }, 5e3).catch(() => null);
-    if (hand.pubkey() !== me) return;
-    if (got) learnFrom(got.relays, now());
-    const wraps = (got?.events ?? []).filter((e) => !tried.has(e.id) && looksLikeWrap2(e, me)).slice(0, MOST2);
-    for (const wrap2 of wraps) {
-      tried.add(wrap2.id);
-      const message = await hand.open(wrap2).catch(() => null);
-      if (hand.pubkey() !== me) return;
-      if (!message || read.has(message.id)) continue;
-      read.set(message.id, message);
-      if (!first && message.from !== me) for (const fn of newcomers) fn(message);
-    }
-    first = false;
-    state = got && Object.values(got.relays).some((said) => said === "eose") ? "ready" : read.size ? "ready" : "unreachable";
-    looked = now();
-    changed();
-  };
-  const load2 = async (fresh = false) => {
-    const me = hand.ready() ? hand.pubkey() : null;
-    if (me !== who || !me && state !== "off") {
-      reset(me);
-      changed();
-    }
-    if (!me) return;
-    if (!fresh && looked && now() - looked < FRESH_MS3) return;
-    looking ??= look(me).finally(() => {
-      looking = null;
-    });
-    await looking;
-  };
-  const offered = () => {
-    const first2 = (own.read.length ? own.read : usual()).filter((r) => !monitors.closed.includes(r));
-    const rest = monitors.open.filter((r) => !first2.includes(r));
-    const out = [...first2, ...rest].slice(0, 3);
-    return out.length ? out : (own.read.length ? own.read : usual()).slice(0, 3);
-  };
-  return {
-    state: () => hand.ready() && hand.pubkey() === who && who ? state : "off",
-    inbox: () => [...inbox],
-    offered,
-    load: load2,
-    async setUp() {
-      const me = hand.pubkey();
-      if (!me || !hand.ready()) return { ok: false, said: "Sign in first." };
-      const relays = offered();
-      const signed = await hand.reach(relays).catch(() => null);
-      if (!signed) return { ok: false, said: "It couldn't be signed. Nothing was changed." };
-      const sent = await sendWell(signed, { own: own.write, usual: usual(), publish, query, now }).catch(() => null);
-      if (!sent || sent.took === 0) return { ok: false, said: "No relay took it. Try again in a moment." };
-      inbox = relays;
-      state = "ready";
-      changed();
-      void load2(true);
-      return { ok: true, said: `Private messages now reach you at ${relays.map((r) => r.replace(/^wss:\/\//, "")).join(", ")}.` };
-    },
-    conversations() {
-      const out = [];
-      for (const [peer, list] of threads()) out.push({ with: peer, last: list[list.length - 1], unread: unreadIn(peer, list), known: knownTo(peer, list) });
-      return out.sort((a, b) => b.last.at - a.last.at);
-    },
-    thread: (peer) => threads().get(peer) ?? [],
-    async send(to, text, name = "") {
-      const me = hand.pubkey();
-      const them = name || "them";
-      if (!me || !hand.ready()) return { ok: false, said: "Sign in to write to people." };
-      if (!isHex645(to) || to === me) return { ok: false, said: "That isn't someone who can be written to." };
-      if (!inbox.length) return { ok: false, said: "Say where your own messages reach you first: without that you couldn't read back what you sent, or be answered." };
-      const asked = await askWell({ kinds: [MESSAGE_RELAYS_KIND], authors: [to], limit: 4 }, { own: inbox, usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
-      const theirs = readMessageRelays(asked?.events ?? [], to);
-      if (!theirs.length) {
-        const answered = !!asked && Object.values(asked.relays).some((said) => said === "eose");
-        return { ok: false, said: answered ? `${name || "They"} ${name ? "hasn't" : "haven't"} said where private messages reach them, so one can't be sent. Nothing was sent.` : "No relay could be reached. Nothing was sent." };
-      }
-      const sealed = await hand.seal(to, text).catch(() => null);
-      if (!sealed) return { ok: false, said: "It couldn't be signed. Nothing was sent." };
-      const t = now() / 1e3;
-      const forThem = wrapSeal(sealed.seals[0], to, { now: t });
-      const forMe = wrapSeal(sealed.seals[1], me, { now: t });
-      if (!forThem || !forMe) return { ok: false, said: "It couldn't be wrapped. Nothing was sent." };
-      const sent = await publish(theirs, forThem).catch(() => null);
-      if (sent) learnFrom(sent.relays, now());
-      if (!sent || !Object.values(sent.relays).some((said) => said === "ok")) return { ok: false, said: `None of the relays ${them === "them" ? "they use" : `${them} uses`} for messages took it. It wasn't sent.` };
-      tried.add(forMe.id);
-      void publish(inbox, forMe).then((kept2) => learnFrom(kept2.relays, now())).catch(() => void 0);
-      const m = sealed.message;
-      read.set(m.id, { id: m.id, from: me, to: [to], text: m.content, at: m.created_at });
-      changed();
-      return { ok: true, said: "" };
-    },
-    seen(peer) {
-      if (!who) return;
-      const newest = (threads().get(peer) ?? []).reduce((at, m) => Math.max(at, m.at), 0);
-      if (!newest || (seenAt()[peer] ?? 0) >= newest) return;
-      seenAt()[peer] = newest;
-      try {
-        store?.setItem(seenKey(who), JSON.stringify(seenAt()));
-      } catch {
-      }
-      changed();
-    },
-    unread() {
-      let n = 0;
-      for (const [peer, list] of threads()) if (knownTo(peer, list)) n += unreadIn(peer, list);
-      return n;
-    },
-    onChange(fn) {
-      watchers3.add(fn);
-      return () => void watchers3.delete(fn);
-    },
-    onNew(fn) {
-      newcomers.add(fn);
-      return () => void newcomers.delete(fn);
-    }
-  };
-}
-
-// packages/sdk/src/messaging.ts
-import { shortNpub as shortNpub5, MESSAGE_LIMITS } from "@nswp/core";
-import * as THREE10 from "three";
-var W2 = 768;
-var H2 = 900;
-var LEAD = 130;
-var WRITE = 100;
-function addMessagingControls(controls, opts) {
-  const { hand, profiles } = opts;
-  const m = hand.messages;
-  let shown2 = [];
-  let withWhom = null;
-  let requests = false;
-  let wasMe = null;
-  let fetching = false;
-  const nameOf = (pubkey) => profiles.get(pubkey)?.name || shortNpub5(pubkey);
-  const say = (text) => controls.say(text);
-  const inHeadset = () => !!opts.presenting?.() && !!opts.panels;
-  let panel = null;
-  const closePanel = () => {
-    const was = panel;
-    panel = null;
-    was?.texture.dispose();
-    was?.panel.close();
-  };
-  const drawPanel = () => {
-    if (!panel) return;
-    const view = controls.letters.view();
-    if (!view.ready) return closePanel();
-    const stamp2 = `${view.version}:${Math.floor(Date.now() / 6e4)}:${view.title}`;
-    if (stamp2 === panel.drawn) return;
-    panel.drawn = stamp2;
-    const t = controls.theme;
-    const g = panel.canvas.getContext("2d");
-    g.fillStyle = t.glass;
-    g.fillRect(0, 0, W2, H2);
-    g.textBaseline = "middle";
-    g.textAlign = "left";
-    const measure = (text) => g.measureText(text).width;
-    g.fillStyle = t.ink;
-    g.globalAlpha = 0.72;
-    g.font = "27px system-ui, sans-serif";
-    wrapWords(view.lead, measure, W2 - 56, 3).forEach((row, r) => g.fillText(row, 28, 26 + r * 33));
-    g.globalAlpha = 1;
-    const top = H2 - WRITE;
-    g.strokeStyle = t.accent;
-    g.lineWidth = 3;
-    g.fillStyle = `rgba(${rgb(t.accent)}, 0.16)`;
-    g.beginPath();
-    g.roundRect(20, top + 8, W2 - 40, WRITE - 24, 22);
-    g.fill();
-    g.stroke();
-    g.font = "600 34px system-ui, sans-serif";
-    g.fillStyle = t.ink;
-    g.textAlign = "center";
-    g.fillText(wrapWords(`Write to ${view.with}`, measure, W2 - 80, 1)[0] ?? "Write", W2 / 2, top + 8 + (WRITE - 24) / 2);
-    g.textAlign = "left";
-    const ROW = 40;
-    const nowSec = Math.floor(Date.now() / 1e3);
-    let y = top - 12;
-    if (view.said) {
-      g.font = "italic 28px system-ui, sans-serif";
-      g.fillStyle = t.warn;
-      const rows = wrapWords(view.said, measure, W2 - 56, 2);
-      y -= rows.length * ROW;
-      rows.forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 0.5)));
-    }
-    if (!view.lines.length) {
-      g.font = "italic 30px system-ui, sans-serif";
-      g.fillStyle = t.ink;
-      g.globalAlpha = 0.7;
-      wrapWords(`Nothing yet. What you write here is for ${view.with} alone.`, measure, W2 - 56, 3).forEach((row, r) => g.fillText(row, 28, LEAD + ROW * (r + 0.5)));
-      g.globalAlpha = 1;
-    }
-    for (let i = view.lines.length - 1; i >= 0; i--) {
-      const line = view.lines[i];
-      g.font = "32px system-ui, sans-serif";
-      const rows = line.text.split("\n").flatMap((part) => wrapWords(part, measure, W2 - 56, 6)).slice(0, 8);
-      const tall = (rows.length + 1) * ROW + 10;
-      if (y - tall < LEAD) break;
-      y -= tall;
-      g.font = "600 26px system-ui, sans-serif";
-      g.fillStyle = line.mine ? t.accent : t.ink;
-      g.globalAlpha = line.state === "failed" ? 1 : 0.75;
-      if (line.state === "failed") g.fillStyle = t.warn;
-      g.fillText(`${line.mine ? "You" : line.who}  \xB7  ${line.state === "sending" ? "Sending\u2026" : line.state === "failed" ? "Not sent" : ago(line.at, nowSec)}`, 28, y + ROW * 0.5);
-      g.font = "32px system-ui, sans-serif";
-      g.fillStyle = t.ink;
-      g.globalAlpha = line.state === "sending" ? 0.6 : 1;
-      rows.forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 1.5)));
-      g.globalAlpha = 1;
-    }
-    panel.texture.needsUpdate = true;
-    controls.letters.seen();
-  };
-  const openPanel = () => {
-    if (!opts.panels || panel) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = W2;
-    canvas.height = H2;
-    const texture = new THREE10.CanvasTexture(canvas);
-    texture.colorSpace = THREE10.SRGBColorSpace;
-    try {
-      const made = opts.panels.open(
-        {
-          kind: "custom",
-          title: controls.letters.view().title,
-          texture,
-          aspect: W2 / H2,
-          onPress: (_x, y) => {
-            if (y < (H2 - WRITE) / H2 || !opts.panels) return;
-            const view = controls.letters.view();
-            void opts.panels.keyboard.ask({ title: `Write to ${view.with}. Only they can read it. Done sends it.`, maxLength: MESSAGE_LIMITS.chars, multiline: true }).then((text) => {
-              const trouble = text ? controls.letters.send(text) : null;
-              if (trouble) say(trouble);
-            });
-          },
-          onClose: () => {
-            if (panel?.texture === texture) panel = null;
-            texture.dispose();
-          }
-        },
-        { id: "private-messages", keep: false, place: { width: 0.46 }, pin: [-0.46, -0.04, -0.8] }
-      );
-      panel = { panel: made, canvas, texture, drawn: "" };
-      drawPanel();
-    } catch (err) {
-      texture.dispose();
-      say(err instanceof Error ? err.message.replace(/^nswp-sdk: /, "") : "The conversation couldn't be opened.");
-    }
-  };
-  controls.subscribe(drawPanel);
-  const open = (pubkey) => {
-    withWhom = pubkey;
-    void profiles.fetch([pubkey]);
-    controls.letters.attach({
-      with: () => nameOf(pubkey),
-      lines: () => m.thread(pubkey).map((x) => ({ key: x.id, mine: x.from !== pubkey, who: nameOf(x.from), text: x.text, at: x.at })),
-      send: (text) => m.send(pubkey, text, profiles.get(pubkey)?.name ?? ""),
-      seen: () => m.seen(pubkey)
-    });
-    if (inHeadset()) {
-      closePanel();
-      openPanel();
-    } else controls.signal("open:letters");
-    refresh();
-  };
-  const write = (pubkey) => {
-    const me = hand.pubkey();
-    if (!me) return say("Sign in to write to people: it is under You.");
-    if (pubkey === me) return;
-    const go = () => void m.load().then(() => open(pubkey));
-    if (hand.allowed()) return go();
-    say(hand.ask(go));
-  };
-  const refresh = () => {
-    for (const id of shown2) controls.remove(id);
-    shown2 = [];
-    const me = hand.pubkey();
-    if (me !== wasMe) {
-      wasMe = me;
-      withWhom = null;
-      requests = false;
-      controls.letters.detach();
-      closePanel();
-    }
-    const allowed = !!me && hand.allowed();
-    if (allowed && m.state() === "off" && !fetching) {
-      fetching = true;
-      void m.load().finally(() => {
-        fetching = false;
-      });
-    }
-    const state = allowed ? m.state() === "off" ? "looking" : m.state() : "off";
-    const all = allowed ? m.conversations() : [];
-    const known = all.filter((c) => c.known);
-    const asking = all.filter((c) => !c.known);
-    const add = (...actions) => {
-      for (const a of actions) shown2.push(a.id);
-      controls.add(...actions.map((a) => ({ section: "messages", ...a })));
-    };
-    controls.addSection({
-      id: "messages",
-      label: "Messages",
-      icon: "chat",
-      note: () => !me ? "Sign in to read and send private messages." : !allowed ? "Private messages are between you and one other person. This place hasn't been let send or read yours: say so below, and your sign-in address asks you once." : state === "looking" ? "Looking for your messages." : state === "unreachable" ? "No relay could be reached to look for your messages." : state === "no-inbox" ? "Nobody can write to you privately yet: you haven't said where messages should reach you. Say so below. It is a short public list of relays, and you can change it in any Nostr app." : known.length === 0 && asking.length === 0 ? "No messages yet. Write to someone from Following, or from their card in People." : "Only you and the other person can read a conversation. A relay is told who each message is for, and nothing more."
-    });
-    if (!me) return;
-    if (!allowed) {
-      add({ id: "messages-let", icon: "check", tone: "primary", label: "Let me send and read private messages here", act: () => say(hand.ask(() => void m.load().then(refresh))) });
-      return;
-    }
-    if (state === "no-inbox") {
-      const hosts = m.offered().map((r) => r.replace(/^wss:\/\//, ""));
-      add({
-        id: "messages-setup",
-        icon: "check",
-        tone: "primary",
-        label: `Have messages reach me at ${hosts.join(", ")}`,
-        act: async () => {
-          const done = await m.setUp();
-          say(done.said);
-          refresh();
-        }
-      });
-      return;
-    }
-    add({ id: "messages-look", icon: "turn", label: "Look for new messages", short: "Look", act: () => void m.load(true).then(refresh) });
-    const row = (c) => ({
-      // A row each, in order: the people they would expect, then, under their own heading, anyone else.
-      id: `messages-${c.with.slice(0, 16)}`,
-      icon: "chat",
-      on: () => withWhom === c.with,
-      label: () => `${nameOf(c.with)}${c.unread ? `, ${c.unread} new` : ""}`,
-      act: () => open(c.with)
-    });
-    add(...known.slice(0, 40).map(row));
-    if (asking.length) {
-      add({
-        id: "messages-requests",
-        icon: "list",
-        on: () => requests,
-        label: `From people you don't follow: ${asking.length}`,
-        act: () => {
-          requests = !requests;
-          refresh();
-        }
-      });
-      if (requests) add(...asking.slice(0, 40).map(row));
-    }
-    void profiles.fetch(all.slice(0, 60).map((c) => c.with));
-  };
-  let drawing = false;
-  const soon2 = () => {
-    if (drawing) return;
-    drawing = true;
-    queueMicrotask(() => {
-      drawing = false;
-      refresh();
-      controls.letters.touch();
-    });
-  };
-  m.onChange(soon2);
-  profiles.onChange(soon2);
-  m.onNew((message) => {
-    const from = message.from;
-    if (from === withWhom) return;
-    if (m.conversations().find((c) => c.with === from)?.known) {
-      say(`${nameOf(from)} wrote to you privately. It is in Messages.`);
-      controls.signal("message");
-    }
-  });
-  const every = opts.everyMs ?? 6e4;
-  if (every > 0 && typeof setInterval === "function") {
-    setInterval(() => {
-      if (hand.pubkey() && hand.allowed() && (typeof document === "undefined" || document.visibilityState === "visible")) void m.load();
-    }, every);
-  }
-  if (hand.pubkey() && hand.allowed()) void m.load();
-  refresh();
-  return { refresh, write };
-}
-
-// packages/sdk/src/room-controls.ts
-function roomNameFromHash(hash) {
-  for (const part of hash.replace(/^#/, "").split("&")) {
-    if (part.startsWith("room=")) {
-      try {
-        const v = decodeURIComponent(part.slice(5));
-        if (/^[A-Za-z0-9_-]{4,48}$/.test(v)) return v;
-      } catch {
-      }
-    }
-  }
-  return null;
-}
-var JOINED_KEY = () => `nswp:joined:${location.pathname}`;
-function addRoomControls(controls, presence, opts = {}) {
-  const useTone = new URLSearchParams(opts.search ?? location.search).get("mic") === "tone";
-  const useTestScreen = new URLSearchParams(opts.search ?? location.search).get("screen") === "test";
-  const canShare = useTestScreen || typeof navigator.mediaDevices?.getDisplayMedia === "function";
-  const sounds = opts.sharedMusic === false ? null : opts.sounds ?? null;
-  let invited = roomNameFromHash(location.hash);
-  let busy = false;
-  let last = invited ? "You were invited to a private room. Joining shows your IP address to the others in it." : "Joining lets you see and hear others here. It shows your IP address to them.";
-  const tell = (text) => {
-    last = text;
-    controls.say(text);
-  };
-  const status = () => {
-    const s = presence.session;
-    if (!s) return last;
-    const others = s.members.length;
-    const who = s.status === "no-relays" ? "can't reach any relay" : others === 0 ? "nobody else here yet" : others === 1 ? "1 other person here" : `${others} other people here`;
-    const as = s.self.guest ? "" : ` You are here as ${s.self.name}.`;
-    return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${as}${presence.micOn ? " Your microphone is on." : ""}${presence.musicOn ? ` Your music is offered to people near you: ${presence.musicListeners === 0 ? "nobody is hearing it" : presence.musicListeners === 1 ? "1 person is hearing it" : `${presence.musicListeners} people are hearing it`}.` : ""}${presence.screenOn ? ` You are sharing your screen: ${presence.screenViewers === 0 ? "nobody is watching" : presence.screenViewers === 1 ? "1 person is watching" : `${presence.screenViewers} people are watching`}.` : ""}`;
-  };
-  const waitingFor = /* @__PURE__ */ new Map();
-  let watchingSigner = false;
-  const askSigner = (what, to, then) => {
-    const signer = worldSigner();
-    if (!watchingSigner) {
-      watchingSigner = true;
-      signer.onChange(() => {
-        for (const [name, was] of [...waitingFor]) {
-          if (!signer.more.includes(name)) continue;
-          waitingFor.delete(name);
-          if (Date.now() - was.at < 3e5) was.then();
-        }
-      });
-    }
-    const where = signer.host ?? "your sign-in address";
-    if (signer.offers && !signer.offers.includes(what)) return `${where} doesn't let a world ${to} yet. It can be done at your home.`;
-    if (opts.presenting?.()) return `This world needs your say before it can ${to}, once. ${where} asks that itself, which can't be seen from in here. Step out of the headset and press this again.`;
-    waitingFor.set(what, { then, at: Date.now() });
-    signer.want([...signer.more, what]);
-    const here = signer.panel;
-    return signer.unlock() ? here ? `This world needs your say before it can ${to}: once. ${where} is asking, here.` : `This world needs your say before it can ${to}: once, in the window of ${where} that has opened.` : `The window of ${where} couldn't be opened. Allow this site to open windows, and press again.`;
-  };
-  const signedInHere = () => signerNamed() && worldSigner().state === "unlocked" ? worldSigner().pubkey : null;
-  const worldFollows = () => ({
-    people: worldPeople(),
-    pubkey: signedInHere,
-    allowed: () => worldSigner().more.includes("follows"),
-    ask: (then) => askSigner("follows", "change who you follow", then)
-  });
-  const worldMessages = () => ({
-    messages: createMessages({
-      hand: {
-        pubkey: signedInHere,
-        ready: () => worldSigner().more.includes("messages"),
-        seal: (to, text) => worldSigner().seal(to, text),
-        open: (wrap2) => worldSigner().unwrap(wrap2),
-        reach: (relays) => worldSigner().reach(relays)
-      },
-      known: (pubkey) => !!follows().people.follows()?.includes(pubkey),
-      ...opts.noteRelays ? { relays: opts.noteRelays } : {}
-    }),
-    pubkey: signedInHere,
-    allowed: () => worldSigner().more.includes("messages"),
-    ask: (then) => askSigner("messages", "send and read your private messages", then)
-  });
-  let followsKept = null;
-  const follows = () => followsKept ??= opts.follows ?? worldFollows();
-  const TIP_AMOUNTS = [21, 100, 500];
-  const tipper = opts.tip === null ? null : opts.tip ?? ((o) => worldSigner().tip(o));
-  let tipping = null;
-  const sendTip = (to, name, sats) => {
-    const host = notes.host?.() ?? worldSigner().host ?? "your sign-in address";
-    if (opts.presenting?.() ?? presence.presenting) return tell(`${host} has to ask you this itself, which can't be seen from in here. Step out of the headset and press this again.`);
-    tipping = null;
-    tell(`${host} is asking: ${sats} sats to ${name}. Say yes there, and it goes.`);
-    if (!tipper) return;
-    void tipper({ sats, ...to ? { to } : {} }).catch(() => false).then((went) => tell(went ? `${sats} sats went to ${name}.` : `The tip to ${name} didn't go.`));
-    refresh();
-  };
-  const tipRows = (key, section, to, name, ask) => {
-    const rows = [{ id: `${key}-tip` }];
-    controls.add({
-      id: `${key}-tip`,
-      section,
-      icon: "key",
-      on: () => tipping === (to ?? "world"),
-      label: ask,
-      short: "Tip",
-      act: () => {
-        tipping = tipping === (to ?? "world") ? null : to ?? "world";
-        refresh();
-      }
-    });
-    if (tipping === (to ?? "world")) {
-      for (const sats of TIP_AMOUNTS) {
-        rows.push({ id: `${key}-tip-${sats}` });
-        controls.add({ id: `${key}-tip-${sats}`, section, icon: "check", label: `${sats} sats to ${name}`, act: () => sendTip(to, name, sats) });
-      }
-    }
-    return rows;
-  };
-  let takesTips = opts.tipsWorld ?? false;
-  if (opts.tipsWorld === void 0 && typeof fetch === "function") {
-    void fetch("/.well-known/nswp.json", { cache: "no-cache" }).then((r) => r.ok ? r.json() : null).then((file) => {
-      takesTips = !!cleanLightningAddress(file?.tip);
-      if (takesTips) refresh();
-    }).catch(() => void 0);
-  }
-  let worldTipRows = [];
-  const tendWorldTip = () => {
-    for (const id of worldTipRows) controls.remove(id);
-    worldTipRows = [];
-    if (!tipper || !takesTips || !follows().pubkey()) return;
-    worldTipRows = tipRows("world", "travel", null, "this world", "Tip this world").map((r) => r.id);
-  };
-  const following = addFollowingControls(controls, {
-    follows: follows(),
-    ...opts.noteRelays ? { relays: opts.noteRelays } : {},
-    keyboard: () => opts.panels?.keyboard ?? null,
-    ...opts.presenting ? { presenting: opts.presenting } : {},
-    ...opts.about ? { about: opts.about } : {},
-    more: (who) => [{ id: "following-write", icon: "chat", label: `Write to ${who.name}, privately`, act: () => messaging.write(who.pubkey) }]
-  });
-  const messaging = addMessagingControls(controls, {
-    hand: opts.messages ?? worldMessages(),
-    profiles: following.profiles,
-    panels: opts.panels ?? null,
-    ...opts.presenting ? { presenting: opts.presenting } : {}
-  });
-  if (signerNamed()) {
-    worldSigner().onChange(() => {
-      if (!opts.follows) following.refresh();
-      if (!opts.messages) messaging.refresh();
-    });
-  }
-  const followPress = (key, name, adding) => following.press(key, name, adding);
-  const refresh = () => {
-    const s = presence.session;
-    opts.onState?.(
-      s ? { name: s.name, private: !!presence.roomName, status: s.status, self: s.self.pubkey, members: s.members.map((m) => m.pubkey), relays: s.relayCount, mic: presence.micOn, screen: presence.screenOn, music: presence.musicOn, musicListeners: presence.musicListeners, sharing: s.members.filter((m) => m.sharing).map((m) => m.pubkey), watching: [...watching.keys()] } : null
-    );
-    controls.addSection({ id: "room", label: "Room", icon: "room", note: status });
-    tendChat();
-    tendFeed();
-    people();
-    tendWorldTip();
-    remember();
-  };
-  const remember = () => {
-    try {
-      if (presence.session) sessionStorage.setItem(JOINED_KEY(), presence.micOn ? "mic" : "joined");
-      else if (!busy) sessionStorage.removeItem(JOINED_KEY());
-    } catch {
-    }
-  };
-  const microphone = async () => {
-    try {
-      const track = useTone ? presence.testTone() : (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })).getAudioTracks()[0];
-      await presence.setMicrophone(track);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  const watching = /* @__PURE__ */ new Map();
-  const sharers = /* @__PURE__ */ new Set();
-  const stopWatching = (pubkey, panelGone = false) => {
-    const w = watching.get(pubkey);
-    if (!w) return;
-    watching.delete(pubkey);
-    presence.watch(pubkey, false);
-    w.video.srcObject = null;
-    w.texture?.dispose();
-    if (!panelGone) w.panel?.close();
-  };
-  const startWatching = (m) => {
-    const stream = presence.screenOf(m.pubkey);
-    if (!opts.panels || !stream || watching.has(m.pubkey)) return false;
-    const video = document.createElement("video");
-    video.muted = true;
-    video.playsInline = true;
-    video.srcObject = stream;
-    const w = { video, texture: null, panel: null };
-    watching.set(m.pubkey, w);
-    const show = () => {
-      if (w.panel || watching.get(m.pubkey) !== w || !video.videoWidth || !video.videoHeight) return;
-      w.texture = new THREE11.VideoTexture(video);
-      w.texture.colorSpace = THREE11.SRGBColorSpace;
-      w.panel = opts.panels.open(
-        { kind: "custom", title: `${m.name}'s screen`, texture: w.texture, aspect: video.videoWidth / video.videoHeight, onClose: () => stopWatching(m.pubkey, true) },
-        { keep: false }
-      );
-      refresh();
-    };
-    video.addEventListener("loadedmetadata", show);
-    video.addEventListener("resize", show);
-    void video.play().catch(() => {
-    });
-    presence.watch(m.pubkey, true);
-    return true;
-  };
-  const testScreen = () => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1280;
-    canvas.height = 720;
-    const g = canvas.getContext("2d");
-    let n = 0;
-    const draw = () => {
-      g.fillStyle = "#10243a";
-      g.fillRect(0, 0, 1280, 720);
-      g.fillStyle = "#ffd166";
-      g.font = "64px sans-serif";
-      g.fillText(`A shared screen, frame ${++n}`, 80, 380);
-    };
-    draw();
-    const timer = setInterval(draw, 200);
-    const track = canvas.captureStream(10).getVideoTracks()[0];
-    track.addEventListener("ended", () => clearInterval(timer));
-    return track;
-  };
-  let listed = [];
-  let extras = [];
-  let chosen = null;
-  let headcount = 0;
-  let toldOfMusic = false;
-  const blockedNote = () => {
-    const n = presence.blocked().length;
-    const e = presence.blockedElsewhere;
-    return `${n === 0 ? "" : `You have blocked ${n === 1 ? "1 person" : `${n} people`} here: you don't see or hear each other. Unblock anyone below. `}${e === 0 ? "" : `${e === 1 ? "1 person is" : `${e} people are`} blocked wherever you go: that list is kept by the place you set out from, and is changed there. `}`;
-  };
-  if (opts.arrived?.blocked?.length) presence.blockAlso(opts.arrived.blocked);
-  const recorders = /* @__PURE__ */ new Set();
-  const choose = (m) => {
-    chosen = m.pubkey;
-    people();
-    presence.pointOut(m.pubkey);
-    controls.say(m.identity ? `${m.name} is under the column of light. Their key: ${encodeNpub3(m.identity)}` : `${m.name} is under the column of light. A guest: nobody has vouched for who they are.`);
-  };
-  presence.onPerson((pubkey) => {
-    const m = presence.people().find((x) => x.pubkey === pubkey);
-    if (!m) return;
-    choose(m);
-    controls.signal("show:people");
-  });
-  controls.add({
-    id: "people-pictures",
-    section: "people",
-    icon: "selfie",
-    on: () => showsPictures(),
-    label: () => showsPictures() ? "Profile pictures: on" : "Profile pictures: off",
-    short: "Pictures",
-    act: () => {
-      setShowsPictures(!showsPictures());
-      controls.say(showsPictures() ? "People's own pictures are shown over their names. Each is fetched from wherever its owner keeps it, which tells that place your address." : "No pictures are fetched or shown, here or in the next world.");
-    }
-  });
-  controls.add({
-    id: "files-anywhere",
-    section: "people",
-    icon: "link",
-    on: () => filesAnywhere(),
-    label: () => filesAnywhere() ? "Load people's files from anywhere: on" : "Load people's files from anywhere: off",
-    short: "Files",
-    act: () => {
-      setFilesAnywhere(!filesAnywhere());
-      controls.say(
-        filesAnywhere() ? "What people carry is fetched from wherever they keep it, in this place. The place that keeps a file learns your address, and when you were near it: anyone can choose that place. It stays off in other places until you turn it on there." : "People's files are fetched only from the file hosts you already use. Anything kept elsewhere is shown as a plain box."
-      );
-    }
-  });
-  const people = () => {
-    const here = presence.session ? presence.people() : [];
-    if (presence.session && here.length !== headcount) controls.signal(here.length > headcount ? "join" : "leave");
-    headcount = presence.session ? here.length : 0;
-    for (const id of [...listed, ...extras]) controls.remove(id);
-    extras = [];
-    listed = here.map((m) => `person-${m.pubkey.slice(0, 12)}`);
-    if (!here.some((m) => m.pubkey === chosen)) chosen = null;
-    controls.addSection({
-      id: "people",
-      label: "People",
-      icon: "people",
-      note: () => `${blockedNote()}${!presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : here.some((m) => m.pubkey === chosen) ? "What they say about themselves is their own words. Muting and blocking are yours alone: nobody is told. Who you follow is public." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one, or press the picture over their head, to see who they are, and to mute their voice or their music, or block them.`}`,
-      // Whoever was chosen, at the head of the section: who they are here, and what they say of themselves.
-      card: () => {
-        const who2 = here.find((m) => m.pubkey === chosen);
-        if (!who2) return null;
-        return {
-          title: who2.name,
-          tag: who2.guest ? "Guest" : "By name",
-          proven: !who2.guest,
-          // A name is not unique and a picture can be copied: the key behind them is what tells two people apart.
-          sub: who2.identity ? shortNpub6(who2.identity) : "Nobody has vouched for who they are.",
-          copy: who2.identity ? encodeNpub3(who2.identity) : "",
-          text: who2.guest ? "" : who2.about ?? "",
-          picture: !who2.guest && showsPictures() ? who2.picture ?? "" : "",
-          color: who2.look.light,
-          now: [
-            // What they have done here, as they say. Only someone who came by name has anything to show.
-            ...who2.identity ? opts.about?.lines(who2.identity) ?? [] : [],
-            ...who2.recording ? ["Recording what they see"] : [],
-            ...who2.sharing ? ["Sharing their screen"] : [],
-            ...who2.music ? ["Sharing music"] : [],
-            ...presence.isMuted(who2.pubkey) ? ["You have muted their voice"] : []
-          ]
-        };
-      }
-    });
-    here.forEach(
-      (m, i) => controls.add({
-        id: listed[i],
-        section: "people",
-        kind: "swatch",
-        color: m.look.light,
-        label: () => `${m.name}${m.recording ? ", recording" : ""}${m.sharing ? ", sharing their screen" : ""}${m.music ? ", sharing music" : ""}`,
-        act: () => choose(m)
-      })
-    );
-    if (sounds && !toldOfMusic && !sounds.levels.hearShared && here.some((m) => m.music)) {
-      toldOfMusic = true;
-      controls.say(`${here.find((m) => m.music).name} is sharing music. To hear what people near you share, turn it on in Sound.`);
-    }
-    for (const key of [...watching.keys()]) if (!here.some((m) => m.pubkey === key && m.sharing)) stopWatching(key);
-    for (const m of here) {
-      if (m.sharing && !sharers.has(m.pubkey)) controls.say(opts.panels ? `${m.name} is sharing their screen. Select them in People to watch.` : `${m.name} is sharing their screen.`);
-      if (m.sharing) sharers.add(m.pubkey);
-      else sharers.delete(m.pubkey);
-    }
-    const who = here.find((m) => m.pubkey === chosen);
-    if (who?.sharing && opts.panels) {
-      extras.push("person-watch");
-      controls.add({
-        id: "person-watch",
-        section: "people",
-        icon: "panel",
-        on: () => watching.has(who.pubkey),
-        label: () => watching.has(who.pubkey) ? `Stop watching ${who.name}'s screen` : `Watch ${who.name}'s screen`,
-        act: () => {
-          if (watching.has(who.pubkey)) stopWatching(who.pubkey);
-          else if (startWatching(who)) controls.say(`${who.name}'s screen is opening on a panel of your own. Put the panel away to stop.`);
-          else controls.say(`${who.name}'s screen can't be shown here.`);
-          refresh();
-        }
-      });
-    }
-    const me = follows().pubkey();
-    if (who?.identity && me && who.identity !== me) {
-      const them = who.identity;
-      const people2 = follows().people;
-      if (follows().allowed() && people2.follows() === null) void people2.load().then(() => refresh());
-      extras.push("person-follow");
-      controls.add({
-        id: "person-follow",
-        section: "people",
-        icon: "check",
-        on: () => people2.isFollowing(them) === true,
-        label: () => people2.isFollowing(them) ? `Unfollow ${who.name}` : `Follow ${who.name}`,
-        act: () => followPress(them, who.name, !people2.isFollowing(them))
-      });
-    }
-    if (who?.identity && me && who.identity !== me) {
-      const them = who.identity;
-      extras.push("person-write");
-      controls.add({ id: "person-write", section: "people", icon: "chat", label: `Write to ${who.name}, privately`, act: () => messaging.write(them) });
-      if (tipper) for (const row of tipRows("person", "people", them, who.name, `Send ${who.name} a tip`)) extras.push(row.id);
-    }
-    if (who) {
-      extras.push("person-mute", "person-music", "person-block");
-      controls.add(
-        {
-          id: "person-mute",
-          section: "people",
-          icon: () => presence.isMuted(who.pubkey) ? "mic" : "micOff",
-          on: () => presence.isMuted(who.pubkey),
-          label: () => presence.isMuted(who.pubkey) ? `Unmute ${who.name}'s voice` : `Mute ${who.name}'s voice`,
-          act: () => {
-            const now = !presence.isMuted(who.pubkey);
-            presence.mute(who.pubkey, now);
-            controls.say(now ? `You no longer hear ${who.name} speak. They still see and hear you, and aren't told.` : `You hear ${who.name} speak again.`);
-          }
-        },
-        ...sounds ? [
-          {
-            id: "person-music",
-            section: "people",
-            icon: (() => presence.isMusicMuted(who.pubkey) ? "sound" : "soundOff"),
-            on: () => presence.isMusicMuted(who.pubkey),
-            label: () => presence.isMusicMuted(who.pubkey) ? `Unmute ${who.name}'s music` : `Mute ${who.name}'s music`,
-            act: () => {
-              const now = !presence.isMusicMuted(who.pubkey);
-              presence.muteMusic(who.pubkey, now);
-              controls.say(
-                now ? `You won't hear music ${who.name} shares. You still hear them speak.` : sounds.levels.hearShared ? `You hear ${who.name}'s music again when they share it and you are near.` : `${who.name}'s music is no longer muted. To hear anyone's shared music, turn it on in Sound.`
-              );
-            }
-          }
-        ] : [],
-        ...presence.itemsRule === "allowed" ? [
-          {
-            id: "person-mute-items",
-            section: "people",
-            icon: "close",
-            on: () => presence.isItemsMuted(who.pubkey),
-            label: () => presence.isItemsMuted(who.pubkey) ? `Unmute ${who.name}'s items` : `Mute ${who.name}'s items`,
-            act: () => {
-              const now = !presence.isItemsMuted(who.pubkey);
-              presence.muteItems(who.pubkey, now);
-              controls.say(now ? `What ${who.name}'s items do can't reach you, and you won't see or hear it. They aren't told.` : `${who.name}'s items are no longer muted.`);
-            }
-          }
-        ] : [],
-        {
-          id: "person-block",
-          section: "people",
-          icon: "exit",
-          label: `Block ${who.name}`,
-          act: () => {
-            stopWatching(who.pubkey);
-            const name = presence.block(who.pubkey);
-            if (!name) return;
-            chosen = null;
-            controls.say(
-              who.identity ? `${name} is blocked. You won't see or hear each other here, now or when they come back by that name. To them, you have left.` : `${name} is blocked for this visit. You won't see or hear each other. A guest gets a new key each visit, so it can't hold beyond this one.`
-            );
-            refresh();
-          }
-        }
-      );
-    }
-    for (const b of presence.blocked()) {
-      const id = `unblock-${b.key.slice(0, 12)}`;
-      extras.push(id);
-      controls.add({
-        id,
-        section: "people",
-        icon: "check",
-        label: `Unblock ${b.name}${b.kept ? "" : " (blocked this visit)"}`,
-        act: () => {
-          presence.unblock(b.key);
-          controls.say(`${b.name} is no longer blocked. You'll see each other again within half a minute if they are here.`);
-          refresh();
-        }
-      });
-    }
-    for (const m of here) {
-      if (m.recording && !recorders.has(m.pubkey)) controls.say(`${m.name} is recording what they see.`);
-      if (m.recording) recorders.add(m.pubkey);
-      else recorders.delete(m.pubkey);
-    }
-  };
-  let chatFor = null;
-  let chatStops = [];
-  const CHAT_W = 768;
-  const CHAT_H = 900;
-  const WRITE_H = 132;
-  let chatPanel = null;
-  const drawChatPanel = () => {
-    if (!chatPanel) return;
-    const view = controls.chat.view();
-    if (view.version === chatPanel.drawn) return;
-    chatPanel.drawn = view.version;
-    const t = controls.theme;
-    const g = chatPanel.canvas.getContext("2d");
-    g.fillStyle = t.glass;
-    g.fillRect(0, 0, CHAT_W, CHAT_H);
-    g.textBaseline = "middle";
-    const ROW = 46;
-    const measure = (text) => g.measureText(text).width;
-    let y = CHAT_H - WRITE_H - 18;
-    for (let i = view.lines.length - 1; i >= 0; i--) {
-      const line = view.lines[i];
-      const lead = line.note ? "" : `${line.mine ? "You" : line.who}:`;
-      g.font = line.note ? "italic 32px system-ui, sans-serif" : "34px system-ui, sans-serif";
-      const rows = wrapWords(lead ? `${lead} ${line.text}` : line.text, measure, CHAT_W - 56, 6);
-      y -= rows.length * ROW;
-      if (y < 12) break;
-      rows.forEach((row, r) => {
-        const at = y + ROW * (r + 0.5);
-        let x = 28;
-        let rest = row;
-        if (r === 0 && lead && row.startsWith(lead)) {
-          g.font = "600 34px system-ui, sans-serif";
-          g.fillStyle = line.mine ? t.ink : line.color || t.accent;
-          g.globalAlpha = line.mine ? 0.62 : 1;
-          g.fillText(lead, x, at);
-          x += measure(lead);
-          rest = row.slice(lead.length);
-          g.font = "34px system-ui, sans-serif";
-        }
-        g.globalAlpha = line.note ? 0.62 : 1;
-        g.fillStyle = t.ink;
-        g.fillText(rest, x, at);
-      });
-      g.globalAlpha = 1;
-      y -= 10;
-    }
-    if (!view.lines.length) {
-      g.font = "32px system-ui, sans-serif";
-      g.fillStyle = t.ink;
-      g.globalAlpha = 0.7;
-      wrapWords("Nobody has written anything yet. What is written here goes to the people in this room, and is kept nowhere.", measure, CHAT_W - 80, 6).forEach((row, r) => g.fillText(row, 40, 200 + r * ROW));
-      g.globalAlpha = 1;
-    }
-    g.strokeStyle = t.accent;
-    g.lineWidth = 3;
-    g.fillStyle = `rgba(${rgb(t.accent)}, 0.16)`;
-    g.beginPath();
-    g.roundRect(20, CHAT_H - WRITE_H + 12, CHAT_W - 40, WRITE_H - 32, 22);
-    g.fill();
-    g.stroke();
-    g.font = "600 36px system-ui, sans-serif";
-    g.fillStyle = t.ink;
-    g.textAlign = "center";
-    g.fillText("Write to the room", CHAT_W / 2, CHAT_H - WRITE_H / 2 - 4);
-    g.textAlign = "left";
-    chatPanel.texture.needsUpdate = true;
-    controls.chat.seen();
-  };
-  const closeChatPanel = () => {
-    const was = chatPanel;
-    chatPanel = null;
-    was?.texture.dispose();
-    was?.panel.close();
-  };
-  const writeInHeadset = () => {
-    if (!opts.panels || !controls.chat.view().ready) return;
-    void opts.panels.keyboard.ask({ title: "Write to the room. Done sends it.", maxLength: CHAT_LIMITS.chars }).then((text) => {
-      const trouble = text ? controls.chat.send(text) : null;
-      if (trouble) tell(trouble);
-    });
-  };
-  const openChatPanel = () => {
-    if (!opts.panels || chatPanel || !controls.chat.view().ready) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = CHAT_W;
-    canvas.height = CHAT_H;
-    const texture = new THREE11.CanvasTexture(canvas);
-    texture.colorSpace = THREE11.SRGBColorSpace;
-    try {
-      const panel = opts.panels.open(
-        {
-          kind: "custom",
-          title: controls.chat.view().title,
-          texture,
-          aspect: CHAT_W / CHAT_H,
-          onPress: (_x, y) => {
-            if (y > 1 - WRITE_H / CHAT_H) writeInHeadset();
-          },
-          onClose: () => {
-            if (chatPanel?.texture === texture) chatPanel = null;
-            texture.dispose();
-          }
-        },
-        // To one side of where they are looking, an arm's reach away, and pinned: it comes with them until they unpin it.
-        { id: "room-chat", keep: false, place: { width: 0.46 }, pin: [-0.46, -0.04, -0.8] }
-      );
-      chatPanel = { panel, canvas, texture, drawn: -1 };
-      drawChatPanel();
-    } catch (err) {
-      texture.dispose();
-      tell(err instanceof Error ? err.message.replace(/^nswp-sdk: /, "") : "The chat panel couldn't be opened.");
-    }
-  };
-  controls.subscribe(drawChatPanel);
-  const tendChat = () => {
-    const s = presence.session;
-    if (s === chatFor) return;
-    for (const stop of chatStops) stop();
-    chatStops = [];
-    chatFor = s;
-    controls.chat.detach();
-    closeChatPanel();
-    if (!s) return;
-    controls.chat.attach(
-      (text) => {
-        const how = s.say(text);
-        if (how === "slow") return "That is a lot at once. Wait a moment, then send it again.";
-        if (how === "said" && s.members.length === 0) controls.chat.add({ note: true, text: "Nobody else is in the room yet, so nobody read that." });
-        return null;
-      },
-      { title: presence.roomName ? "Private room chat" : "Room chat" }
-    );
-    chatStops.push(
-      s.on("said", (m, line) => {
-        const mine = m.pubkey === s.self.pubkey;
-        controls.chat.add({ id: line.id, who: m.name, text: line.text, mine, color: `#${m.color.toString(16).padStart(6, "0")}` });
-        if (mine || !showsChat()) return;
-        controls.signal("heard");
-        const where = presence.whereIs(m.pubkey);
-        opts.sounds?.play("chat", where ?? { distance: 3 });
-      }),
-      // Who comes and goes is said in the chat too. A moment is waited for a name: a pass is shown just after arriving.
-      s.on("member", (m) => {
-        setTimeout(() => {
-          if (chatFor === s && s.members.includes(m)) controls.chat.add({ note: true, text: `${m.name} is here.` });
-        }, 1500);
-      }),
-      s.on("leave", (m) => controls.chat.add({ note: true, text: `${m.name} left.` }))
-    );
-  };
-  onChatChange(() => {
-    if (!showsChat()) closeChatPanel();
-    refresh();
-  });
-  const notes = opts.notes ?? {
-    ready: () => worldSigner().state === "unlocked",
-    sign: (n) => worldSigner().sign(n),
-    onChange: (fn) => worldSigner().onChange(fn),
-    locked: () => worldSigner().state === "locked",
-    unlock: () => worldSigner().unlock(),
-    panel: () => worldSigner().panel,
-    propose: (n) => worldSigner().propose(n),
-    host: () => worldSigner().host,
-    unanswered: () => worldSigner().unanswered ? unansweredWords(worldSigner()) : null,
-    pubkey: () => worldSigner().pubkey,
-    who: () => hereAs()?.name || worldSigner().name
-  };
-  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS7;
-  let relaysKept = null;
-  const ownRelays = (key) => {
-    if (!key) return Promise.resolve([]);
-    if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND4], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList4(got.events, key)?.write ?? []).catch(() => []);
-    relaysKept = { key, at: Date.now(), found };
-    return found;
-  };
-  let wantsFeed = false;
-  const postNote = async (words) => {
-    const signed = await notes.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
-    const note = signed && verifyEvent6(signed) && signed.kind === 1 && signed.content === words ? signed : null;
-    if (!note) return { ok: false, said: "That wasn't sent: your sign-in said no." };
-    const to = await sendWell(note, { own: await ownRelays(note.pubkey), usual: usualRelays() }).catch(() => null);
-    const kept3 = to?.took ?? 0;
-    const n = to?.relays.length ?? 0;
-    const own = to?.own ?? 0;
-    const where = own === n ? `${kept3} of your ${n} relays` : own ? `${kept3} of ${n} relays: yours, and the usual ones because too few of your own were answering` : `${kept3} of the ${n} usual relays: you have published no relay list of your own`;
-    return kept3 ? { ok: true, said: `Sent out, to ${where}. Anyone can read it now.`, id: note.id } : { ok: false, said: "Signed, but no relay took it. It wasn't sent." };
-  };
-  const removeNote = async (id) => {
-    const host = notes.host?.() ?? "your sign-in address";
-    if (presence.presenting) return { ok: false, said: `Not deleted: ${host} has to ask you this itself, which can't be seen from in here. Step out of the headset and press Delete again.` };
-    const key = notes.pubkey?.();
-    const signed = await notes.propose?.({ kind: DELETION_KIND, content: "", tags: [["e", id], ["k", "1"]] }).catch(() => null);
-    const names = signed ? signed.tags.filter((t) => t[0] === "e" || t[0] === "a") : [];
-    const note = signed && verifyEvent6(signed) && signed.kind === DELETION_KIND && (!key || signed.pubkey === key) && names.length === 1 && names[0][1] === id ? signed : null;
-    if (!note) return { ok: false, said: `Not deleted: ${host} didn't sign it. Either you said no there, or it can't do this yet.` };
-    const to = await sendWell(note, { own: await ownRelays(note.pubkey), usual: usualRelays() }).catch(() => null);
-    const kept3 = to?.took ?? 0;
-    return kept3 ? { ok: true, said: `Deleted: ${kept3} ${kept3 === 1 ? "relay was" : "relays were"} asked to drop it. A copy kept somewhere else may remain.` } : { ok: false, said: "Signed, but no relay took it. It wasn't deleted." };
-  };
-  const loadPosts = async () => {
-    const key = notes.pubkey?.();
-    if (!key) return [];
-    const got = await askWell({ kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, { own: await ownRelays(key), usual: usualRelays(), timeoutMs: 5e3 });
-    if (!got.events.length && !Object.values(got.relays).some((said) => said === "eose")) return null;
-    return got.events.filter((e) => e.pubkey === key && e.kind === 1 && !e.tags.some((t) => t[0] === "e")).map((e) => ({ id: e.id, text: e.content, at: e.created_at }));
-  };
-  let feedFor = null;
-  const FEED_LEAD = 150;
-  let feedPanel = null;
-  const closeFeedPanel = () => {
-    const was = feedPanel;
-    feedPanel = null;
-    was?.texture.dispose();
-    was?.panel.close();
-  };
-  const tendFeed = () => {
-    const key = notes.ready() ? notes.pubkey?.() ?? "" : null;
-    if (key === feedFor) return;
-    feedFor = key;
-    if (key === null) {
-      controls.feed.detach();
-      return closeFeedPanel();
-    }
-    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub6(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts, ...notes.propose ? { remove: removeNote } : {} });
-  };
-  const drawFeedPanel = () => {
-    if (!feedPanel) return;
-    const view = controls.feed.view();
-    const stamp2 = `${view.version}:${Math.floor(Date.now() / 6e4)}:${view.lead}`;
-    if (stamp2 === feedPanel.drawn) return;
-    feedPanel.drawn = stamp2;
-    const t = controls.theme;
-    const g = feedPanel.canvas.getContext("2d");
-    g.fillStyle = t.glass;
-    g.fillRect(0, 0, CHAT_W, CHAT_H);
-    g.textBaseline = "middle";
-    g.textAlign = "left";
-    const ROW = 44;
-    const measure = (text) => g.measureText(text).width;
-    g.font = "30px system-ui, sans-serif";
-    g.fillStyle = t.ink;
-    g.globalAlpha = 0.72;
-    g.font = "27px system-ui, sans-serif";
-    wrapWords(view.lead, measure, CHAT_W - 56, 4).forEach((row, r) => g.fillText(row, 28, 24 + r * 33));
-    g.globalAlpha = 1;
-    g.strokeStyle = t.accent;
-    g.lineWidth = 3;
-    g.fillStyle = `rgba(${rgb(t.accent)}, 0.16)`;
-    g.beginPath();
-    g.roundRect(20, FEED_LEAD, CHAT_W - 40, WRITE_H - 32, 22);
-    g.fill();
-    g.stroke();
-    g.font = "600 36px system-ui, sans-serif";
-    g.fillStyle = t.ink;
-    g.textAlign = "center";
-    g.fillText("Send out a post", CHAT_W / 2, FEED_LEAD + (WRITE_H - 32) / 2);
-    g.textAlign = "left";
-    let y = FEED_LEAD + WRITE_H;
-    const say = (text) => {
-      g.font = "italic 30px system-ui, sans-serif";
-      g.globalAlpha = 0.7;
-      wrapWords(text, measure, CHAT_W - 56, 3).forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 0.5)));
-      g.globalAlpha = 1;
-      y += ROW * 2;
-    };
-    if (view.said) say(view.said);
-    if (!view.posts.length) say(view.loading ? "Fetching your posts\u2026" : "Nothing here yet. What you send out appears here, and on Nostr for anyone to read.");
-    const nowSec = Math.floor(Date.now() / 1e3);
-    for (const post of view.posts) {
-      g.font = "33px system-ui, sans-serif";
-      const rows = wrapWords(post.text, measure, CHAT_W - 56, 5);
-      if (y + (rows.length + 1) * ROW > CHAT_H - 10) break;
-      g.fillStyle = t.ink;
-      g.globalAlpha = post.state === "sending" ? 0.6 : 1;
-      rows.forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 0.5)));
-      y += rows.length * ROW;
-      g.font = "26px system-ui, sans-serif";
-      g.fillStyle = post.state === "failed" ? t.warn : t.ink;
-      g.globalAlpha = post.state === "failed" ? 1 : 0.55;
-      g.fillText(post.state === "sending" ? "Sending\u2026" : post.state === "failed" ? "Not sent" : post.state === "removing" ? "Deleting\u2026" : ago(post.at, nowSec), 28, y + 20);
-      g.globalAlpha = 0.14;
-      g.fillStyle = t.ink;
-      g.fillRect(28, y + ROW + 4, CHAT_W - 56, 2);
-      g.globalAlpha = 1;
-      y += ROW + 16;
-    }
-    feedPanel.texture.needsUpdate = true;
-  };
-  const openFeedPanel = () => {
-    if (!opts.panels || feedPanel || !controls.feed.view().ready) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = CHAT_W;
-    canvas.height = CHAT_H;
-    const texture = new THREE11.CanvasTexture(canvas);
-    texture.colorSpace = THREE11.SRGBColorSpace;
-    try {
-      const panel = opts.panels.open(
-        {
-          kind: "custom",
-          title: controls.feed.view().title,
-          texture,
-          aspect: CHAT_W / CHAT_H,
-          onPress: (_x, y) => {
-            if (y < FEED_LEAD / CHAT_H || y > (FEED_LEAD + WRITE_H) / CHAT_H || !opts.panels) return;
-            void opts.panels.keyboard.ask({ title: "Write a post. Done sends it out, for anyone to read.", maxLength: CHAT_LIMITS.chars }).then((text) => {
-              const trouble = text ? controls.feed.send(text) : null;
-              if (trouble) tell(trouble);
-            });
-          },
-          onClose: () => {
-            if (feedPanel?.texture === texture) feedPanel = null;
-            texture.dispose();
-          }
-        },
-        // On the other side from the room's chat, so both can be up.
-        { id: "my-feed", keep: false, place: { width: 0.46 }, pin: [0.46, -0.04, -0.8] }
-      );
-      feedPanel = { panel, canvas, texture, drawn: "" };
-      controls.feed.opened();
-      drawFeedPanel();
-    } catch (err) {
-      texture.dispose();
-      tell(err instanceof Error ? err.message.replace(/^nswp-sdk: /, "") : "Your feed couldn't be opened.");
-    }
-  };
-  controls.subscribe(drawFeedPanel);
-  const openFeed = () => {
-    if (presence.presenting && opts.panels) return feedPanel ? closeFeedPanel() : openFeedPanel();
-    controls.signal("toggle:feed");
-  };
-  notes.onChange?.(() => {
-    tendFeed();
-    if (notes.ready() && wantsFeed) {
-      wantsFeed = false;
-      openFeed();
-    }
-    refresh();
-  });
-  let turning = false;
-  const asWhoTheyAre = async () => {
-    const s = presence.session;
-    if (!s || busy || turning) return;
-    const who = hereAs();
-    if (!!who === !s.self.guest) return;
-    turning = busy = true;
-    const mic = presence.micOn;
-    const name = presence.roomName;
-    for (const key of [...watching.keys()]) stopWatching(key);
-    presence.leave();
-    try {
-      await presence.join(name);
-      if (mic) await microphone();
-      tell(presence.session?.self.guest ? "The room sees a guest now." : `The room sees you as ${presence.session?.self.name} now.`);
-    } catch {
-      tell("You left the room, and joining it again didn't work. Join it again from here.");
-    } finally {
-      turning = busy = false;
-      refresh();
-    }
-  };
-  if (signerNamed()) {
-    worldSigner().onChange(() => void asWhoTheyAre());
-    onHereAs(() => {
-      void asWhoTheyAre();
-      refresh();
-    });
-  }
-  controls.add(
-    {
-      id: "room-chat",
-      section: "room",
-      hotbar: true,
-      icon: "chat",
-      label: () => {
-        const n = controls.chat.view().unread;
-        return n ? `Chat: ${n} new` : "Chat";
-      },
-      short: () => {
-        const n = controls.chat.view().unread;
-        return n ? `Chat ${n}` : "Chat";
-      },
-      on: () => controls.chat.view().unread > 0,
-      hidden: () => !presence.session || !showsChat(),
-      act: () => {
-        if (presence.presenting && opts.panels) return chatPanel ? closeChatPanel() : openChatPanel();
-        controls.signal("toggle:chat");
-      }
-    },
-    {
-      id: "feed",
-      section: "room",
-      icon: "note",
-      // It is here whenever there is something to post with, signed in or not: a row that isn't there can't be
-      // found. Signed out, it says what comes first, and pressing it starts that.
-      label: () => {
-        if (notes.ready()) return "Send out a post";
-        const host = notes.host?.() ?? "your sign-in address";
-        return notes.unanswered?.() ? `Sending out a post isn't available: ${host} didn't answer` : `Send out a post: sign in at ${host} first`;
-      },
-      short: "Post",
-      hidden: () => !(notes.ready() || notes.locked?.() || notes.unanswered?.()),
-      act: () => {
-        if (notes.ready()) return openFeed();
-        const why = notes.unanswered?.();
-        if (why) return tell(why);
-        const host = notes.host?.() ?? "your sign-in address";
-        if (presence.presenting) return tell(`A window from ${host} is needed first, and none can open in a headset. Leave the headset view for a moment, press this again, and come back in.`);
-        const here = !!notes.panel?.();
-        wantsFeed = !!notes.unlock?.();
-        tell(
-          wantsFeed ? here ? `${host} is asking, here. Sign in there if it asks, and say yes. Then your public feed opens.` : `A window from ${host} has opened. Sign in there if it asks, and say yes. Then your public feed opens here.` : `Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`
-        );
-      }
-    },
-    {
-      id: "room-chat-show",
-      section: "room",
-      icon: "chat",
-      label: () => showsChat() ? "Written chat: on" : "Written chat: off",
-      on: () => showsChat(),
-      act: () => {
-        setShowsChat(!showsChat());
-        tell(showsChat() ? "What people write in a room is shown to you, and you can write. It goes only to the people in the room, and is kept nowhere." : "Nothing anyone writes is shown to you, here or in the next world, and nobody is told.");
-      }
-    },
-    {
-      id: "room-join",
-      section: "room",
-      hotbar: true,
-      icon: () => presence.session ? "leave" : "room",
-      label: () => presence.session ? "Leave the room" : "Join the room",
-      short: () => presence.session ? "Leave" : "Join",
-      on: () => !!presence.session,
-      hidden: () => busy,
-      act: async () => {
-        if (presence.session) {
-          for (const key of [...watching.keys()]) stopWatching(key);
-          presence.leave();
-          controls.signal("leave");
-          tell("You left the room.");
-          return refresh();
-        }
-        busy = true;
-        try {
-          await presence.join(invited);
-          controls.signal("join");
-        } catch (err) {
-          tell(`Couldn't join: ${err instanceof Error ? err.message : String(err)}`);
-        } finally {
-          busy = false;
-          refresh();
-        }
-      }
-    },
-    {
-      id: "room-mic",
-      section: "room",
-      hotbar: true,
-      icon: () => presence.micOn ? "mic" : "micOff",
-      label: () => presence.micOn ? "Turn microphone off" : "Turn microphone on",
-      short: "Mic",
-      on: () => presence.micOn,
-      hidden: () => !presence.session,
-      act: async () => {
-        if (presence.micOn) {
-          await presence.setMicrophone(null);
-          controls.signal("micOff");
-        } else if (await microphone()) controls.signal("micOn");
-        else tell("The microphone is blocked or unavailable.");
-        refresh();
-      }
-    },
-    ...sounds ? [
-      {
-        id: "sound-share",
-        section: "sound",
-        icon: "sound",
-        on: () => presence.musicOn,
-        label: () => presence.musicOn ? "Sharing your music with people near you: on" : "Share your music with people near you",
-        hidden: () => !presence.session || sounds.jukebox.list().length === 0,
-        act: async () => {
-          if (presence.musicOn) {
-            await presence.shareMusic(null);
-            tell("You stopped sharing your music.");
-            return refresh();
-          }
-          await presence.shareMusic(sounds.jukebox.output());
-          tell(
-            `Your music is offered to people near you. It reaches only those who have chosen to hear shared music, and fades with distance.${presence.micOn ? " With your microphone on, wear headphones, or they hear it twice." : ""}`
-          );
-          refresh();
-        }
-      },
-      {
-        id: "sound-hear",
-        section: "sound",
-        icon: "sound",
-        on: () => sounds.levels.hearShared,
-        label: () => sounds.levels.hearShared ? "Hear music others share: on" : "Hear music others share: off",
-        act: () => {
-          sounds.setLevels({ hearShared: !sounds.levels.hearShared });
-          controls.say(sounds.levels.hearShared ? "You'll hear music that people near you share, quieter the further they are." : "You won't hear anyone's shared music.");
-        }
-      },
-      {
-        id: "sound-shared",
-        section: "sound",
-        hidden: () => !sounds.levels.hearShared,
-        on: () => sounds.levels.shared > 0,
-        label: () => `Others' music: ${LEVEL_WORDS[levelStep(sounds.levels.shared)]}`,
-        act: () => sounds.setLevels({ shared: nextLevel(sounds.levels.shared) })
-      }
-    ] : [],
-    {
-      id: "room-screen",
-      section: "room",
-      icon: "panel",
-      on: () => presence.screenOn,
-      label: () => presence.screenOn ? "Stop sharing your screen" : "Share your screen",
-      // A phone or a headset's browser can't offer a screen. It can still watch one.
-      hidden: () => !presence.session || !canShare,
-      act: async () => {
-        if (presence.screenOn) {
-          await presence.shareScreen(null);
-          tell("You stopped sharing your screen.");
-          return refresh();
-        }
-        try {
-          const track = useTestScreen ? testScreen() : (await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 30 } }, audio: false })).getVideoTracks()[0];
-          await presence.shareScreen(track);
-          tell("Your screen is offered to this room. It is sent only to people who choose to watch. Share one window if anything else on your screen is private.");
-        } catch {
-          tell("Nothing was shared.");
-        }
-        refresh();
-      }
-    },
-    {
-      id: "room-invite",
-      section: "room",
-      icon: "link",
-      label: () => presence.roomName ? "Copy invite link" : "Make a private room",
-      hidden: () => !presence.session,
-      act: async () => {
-        if (!presence.roomName) {
-          const bytes = crypto.getRandomValues(new Uint8Array(9));
-          const code = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_");
-          history.replaceState(history.state, "", `${location.pathname}${location.search}#room=${code}`);
-          invited = code;
-          await presence.join(code);
-        }
-        try {
-          await navigator.clipboard.writeText(location.href);
-          tell("Invite link copied. Anyone with it can join.");
-        } catch {
-          tell("Copy this page's address to invite someone.");
-        }
-        refresh();
-      }
-    }
-  );
-  (opts.sounds ?? null)?.onChange((l) => {
-    presence.setVolume(l.off ? 0 : l.voices);
-    presence.setHearShared(!!sounds && !l.off && l.hearShared, l.shared);
-  });
-  let kept2 = null;
-  try {
-    kept2 = wasRefreshed() ? sessionStorage.getItem(JOINED_KEY()) : null;
-  } catch {
-  }
-  refresh();
-  const carried = opts.arrived?.joined ? { mic: !!opts.arrived.mic, from: "there" } : kept2 ? { mic: kept2 === "mic", from: "refresh" } : null;
-  if (carried && (carried.from === "refresh" || !invited)) {
-    busy = true;
-    void (async () => {
-      try {
-        await presence.join(carried.from === "refresh" ? invited : null);
-        const heard = carried.mic ? await microphone() : false;
-        const early = 2500 - performance.now();
-        if (early > 0) await new Promise((done) => setTimeout(done, early));
-        tell(
-          `You are still in the room${carried.from === "there" ? ", as you were where you came from" : ""}: others here can see you${heard ? " and hear you" : ""}.${carried.mic && !heard ? " Your microphone is off here: the browser didn't allow it." : ""} Leave is where Join was.`
-        );
-      } catch (err) {
-        tell(`Couldn't stay joined: ${err instanceof Error ? err.message : String(err)}`);
-      } finally {
-        busy = false;
-        refresh();
-      }
-    })();
-  }
-  return {
-    refresh,
-    following,
-    messaging,
-    travelling: () => ({ joined: !!presence.session && !presence.roomName, mic: !!presence.session && !presence.roomName && presence.micOn, blocked: presence.newlyBlocked() })
-  };
-}
-
-// packages/sdk/src/input.ts
 import * as THREE12 from "three";
+import { CHAT_LIMITS, cleanLightningAddress, DEFAULT_RELAYS as DEFAULT_RELAYS8, DELETION_KIND, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub6, verifyEvent as verifyEvent7 } from "@nswp/core";
+
+// packages/sdk/src/ask-once.ts
+function mayAskHowTheyMove() {
+  try {
+    if (new URLSearchParams(globalThis.location?.search ?? "").get("ask") === "moving") return true;
+    return !globalThis.navigator?.webdriver;
+  } catch {
+    return false;
+  }
+}
 
 // packages/sdk/src/stroll.ts
 var WALK_SPEED = 2.4;
@@ -7916,6 +6738,1857 @@ function createStroll(o) {
   };
 }
 
+// packages/sdk/src/fps.ts
+var LOOK_SPEED = 22e-4;
+var PITCH_LIMIT = 85 * Math.PI / 180;
+var SPRINT = RUN;
+function lookAfter(yaw, pitch, dx, dy, speed = LOOK_SPEED) {
+  const clean = (n) => Number.isFinite(n) ? n : 0;
+  return { yaw: yaw - clean(dx) * speed, pitch: Math.min(PITCH_LIMIT, Math.max(-PITCH_LIMIT, pitch - clean(dy) * speed)) };
+}
+function strideOf(held, yaw, speed, dt, sprint = SPRINT) {
+  const f = (held.forward ? 1 : 0) - (held.back ? 1 : 0);
+  const s = (held.right ? 1 : 0) - (held.left ? 1 : 0);
+  if (!f && !s) return [0, 0];
+  const pace = speed * (held.sprint ? sprint : 1) * Math.max(0, dt) / Math.hypot(f, s);
+  const sin = Math.sin(yaw);
+  const cos = Math.cos(yaw);
+  return [(s * cos - f * sin) * pace, (-s * sin - f * cos) * pace];
+}
+function heldKey(code) {
+  switch (code) {
+    case "KeyW":
+    case "ArrowUp":
+      return "forward";
+    case "KeyS":
+    case "ArrowDown":
+      return "back";
+    case "KeyA":
+    case "ArrowLeft":
+      return "left";
+    case "KeyD":
+    case "ArrowRight":
+      return "right";
+    case "ShiftLeft":
+    case "ShiftRight":
+      return "sprint";
+    default:
+      return null;
+  }
+}
+var DESK_KEY = "nswp:fps";
+var DESK_WORDS = {
+  intense: "Desk controls: intense",
+  casual: "Desk controls: casual",
+  nowIntense: "Intense: the mouse looks round. W, A, S, D walk, Shift runs, Space jumps, F uses what is in front of you, and Escape brings up this menu.",
+  nowCasual: "Casual: click where you want to stand, twice to run there, and drag to look round. W, A, S, D walk, Shift runs and Space jumps."
+};
+var hasMouse = () => startingForm() === "desk";
+function startsIntense(arrived, key = DESK_KEY) {
+  if (!hasMouse()) return false;
+  const prefers = arrivedSettings().intense;
+  if (typeof prefers === "boolean") return prefers;
+  try {
+    return arrived || localStorage.getItem(key) === "1";
+  } catch {
+    return arrived;
+  }
+}
+function keepIntense(on, key = DESK_KEY) {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {
+  }
+}
+function keptIntense(key = DESK_KEY) {
+  try {
+    return localStorage.getItem(key) !== null;
+  } catch {
+    return false;
+  }
+}
+var DESK_QUESTION = {
+  casual: "Casual: click to walk, drag to look",
+  intense: "Intense: the mouse looks, keys walk"
+};
+function createFps(o) {
+  const key = o.keep ?? DESK_KEY;
+  const mouse = hasMouse();
+  let enabled = startsIntense(o.arrived === true, key);
+  let answered = typeof arrivedSettings().intense === "boolean" || o.arrived === true || keptIntense(key);
+  if (mouse) {
+    if (typeof arrivedSettings().intense === "boolean" || o.arrived) keepIntense(enabled, key);
+    reportSettings("moving", () => answered ? { intense: enabled } : {}, (now) => void (typeof now.intense === "boolean" && setEnabled(now.intense)));
+  }
+  const held = {};
+  let pitch = 0;
+  let weLetGo = false;
+  let closedAt = -1;
+  let shown2 = false;
+  const looking = () => document.pointerLockElement === o.dom;
+  const active = () => enabled && !o.presenting();
+  const dot = document.createElement("div");
+  dot.setAttribute("aria-hidden", "true");
+  dot.style.cssText = "position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#fff;opacity:.75;box-shadow:0 0 0 1px rgba(0,0,0,.55);pointer-events:none;z-index:5;display:none";
+  document.body.append(dot);
+  const look = () => {
+    if (!active() || o.hud?.open || looking()) return;
+    try {
+      const asked = o.dom.requestPointerLock();
+      asked?.catch?.(() => {
+      });
+    } catch {
+    }
+  };
+  const letGo = () => {
+    if (!looking()) return;
+    weLetGo = true;
+    document.exitPointerLock();
+  };
+  const free = (e) => !looking() && !o.hud?.open && e.target === o.dom && e.buttons === 0;
+  const onMove = (e) => {
+    if (!active() || !(looking() || free(e))) return;
+    const next = lookAfter(o.rig.rotation.y, pitch, e.movementX, e.movementY, LOOK_SPEED * lookScale() * aimScale());
+    o.rig.rotation.y = next.yaw;
+    pitch = next.pitch;
+    o.camera.rotation.x = pitch;
+  };
+  const onDown = (e) => {
+    if (!active() || e.button !== 0) return;
+    if (looking()) o.onUse();
+    else look();
+  };
+  const onLock = () => {
+    if (looking()) return;
+    for (const k of Object.keys(held)) held[k] = false;
+    if (active() && !weLetGo && o.hud && !o.hud.open) o.hud.setOpen(true);
+    weLetGo = false;
+  };
+  const typing = (e) => {
+    const t = e.target;
+    return !!t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+  };
+  const onKey = (e) => {
+    if (!active() || typing(e)) return;
+    if (e.code === "Escape") {
+      if (e.defaultPrevented) {
+        if (looking()) letGo();
+        return;
+      }
+      if (looking()) {
+        letGo();
+        o.hud?.setOpen(true);
+      } else if (o.hud && !o.hud.open && performance.now() - closedAt > 80) o.hud.setOpen(true);
+      return;
+    }
+    if (o.hud?.open) return;
+    if (!looking() && !e.repeat) look();
+    const which = heldKey(e.code);
+    if (which) {
+      held[which] = true;
+      if (e.code.startsWith("Arrow")) e.preventDefault();
+      return;
+    }
+    if (e.code === "KeyF" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) o.onUse();
+  };
+  const onKeyUp = (e) => {
+    const which = heldKey(e.code);
+    if (which) held[which] = false;
+  };
+  const onBlur = () => {
+    for (const k of Object.keys(held)) held[k] = false;
+  };
+  o.dom.addEventListener("mousedown", onDown);
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("pointerlockchange", onLock);
+  addEventListener("keydown", onKey);
+  addEventListener("keyup", onKeyUp);
+  addEventListener("blur", onBlur);
+  const stopSignals = o.controls.onSignal((name) => {
+    if (name === "menuOpen") letGo();
+    if (name === "menuClose") {
+      closedAt = performance.now();
+      setTimeout(look, 0);
+    }
+  });
+  const setEnabled = (on) => {
+    const next = on && mouse;
+    if (mouse) {
+      answered = true;
+      keepIntense(next, key);
+    }
+    if (next === enabled) return;
+    enabled = next;
+    if (!enabled) {
+      letGo();
+      pitch = 0;
+      o.camera.rotation.x = 0;
+      onBlur();
+      dot.style.display = "none";
+      o.dom.style.cursor = "";
+    }
+  };
+  o.controls.add({
+    id: "fps",
+    section: "moving",
+    icon: "step",
+    on: () => enabled,
+    // No mouse, no mouse look. And not in a headset, where it has no meaning.
+    hidden: () => !mouse || o.presenting(),
+    label: () => enabled ? DESK_WORDS.intense : DESK_WORDS.casual,
+    act: () => {
+      setEnabled(!enabled);
+      o.controls.say(enabled ? DESK_WORDS.nowIntense : DESK_WORDS.nowCasual);
+    }
+  });
+  let asking = false;
+  const answer = (intense) => {
+    asking = false;
+    setEnabled(intense);
+    o.controls.say(intense ? DESK_WORDS.nowIntense : DESK_WORDS.nowCasual);
+  };
+  o.controls.addSection({ id: "how-you-move-desk", label: "How you move", icon: "step", note: () => asking ? "You can change this whenever you like, in Moving." : "" });
+  o.controls.add(
+    { id: "desk-casual", section: "how-you-move-desk", icon: "step", hidden: () => !asking || o.presenting(), label: DESK_QUESTION.casual, act: () => answer(false) },
+    { id: "desk-intense", section: "how-you-move-desk", icon: "look", hidden: () => !asking || o.presenting(), label: DESK_QUESTION.intense, act: () => answer(true) }
+  );
+  const stopAskingDesk = o.controls.onSignal((name) => {
+    if (name === "menuClose" && asking) answer(false);
+  });
+  let askTimer = 0;
+  if (mouse && !answered && mayAskHowTheyMove()) {
+    askTimer = window.setTimeout(() => {
+      if (answered || o.presenting() || o.mayAsk?.() === false) return;
+      asking = true;
+      o.controls.signal("show:how-you-move-desk");
+    }, 1200);
+  }
+  const at = o.camera.position.clone();
+  return {
+    get enabled() {
+      return enabled;
+    },
+    setEnabled,
+    get looking() {
+      return looking();
+    },
+    update(dt) {
+      if (!active()) {
+        if (looking()) letGo();
+        if (shown2) {
+          shown2 = false;
+          dot.style.display = "none";
+          o.dom.style.cursor = "";
+        }
+        return false;
+      }
+      const aiming = !o.hud?.open;
+      if (aiming !== shown2) {
+        shown2 = aiming;
+        dot.style.display = aiming ? "block" : "none";
+      }
+      o.dom.style.cursor = aiming ? "none" : "";
+      if (o.hud?.open) return true;
+      const [dx, dz] = strideOf(held, o.rig.rotation.y, o.speed ?? 2.4, dt);
+      if (!dx && !dz) return true;
+      o.camera.getWorldPosition(at);
+      if (o.canStand(at.x + dx, at.z + dz)) {
+        o.rig.position.x += dx;
+        o.rig.position.z += dz;
+      } else if (o.canStand(at.x + dx, at.z)) o.rig.position.x += dx;
+      else if (o.canStand(at.x, at.z + dz)) o.rig.position.z += dz;
+      else o.onBlocked?.();
+      return true;
+    },
+    dispose() {
+      clearTimeout(askTimer);
+      stopAskingDesk();
+      letGo();
+      dot.remove();
+      stopSignals();
+      o.controls.remove("fps");
+      o.dom.removeEventListener("mousedown", onDown);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("pointerlockchange", onLock);
+      removeEventListener("keydown", onKey);
+      removeEventListener("keyup", onKeyUp);
+      removeEventListener("blur", onBlur);
+    }
+  };
+}
+
+// packages/sdk/src/visitor-switches.ts
+var picturesSwitch = (controls) => ({
+  id: "people-pictures",
+  section: "people",
+  icon: "selfie",
+  on: () => showsPictures(),
+  label: () => showsPictures() ? "Profile pictures: on" : "Profile pictures: off",
+  short: "Pictures",
+  act: () => {
+    setShowsPictures(!showsPictures());
+    controls.say(showsPictures() ? "People's own pictures are shown over their names. Each is fetched from wherever its owner keeps it, which tells that place your address." : "No pictures are fetched or shown, here or in the next world.");
+  }
+});
+var modelsSwitch = (controls) => ({
+  id: "people-models",
+  section: "people",
+  icon: "people",
+  on: () => showsModels(),
+  label: () => showsModels() ? "Show people's own models: on" : "Show people's own models: off",
+  short: "Models",
+  act: () => {
+    setShowsModels(!showsModels());
+    controls.say(showsModels() ? "People who wear a model of their own are drawn as it here, and in the next world that draws them." : "Everyone is drawn as their simple look, here and in the next world.");
+  }
+});
+var chatSwitch = (tell) => ({
+  id: "room-chat-show",
+  section: "room",
+  icon: "chat",
+  label: () => showsChat() ? "Written chat: on" : "Written chat: off",
+  on: () => showsChat(),
+  act: () => {
+    setShowsChat(!showsChat());
+    tell(showsChat() ? "What people write in a room is shown to you, and you can write. It goes only to the people in the room, and is kept nowhere." : "Nothing anyone writes is shown to you, here or in the next world, and nobody is told.");
+  }
+});
+
+// packages/sdk/src/messages.ts
+import { DEFAULT_RELAYS as DEFAULT_RELAYS7, isHex64 as isHex645, looksLikeWrap as looksLikeWrap2, MESSAGE_RELAYS_KIND, publishEvent as publishEvent4, queryRelays as queryRelays6, readMessageRelays, readRelayList as readRelayList3, RELAY_LIST_KIND as RELAY_LIST_KIND3, WRAP_KIND, wrapSeal, writtenWith } from "@nswp/core";
+var MOST2 = 300;
+var FRESH_MS3 = 45e3;
+function createMessages(opts) {
+  const { hand } = opts;
+  const now = opts.now ?? (() => Date.now());
+  const query = opts.query ?? queryRelays6;
+  const publish = opts.publish ?? publishEvent4;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS7;
+  const store = (() => {
+    if (opts.storage !== void 0) return opts.storage;
+    try {
+      return globalThis.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const watchers3 = /* @__PURE__ */ new Set();
+  const newcomers = /* @__PURE__ */ new Set();
+  const changed = () => {
+    for (const fn of watchers3) fn();
+  };
+  let who = null;
+  let state = "off";
+  let inbox = [];
+  let own = { read: [], write: [] };
+  let monitors = { open: [], closed: [] };
+  const read = /* @__PURE__ */ new Map();
+  const tried = /* @__PURE__ */ new Set();
+  let looked = 0;
+  let looking = null;
+  let first = true;
+  const seenKey = (me) => `nswp:messages:seen:${me}`;
+  let marks = null;
+  const seenAt = () => {
+    if (marks) return marks;
+    marks = {};
+    try {
+      const kept2 = JSON.parse(who && store?.getItem(seenKey(who)) || "{}");
+      if (kept2 && typeof kept2 === "object" && !Array.isArray(kept2)) {
+        for (const [k, v] of Object.entries(kept2)) if (isHex645(k) && typeof v === "number") marks[k] = v;
+      }
+    } catch {
+    }
+    return marks;
+  };
+  const reset = (me) => {
+    who = me;
+    state = me && hand.ready() ? "looking" : "off";
+    inbox = [];
+    own = { read: [], write: [] };
+    read.clear();
+    tried.clear();
+    marks = null;
+    looked = 0;
+    first = true;
+  };
+  const threads = () => {
+    const by = /* @__PURE__ */ new Map();
+    if (!who) return by;
+    for (const m of read.values()) {
+      const peer = writtenWith(m, who);
+      if (!peer) continue;
+      by.set(peer, [...by.get(peer) ?? [], m]);
+    }
+    for (const list of by.values()) list.sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1));
+    return by;
+  };
+  const unreadIn = (peer, list) => list.filter((m) => m.from === peer && m.at > (seenAt()[peer] ?? 0)).length;
+  const knownTo = (peer, list) => !!opts.known?.(peer) || list.some((m) => m.from === who);
+  const look = async (me) => {
+    const lists = await askWell({ kinds: [RELAY_LIST_KIND3, MESSAGE_RELAYS_KIND], authors: [me], limit: 8 }, { own: [], usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
+    if (hand.pubkey() !== me) return;
+    const answered = !!lists && Object.values(lists.relays).some((said) => said === "eose");
+    const relayList = readRelayList3(lists?.events ?? [], me);
+    own = { read: relayList?.read ?? [], write: relayList?.write ?? [] };
+    const found = readMessageRelays(lists?.events ?? [], me);
+    if (found.length) inbox = found;
+    if (!inbox.length) {
+      if (answered && relayBackup()) monitors = await foundRelays({ query, now }).catch(() => monitors);
+      if (hand.pubkey() !== me) return;
+      state = answered ? "no-inbox" : "unreachable";
+      looked = now();
+      return changed();
+    }
+    const got = await query(inbox, { kinds: [WRAP_KIND], "#p": [me], limit: MOST2 }, 5e3).catch(() => null);
+    if (hand.pubkey() !== me) return;
+    if (got) learnFrom(got.relays, now());
+    const wraps = (got?.events ?? []).filter((e) => !tried.has(e.id) && looksLikeWrap2(e, me)).slice(0, MOST2);
+    for (const wrap2 of wraps) {
+      tried.add(wrap2.id);
+      const message = await hand.open(wrap2).catch(() => null);
+      if (hand.pubkey() !== me) return;
+      if (!message || read.has(message.id)) continue;
+      read.set(message.id, message);
+      if (!first && message.from !== me) for (const fn of newcomers) fn(message);
+    }
+    first = false;
+    state = got && Object.values(got.relays).some((said) => said === "eose") ? "ready" : read.size ? "ready" : "unreachable";
+    looked = now();
+    changed();
+  };
+  const load2 = async (fresh = false) => {
+    const me = hand.ready() ? hand.pubkey() : null;
+    if (me !== who || !me && state !== "off") {
+      reset(me);
+      changed();
+    }
+    if (!me) return;
+    if (!fresh && looked && now() - looked < FRESH_MS3) return;
+    looking ??= look(me).finally(() => {
+      looking = null;
+    });
+    await looking;
+  };
+  const offered = () => {
+    const first2 = (own.read.length ? own.read : usual()).filter((r) => !monitors.closed.includes(r));
+    const rest = monitors.open.filter((r) => !first2.includes(r));
+    const out = [...first2, ...rest].slice(0, 3);
+    return out.length ? out : (own.read.length ? own.read : usual()).slice(0, 3);
+  };
+  return {
+    state: () => hand.ready() && hand.pubkey() === who && who ? state : "off",
+    inbox: () => [...inbox],
+    offered,
+    load: load2,
+    async setUp() {
+      const me = hand.pubkey();
+      if (!me || !hand.ready()) return { ok: false, said: "Sign in first." };
+      const relays = offered();
+      const signed = await hand.reach(relays).catch(() => null);
+      if (!signed) return { ok: false, said: "It couldn't be signed. Nothing was changed." };
+      const sent = await sendWell(signed, { own: own.write, usual: usual(), publish, query, now }).catch(() => null);
+      if (!sent || sent.took === 0) return { ok: false, said: "No relay took it. Try again in a moment." };
+      inbox = relays;
+      state = "ready";
+      changed();
+      void load2(true);
+      return { ok: true, said: `Private messages now reach you at ${relays.map((r) => r.replace(/^wss:\/\//, "")).join(", ")}.` };
+    },
+    conversations() {
+      const out = [];
+      for (const [peer, list] of threads()) out.push({ with: peer, last: list[list.length - 1], unread: unreadIn(peer, list), known: knownTo(peer, list) });
+      return out.sort((a, b) => b.last.at - a.last.at);
+    },
+    thread: (peer) => threads().get(peer) ?? [],
+    async send(to, text, name = "") {
+      const me = hand.pubkey();
+      const them = name || "them";
+      if (!me || !hand.ready()) return { ok: false, said: "Sign in to write to people." };
+      if (!isHex645(to) || to === me) return { ok: false, said: "That isn't someone who can be written to." };
+      if (!inbox.length) return { ok: false, said: "Say where your own messages reach you first: without that you couldn't read back what you sent, or be answered." };
+      const asked = await askWell({ kinds: [MESSAGE_RELAYS_KIND], authors: [to], limit: 4 }, { own: inbox, usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
+      const theirs = readMessageRelays(asked?.events ?? [], to);
+      if (!theirs.length) {
+        const answered = !!asked && Object.values(asked.relays).some((said) => said === "eose");
+        return { ok: false, said: answered ? `${name || "They"} ${name ? "hasn't" : "haven't"} said where private messages reach them, so one can't be sent. Nothing was sent.` : "No relay could be reached. Nothing was sent." };
+      }
+      const sealed = await hand.seal(to, text).catch(() => null);
+      if (!sealed) return { ok: false, said: "It couldn't be signed. Nothing was sent." };
+      const t = now() / 1e3;
+      const forThem = wrapSeal(sealed.seals[0], to, { now: t });
+      const forMe = wrapSeal(sealed.seals[1], me, { now: t });
+      if (!forThem || !forMe) return { ok: false, said: "It couldn't be wrapped. Nothing was sent." };
+      const sent = await publish(theirs, forThem).catch(() => null);
+      if (sent) learnFrom(sent.relays, now());
+      if (!sent || !Object.values(sent.relays).some((said) => said === "ok")) return { ok: false, said: `None of the relays ${them === "them" ? "they use" : `${them} uses`} for messages took it. It wasn't sent.` };
+      tried.add(forMe.id);
+      void publish(inbox, forMe).then((kept2) => learnFrom(kept2.relays, now())).catch(() => void 0);
+      const m = sealed.message;
+      read.set(m.id, { id: m.id, from: me, to: [to], text: m.content, at: m.created_at });
+      changed();
+      return { ok: true, said: "" };
+    },
+    seen(peer) {
+      if (!who) return;
+      const newest = (threads().get(peer) ?? []).reduce((at, m) => Math.max(at, m.at), 0);
+      if (!newest || (seenAt()[peer] ?? 0) >= newest) return;
+      seenAt()[peer] = newest;
+      try {
+        store?.setItem(seenKey(who), JSON.stringify(seenAt()));
+      } catch {
+      }
+      changed();
+    },
+    unread() {
+      let n = 0;
+      for (const [peer, list] of threads()) if (knownTo(peer, list)) n += unreadIn(peer, list);
+      return n;
+    },
+    onChange(fn) {
+      watchers3.add(fn);
+      return () => void watchers3.delete(fn);
+    },
+    onNew(fn) {
+      newcomers.add(fn);
+      return () => void newcomers.delete(fn);
+    }
+  };
+}
+
+// packages/sdk/src/messaging.ts
+import { shortNpub as shortNpub5, MESSAGE_LIMITS } from "@nswp/core";
+import * as THREE11 from "three";
+var W2 = 768;
+var H2 = 900;
+var LEAD = 130;
+var WRITE = 100;
+function addMessagingControls(controls, opts) {
+  const { hand, profiles } = opts;
+  const m = hand.messages;
+  let shown2 = [];
+  let withWhom = null;
+  let requests = false;
+  let wasMe = null;
+  let fetching = false;
+  const nameOf = (pubkey) => profiles.get(pubkey)?.name || shortNpub5(pubkey);
+  const say = (text) => controls.say(text);
+  const inHeadset = () => !!opts.presenting?.() && !!opts.panels;
+  let panel = null;
+  const closePanel = () => {
+    const was = panel;
+    panel = null;
+    was?.texture.dispose();
+    was?.panel.close();
+  };
+  const drawPanel = () => {
+    if (!panel) return;
+    const view = controls.letters.view();
+    if (!view.ready) return closePanel();
+    const stamp2 = `${view.version}:${Math.floor(Date.now() / 6e4)}:${view.title}`;
+    if (stamp2 === panel.drawn) return;
+    panel.drawn = stamp2;
+    const t = controls.theme;
+    const g = panel.canvas.getContext("2d");
+    g.fillStyle = t.glass;
+    g.fillRect(0, 0, W2, H2);
+    g.textBaseline = "middle";
+    g.textAlign = "left";
+    const measure = (text) => g.measureText(text).width;
+    g.fillStyle = t.ink;
+    g.globalAlpha = 0.72;
+    g.font = "27px system-ui, sans-serif";
+    wrapWords(view.lead, measure, W2 - 56, 3).forEach((row, r) => g.fillText(row, 28, 26 + r * 33));
+    g.globalAlpha = 1;
+    const top = H2 - WRITE;
+    g.strokeStyle = t.accent;
+    g.lineWidth = 3;
+    g.fillStyle = `rgba(${rgb(t.accent)}, 0.16)`;
+    g.beginPath();
+    g.roundRect(20, top + 8, W2 - 40, WRITE - 24, 22);
+    g.fill();
+    g.stroke();
+    g.font = "600 34px system-ui, sans-serif";
+    g.fillStyle = t.ink;
+    g.textAlign = "center";
+    g.fillText(wrapWords(`Write to ${view.with}`, measure, W2 - 80, 1)[0] ?? "Write", W2 / 2, top + 8 + (WRITE - 24) / 2);
+    g.textAlign = "left";
+    const ROW = 40;
+    const nowSec = Math.floor(Date.now() / 1e3);
+    let y = top - 12;
+    if (view.said) {
+      g.font = "italic 28px system-ui, sans-serif";
+      g.fillStyle = t.warn;
+      const rows = wrapWords(view.said, measure, W2 - 56, 2);
+      y -= rows.length * ROW;
+      rows.forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 0.5)));
+    }
+    if (!view.lines.length) {
+      g.font = "italic 30px system-ui, sans-serif";
+      g.fillStyle = t.ink;
+      g.globalAlpha = 0.7;
+      wrapWords(`Nothing yet. What you write here is for ${view.with} alone.`, measure, W2 - 56, 3).forEach((row, r) => g.fillText(row, 28, LEAD + ROW * (r + 0.5)));
+      g.globalAlpha = 1;
+    }
+    for (let i = view.lines.length - 1; i >= 0; i--) {
+      const line = view.lines[i];
+      g.font = "32px system-ui, sans-serif";
+      const rows = line.text.split("\n").flatMap((part) => wrapWords(part, measure, W2 - 56, 6)).slice(0, 8);
+      const tall = (rows.length + 1) * ROW + 10;
+      if (y - tall < LEAD) break;
+      y -= tall;
+      g.font = "600 26px system-ui, sans-serif";
+      g.fillStyle = line.mine ? t.accent : t.ink;
+      g.globalAlpha = line.state === "failed" ? 1 : 0.75;
+      if (line.state === "failed") g.fillStyle = t.warn;
+      g.fillText(`${line.mine ? "You" : line.who}  \xB7  ${line.state === "sending" ? "Sending\u2026" : line.state === "failed" ? "Not sent" : ago(line.at, nowSec)}`, 28, y + ROW * 0.5);
+      g.font = "32px system-ui, sans-serif";
+      g.fillStyle = t.ink;
+      g.globalAlpha = line.state === "sending" ? 0.6 : 1;
+      rows.forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 1.5)));
+      g.globalAlpha = 1;
+    }
+    panel.texture.needsUpdate = true;
+    controls.letters.seen();
+  };
+  const openPanel = () => {
+    if (!opts.panels || panel) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = W2;
+    canvas.height = H2;
+    const texture = new THREE11.CanvasTexture(canvas);
+    texture.colorSpace = THREE11.SRGBColorSpace;
+    try {
+      const made = opts.panels.open(
+        {
+          kind: "custom",
+          title: controls.letters.view().title,
+          texture,
+          aspect: W2 / H2,
+          onPress: (_x, y) => {
+            if (y < (H2 - WRITE) / H2 || !opts.panels) return;
+            const view = controls.letters.view();
+            void opts.panels.keyboard.ask({ title: `Write to ${view.with}. Only they can read it. Done sends it.`, maxLength: MESSAGE_LIMITS.chars, multiline: true }).then((text) => {
+              const trouble = text ? controls.letters.send(text) : null;
+              if (trouble) say(trouble);
+            });
+          },
+          onClose: () => {
+            if (panel?.texture === texture) panel = null;
+            texture.dispose();
+          }
+        },
+        { id: "private-messages", keep: false, place: { width: 0.46 }, pin: [-0.46, -0.04, -0.8] }
+      );
+      panel = { panel: made, canvas, texture, drawn: "" };
+      drawPanel();
+    } catch (err) {
+      texture.dispose();
+      say(err instanceof Error ? err.message.replace(/^nswp-sdk: /, "") : "The conversation couldn't be opened.");
+    }
+  };
+  controls.subscribe(drawPanel);
+  const open = (pubkey) => {
+    withWhom = pubkey;
+    void profiles.fetch([pubkey]);
+    controls.letters.attach({
+      with: () => nameOf(pubkey),
+      lines: () => m.thread(pubkey).map((x) => ({ key: x.id, mine: x.from !== pubkey, who: nameOf(x.from), text: x.text, at: x.at })),
+      send: (text) => m.send(pubkey, text, profiles.get(pubkey)?.name ?? ""),
+      seen: () => m.seen(pubkey)
+    });
+    if (inHeadset()) {
+      closePanel();
+      openPanel();
+    } else controls.signal("open:letters");
+    refresh();
+  };
+  const write = (pubkey) => {
+    const me = hand.pubkey();
+    if (!me) return say("Sign in to write to people: it is under You.");
+    if (pubkey === me) return;
+    const go = () => void m.load().then(() => open(pubkey));
+    if (hand.allowed()) return go();
+    say(hand.ask(go));
+  };
+  const refresh = () => {
+    for (const id of shown2) controls.remove(id);
+    shown2 = [];
+    const me = hand.pubkey();
+    if (me !== wasMe) {
+      wasMe = me;
+      withWhom = null;
+      requests = false;
+      controls.letters.detach();
+      closePanel();
+    }
+    const allowed = !!me && hand.allowed();
+    if (allowed && m.state() === "off" && !fetching) {
+      fetching = true;
+      void m.load().finally(() => {
+        fetching = false;
+      });
+    }
+    const state = allowed ? m.state() === "off" ? "looking" : m.state() : "off";
+    const all = allowed ? m.conversations() : [];
+    const known = all.filter((c) => c.known);
+    const asking = all.filter((c) => !c.known);
+    const add = (...actions) => {
+      for (const a of actions) shown2.push(a.id);
+      controls.add(...actions.map((a) => ({ section: "messages", ...a })));
+    };
+    controls.addSection({
+      id: "messages",
+      label: "Messages",
+      icon: "chat",
+      note: () => !me ? "Sign in to read and send private messages." : !allowed ? "Private messages are between you and one other person. This place hasn't been let send or read yours: say so below, and your sign-in address asks you once." : state === "looking" ? "Looking for your messages." : state === "unreachable" ? "No relay could be reached to look for your messages." : state === "no-inbox" ? "Nobody can write to you privately yet: you haven't said where messages should reach you. Say so below. It is a short public list of relays, and you can change it in any Nostr app." : known.length === 0 && asking.length === 0 ? "No messages yet. Write to someone from Following, or from their card in People." : "Only you and the other person can read a conversation. A relay is told who each message is for, and nothing more."
+    });
+    if (!me) return;
+    if (!allowed) {
+      add({ id: "messages-let", icon: "check", tone: "primary", label: "Let me send and read private messages here", act: () => say(hand.ask(() => void m.load().then(refresh))) });
+      return;
+    }
+    if (state === "no-inbox") {
+      const hosts = m.offered().map((r) => r.replace(/^wss:\/\//, ""));
+      add({
+        id: "messages-setup",
+        icon: "check",
+        tone: "primary",
+        label: `Have messages reach me at ${hosts.join(", ")}`,
+        act: async () => {
+          const done = await m.setUp();
+          say(done.said);
+          refresh();
+        }
+      });
+      return;
+    }
+    add({ id: "messages-look", icon: "turn", label: "Look for new messages", short: "Look", act: () => void m.load(true).then(refresh) });
+    const row = (c) => ({
+      // A row each, in order: the people they would expect, then, under their own heading, anyone else.
+      id: `messages-${c.with.slice(0, 16)}`,
+      icon: "chat",
+      on: () => withWhom === c.with,
+      label: () => `${nameOf(c.with)}${c.unread ? `, ${c.unread} new` : ""}`,
+      act: () => open(c.with)
+    });
+    add(...known.slice(0, 40).map(row));
+    if (asking.length) {
+      add({
+        id: "messages-requests",
+        icon: "list",
+        on: () => requests,
+        label: `From people you don't follow: ${asking.length}`,
+        act: () => {
+          requests = !requests;
+          refresh();
+        }
+      });
+      if (requests) add(...asking.slice(0, 40).map(row));
+    }
+    void profiles.fetch(all.slice(0, 60).map((c) => c.with));
+  };
+  let drawing = false;
+  const soon2 = () => {
+    if (drawing) return;
+    drawing = true;
+    queueMicrotask(() => {
+      drawing = false;
+      refresh();
+      controls.letters.touch();
+    });
+  };
+  m.onChange(soon2);
+  profiles.onChange(soon2);
+  m.onNew((message) => {
+    const from = message.from;
+    if (from === withWhom) return;
+    if (m.conversations().find((c) => c.with === from)?.known) {
+      say(`${nameOf(from)} wrote to you privately. It is in Messages.`);
+      controls.signal("message");
+    }
+  });
+  const every = opts.everyMs ?? 6e4;
+  if (every > 0 && typeof setInterval === "function") {
+    setInterval(() => {
+      if (hand.pubkey() && hand.allowed() && (typeof document === "undefined" || document.visibilityState === "visible")) void m.load();
+    }, every);
+  }
+  if (hand.pubkey() && hand.allowed()) void m.load();
+  refresh();
+  return { refresh, write };
+}
+
+// packages/sdk/src/room-controls.ts
+function roomNameFromHash(hash) {
+  for (const part of hash.replace(/^#/, "").split("&")) {
+    if (part.startsWith("room=")) {
+      try {
+        const v = decodeURIComponent(part.slice(5));
+        if (/^[A-Za-z0-9_-]{4,48}$/.test(v)) return v;
+      } catch {
+      }
+    }
+  }
+  return null;
+}
+var JOINED_KEY = () => `nswp:joined:${location.pathname}`;
+function addRoomControls(controls, presence, opts = {}) {
+  const useTone = new URLSearchParams(opts.search ?? location.search).get("mic") === "tone";
+  const useTestScreen = new URLSearchParams(opts.search ?? location.search).get("screen") === "test";
+  const canShare = useTestScreen || typeof navigator.mediaDevices?.getDisplayMedia === "function";
+  const mayShare = useTestScreen ? true : mayShareScreen();
+  const notHere = screenNotHere();
+  const sounds = opts.sharedMusic === false ? null : opts.sounds ?? null;
+  let invited = roomNameFromHash(location.hash);
+  let busy = false;
+  let last = invited ? "You were invited to a private room. Joining shows your IP address to the others in it." : "Joining lets you see and hear others here. It shows your IP address to them.";
+  const tell = (text) => {
+    last = text;
+    controls.say(text);
+  };
+  const status = () => {
+    const s = presence.session;
+    if (!s) return last;
+    const others = s.members.length;
+    const who = s.status === "no-relays" ? "can't reach any relay" : others === 0 ? "nobody else here yet" : others === 1 ? "1 other person here" : `${others} other people here`;
+    const as = s.self.guest ? "" : ` You are here as ${s.self.name}.`;
+    return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${as}${presence.micOn ? " Your microphone is on." : ""}${presence.musicOn ? ` Your music is offered to people near you: ${presence.musicListeners === 0 ? "nobody is hearing it" : presence.musicListeners === 1 ? "1 person is hearing it" : `${presence.musicListeners} people are hearing it`}.` : ""}${presence.screenOn ? ` You are sharing your screen: ${presence.screenViewers === 0 ? "nobody is watching" : presence.screenViewers === 1 ? "1 person is watching" : `${presence.screenViewers} people are watching`}.` : ""}`;
+  };
+  const waitingFor = /* @__PURE__ */ new Map();
+  let watchingSigner = false;
+  const askSigner = (what, to, then) => {
+    const signer = worldSigner();
+    if (!watchingSigner) {
+      watchingSigner = true;
+      signer.onChange(() => {
+        for (const [name, was] of [...waitingFor]) {
+          if (!signer.more.includes(name)) continue;
+          waitingFor.delete(name);
+          if (Date.now() - was.at < 3e5) was.then();
+        }
+      });
+    }
+    const where = signer.host ?? "your sign-in address";
+    if (signer.offers && !signer.offers.includes(what)) return `${where} doesn't let a world ${to} yet. It can be done at your home.`;
+    if (opts.presenting?.()) return `This world needs your say before it can ${to}, once. ${where} asks that itself, which can't be seen from in here. Step out of the headset and press this again.`;
+    waitingFor.set(what, { then, at: Date.now() });
+    signer.want([...signer.more, what]);
+    const here = signer.panel;
+    return signer.unlock() ? here ? `This world needs your say before it can ${to}: once. ${where} is asking, here.` : `This world needs your say before it can ${to}: once, in the window of ${where} that has opened.` : `The window of ${where} couldn't be opened. Allow this site to open windows, and press again.`;
+  };
+  const signedInHere = () => signerNamed() && worldSigner().state === "unlocked" ? worldSigner().pubkey : null;
+  const worldFollows = () => ({
+    people: worldPeople(),
+    pubkey: signedInHere,
+    allowed: () => worldSigner().more.includes("follows"),
+    ask: (then) => askSigner("follows", "change who you follow", then)
+  });
+  const worldMessages = () => ({
+    messages: createMessages({
+      hand: {
+        pubkey: signedInHere,
+        ready: () => worldSigner().more.includes("messages"),
+        seal: (to, text) => worldSigner().seal(to, text),
+        open: (wrap2) => worldSigner().unwrap(wrap2),
+        reach: (relays) => worldSigner().reach(relays)
+      },
+      known: (pubkey) => !!follows().people.follows()?.includes(pubkey),
+      ...opts.noteRelays ? { relays: opts.noteRelays } : {}
+    }),
+    pubkey: signedInHere,
+    allowed: () => worldSigner().more.includes("messages"),
+    ask: (then) => askSigner("messages", "send and read your private messages", then)
+  });
+  let followsKept = null;
+  const follows = () => followsKept ??= opts.follows ?? worldFollows();
+  const TIP_AMOUNTS = [21, 100, 500];
+  const tipper = opts.tip === null ? null : opts.tip ?? ((o) => worldSigner().tip(o));
+  let tipping = null;
+  const sendTip = (to, name, sats) => {
+    const host = notes.host?.() ?? worldSigner().host ?? "your sign-in address";
+    if (opts.presenting?.() ?? presence.presenting) return tell(`${host} has to ask you this itself, which can't be seen from in here. Step out of the headset and press this again.`);
+    tipping = null;
+    tell(`${host} is asking: ${sats} sats to ${name}. Say yes there, and it goes.`);
+    if (!tipper) return;
+    void tipper({ sats, ...to ? { to } : {} }).catch(() => false).then((went) => tell(went ? `${sats} sats went to ${name}.` : `The tip to ${name} didn't go.`));
+    refresh();
+  };
+  const tipRows = (key, section, to, name, ask) => {
+    const rows = [{ id: `${key}-tip` }];
+    controls.add({
+      id: `${key}-tip`,
+      section,
+      icon: "key",
+      on: () => tipping === (to ?? "world"),
+      label: ask,
+      short: "Tip",
+      act: () => {
+        tipping = tipping === (to ?? "world") ? null : to ?? "world";
+        refresh();
+      }
+    });
+    if (tipping === (to ?? "world")) {
+      for (const sats of TIP_AMOUNTS) {
+        rows.push({ id: `${key}-tip-${sats}` });
+        controls.add({ id: `${key}-tip-${sats}`, section, icon: "check", label: `${sats} sats to ${name}`, act: () => sendTip(to, name, sats) });
+      }
+    }
+    return rows;
+  };
+  let takesTips = opts.tipsWorld ?? false;
+  if (opts.tipsWorld === void 0 && typeof fetch === "function") {
+    void fetch("/.well-known/nswp.json", { cache: "no-cache" }).then((r) => r.ok ? r.json() : null).then((file) => {
+      takesTips = !!cleanLightningAddress(file?.tip);
+      if (takesTips) refresh();
+    }).catch(() => void 0);
+  }
+  let worldTipRows = [];
+  const tendWorldTip = () => {
+    for (const id of worldTipRows) controls.remove(id);
+    worldTipRows = [];
+    if (!tipper || !takesTips || !follows().pubkey()) return;
+    worldTipRows = tipRows("world", "travel", null, "this world", "Tip this world").map((r) => r.id);
+  };
+  const following = addFollowingControls(controls, {
+    follows: follows(),
+    ...opts.noteRelays ? { relays: opts.noteRelays } : {},
+    keyboard: () => opts.panels?.keyboard ?? null,
+    ...opts.presenting ? { presenting: opts.presenting } : {},
+    ...opts.about ? { about: opts.about } : {},
+    more: (who) => [{ id: "following-write", icon: "chat", label: `Write to ${who.name}, privately`, act: () => messaging.write(who.pubkey) }]
+  });
+  const messaging = addMessagingControls(controls, {
+    hand: opts.messages ?? worldMessages(),
+    profiles: following.profiles,
+    panels: opts.panels ?? null,
+    ...opts.presenting ? { presenting: opts.presenting } : {}
+  });
+  if (signerNamed()) {
+    worldSigner().onChange(() => {
+      if (!opts.follows) following.refresh();
+      if (!opts.messages) messaging.refresh();
+    });
+  }
+  const followPress = (key, name, adding) => following.press(key, name, adding);
+  const refresh = () => {
+    const s = presence.session;
+    opts.onState?.(
+      s ? { name: s.name, private: !!presence.roomName, status: s.status, self: s.self.pubkey, members: s.members.map((m) => m.pubkey), relays: s.relayCount, mic: presence.micOn, screen: presence.screenOn, music: presence.musicOn, musicListeners: presence.musicListeners, sharing: s.members.filter((m) => m.sharing).map((m) => m.pubkey), watching: [...watching.keys()] } : null
+    );
+    controls.addSection({ id: "room", label: "Room", icon: "room", note: status });
+    tendChat();
+    tendFeed();
+    people();
+    tendWorldTip();
+    remember();
+  };
+  const remember = () => {
+    try {
+      if (presence.session) sessionStorage.setItem(JOINED_KEY(), presence.micOn ? "mic" : "joined");
+      else if (!busy) sessionStorage.removeItem(JOINED_KEY());
+    } catch {
+    }
+  };
+  const microphone = async () => {
+    try {
+      const track = useTone ? presence.testTone() : (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })).getAudioTracks()[0];
+      await presence.setMicrophone(track);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const watching = /* @__PURE__ */ new Map();
+  const sharers = /* @__PURE__ */ new Set();
+  const stopWatching = (pubkey, panelGone = false) => {
+    const w = watching.get(pubkey);
+    if (!w) return;
+    watching.delete(pubkey);
+    presence.watch(pubkey, false);
+    w.video.srcObject = null;
+    w.texture?.dispose();
+    if (!panelGone) w.panel?.close();
+  };
+  const startWatching = (m) => {
+    const stream = presence.screenOf(m.pubkey);
+    if (!opts.panels || !stream || watching.has(m.pubkey)) return false;
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    const w = { video, texture: null, panel: null };
+    watching.set(m.pubkey, w);
+    const show = () => {
+      if (w.panel || watching.get(m.pubkey) !== w || !video.videoWidth || !video.videoHeight) return;
+      w.texture = new THREE12.VideoTexture(video);
+      w.texture.colorSpace = THREE12.SRGBColorSpace;
+      w.panel = opts.panels.open(
+        { kind: "custom", title: `${m.name}'s screen`, texture: w.texture, aspect: video.videoWidth / video.videoHeight, onClose: () => stopWatching(m.pubkey, true) },
+        { keep: false }
+      );
+      refresh();
+    };
+    video.addEventListener("loadedmetadata", show);
+    video.addEventListener("resize", show);
+    void video.play().catch(() => {
+    });
+    presence.watch(m.pubkey, true);
+    return true;
+  };
+  const testScreen = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1280;
+    canvas.height = 720;
+    const g = canvas.getContext("2d");
+    let n = 0;
+    const draw = () => {
+      g.fillStyle = "#10243a";
+      g.fillRect(0, 0, 1280, 720);
+      g.fillStyle = "#ffd166";
+      g.font = "64px sans-serif";
+      g.fillText(`A shared screen, frame ${++n}`, 80, 380);
+    };
+    draw();
+    const timer = setInterval(draw, 200);
+    const track = canvas.captureStream(10).getVideoTracks()[0];
+    track.addEventListener("ended", () => clearInterval(timer));
+    return track;
+  };
+  let listed = [];
+  let extras = [];
+  let chosen = null;
+  let headcount = 0;
+  let toldOfMusic = false;
+  const blockedNote = () => {
+    const n = presence.blocked().length;
+    const e = presence.blockedElsewhere;
+    return `${n === 0 ? "" : `You have blocked ${n === 1 ? "1 person" : `${n} people`} here: you don't see or hear each other. Unblock anyone below. `}${e === 0 ? "" : `${e === 1 ? "1 person is" : `${e} people are`} blocked wherever you go: that list is kept by the place you set out from, and is changed there. `}`;
+  };
+  if (opts.arrived?.blocked?.length) presence.blockAlso(opts.arrived.blocked);
+  const recorders = /* @__PURE__ */ new Set();
+  const choose = (m) => {
+    chosen = m.pubkey;
+    people();
+    presence.pointOut(m.pubkey);
+    controls.say(m.identity ? `${m.name} is under the column of light. Their key: ${encodeNpub3(m.identity)}` : `${m.name} is under the column of light. A guest: nobody has vouched for who they are.`);
+  };
+  presence.onPerson((pubkey) => {
+    const m = presence.people().find((x) => x.pubkey === pubkey);
+    if (!m) return;
+    choose(m);
+    controls.signal("show:people");
+  });
+  controls.add(picturesSwitch(controls));
+  if (presence.drawsModels())
+    controls.add(modelsSwitch(controls));
+  controls.add({
+    id: "files-anywhere",
+    section: "people",
+    icon: "link",
+    on: () => filesAnywhere(),
+    label: () => filesAnywhere() ? "Load people's files from anywhere: on" : "Load people's files from anywhere: off",
+    short: "Files",
+    act: () => {
+      setFilesAnywhere(!filesAnywhere());
+      controls.say(
+        filesAnywhere() ? "What people carry is fetched from wherever they keep it, in this place. The place that keeps a file learns your address, and when you were near it: anyone can choose that place. It stays off in other places until you turn it on there." : "People's files are fetched only from the file hosts you already use. Anything kept elsewhere is shown as a plain box."
+      );
+    }
+  });
+  const people = () => {
+    const here = presence.session ? presence.people() : [];
+    if (presence.session && here.length !== headcount) controls.signal(here.length > headcount ? "join" : "leave");
+    headcount = presence.session ? here.length : 0;
+    for (const id of [...listed, ...extras]) controls.remove(id);
+    extras = [];
+    listed = here.map((m) => `person-${m.pubkey.slice(0, 12)}`);
+    if (!here.some((m) => m.pubkey === chosen)) chosen = null;
+    controls.addSection({
+      id: "people",
+      label: "People",
+      icon: "people",
+      note: () => `${blockedNote()}${!presence.session ? "Join the room to see who else is here." : here.length === 0 ? "Nobody else is here yet." : here.some((m) => m.pubkey === chosen) ? "What they say about themselves is their own words. Muting and blocking are yours alone: nobody is told. Who you follow is public." : `${here.length === 1 ? "1 person is" : `${here.length} people are`} here with you. Select one, or press the picture over their head, to see who they are, and to mute their voice or their music, or block them.`}`,
+      // Whoever was chosen, at the head of the section: who they are here, and what they say of themselves.
+      card: () => {
+        const who2 = here.find((m) => m.pubkey === chosen);
+        if (!who2) return null;
+        return {
+          title: who2.name,
+          tag: who2.guest ? "Guest" : "By name",
+          proven: !who2.guest,
+          // A name is not unique and a picture can be copied: the key behind them is what tells two people apart.
+          sub: who2.identity ? shortNpub6(who2.identity) : "Nobody has vouched for who they are.",
+          copy: who2.identity ? encodeNpub3(who2.identity) : "",
+          text: who2.guest ? "" : who2.about ?? "",
+          picture: !who2.guest && showsPictures() ? who2.picture ?? "" : "",
+          color: who2.look.light,
+          now: [
+            // What they have done here, as they say. Only someone who came by name has anything to show.
+            ...who2.identity ? opts.about?.lines(who2.identity) ?? [] : [],
+            ...who2.recording ? ["Recording what they see"] : [],
+            ...who2.sharing ? ["Sharing their screen"] : [],
+            ...who2.music ? ["Sharing music"] : [],
+            ...presence.isMuted(who2.pubkey) ? ["You have muted their voice"] : []
+          ]
+        };
+      }
+    });
+    here.forEach(
+      (m, i) => controls.add({
+        id: listed[i],
+        section: "people",
+        kind: "swatch",
+        color: m.look.light,
+        label: () => `${m.name}${m.recording ? ", recording" : ""}${m.sharing ? ", sharing their screen" : ""}${m.music ? ", sharing music" : ""}`,
+        act: () => choose(m)
+      })
+    );
+    if (sounds && !toldOfMusic && !sounds.levels.hearShared && here.some((m) => m.music)) {
+      toldOfMusic = true;
+      controls.say(`${here.find((m) => m.music).name} is sharing music. To hear what people near you share, turn it on in Sound.`);
+    }
+    for (const key of [...watching.keys()]) if (!here.some((m) => m.pubkey === key && m.sharing)) stopWatching(key);
+    for (const m of here) {
+      if (m.sharing && !sharers.has(m.pubkey)) controls.say(opts.panels ? `${m.name} is sharing their screen. Select them in People to watch.` : `${m.name} is sharing their screen.`);
+      if (m.sharing) sharers.add(m.pubkey);
+      else sharers.delete(m.pubkey);
+    }
+    const who = here.find((m) => m.pubkey === chosen);
+    if (who?.sharing && opts.panels) {
+      extras.push("person-watch");
+      controls.add({
+        id: "person-watch",
+        section: "people",
+        icon: "panel",
+        on: () => watching.has(who.pubkey),
+        label: () => watching.has(who.pubkey) ? `Stop watching ${who.name}'s screen` : `Watch ${who.name}'s screen`,
+        act: () => {
+          if (watching.has(who.pubkey)) stopWatching(who.pubkey);
+          else if (startWatching(who)) controls.say(`${who.name}'s screen is opening on a panel of your own. Put the panel away to stop.`);
+          else controls.say(`${who.name}'s screen can't be shown here.`);
+          refresh();
+        }
+      });
+    }
+    const me = follows().pubkey();
+    if (who?.identity && me && who.identity !== me) {
+      const them = who.identity;
+      const people2 = follows().people;
+      if (follows().allowed() && people2.follows() === null) void people2.load().then(() => refresh());
+      extras.push("person-follow");
+      controls.add({
+        id: "person-follow",
+        section: "people",
+        icon: "check",
+        on: () => people2.isFollowing(them) === true,
+        label: () => people2.isFollowing(them) ? `Unfollow ${who.name}` : `Follow ${who.name}`,
+        act: () => followPress(them, who.name, !people2.isFollowing(them))
+      });
+    }
+    if (who?.identity && me && who.identity !== me) {
+      const them = who.identity;
+      extras.push("person-write");
+      controls.add({ id: "person-write", section: "people", icon: "chat", label: `Write to ${who.name}, privately`, act: () => messaging.write(them) });
+      if (tipper) for (const row of tipRows("person", "people", them, who.name, `Send ${who.name} a tip`)) extras.push(row.id);
+    }
+    if (who) {
+      extras.push("person-mute", "person-music", "person-block");
+      if (who.model && presence.drawsModels()) {
+        extras.push("person-simple");
+        controls.add({
+          id: "person-simple",
+          section: "people",
+          icon: "look",
+          on: () => presence.isSimple(who.pubkey),
+          label: () => presence.isSimple(who.pubkey) ? `Show ${who.name}'s own model` : `Show ${who.name} as their simple look`,
+          act: () => {
+            const now = !presence.isSimple(who.pubkey);
+            presence.showSimple(who.pubkey, now);
+            controls.say(now ? `${who.name} is drawn as their simple look for you. They aren't told.` : `${who.name} is drawn as their own model again.`);
+          }
+        });
+      }
+      controls.add(
+        {
+          id: "person-mute",
+          section: "people",
+          icon: () => presence.isMuted(who.pubkey) ? "mic" : "micOff",
+          on: () => presence.isMuted(who.pubkey),
+          label: () => presence.isMuted(who.pubkey) ? `Unmute ${who.name}'s voice` : `Mute ${who.name}'s voice`,
+          act: () => {
+            const now = !presence.isMuted(who.pubkey);
+            presence.mute(who.pubkey, now);
+            controls.say(now ? `You no longer hear ${who.name} speak. They still see and hear you, and aren't told.` : `You hear ${who.name} speak again.`);
+          }
+        },
+        ...sounds ? [
+          {
+            id: "person-music",
+            section: "people",
+            icon: (() => presence.isMusicMuted(who.pubkey) ? "sound" : "soundOff"),
+            on: () => presence.isMusicMuted(who.pubkey),
+            label: () => presence.isMusicMuted(who.pubkey) ? `Unmute ${who.name}'s music` : `Mute ${who.name}'s music`,
+            act: () => {
+              const now = !presence.isMusicMuted(who.pubkey);
+              presence.muteMusic(who.pubkey, now);
+              controls.say(
+                now ? `You won't hear music ${who.name} shares. You still hear them speak.` : sounds.levels.hearShared ? `You hear ${who.name}'s music again when they share it and you are near.` : `${who.name}'s music is no longer muted. To hear anyone's shared music, turn it on in Sound.`
+              );
+            }
+          }
+        ] : [],
+        ...presence.itemsRule === "allowed" ? [
+          {
+            id: "person-mute-items",
+            section: "people",
+            icon: "close",
+            on: () => presence.isItemsMuted(who.pubkey),
+            label: () => presence.isItemsMuted(who.pubkey) ? `Unmute ${who.name}'s items` : `Mute ${who.name}'s items`,
+            act: () => {
+              const now = !presence.isItemsMuted(who.pubkey);
+              presence.muteItems(who.pubkey, now);
+              controls.say(now ? `What ${who.name}'s items do can't reach you, and you won't see or hear it. They aren't told.` : `${who.name}'s items are no longer muted.`);
+            }
+          }
+        ] : [],
+        {
+          id: "person-block",
+          section: "people",
+          icon: "exit",
+          label: `Block ${who.name}`,
+          act: () => {
+            stopWatching(who.pubkey);
+            const name = presence.block(who.pubkey);
+            if (!name) return;
+            chosen = null;
+            controls.say(
+              who.identity ? `${name} is blocked. You won't see or hear each other here, now or when they come back by that name. To them, you have left.` : `${name} is blocked for this visit. You won't see or hear each other. A guest gets a new key each visit, so it can't hold beyond this one.`
+            );
+            refresh();
+          }
+        }
+      );
+    }
+    for (const b of presence.blocked()) {
+      const id = `unblock-${b.key.slice(0, 12)}`;
+      extras.push(id);
+      controls.add({
+        id,
+        section: "people",
+        icon: "check",
+        label: `Unblock ${b.name}${b.kept ? "" : " (blocked this visit)"}`,
+        act: () => {
+          presence.unblock(b.key);
+          controls.say(`${b.name} is no longer blocked. You'll see each other again within half a minute if they are here.`);
+          refresh();
+        }
+      });
+    }
+    for (const m of here) {
+      if (m.recording && !recorders.has(m.pubkey)) controls.say(`${m.name} is recording what they see.`);
+      if (m.recording) recorders.add(m.pubkey);
+      else recorders.delete(m.pubkey);
+    }
+  };
+  let chatFor = null;
+  let chatStops = [];
+  const CHAT_W = 768;
+  const CHAT_H = 900;
+  const WRITE_H = 132;
+  let chatPanel = null;
+  const drawChatPanel = () => {
+    if (!chatPanel) return;
+    const view = controls.chat.view();
+    if (view.version === chatPanel.drawn) return;
+    chatPanel.drawn = view.version;
+    const t = controls.theme;
+    const g = chatPanel.canvas.getContext("2d");
+    g.fillStyle = t.glass;
+    g.fillRect(0, 0, CHAT_W, CHAT_H);
+    g.textBaseline = "middle";
+    const ROW = 46;
+    const measure = (text) => g.measureText(text).width;
+    let y = CHAT_H - WRITE_H - 18;
+    for (let i = view.lines.length - 1; i >= 0; i--) {
+      const line = view.lines[i];
+      const lead = line.note ? "" : `${line.mine ? "You" : line.who}:`;
+      g.font = line.note ? "italic 32px system-ui, sans-serif" : "34px system-ui, sans-serif";
+      const rows = wrapWords(lead ? `${lead} ${line.text}` : line.text, measure, CHAT_W - 56, 6);
+      y -= rows.length * ROW;
+      if (y < 12) break;
+      rows.forEach((row, r) => {
+        const at = y + ROW * (r + 0.5);
+        let x = 28;
+        let rest = row;
+        if (r === 0 && lead && row.startsWith(lead)) {
+          g.font = "600 34px system-ui, sans-serif";
+          g.fillStyle = line.mine ? t.ink : line.color || t.accent;
+          g.globalAlpha = line.mine ? 0.62 : 1;
+          g.fillText(lead, x, at);
+          x += measure(lead);
+          rest = row.slice(lead.length);
+          g.font = "34px system-ui, sans-serif";
+        }
+        g.globalAlpha = line.note ? 0.62 : 1;
+        g.fillStyle = t.ink;
+        g.fillText(rest, x, at);
+      });
+      g.globalAlpha = 1;
+      y -= 10;
+    }
+    if (!view.lines.length) {
+      g.font = "32px system-ui, sans-serif";
+      g.fillStyle = t.ink;
+      g.globalAlpha = 0.7;
+      wrapWords("Nobody has written anything yet. What is written here goes to the people in this room, and is kept nowhere.", measure, CHAT_W - 80, 6).forEach((row, r) => g.fillText(row, 40, 200 + r * ROW));
+      g.globalAlpha = 1;
+    }
+    g.strokeStyle = t.accent;
+    g.lineWidth = 3;
+    g.fillStyle = `rgba(${rgb(t.accent)}, 0.16)`;
+    g.beginPath();
+    g.roundRect(20, CHAT_H - WRITE_H + 12, CHAT_W - 40, WRITE_H - 32, 22);
+    g.fill();
+    g.stroke();
+    g.font = "600 36px system-ui, sans-serif";
+    g.fillStyle = t.ink;
+    g.textAlign = "center";
+    g.fillText("Write to the room", CHAT_W / 2, CHAT_H - WRITE_H / 2 - 4);
+    g.textAlign = "left";
+    chatPanel.texture.needsUpdate = true;
+    controls.chat.seen();
+  };
+  const closeChatPanel = () => {
+    const was = chatPanel;
+    chatPanel = null;
+    was?.texture.dispose();
+    was?.panel.close();
+  };
+  const writeInHeadset = () => {
+    if (!opts.panels || !controls.chat.view().ready) return;
+    void opts.panels.keyboard.ask({ title: "Write to the room. Done sends it.", maxLength: CHAT_LIMITS.chars }).then((text) => {
+      const trouble = text ? controls.chat.send(text) : null;
+      if (trouble) tell(trouble);
+    });
+  };
+  const openChatPanel = () => {
+    if (!opts.panels || chatPanel || !controls.chat.view().ready) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = CHAT_W;
+    canvas.height = CHAT_H;
+    const texture = new THREE12.CanvasTexture(canvas);
+    texture.colorSpace = THREE12.SRGBColorSpace;
+    try {
+      const panel = opts.panels.open(
+        {
+          kind: "custom",
+          title: controls.chat.view().title,
+          texture,
+          aspect: CHAT_W / CHAT_H,
+          onPress: (_x, y) => {
+            if (y > 1 - WRITE_H / CHAT_H) writeInHeadset();
+          },
+          onClose: () => {
+            if (chatPanel?.texture === texture) chatPanel = null;
+            texture.dispose();
+          }
+        },
+        // To one side of where they are looking, an arm's reach away, and pinned: it comes with them until they unpin it.
+        { id: "room-chat", keep: false, place: { width: 0.46 }, pin: [-0.46, -0.04, -0.8] }
+      );
+      chatPanel = { panel, canvas, texture, drawn: -1 };
+      drawChatPanel();
+    } catch (err) {
+      texture.dispose();
+      tell(err instanceof Error ? err.message.replace(/^nswp-sdk: /, "") : "The chat panel couldn't be opened.");
+    }
+  };
+  controls.subscribe(drawChatPanel);
+  const tendChat = () => {
+    const s = presence.session;
+    if (s === chatFor) return;
+    for (const stop of chatStops) stop();
+    chatStops = [];
+    chatFor = s;
+    controls.chat.detach();
+    closeChatPanel();
+    if (!s) return;
+    controls.chat.attach(
+      (text) => {
+        const how = s.say(text);
+        if (how === "slow") return "That is a lot at once. Wait a moment, then send it again.";
+        if (how === "said" && s.members.length === 0) controls.chat.add({ note: true, text: "Nobody else is in the room yet, so nobody read that." });
+        return null;
+      },
+      { title: presence.roomName ? "Private room chat" : "Room chat" }
+    );
+    chatStops.push(
+      s.on("said", (m, line) => {
+        const mine = m.pubkey === s.self.pubkey;
+        controls.chat.add({ id: line.id, who: m.name, text: line.text, mine, color: `#${m.color.toString(16).padStart(6, "0")}` });
+        if (mine || !showsChat()) return;
+        controls.signal("heard");
+        const where = presence.whereIs(m.pubkey);
+        opts.sounds?.play("chat", where ?? { distance: 3 });
+      }),
+      // Who comes and goes is said in the chat too. A moment is waited for a name: a pass is shown just after arriving.
+      s.on("member", (m) => {
+        setTimeout(() => {
+          if (chatFor === s && s.members.includes(m)) controls.chat.add({ note: true, text: `${m.name} is here.` });
+        }, 1500);
+      }),
+      s.on("leave", (m) => controls.chat.add({ note: true, text: `${m.name} left.` }))
+    );
+  };
+  onChatChange(() => {
+    if (!showsChat()) closeChatPanel();
+    refresh();
+  });
+  const notes = opts.notes ?? {
+    ready: () => worldSigner().state === "unlocked",
+    sign: (n) => worldSigner().sign(n),
+    onChange: (fn) => worldSigner().onChange(fn),
+    locked: () => worldSigner().state === "locked",
+    unlock: () => worldSigner().unlock(),
+    panel: () => worldSigner().panel,
+    propose: (n) => worldSigner().propose(n),
+    host: () => worldSigner().host,
+    unanswered: () => worldSigner().unanswered ? unansweredWords(worldSigner()) : null,
+    pubkey: () => worldSigner().pubkey,
+    who: () => hereAs()?.name || worldSigner().name
+  };
+  const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS8;
+  let relaysKept = null;
+  const ownRelays = (key) => {
+    if (!key) return Promise.resolve([]);
+    if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
+    const found = askWell({ kinds: [RELAY_LIST_KIND4], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList4(got.events, key)?.write ?? []).catch(() => []);
+    relaysKept = { key, at: Date.now(), found };
+    return found;
+  };
+  let wantsFeed = false;
+  const postNote = async (words) => {
+    const signed = await notes.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
+    const note = signed && verifyEvent7(signed) && signed.kind === 1 && signed.content === words ? signed : null;
+    if (!note) return { ok: false, said: "That wasn't sent: your sign-in said no." };
+    const to = await sendWell(note, { own: await ownRelays(note.pubkey), usual: usualRelays() }).catch(() => null);
+    const kept3 = to?.took ?? 0;
+    const n = to?.relays.length ?? 0;
+    const own = to?.own ?? 0;
+    const where = own === n ? `${kept3} of your ${n} relays` : own ? `${kept3} of ${n} relays: yours, and the usual ones because too few of your own were answering` : `${kept3} of the ${n} usual relays: you have published no relay list of your own`;
+    return kept3 ? { ok: true, said: `Sent out, to ${where}. Anyone can read it now.`, id: note.id } : { ok: false, said: "Signed, but no relay took it. It wasn't sent." };
+  };
+  const removeNote = async (id) => {
+    const host = notes.host?.() ?? "your sign-in address";
+    if (presence.presenting) return { ok: false, said: `Not deleted: ${host} has to ask you this itself, which can't be seen from in here. Step out of the headset and press Delete again.` };
+    const key = notes.pubkey?.();
+    const signed = await notes.propose?.({ kind: DELETION_KIND, content: "", tags: [["e", id], ["k", "1"]] }).catch(() => null);
+    const names = signed ? signed.tags.filter((t) => t[0] === "e" || t[0] === "a") : [];
+    const note = signed && verifyEvent7(signed) && signed.kind === DELETION_KIND && (!key || signed.pubkey === key) && names.length === 1 && names[0][1] === id ? signed : null;
+    if (!note) return { ok: false, said: `Not deleted: ${host} didn't sign it. Either you said no there, or it can't do this yet.` };
+    const to = await sendWell(note, { own: await ownRelays(note.pubkey), usual: usualRelays() }).catch(() => null);
+    const kept3 = to?.took ?? 0;
+    return kept3 ? { ok: true, said: `Deleted: ${kept3} ${kept3 === 1 ? "relay was" : "relays were"} asked to drop it. A copy kept somewhere else may remain.` } : { ok: false, said: "Signed, but no relay took it. It wasn't deleted." };
+  };
+  const loadPosts = async () => {
+    const key = notes.pubkey?.();
+    if (!key) return [];
+    const got = await askWell({ kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, { own: await ownRelays(key), usual: usualRelays(), timeoutMs: 5e3 });
+    if (!got.events.length && !Object.values(got.relays).some((said) => said === "eose")) return null;
+    return got.events.filter((e) => e.pubkey === key && e.kind === 1 && !e.tags.some((t) => t[0] === "e")).map((e) => ({ id: e.id, text: e.content, at: e.created_at }));
+  };
+  let feedFor = null;
+  const FEED_LEAD = 150;
+  let feedPanel = null;
+  const closeFeedPanel = () => {
+    const was = feedPanel;
+    feedPanel = null;
+    was?.texture.dispose();
+    was?.panel.close();
+  };
+  const tendFeed = () => {
+    const key = notes.ready() ? notes.pubkey?.() ?? "" : null;
+    if (key === feedFor) return;
+    feedFor = key;
+    if (key === null) {
+      controls.feed.detach();
+      return closeFeedPanel();
+    }
+    controls.feed.attach({ who: () => notes.who?.() || (key ? shortNpub6(key) : "you"), marked: opts.notes ? opts.notes.marked?.() ?? "" : location.host, send: postNote, load: loadPosts, ...notes.propose ? { remove: removeNote } : {} });
+  };
+  const drawFeedPanel = () => {
+    if (!feedPanel) return;
+    const view = controls.feed.view();
+    const stamp2 = `${view.version}:${Math.floor(Date.now() / 6e4)}:${view.lead}`;
+    if (stamp2 === feedPanel.drawn) return;
+    feedPanel.drawn = stamp2;
+    const t = controls.theme;
+    const g = feedPanel.canvas.getContext("2d");
+    g.fillStyle = t.glass;
+    g.fillRect(0, 0, CHAT_W, CHAT_H);
+    g.textBaseline = "middle";
+    g.textAlign = "left";
+    const ROW = 44;
+    const measure = (text) => g.measureText(text).width;
+    g.font = "30px system-ui, sans-serif";
+    g.fillStyle = t.ink;
+    g.globalAlpha = 0.72;
+    g.font = "27px system-ui, sans-serif";
+    wrapWords(view.lead, measure, CHAT_W - 56, 4).forEach((row, r) => g.fillText(row, 28, 24 + r * 33));
+    g.globalAlpha = 1;
+    g.strokeStyle = t.accent;
+    g.lineWidth = 3;
+    g.fillStyle = `rgba(${rgb(t.accent)}, 0.16)`;
+    g.beginPath();
+    g.roundRect(20, FEED_LEAD, CHAT_W - 40, WRITE_H - 32, 22);
+    g.fill();
+    g.stroke();
+    g.font = "600 36px system-ui, sans-serif";
+    g.fillStyle = t.ink;
+    g.textAlign = "center";
+    g.fillText("Send out a post", CHAT_W / 2, FEED_LEAD + (WRITE_H - 32) / 2);
+    g.textAlign = "left";
+    let y = FEED_LEAD + WRITE_H;
+    const say = (text) => {
+      g.font = "italic 30px system-ui, sans-serif";
+      g.globalAlpha = 0.7;
+      wrapWords(text, measure, CHAT_W - 56, 3).forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 0.5)));
+      g.globalAlpha = 1;
+      y += ROW * 2;
+    };
+    if (view.said) say(view.said);
+    if (!view.posts.length) say(view.loading ? "Fetching your posts\u2026" : "Nothing here yet. What you send out appears here, and on Nostr for anyone to read.");
+    const nowSec = Math.floor(Date.now() / 1e3);
+    for (const post of view.posts) {
+      g.font = "33px system-ui, sans-serif";
+      const rows = wrapWords(post.text, measure, CHAT_W - 56, 5);
+      if (y + (rows.length + 1) * ROW > CHAT_H - 10) break;
+      g.fillStyle = t.ink;
+      g.globalAlpha = post.state === "sending" ? 0.6 : 1;
+      rows.forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 0.5)));
+      y += rows.length * ROW;
+      g.font = "26px system-ui, sans-serif";
+      g.fillStyle = post.state === "failed" ? t.warn : t.ink;
+      g.globalAlpha = post.state === "failed" ? 1 : 0.55;
+      g.fillText(post.state === "sending" ? "Sending\u2026" : post.state === "failed" ? "Not sent" : post.state === "removing" ? "Deleting\u2026" : ago(post.at, nowSec), 28, y + 20);
+      g.globalAlpha = 0.14;
+      g.fillStyle = t.ink;
+      g.fillRect(28, y + ROW + 4, CHAT_W - 56, 2);
+      g.globalAlpha = 1;
+      y += ROW + 16;
+    }
+    feedPanel.texture.needsUpdate = true;
+  };
+  const openFeedPanel = () => {
+    if (!opts.panels || feedPanel || !controls.feed.view().ready) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = CHAT_W;
+    canvas.height = CHAT_H;
+    const texture = new THREE12.CanvasTexture(canvas);
+    texture.colorSpace = THREE12.SRGBColorSpace;
+    try {
+      const panel = opts.panels.open(
+        {
+          kind: "custom",
+          title: controls.feed.view().title,
+          texture,
+          aspect: CHAT_W / CHAT_H,
+          onPress: (_x, y) => {
+            if (y < FEED_LEAD / CHAT_H || y > (FEED_LEAD + WRITE_H) / CHAT_H || !opts.panels) return;
+            void opts.panels.keyboard.ask({ title: "Write a post. Done sends it out, for anyone to read.", maxLength: CHAT_LIMITS.chars }).then((text) => {
+              const trouble = text ? controls.feed.send(text) : null;
+              if (trouble) tell(trouble);
+            });
+          },
+          onClose: () => {
+            if (feedPanel?.texture === texture) feedPanel = null;
+            texture.dispose();
+          }
+        },
+        // On the other side from the room's chat, so both can be up.
+        { id: "my-feed", keep: false, place: { width: 0.46 }, pin: [0.46, -0.04, -0.8] }
+      );
+      feedPanel = { panel, canvas, texture, drawn: "" };
+      controls.feed.opened();
+      drawFeedPanel();
+    } catch (err) {
+      texture.dispose();
+      tell(err instanceof Error ? err.message.replace(/^nswp-sdk: /, "") : "Your feed couldn't be opened.");
+    }
+  };
+  controls.subscribe(drawFeedPanel);
+  const openFeed = () => {
+    if (presence.presenting && opts.panels) return feedPanel ? closeFeedPanel() : openFeedPanel();
+    controls.signal("toggle:feed");
+  };
+  notes.onChange?.(() => {
+    tendFeed();
+    if (notes.ready() && wantsFeed) {
+      wantsFeed = false;
+      openFeed();
+    }
+    refresh();
+  });
+  let turning = false;
+  const asWhoTheyAre = async () => {
+    const s = presence.session;
+    if (!s || busy || turning) return;
+    const who = hereAs();
+    if (!!who === !s.self.guest) return;
+    turning = busy = true;
+    const mic = presence.micOn;
+    const name = presence.roomName;
+    for (const key of [...watching.keys()]) stopWatching(key);
+    presence.leave();
+    try {
+      await presence.join(name);
+      if (mic) await microphone();
+      tell(presence.session?.self.guest ? "The room sees a guest now." : `The room sees you as ${presence.session?.self.name} now.`);
+    } catch {
+      tell("You left the room, and joining it again didn't work. Join it again from here.");
+    } finally {
+      turning = busy = false;
+      refresh();
+    }
+  };
+  if (signerNamed()) {
+    worldSigner().onChange(() => void asWhoTheyAre());
+    onHereAs(() => {
+      void asWhoTheyAre();
+      refresh();
+    });
+  }
+  controls.add(
+    {
+      id: "room-chat",
+      section: "room",
+      hotbar: true,
+      icon: "chat",
+      label: () => {
+        const n = controls.chat.view().unread;
+        return n ? `Chat: ${n} new` : "Chat";
+      },
+      short: () => {
+        const n = controls.chat.view().unread;
+        return n ? `Chat ${n}` : "Chat";
+      },
+      on: () => controls.chat.view().unread > 0,
+      hidden: () => !presence.session || !showsChat(),
+      act: () => {
+        if (presence.presenting && opts.panels) return chatPanel ? closeChatPanel() : openChatPanel();
+        controls.signal("toggle:chat");
+      }
+    },
+    {
+      id: "feed",
+      section: "room",
+      icon: "note",
+      // It is here whenever there is something to post with, signed in or not: a row that isn't there can't be
+      // found. Signed out, it says what comes first, and pressing it starts that.
+      label: () => {
+        if (notes.ready()) return "Send out a post";
+        const host = notes.host?.() ?? "your sign-in address";
+        return notes.unanswered?.() ? `Sending out a post isn't available: ${host} didn't answer` : `Send out a post: sign in at ${host} first`;
+      },
+      short: "Post",
+      hidden: () => !(notes.ready() || notes.locked?.() || notes.unanswered?.()),
+      act: () => {
+        if (notes.ready()) return openFeed();
+        const why = notes.unanswered?.();
+        if (why) return tell(why);
+        const host = notes.host?.() ?? "your sign-in address";
+        if (presence.presenting) return tell(`A window from ${host} is needed first, and none can open in a headset. Leave the headset view for a moment, press this again, and come back in.`);
+        const here = !!notes.panel?.();
+        wantsFeed = !!notes.unlock?.();
+        tell(
+          wantsFeed ? here ? `${host} is asking, here. Sign in there if it asks, and say yes. Then your public feed opens.` : `A window from ${host} has opened. Sign in there if it asks, and say yes. Then your public feed opens here.` : `Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`
+        );
+      }
+    },
+    chatSwitch(tell),
+    {
+      id: "room-join",
+      section: "room",
+      hotbar: true,
+      icon: () => presence.session ? "leave" : "room",
+      label: () => presence.session ? "Leave the room" : "Join the room",
+      short: () => presence.session ? "Leave" : "Join",
+      on: () => !!presence.session,
+      hidden: () => busy,
+      act: async () => {
+        if (presence.session) {
+          for (const key of [...watching.keys()]) stopWatching(key);
+          presence.leave();
+          controls.signal("leave");
+          tell("You left the room.");
+          return refresh();
+        }
+        busy = true;
+        try {
+          await presence.join(invited);
+          controls.signal("join");
+        } catch (err) {
+          tell(`Couldn't join: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+          busy = false;
+          refresh();
+        }
+      }
+    },
+    {
+      id: "room-mic",
+      section: "room",
+      hotbar: true,
+      icon: () => presence.micOn ? "mic" : "micOff",
+      label: () => presence.micOn ? "Turn microphone off" : "Turn microphone on",
+      short: "Mic",
+      on: () => presence.micOn,
+      hidden: () => !presence.session,
+      act: async () => {
+        if (presence.micOn) {
+          await presence.setMicrophone(null);
+          controls.signal("micOff");
+        } else if (await microphone()) controls.signal("micOn");
+        else tell("The microphone is blocked or unavailable.");
+        refresh();
+      }
+    },
+    ...sounds ? [
+      {
+        id: "sound-share",
+        section: "sound",
+        icon: "sound",
+        on: () => presence.musicOn,
+        label: () => presence.musicOn ? "Sharing your music with people near you: on" : "Share your music with people near you",
+        hidden: () => !presence.session || sounds.jukebox.list().length === 0,
+        act: async () => {
+          if (presence.musicOn) {
+            await presence.shareMusic(null);
+            tell("You stopped sharing your music.");
+            return refresh();
+          }
+          await presence.shareMusic(sounds.jukebox.output());
+          tell(
+            `Your music is offered to people near you. It reaches only those who have chosen to hear shared music, and fades with distance.${presence.micOn ? " With your microphone on, wear headphones, or they hear it twice." : ""}`
+          );
+          refresh();
+        }
+      },
+      {
+        id: "sound-hear",
+        section: "sound",
+        icon: "sound",
+        on: () => sounds.levels.hearShared,
+        label: () => sounds.levels.hearShared ? "Hear music others share: on" : "Hear music others share: off",
+        act: () => {
+          sounds.setLevels({ hearShared: !sounds.levels.hearShared });
+          controls.say(sounds.levels.hearShared ? "You'll hear music that people near you share, quieter the further they are." : "You won't hear anyone's shared music.");
+        }
+      },
+      {
+        id: "sound-shared",
+        section: "sound",
+        hidden: () => !sounds.levels.hearShared,
+        on: () => sounds.levels.shared > 0,
+        label: () => `Others' music: ${LEVEL_WORDS[levelStep(sounds.levels.shared)]}`,
+        act: () => sounds.setLevels({ shared: nextLevel(sounds.levels.shared) })
+      }
+    ] : [],
+    {
+      id: "room-screen",
+      section: "room",
+      icon: "panel",
+      on: () => presence.screenOn,
+      label: () => presence.screenOn ? "Stop sharing your screen" : "Share your screen",
+      // A phone or a headset's browser can't offer a screen. It can still watch one.
+      hidden: () => !presence.session || !canShare || mayShare === false,
+      act: async () => {
+        if (presence.screenOn) {
+          await presence.shareScreen(null);
+          tell("You stopped sharing your screen.");
+          return refresh();
+        }
+        try {
+          const track = useTestScreen ? testScreen() : (await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 30 } }, audio: false })).getVideoTracks()[0];
+          await presence.shareScreen(track);
+          tell("Your screen is offered to this room. It is sent only to people who choose to watch. Share one window if anything else on your screen is private.");
+        } catch {
+          tell(mayShare === null ? `Nothing was shared. ${notHere[0]} ${notHere[1]}` : "Nothing was shared.");
+        }
+        refresh();
+      }
+    },
+    // Where this page is in a frame that doesn't hand the screen down: said, in place of a row that could only fail.
+    { id: "room-screen-not-here", section: "room", kind: "line", icon: "panel", label: notHere[0], hidden: () => !presence.session || !canShare || mayShare !== false, act: () => {
+    } },
+    { id: "room-screen-how", section: "room", kind: "line", icon: "link", label: notHere[1], hidden: () => !presence.session || !canShare || mayShare !== false, act: () => {
+    } },
+    {
+      id: "room-invite",
+      section: "room",
+      icon: "link",
+      label: () => presence.roomName ? "Copy invite link" : "Make a private room",
+      hidden: () => !presence.session,
+      act: async () => {
+        if (!presence.roomName) {
+          const bytes = crypto.getRandomValues(new Uint8Array(9));
+          const code = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_");
+          history.replaceState(history.state, "", `${location.pathname}${location.search}#room=${code}`);
+          invited = code;
+          await presence.join(code);
+        }
+        try {
+          await navigator.clipboard.writeText(location.href);
+          tell("Invite link copied. Anyone with it can join.");
+        } catch {
+          tell("Copy this page's address to invite someone.");
+        }
+        refresh();
+      }
+    }
+  );
+  (opts.sounds ?? null)?.onChange((l) => {
+    presence.setVolume(l.off ? 0 : l.voices);
+    presence.setHearShared(!!sounds && !l.off && l.hearShared, l.shared);
+  });
+  let kept2 = null;
+  try {
+    kept2 = wasRefreshed() ? sessionStorage.getItem(JOINED_KEY()) : null;
+  } catch {
+  }
+  refresh();
+  const carried = opts.arrived?.joined ? { mic: !!opts.arrived.mic, from: "there" } : kept2 ? { mic: kept2 === "mic", from: "refresh" } : null;
+  if (carried && (carried.from === "refresh" || !invited)) {
+    busy = true;
+    void (async () => {
+      try {
+        await presence.join(carried.from === "refresh" ? invited : null);
+        const heard = carried.mic ? await microphone() : false;
+        const early = 2500 - performance.now();
+        if (early > 0) await new Promise((done) => setTimeout(done, early));
+        tell(
+          `You are still in the room${carried.from === "there" ? ", as you were where you came from" : ""}: others here can see you${heard ? " and hear you" : ""}.${carried.mic && !heard ? " Your microphone is off here: the browser didn't allow it." : ""} Leave is where Join was.`
+        );
+      } catch (err) {
+        tell(`Couldn't stay joined: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        busy = false;
+        refresh();
+      }
+    })();
+  }
+  return {
+    refresh,
+    following,
+    messaging,
+    travelling: () => ({ joined: !!presence.session && !presence.roomName, mic: !!presence.session && !presence.roomName && presence.micOn, blocked: presence.newlyBlocked() })
+  };
+}
+
+// packages/sdk/src/input.ts
+import * as THREE13 from "three";
+
 // packages/sdk/src/actions.ts
 var NO_PAD = { stick: [0, 0], from: "none", trigger: 0, squeeze: 0, primary: false, secondary: false, press: false };
 function deadzone(x, y, inner = 0.2) {
@@ -8077,40 +8750,30 @@ var Locomotion = class {
   }
 };
 
-// packages/sdk/src/ask-once.ts
-function mayAskHowTheyMove() {
-  try {
-    if (new URLSearchParams(globalThis.location?.search ?? "").get("ask") === "moving") return true;
-    return !globalThis.navigator?.webdriver;
-  } catch {
-    return false;
-  }
-}
-
 // packages/sdk/src/input.ts
 var unpointable = (root) => root.traverse((o) => void (o.raycast = () => {
 }));
 function controllerModel(accent) {
   const b = new MeshBuilder().at();
-  b.tone = new THREE12.Color(1712684);
+  b.tone = new THREE13.Color(1712684);
   b.light = accent.clone();
-  const lean = new THREE12.Matrix4().makeRotationX(THREE12.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
+  const lean = new THREE13.Matrix4().makeRotationX(THREE13.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
   b.place(lean);
   b.lathe([[5e-4, -0.07], [0.014, -0.068], [0.018, -0.02], [0.017, 0.03], [0.012, 0.046], [5e-4, 0.048]], [0, 0, 0], 6, (row) => row === 1 ? { glow: 0.5 } : { shade: 0.9 + row % 2 * 0.2 });
-  b.place(new THREE12.Matrix4());
+  b.place(new THREE13.Matrix4());
   b.box([0.03, 0.022, 0.07], [0, 4e-3, -0.045], { bevel: 6e-3, shade: 1.05 });
   b.box([0.018, 0.012, 4e-3], [0, 4e-3, -0.082], { glow: 1 });
-  b.place(new THREE12.Matrix4().makeRotationX(THREE12.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
+  b.place(new THREE13.Matrix4().makeRotationX(THREE13.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
   b.lathe([[0.046, -4e-3], [0.052, 0], [0.046, 4e-3], [0.041, 0]], [0, 0, 0], 12, (row) => row === 1 ? { glow: 0.7 } : { shade: 0.85 });
   const metal = createAlloy(accent, { gloss: 0.6 });
-  const group = new THREE12.Group();
+  const group = new THREE13.Group();
   group.add(b.build(metal));
-  const light = () => new THREE12.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
-  const trigger = new THREE12.Mesh(new THREE12.BoxGeometry(0.012, 0.02, 0.014), light());
+  const light = () => new THREE13.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
+  const trigger = new THREE13.Mesh(new THREE13.BoxGeometry(0.012, 0.02, 0.014), light());
   trigger.position.set(0, -0.016, -0.036);
-  const squeeze = new THREE12.Mesh(new THREE12.BoxGeometry(8e-3, 0.03, 0.012), light());
+  const squeeze = new THREE13.Mesh(new THREE13.BoxGeometry(8e-3, 0.03, 0.012), light());
   squeeze.position.set(0, -0.034, 0.018);
-  squeeze.rotation.x = THREE12.MathUtils.degToRad(-52);
+  squeeze.rotation.x = THREE13.MathUtils.degToRad(-52);
   group.add(trigger, squeeze);
   unpointable(group);
   return { group, metal, trigger, squeeze };
@@ -8123,12 +8786,16 @@ var MOVE_QUESTION = {
 };
 function createXrInput(opts) {
   const { renderer, rig, camera } = opts;
-  const accent = new THREE12.Color(opts.accent ?? 16758364);
+  const accent = new THREE13.Color(opts.accent ?? 16758364);
   const came = arrivedSettings();
   let answered = came.headset !== void 0 || hasComfort() || opts.arrivedIntense === true;
   let comfort = { ...loadComfort(), ...came.headset === "intense" ? INTENSE_COMFORT : came.headset === "casual" ? CASUAL_COMFORT : {}, ...came.turn !== void 0 ? { turnStep: came.turn } : {}, ...came.hand !== void 0 ? { moveHand: came.hand } : {}, ...came.narrow !== void 0 ? { narrow: came.narrow } : {}, ...came.fade !== void 0 ? { fade: came.fade } : {} };
   if (came.turn !== void 0 || came.hand !== void 0 || came.narrow !== void 0 || came.fade !== void 0 || came.headset !== void 0) saveComfort(comfort);
-  reportSettings("hands", () => ({ turn: comfort.turnStep, hand: comfort.moveHand, narrow: comfort.narrow, fade: comfort.fade, ...answered ? { headset: isIntense(comfort) ? "intense" : "casual" } : {} }));
+  reportSettings("hands", () => ({ turn: comfort.turnStep, hand: comfort.moveHand, narrow: comfort.narrow, fade: comfort.fade, ...answered ? { headset: isIntense(comfort) ? "intense" : "casual" } : {} }), (now) => {
+    const patch = { ...now.headset === "intense" ? INTENSE_COMFORT : now.headset === "casual" ? CASUAL_COMFORT : {}, ...now.turn !== void 0 ? { turnStep: now.turn } : {}, ...now.hand !== void 0 ? { moveHand: now.hand } : {}, ...now.narrow !== void 0 ? { narrow: now.narrow } : {}, ...now.fade !== void 0 ? { fade: now.fade } : {} };
+    if (now.headset !== void 0) answered = true;
+    if (Object.keys(patch).length) setComfort(patch, true);
+  });
   const loco = new Locomotion();
   const stops = [];
   const listeners = [];
@@ -8158,25 +8825,25 @@ function createXrInput(opts) {
   });
   const kindOf = (s) => !s.source ? "none" : s.source.hand ? "hand" : "controller";
   const handOf = (s) => s.source?.handedness === "left" || s.source?.handedness === "right" ? s.source.handedness : "none";
-  const jointShape = new THREE12.OctahedronGeometry(1, 1);
-  const jointDark = new THREE12.MeshBasicMaterial({ color: 2568767 });
-  const jointLit = new THREE12.MeshBasicMaterial({ color: accent });
+  const jointShape = new THREE13.OctahedronGeometry(1, 1);
+  const jointDark = new THREE13.MeshBasicMaterial({ color: 2568767 });
+  const jointLit = new THREE13.MeshBasicMaterial({ color: accent });
   const dressHand = (hand) => {
     for (const joint of hand.children) {
       if (joint.userData.nswpJoint) continue;
       joint.userData.nswpJoint = true;
       const name = String(joint.jointName ?? "");
       const tip = name.endsWith("-tip");
-      const mesh = new THREE12.Mesh(jointShape, tip ? jointLit : jointDark);
+      const mesh = new THREE13.Mesh(jointShape, tip ? jointLit : jointDark);
       const radius = joint.jointRadius;
       mesh.scale.setScalar(Math.min(0.02, Math.max(5e-3, (radius ?? 8e-3) * (tip ? 0.9 : 0.75))));
       unpointable(mesh);
       joint.add(mesh);
     }
   };
-  const vignette = new THREE12.Mesh(
-    new THREE12.RingGeometry(0.12, 3, 48, 4),
-    new THREE12.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
+  const vignette = new THREE13.Mesh(
+    new THREE13.RingGeometry(0.12, 3, 48, 4),
+    new THREE13.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
   );
   vignette.position.z = -0.4;
   vignette.renderOrder = 999;
@@ -8186,9 +8853,9 @@ function createXrInput(opts) {
   camera.add(vignette);
   let narrow = 0;
   const FADE_S = 0.12;
-  const sheet = new THREE12.Mesh(
-    new THREE12.PlaneGeometry(4, 4),
-    new THREE12.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0, depthTest: false, depthWrite: false })
+  const sheet = new THREE13.Mesh(
+    new THREE13.PlaneGeometry(4, 4),
+    new THREE13.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0, depthTest: false, depthWrite: false })
   );
   sheet.position.z = -0.3;
   sheet.renderOrder = 1e3;
@@ -8237,8 +8904,8 @@ function createXrInput(opts) {
     } catch {
     }
   };
-  const headAt = new THREE12.Vector3();
-  const ahead = new THREE12.Vector3();
+  const headAt = new THREE13.Vector3();
+  const ahead = new THREE13.Vector3();
   const canStand = opts.canStand ?? (() => true);
   const walk = (right, forward) => {
     camera.getWorldPosition(headAt);
@@ -8255,12 +8922,12 @@ function createXrInput(opts) {
   const things = /* @__PURE__ */ new Map();
   const held = /* @__PURE__ */ new Map();
   const returning = [];
-  const box = new THREE12.Box3();
-  const ball = new THREE12.Sphere();
-  const handAt = new THREE12.Vector3();
-  const raycaster = new THREE12.Raycaster();
-  const turnOnly = new THREE12.Matrix4();
-  const HOLD_AT = new THREE12.Vector3(0, 0, -0.06);
+  const box = new THREE13.Box3();
+  const ball = new THREE13.Sphere();
+  const handAt = new THREE13.Vector3();
+  const raycaster = new THREE13.Raycaster();
+  const turnOnly = new THREE13.Matrix4();
+  const HOLD_AT = new THREE13.Vector3(0, 0, -0.06);
   const FAR_REACH = 6;
   const isHeld = (object) => [...held.values()].some((h) => h.thing.object === object);
   const grab = (slot, by) => {
@@ -8548,10 +9215,10 @@ function createXrInput(opts) {
 }
 
 // packages/sdk/src/panels.ts
-import * as THREE15 from "three";
+import * as THREE16 from "three";
 
 // packages/sdk/src/keyboard.ts
-import * as THREE13 from "three";
+import * as THREE14 from "three";
 
 // packages/sdk/src/panel-store.ts
 var PANEL_LOOKS = [
@@ -8718,18 +9385,18 @@ var KEYS = 520;
 var LIVE_STRIP = 92;
 var WIDTH = 0.8;
 function createKeyboard(o) {
-  const accent = `#${new THREE13.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE14.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   const canvas = document.createElement("canvas");
   canvas.width = W3;
   canvas.height = SHOW + KEYS;
   const g = canvas.getContext("2d");
-  const texture = new THREE13.CanvasTexture(canvas);
-  texture.colorSpace = THREE13.SRGBColorSpace;
+  const texture = new THREE14.CanvasTexture(canvas);
+  texture.colorSpace = THREE14.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE13.Mesh(new THREE13.PlaneGeometry(WIDTH, WIDTH * canvas.height / W3), new THREE13.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
+  const board = new THREE14.Mesh(new THREE14.PlaneGeometry(WIDTH, WIDTH * canvas.height / W3), new THREE14.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
   board.name = "keyboard";
-  const group = new THREE13.Group();
+  const group = new THREE14.Group();
   group.name = "keyboard";
   group.add(board);
   group.visible = false;
@@ -8849,9 +9516,9 @@ function createKeyboard(o) {
     field.focus();
   };
   const unheard = voice.subscribe(() => done || live ? lay() : void 0);
-  const at = new THREE13.Vector3();
-  const facing2 = new THREE13.Vector3();
-  const local2 = new THREE13.Vector3();
+  const at = new THREE14.Vector3();
+  const facing2 = new THREE14.Vector3();
+  const local2 = new THREE14.Vector3();
   const putUp = (under = false) => {
     o.camera.getWorldPosition(at);
     o.camera.getWorldDirection(facing2);
@@ -8978,7 +9645,7 @@ function createKeyboard(o) {
 }
 
 // packages/sdk/src/library.ts
-import * as THREE14 from "three";
+import * as THREE15 from "three";
 var DB = "nswp-panels";
 function files() {
   return new Promise((resolve, reject) => {
@@ -9045,7 +9712,7 @@ var TOP = 96;
 var FOOT = 104;
 var WIDTH2 = 1.1;
 function createLibrary(o) {
-  const accent = `#${new THREE14.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE15.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   let items = [];
   if (o.keep) {
@@ -9067,12 +9734,12 @@ function createLibrary(o) {
   canvas.width = W4;
   canvas.height = H3;
   const g = canvas.getContext("2d");
-  const texture = new THREE14.CanvasTexture(canvas);
-  texture.colorSpace = THREE14.SRGBColorSpace;
+  const texture = new THREE15.CanvasTexture(canvas);
+  texture.colorSpace = THREE15.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE14.Mesh(new THREE14.PlaneGeometry(WIDTH2, WIDTH2 * H3 / W4), new THREE14.MeshBasicMaterial({ map: texture, toneMapped: false }));
+  const board = new THREE15.Mesh(new THREE15.PlaneGeometry(WIDTH2, WIDTH2 * H3 / W4), new THREE15.MeshBasicMaterial({ map: texture, toneMapped: false }));
   board.name = "library";
-  const group = new THREE14.Group();
+  const group = new THREE15.Group();
   group.name = "library";
   group.add(board);
   group.visible = false;
@@ -9180,8 +9847,8 @@ function createLibrary(o) {
     if (items.length) button("removing", removing ? "Stop removing" : "Remove one", W4 - 300, fy, 276, FOOT - 28, removing);
     texture.needsUpdate = true;
   };
-  const at = new THREE14.Vector3();
-  const facing2 = new THREE14.Vector3();
+  const at = new THREE15.Vector3();
+  const facing2 = new THREE15.Vector3();
   const api = {
     group,
     list: () => items,
@@ -9255,7 +9922,7 @@ function createLibrary(o) {
       if (!r || !group.visible) return null;
       const height = WIDTH2 * H3 / W4;
       group.updateMatrixWorld(true);
-      return board.localToWorld(new THREE14.Vector3(((r.x + r.w / 2) / W4 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H3) * height, 0));
+      return board.localToWorld(new THREE15.Vector3(((r.x + r.w / 2) / W4 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H3) * height, 0));
     },
     info: () => ({ showing: group.visible, page, pages: libraryPage(items, page, COLS * ROWS).pages, removing, cells: regions.map((r) => r.id) }),
     update() {
@@ -9281,8 +9948,8 @@ function canvasTexture(width, height, draw) {
   canvas.width = width;
   canvas.height = height;
   draw(canvas.getContext("2d"), width, height);
-  const texture = new THREE15.CanvasTexture(canvas);
-  texture.colorSpace = THREE15.SRGBColorSpace;
+  const texture = new THREE16.CanvasTexture(canvas);
+  texture.colorSpace = THREE16.SRGBColorSpace;
   texture.anisotropy = 8;
   return texture;
 }
@@ -9368,9 +10035,9 @@ function barTexture(title, ink) {
   });
 }
 function createPanels(o) {
-  const accent = new THREE15.Color(o.accent ?? 16758364);
+  const accent = new THREE16.Color(o.accent ?? 16758364);
   const ink = o.textColor ?? "#eef5fb";
-  const root = new THREE15.Group();
+  const root = new THREE16.Group();
   root.name = "panels";
   o.scene.add(root);
   const live = /* @__PURE__ */ new Map();
@@ -9379,13 +10046,13 @@ function createPanels(o) {
   const glyph = (g) => glyphs.get(g) ?? (glyphs.set(g, glyphTexture(g, ink)), glyphs.get(g));
   const frameShape = (() => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE15.Color(1186340);
+    b.tone = new THREE16.Color(1186340);
     b.light = accent.clone();
     b.box([1, 1, 0.022], [0, 0, 0], { bevel: 8e-3 });
     return b.geometry();
   })();
-  const head = new THREE15.Vector3();
-  const at = new THREE15.Vector3();
+  const head = new THREE16.Vector3();
+  const at = new THREE16.Vector3();
   const headV3 = () => {
     o.camera.getWorldPosition(head);
     return [head.x, head.y, head.z];
@@ -9474,10 +10141,10 @@ function createPanels(o) {
   };
   const presenting = () => !!o.session?.();
   let follow = null;
-  const anchorAt = new THREE15.Vector3();
-  const anchorTurn = new THREE15.Quaternion();
-  const offset = new THREE15.Vector3();
-  const UP = new THREE15.Vector3(0, 1, 0);
+  const anchorAt = new THREE16.Vector3();
+  const anchorTurn = new THREE16.Quaternion();
+  const offset = new THREE16.Vector3();
+  const UP = new THREE16.Vector3(0, 1, 0);
   const anchor = (dt) => {
     o.camera.getWorldPosition(anchorAt);
     if (!presenting()) {
@@ -9518,20 +10185,20 @@ function createPanels(o) {
     save();
     if (p.source.kind === "custom") p.source.onClose?.();
   };
-  const flat = (texture, w = 1, h = 1) => new THREE15.Mesh(new THREE15.PlaneGeometry(w, h), new THREE15.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
+  const flat = (texture, w = 1, h = 1) => new THREE16.Mesh(new THREE16.PlaneGeometry(w, h), new THREE16.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
   const open = (content, opts = {}) => {
     const source = content.kind === "custom" ? content : cleanSource(content);
     if (!source) throw new Error("nswp-sdk: a panel needs something to show (a note with words, or a picture or video with an address).");
     if (live.size >= PANEL_LIMITS.count && !(opts.id && live.has(opts.id))) throw new Error(`nswp-sdk: ${PANEL_LIMITS.count} panels are open. Put one away first.`);
     const id = opts.id ?? newId();
     live.get(id)?.close();
-    const group = new THREE15.Group();
+    const group = new THREE16.Group();
     group.name = `panel:${id}`;
     const body = flat(null);
     body.name = `${id}:body`;
     const bar = flat(barTexture(source.title || (source.kind === "note" ? "Note" : source.kind === "picture" ? "Picture" : source.kind === "video" ? "Video" : ""), ink), 1, BAR);
     bar.name = `${id}:bar`;
-    const frame = new THREE15.Mesh(frameShape, metal);
+    const frame = new THREE16.Mesh(frameShape, metal);
     frame.name = "frame";
     frame.raycast = () => {
     };
@@ -9585,7 +10252,7 @@ function createPanels(o) {
         save();
       },
       place() {
-        const e = new THREE15.Euler().setFromQuaternion(group.quaternion, "YXZ");
+        const e = new THREE16.Euler().setFromQuaternion(group.quaternion, "YXZ");
         const round = (n) => Math.round(n * 1e3) / 1e3;
         return { position: group.position.toArray().map(round), yaw: round((e.y / DEG % 360 + 360) % 360), pitch: round(e.x / DEG), width: round(p.width) };
       },
@@ -9623,8 +10290,8 @@ function createPanels(o) {
           const image = new Image();
           image.onload = () => {
             if (!live.has(id)) return;
-            const texture = new THREE15.Texture(image);
-            texture.colorSpace = THREE15.SRGBColorSpace;
+            const texture = new THREE16.Texture(image);
+            texture.colorSpace = THREE16.SRGBColorSpace;
             texture.needsUpdate = true;
             show(texture, image.naturalWidth / Math.max(1, image.naturalHeight));
           };
@@ -9637,8 +10304,8 @@ function createPanels(o) {
           p.video = video;
           video.addEventListener("loadedmetadata", () => {
             if (!live.has(id) || !video.videoWidth) return;
-            const texture = new THREE15.VideoTexture(video);
-            texture.colorSpace = THREE15.SRGBColorSpace;
+            const texture = new THREE16.VideoTexture(video);
+            texture.colorSpace = THREE16.SRGBColorSpace;
             show(texture, video.videoWidth / video.videoHeight);
           });
           const mark = () => {
@@ -9705,9 +10372,9 @@ function createPanels(o) {
   const tint = (hit, on) => {
     const found = hit ? find(hit) : null;
     const mesh = found?.[0].buttons.get(found[1]);
-    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE15.Color(16777215));
+    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE16.Color(16777215));
   };
-  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE15.Color(16777215));
+  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE16.Color(16777215));
   const api = {
     open,
     async openFile(file) {
@@ -9889,20 +10556,10 @@ function addPanelControls(controls, panels, o) {
       controls.say(err instanceof Error && /Put one away/.test(err.message) ? `${PANEL_LIMITS.count} panels are open. Put one away first.` : "That couldn't be hung.");
     }
   };
-  const picker = document.createElement("input");
-  picker.type = "file";
-  picker.accept = "image/*,video/*";
-  picker.hidden = true;
-  document.body.append(picker);
-  picker.addEventListener("change", () => {
-    const file = picker.files?.[0];
-    picker.value = "";
-    if (!file) return;
-    void panels.openFile(file).then(
-      (p) => controls.say(p ? "Hung in front of you." : file.size > PANEL_LIMITS.fileBytes ? "That file is too large to hang: 64 MB at most." : "Only pictures and videos can be hung."),
-      () => controls.say(`${PANEL_LIMITS.count} panels are open. Put one away first.`)
-    );
-  });
+  const hangFile = (file) => void panels.openFile(file).then(
+    (p) => controls.say(p ? "Hung in front of you." : file.size > PANEL_LIMITS.fileBytes ? "That file is too large to hang: 64 MB at most." : "Only pictures and videos can be hung."),
+    () => controls.say(`${PANEL_LIMITS.count} panels are open. Put one away first.`)
+  );
   controls.add(
     {
       id: "panel-note",
@@ -9933,7 +10590,7 @@ function addPanelControls(controls, panels, o) {
       }
     },
     // The device's own files: the browser shows those itself, as a flat window, so this is offered outside a headset.
-    { id: "panel-file", section: "panels", icon: "panel", label: "Hang a picture or video from this device", short: "Hang", hidden: o.presenting, act: () => picker.click() },
+    { id: "panel-file", section: "panels", icon: "panel", kind: "file", accept: ["image", "video"], label: "Hang a picture or video from this device", short: "Hang", hidden: o.presenting, act: (_typed, file) => void (file && hangFile(file)) },
     {
       id: "panel-hide",
       section: "panels",
@@ -9950,14 +10607,14 @@ function addPanelControls(controls, panels, o) {
 }
 
 // packages/sdk/src/floor-mark.ts
-import * as THREE16 from "three";
+import * as THREE17 from "three";
 var MOST3 = 140;
 var TURNS = 16;
 function createFloorMarks(accent, opts = {}) {
   const y = opts.height ?? 0.02;
-  const group = new THREE16.Group();
+  const group = new THREE17.Group();
   group.name = "floor-marks";
-  const paint = (opacity) => new THREE16.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
+  const paint = (opacity) => new THREE17.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
   const flat = (o) => {
     o.rotation.x = -Math.PI / 2;
     o.renderOrder = 5;
@@ -9967,19 +10624,19 @@ function createFloorMarks(accent, opts = {}) {
     group.add(o);
     return o;
   };
-  const ring = flat(new THREE16.Mesh(new THREE16.RingGeometry(0.26, 0.34, 48), paint(0.85)));
-  const dot = flat(new THREE16.Mesh(new THREE16.CircleGeometry(0.14, 28), paint(0.95)));
-  const halo = flat(new THREE16.Mesh(new THREE16.RingGeometry(0.26, 0.3, 48), paint(0.7)));
-  const line = flat(new THREE16.InstancedMesh(new THREE16.CircleGeometry(0.07, 14), paint(0.8), MOST3));
+  const ring = flat(new THREE17.Mesh(new THREE17.RingGeometry(0.26, 0.34, 48), paint(0.85)));
+  const dot = flat(new THREE17.Mesh(new THREE17.CircleGeometry(0.14, 28), paint(0.95)));
+  const halo = flat(new THREE17.Mesh(new THREE17.RingGeometry(0.26, 0.3, 48), paint(0.7)));
+  const line = flat(new THREE17.InstancedMesh(new THREE17.CircleGeometry(0.07, 14), paint(0.8), MOST3));
   line.rotation.x = 0;
   line.frustumCulled = false;
-  const knots = flat(new THREE16.InstancedMesh(new THREE16.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
+  const knots = flat(new THREE17.InstancedMesh(new THREE17.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
   knots.rotation.x = 0;
   knots.frustumCulled = false;
-  const place = new THREE16.Matrix4();
-  const lie = new THREE16.Quaternion().setFromEuler(new THREE16.Euler(-Math.PI / 2, 0, 0));
-  const at = new THREE16.Vector3();
-  const one = new THREE16.Vector3(1, 1, 1);
+  const place = new THREE17.Matrix4();
+  const lie = new THREE17.Quaternion().setFromEuler(new THREE17.Euler(-Math.PI / 2, 0, 0));
+  const at = new THREE17.Vector3();
+  const one = new THREE17.Vector3(1, 1, 1);
   let shown2 = { ring: null, dot: null, dots: 0, turns: 0 };
   return {
     group,
@@ -10065,285 +10722,6 @@ function doorsTooClose(doors) {
     }
   }
   return close;
-}
-
-// packages/sdk/src/fps.ts
-var LOOK_SPEED = 22e-4;
-var PITCH_LIMIT = 85 * Math.PI / 180;
-var SPRINT = RUN;
-function lookAfter(yaw, pitch, dx, dy, speed = LOOK_SPEED) {
-  const clean = (n) => Number.isFinite(n) ? n : 0;
-  return { yaw: yaw - clean(dx) * speed, pitch: Math.min(PITCH_LIMIT, Math.max(-PITCH_LIMIT, pitch - clean(dy) * speed)) };
-}
-function strideOf(held, yaw, speed, dt, sprint = SPRINT) {
-  const f = (held.forward ? 1 : 0) - (held.back ? 1 : 0);
-  const s = (held.right ? 1 : 0) - (held.left ? 1 : 0);
-  if (!f && !s) return [0, 0];
-  const pace = speed * (held.sprint ? sprint : 1) * Math.max(0, dt) / Math.hypot(f, s);
-  const sin = Math.sin(yaw);
-  const cos = Math.cos(yaw);
-  return [(s * cos - f * sin) * pace, (-s * sin - f * cos) * pace];
-}
-function heldKey(code) {
-  switch (code) {
-    case "KeyW":
-    case "ArrowUp":
-      return "forward";
-    case "KeyS":
-    case "ArrowDown":
-      return "back";
-    case "KeyA":
-    case "ArrowLeft":
-      return "left";
-    case "KeyD":
-    case "ArrowRight":
-      return "right";
-    case "ShiftLeft":
-    case "ShiftRight":
-      return "sprint";
-    default:
-      return null;
-  }
-}
-var DESK_KEY = "nswp:fps";
-var DESK_WORDS = {
-  intense: "Desk controls: intense",
-  casual: "Desk controls: casual",
-  nowIntense: "Intense: the mouse looks round. W, A, S, D walk, Shift runs, Space jumps, F uses what is in front of you, and Escape brings up this menu.",
-  nowCasual: "Casual: click where you want to stand, twice to run there, and drag to look round. W, A, S, D walk, Shift runs and Space jumps."
-};
-var hasMouse = () => startingForm() === "desk";
-function startsIntense(arrived, key = DESK_KEY) {
-  if (!hasMouse()) return false;
-  const prefers = arrivedSettings().intense;
-  if (typeof prefers === "boolean") return prefers;
-  try {
-    return arrived || localStorage.getItem(key) === "1";
-  } catch {
-    return arrived;
-  }
-}
-function keepIntense(on, key = DESK_KEY) {
-  try {
-    localStorage.setItem(key, on ? "1" : "0");
-  } catch {
-  }
-}
-function keptIntense(key = DESK_KEY) {
-  try {
-    return localStorage.getItem(key) !== null;
-  } catch {
-    return false;
-  }
-}
-var DESK_QUESTION = {
-  casual: "Casual: click to walk, drag to look",
-  intense: "Intense: the mouse looks, keys walk"
-};
-function createFps(o) {
-  const key = o.keep ?? DESK_KEY;
-  const mouse = hasMouse();
-  let enabled = startsIntense(o.arrived === true, key);
-  let answered = typeof arrivedSettings().intense === "boolean" || o.arrived === true || keptIntense(key);
-  if (mouse) {
-    if (typeof arrivedSettings().intense === "boolean" || o.arrived) keepIntense(enabled, key);
-    reportSettings("moving", () => answered ? { intense: enabled } : {});
-  }
-  const held = {};
-  let pitch = 0;
-  let weLetGo = false;
-  let closedAt = -1;
-  let shown2 = false;
-  const looking = () => document.pointerLockElement === o.dom;
-  const active = () => enabled && !o.presenting();
-  const dot = document.createElement("div");
-  dot.setAttribute("aria-hidden", "true");
-  dot.style.cssText = "position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#fff;opacity:.75;box-shadow:0 0 0 1px rgba(0,0,0,.55);pointer-events:none;z-index:5;display:none";
-  document.body.append(dot);
-  const look = () => {
-    if (!active() || o.hud?.open || looking()) return;
-    try {
-      const asked = o.dom.requestPointerLock();
-      asked?.catch?.(() => {
-      });
-    } catch {
-    }
-  };
-  const letGo = () => {
-    if (!looking()) return;
-    weLetGo = true;
-    document.exitPointerLock();
-  };
-  const free = (e) => !looking() && !o.hud?.open && e.target === o.dom && e.buttons === 0;
-  const onMove = (e) => {
-    if (!active() || !(looking() || free(e))) return;
-    const next = lookAfter(o.rig.rotation.y, pitch, e.movementX, e.movementY, LOOK_SPEED * lookScale() * aimScale());
-    o.rig.rotation.y = next.yaw;
-    pitch = next.pitch;
-    o.camera.rotation.x = pitch;
-  };
-  const onDown = (e) => {
-    if (!active() || e.button !== 0) return;
-    if (looking()) o.onUse();
-    else look();
-  };
-  const onLock = () => {
-    if (looking()) return;
-    for (const k of Object.keys(held)) held[k] = false;
-    if (active() && !weLetGo && o.hud && !o.hud.open) o.hud.setOpen(true);
-    weLetGo = false;
-  };
-  const typing = (e) => {
-    const t = e.target;
-    return !!t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
-  };
-  const onKey = (e) => {
-    if (!active() || typing(e)) return;
-    if (e.code === "Escape") {
-      if (e.defaultPrevented) {
-        if (looking()) letGo();
-        return;
-      }
-      if (looking()) {
-        letGo();
-        o.hud?.setOpen(true);
-      } else if (o.hud && !o.hud.open && performance.now() - closedAt > 80) o.hud.setOpen(true);
-      return;
-    }
-    if (o.hud?.open) return;
-    if (!looking() && !e.repeat) look();
-    const which = heldKey(e.code);
-    if (which) {
-      held[which] = true;
-      if (e.code.startsWith("Arrow")) e.preventDefault();
-      return;
-    }
-    if (e.code === "KeyF" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) o.onUse();
-  };
-  const onKeyUp = (e) => {
-    const which = heldKey(e.code);
-    if (which) held[which] = false;
-  };
-  const onBlur = () => {
-    for (const k of Object.keys(held)) held[k] = false;
-  };
-  o.dom.addEventListener("mousedown", onDown);
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("pointerlockchange", onLock);
-  addEventListener("keydown", onKey);
-  addEventListener("keyup", onKeyUp);
-  addEventListener("blur", onBlur);
-  const stopSignals = o.controls.onSignal((name) => {
-    if (name === "menuOpen") letGo();
-    if (name === "menuClose") {
-      closedAt = performance.now();
-      setTimeout(look, 0);
-    }
-  });
-  const setEnabled = (on) => {
-    const next = on && mouse;
-    if (mouse) {
-      answered = true;
-      keepIntense(next, key);
-    }
-    if (next === enabled) return;
-    enabled = next;
-    if (!enabled) {
-      letGo();
-      pitch = 0;
-      o.camera.rotation.x = 0;
-      onBlur();
-      dot.style.display = "none";
-      o.dom.style.cursor = "";
-    }
-  };
-  o.controls.add({
-    id: "fps",
-    section: "moving",
-    icon: "step",
-    on: () => enabled,
-    // No mouse, no mouse look. And not in a headset, where it has no meaning.
-    hidden: () => !mouse || o.presenting(),
-    label: () => enabled ? DESK_WORDS.intense : DESK_WORDS.casual,
-    act: () => {
-      setEnabled(!enabled);
-      o.controls.say(enabled ? DESK_WORDS.nowIntense : DESK_WORDS.nowCasual);
-    }
-  });
-  let asking = false;
-  const answer = (intense) => {
-    asking = false;
-    setEnabled(intense);
-    o.controls.say(intense ? DESK_WORDS.nowIntense : DESK_WORDS.nowCasual);
-  };
-  o.controls.addSection({ id: "how-you-move-desk", label: "How you move", icon: "step", note: () => asking ? "You can change this whenever you like, in Moving." : "" });
-  o.controls.add(
-    { id: "desk-casual", section: "how-you-move-desk", icon: "step", hidden: () => !asking || o.presenting(), label: DESK_QUESTION.casual, act: () => answer(false) },
-    { id: "desk-intense", section: "how-you-move-desk", icon: "look", hidden: () => !asking || o.presenting(), label: DESK_QUESTION.intense, act: () => answer(true) }
-  );
-  const stopAskingDesk = o.controls.onSignal((name) => {
-    if (name === "menuClose" && asking) answer(false);
-  });
-  let askTimer = 0;
-  if (mouse && !answered && mayAskHowTheyMove()) {
-    askTimer = window.setTimeout(() => {
-      if (answered || o.presenting()) return;
-      asking = true;
-      o.controls.signal("show:how-you-move-desk");
-    }, 1200);
-  }
-  const at = o.camera.position.clone();
-  return {
-    get enabled() {
-      return enabled;
-    },
-    setEnabled,
-    get looking() {
-      return looking();
-    },
-    update(dt) {
-      if (!active()) {
-        if (looking()) letGo();
-        if (shown2) {
-          shown2 = false;
-          dot.style.display = "none";
-          o.dom.style.cursor = "";
-        }
-        return false;
-      }
-      const aiming = !o.hud?.open;
-      if (aiming !== shown2) {
-        shown2 = aiming;
-        dot.style.display = aiming ? "block" : "none";
-      }
-      o.dom.style.cursor = aiming ? "none" : "";
-      if (o.hud?.open) return true;
-      const [dx, dz] = strideOf(held, o.rig.rotation.y, o.speed ?? 2.4, dt);
-      if (!dx && !dz) return true;
-      o.camera.getWorldPosition(at);
-      if (o.canStand(at.x + dx, at.z + dz)) {
-        o.rig.position.x += dx;
-        o.rig.position.z += dz;
-      } else if (o.canStand(at.x + dx, at.z)) o.rig.position.x += dx;
-      else if (o.canStand(at.x, at.z + dz)) o.rig.position.z += dz;
-      else o.onBlocked?.();
-      return true;
-    },
-    dispose() {
-      clearTimeout(askTimer);
-      stopAskingDesk();
-      letGo();
-      dot.remove();
-      stopSignals();
-      o.controls.remove("fps");
-      o.dom.removeEventListener("mousedown", onDown);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("pointerlockchange", onLock);
-      removeEventListener("keydown", onKey);
-      removeEventListener("keyup", onKeyUp);
-      removeEventListener("blur", onBlur);
-    }
-  };
 }
 
 // packages/sdk/src/jump.ts
@@ -10440,13 +10818,13 @@ function viewScale(metres, opts) {
 }
 
 // packages/sdk/src/scores.ts
-import { cleanBoard, cleanScore, DEFAULT_RELAYS as DEFAULT_RELAYS8, publishEvent as publishEvent5, queryRelays as queryRelays6, rankScores, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, SCORE_KIND, scoreWords, worldCoordinate } from "@nswp/core";
+import { cleanBoard, cleanScore, DEFAULT_RELAYS as DEFAULT_RELAYS9, publishEvent as publishEvent5, queryRelays as queryRelays7, rankScores, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, SCORE_KIND, scoreWords, worldCoordinate } from "@nswp/core";
 function createScores(opts) {
   const world = worldCoordinate(opts.world);
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays6;
+  const query = opts.query ?? queryRelays7;
   const publish = opts.publish ?? publishEvent5;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS8;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS9;
   const boards = opts.boards.filter((b) => cleanBoard(b.id));
   const boardOf = (id) => boards.find((b) => b.id === id) ?? null;
   const better = (b, a, than) => than === null || (b.order === "low" ? a < than : a > than);
@@ -10657,13 +11035,13 @@ function addScoreControls(controls, opts) {
 }
 
 // packages/sdk/src/bag.ts
-import { BAG_KIND, bagIn, bagTints, changeBag, tintBag, DEFAULT_RELAYS as DEFAULT_RELAYS9, itemCoordinate as itemCoordinate3, newestBag, publishEvent as publishEvent6, queryRelays as queryRelays7, readRelayList as readRelayList6, RELAY_LIST_KIND as RELAY_LIST_KIND6, SITE_MARKS, verifyEvent as verifyEvent7 } from "@nswp/core";
+import { BAG_KIND, bagIn, bagTints, changeBag, tintBag, DEFAULT_RELAYS as DEFAULT_RELAYS10, itemCoordinate as itemCoordinate3, newestBag, publishEvent as publishEvent6, queryRelays as queryRelays8, readRelayList as readRelayList6, RELAY_LIST_KIND as RELAY_LIST_KIND6, SITE_MARKS, verifyEvent as verifyEvent8 } from "@nswp/core";
 var FRESH_MS4 = 6e4;
 function createBag(opts) {
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays7;
+  const query = opts.query ?? queryRelays8;
   const publish = opts.publish ?? publishEvent6;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS9;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS10;
   const store = (() => {
     if (opts.storage !== void 0) return opts.storage;
     try {
@@ -10680,7 +11058,7 @@ function createBag(opts) {
   const readKept = (who) => {
     try {
       const kept2 = JSON.parse(store?.getItem(keyFor(who)) ?? "null");
-      return verifyEvent7(kept2) && kept2.kind === BAG_KIND && kept2.pubkey === who ? kept2 : null;
+      return verifyEvent8(kept2) && kept2.kind === BAG_KIND && kept2.pubkey === who ? kept2 : null;
     } catch {
       return null;
     }
@@ -10706,7 +11084,7 @@ function createBag(opts) {
     const own = await ownRelays(who);
     const got = await askWell({ kinds: [BAG_KIND], authors: [who], limit: 4 }, { own, usual: usual(), query, timeoutMs: 4e3, now }).catch(() => null);
     const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
-    const found = newestBag((got?.events ?? []).filter((e) => verifyEvent7(e)), who);
+    const found = newestBag((got?.events ?? []).filter((e) => verifyEvent8(e)), who);
     const bag = found && kept2 ? kept2.created_at > found.created_at ? kept2 : found : found ?? kept2;
     if (kept2 && bag === kept2 && answered && (!found || found.id !== kept2.id)) void sendWell(kept2, { own, usual: usual(), publish, query, now }).catch(() => null);
     if (bag && bag !== kept2) keep3(bag);
@@ -10755,7 +11133,7 @@ function createBag(opts) {
     if (adding === has) return { ok: true, why: "already", said: adding ? `${it} is already in your bag.` : `${it} isn't in your bag.` };
     const made = changeBag(at.bag, { ...adding ? { add: item } : { remove: item }, now: now() / 1e3, fromNothing: at.bag === null });
     const signed = made ? await opts.hand.sign(made).catch(() => null) : null;
-    const same = signed && verifyEvent7(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
+    const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
     if (!signed || !same) return { ok: false, why: "refused", said: "It couldn't be signed. Your bag is as it was." };
     keep3(signed);
     known = { who, bag: signed, answered: true, at: now() };
@@ -10781,7 +11159,7 @@ function createBag(opts) {
     const at = known && known.who === who ? known : null;
     const made = at?.bag ? tintBag(at.bag, { item, tints: keptTints()[item] ?? {}, now: now() / 1e3 }) : null;
     const signed = made ? await opts.hand.sign(made).catch(() => null) : null;
-    const same = signed && verifyEvent7(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
+    const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
     if (!signed || !same) return;
     keep3(signed);
     known = { who, bag: signed, answered: true, at: now() };
@@ -10821,10 +11199,10 @@ function createBag(opts) {
 }
 
 // packages/sdk/src/bagging.ts
-import { cleanSettings, decodeNaddr, ITEM_KIND as ITEM_KIND2, itemCoordinate as itemCoordinate4, TINT_PALETTE } from "@nswp/core";
+import { cleanSettings, decodeNaddr as decodeNaddr2, ITEM_KIND as ITEM_KIND2, itemCoordinate as itemCoordinate4, TINT_PALETTE } from "@nswp/core";
 
 // packages/sdk/src/item-preview.ts
-import * as THREE17 from "three";
+import * as THREE18 from "three";
 var KEPT = 36;
 function createItemPreviews(o) {
   const size = o.size ?? 256;
@@ -10836,19 +11214,19 @@ function createItemPreviews(o) {
     if (stage !== void 0) return stage;
     if (typeof document === "undefined") return stage = null;
     try {
-      const renderer = new THREE17.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
+      const renderer = new THREE18.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
       renderer.setPixelRatio(1);
       renderer.setSize(size, size, false);
       renderer.setClearColor(0, 0);
-      const scene = new THREE17.Scene();
-      scene.add(new THREE17.HemisphereLight(16777215, 2699837, 1.7));
-      const key = new THREE17.DirectionalLight(16777215, 2.4);
+      const scene = new THREE18.Scene();
+      scene.add(new THREE18.HemisphereLight(16777215, 2699837, 1.7));
+      const key = new THREE18.DirectionalLight(16777215, 2.4);
       key.position.set(1.6, 2.6, 2.2);
-      const rim = new THREE17.DirectionalLight(12572927, 1.3);
+      const rim = new THREE18.DirectionalLight(12572927, 1.3);
       rim.position.set(-2, 1.2, -2.4);
-      const pivot = new THREE17.Group();
+      const pivot = new THREE18.Group();
       scene.add(key, rim, pivot);
-      const camera = new THREE17.PerspectiveCamera(28, 1, 0.01, 50);
+      const camera = new THREE18.PerspectiveCamera(28, 1, 0.01, 50);
       return stage = { renderer, scene, camera, pivot };
     } catch {
       return stage = null;
@@ -10861,7 +11239,7 @@ function createItemPreviews(o) {
     s.pivot.add(made.object);
     made.object.position.copy(made.middle).multiplyScalar(-1);
     s.pivot.rotation.set(0, angle, 0);
-    const away = made.radius / Math.sin(THREE17.MathUtils.degToRad(s.camera.fov / 2)) * 1.08;
+    const away = made.radius / Math.sin(THREE18.MathUtils.degToRad(s.camera.fov / 2)) * 1.08;
     s.camera.position.set(0, away * 0.3, away * 0.95);
     s.camera.lookAt(0, 0, 0);
     s.camera.near = Math.max(5e-3, away - made.radius * 2);
@@ -10900,8 +11278,8 @@ function createItemPreviews(o) {
           else solids++;
         });
         if (frames > 0 && solids === 0) return void again(key);
-        const box = new THREE17.Box3().setFromObject(object);
-        const ball = box.getBoundingSphere(new THREE17.Sphere());
+        const box = new THREE18.Box3().setFromObject(object);
+        const ball = box.getBoundingSphere(new THREE18.Sphere());
         if (!Number.isFinite(ball.radius) || ball.radius <= 0) return void ready.delete(key);
         ready.set(key, { object, middle: ball.center.clone(), radius: ball.radius, still: null, live: null });
         for (const fn of watchers3) fn();
@@ -10910,7 +11288,7 @@ function createItemPreviews(o) {
     );
     return null;
   };
-  const AGAIN_MS2 = 6e3;
+  const AGAIN_MS3 = 6e3;
   const tries = /* @__PURE__ */ new Map();
   function again(key) {
     const n = (tries.get(key) ?? 0) + 1;
@@ -10920,7 +11298,7 @@ function createItemPreviews(o) {
       if (ready.get(key) !== null) return;
       ready.delete(key);
       for (const fn of watchers3) fn();
-    }, AGAIN_MS2 * n);
+    }, AGAIN_MS3 * n);
   }
   return {
     still(item, tints) {
@@ -10964,7 +11342,7 @@ function itemIn(text) {
   const address = /naddr1[02-9ac-hj-np-z]{20,400}/.exec(text)?.[0];
   if (!address) return "";
   try {
-    const to = decodeNaddr(address);
+    const to = decodeNaddr2(address);
     return to.kind === ITEM_KIND2 ? itemCoordinate4(`${ITEM_KIND2}:${to.pubkey}:${to.identifier}`) : "";
   } catch {
     return "";
@@ -11005,7 +11383,7 @@ function addBagControls(controls, opts) {
       try {
         text = await (opts.copied ? opts.copied() : navigator.clipboard.readText());
       } catch {
-        return say("What you copied couldn't be read here. Copy an item's address, allow this site to read what you copy, and press again.");
+        return say(copiedRefused("Copy an item's address"));
       }
     }
     const item = itemIn(text);
@@ -11292,10 +11670,37 @@ function addBagControls(controls, opts) {
     const tints = bag.tints(item);
     return { item, ...Object.keys(tints).length ? { tints } : {}, ...script && scriptAllowed(script) ? { script } : {} };
   };
-  reportSettings("holding", () => {
-    const held = heldNow();
-    return held === void 0 ? {} : { holding: held };
-  });
+  reportSettings(
+    "holding",
+    () => {
+      const held = heldNow();
+      return held === void 0 ? {} : { holding: held };
+    },
+    // Their own client says what is in their hand now: they took something up, or put it away, in the menu the
+    // client draws above this world, where the Bag is the client's own tab (settings.ts, `changeSettings`). It is
+    // acted on exactly as a link's word is, and no further: taken in hand only if it is in their own bag as they
+    // signed it, where this place lets things be carried, and with its own logic running unasked only if it is the
+    // very script named. Putting away is always done.
+    (said) => {
+      const next = said.holding;
+      if (next === void 0) return;
+      void (async () => {
+        if (next === "") {
+          if (!opts.holding()) return;
+          putAway = true;
+          await opts.hold("").catch(() => {
+          });
+          return refresh();
+        }
+        if (opts.holding() === next.item) return;
+        if (opts.holding()) await opts.hold("").catch(() => {
+        });
+        putAway = false;
+        cameHolding = next;
+        refresh();
+      })();
+    }
+  );
   refresh();
   const watch = setInterval(() => {
     if (!taking && opts.holding() !== drawnHolding) refresh();
@@ -11380,13 +11785,13 @@ function createThumbPresses(o) {
   };
   press(first, () => o.use());
   press(second, () => o.second());
-  let showing = { side: "" };
+  let showing2 = { side: "" };
   let attached = false;
   return {
     show(does, side, theme) {
       if (!does || !does.use && !does.second) {
         host.style.display = "none";
-        showing = { side: "" };
+        showing2 = { side: "" };
         return;
       }
       if (!attached) {
@@ -11406,7 +11811,7 @@ function createThumbPresses(o) {
       second.setAttribute("aria-label", does.second);
       sightEl.hidden = !does.use;
       host.style.display = "block";
-      showing = { side };
+      showing2 = { side };
     },
     info() {
       if (host.style.display === "none") return { sight: false, side: "", buttons: [] };
@@ -11414,7 +11819,7 @@ function createThumbPresses(o) {
         const r = b.getBoundingClientRect();
         return { label: b.textContent ?? "", x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
       };
-      return { sight: !sightEl.hidden, side: showing.side, buttons: [first, second].filter((b) => !b.hidden).map(box) };
+      return { sight: !sightEl.hidden, side: showing2.side, buttons: [first, second].filter((b) => !b.hidden).map(box) };
     },
     dispose() {
       host.remove();
@@ -11526,11 +11931,11 @@ function addItemControls(controls, o) {
 }
 
 // packages/sdk/src/door-ratings.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS10, queryRelays as queryRelays8, RATING_KIND, tallyMark, tallyRatings, worldCoordinate as worldCoordinate2 } from "@nswp/core";
+import { DEFAULT_RELAYS as DEFAULT_RELAYS11, queryRelays as queryRelays9, RATING_KIND, tallyMark, tallyRatings, worldCoordinate as worldCoordinate2 } from "@nswp/core";
 var FRESH_MS5 = 5 * 6e4;
 function createDoorRatings(opts) {
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays8;
+  const query = opts.query ?? queryRelays9;
   const doors = new Map(opts.doors.map((d) => [worldCoordinate2(d.world), d.url]).filter(([world]) => world));
   const watchers3 = /* @__PURE__ */ new Set();
   let events = [];
@@ -11559,7 +11964,7 @@ function createDoorRatings(opts) {
       if (!fresh && askedFor === me && now() - asked < FRESH_MS5) return;
       asked = now();
       askedFor = me;
-      const got = await askWell({ kinds: [RATING_KIND], "#a": [...doors.keys()], limit: 500 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS10, query, timeoutMs: 4e3, now }).catch(() => null);
+      const got = await askWell({ kinds: [RATING_KIND], "#a": [...doors.keys()], limit: 500 }, { own: [], usual: opts.relays ?? DEFAULT_RELAYS11, query, timeoutMs: 4e3, now }).catch(() => null);
       if (opts.me() !== me) return;
       const byId = new Map((got?.events ?? []).filter((e) => e.kind === RATING_KIND).map((e) => [e.id, e]));
       events = [...byId.values()];
@@ -11630,13 +12035,13 @@ function worldPersonLines(o) {
 }
 
 // packages/sdk/src/achievements.ts
-import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS11, publishEvent as publishEvent7, queryRelays as queryRelays9, readRelayList as readRelayList7, RELAY_LIST_KIND as RELAY_LIST_KIND7, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate3 } from "@nswp/core";
+import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS12, publishEvent as publishEvent7, queryRelays as queryRelays10, readRelayList as readRelayList7, RELAY_LIST_KIND as RELAY_LIST_KIND7, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate3 } from "@nswp/core";
 function createAchievements(opts) {
   const world = worldCoordinate3(opts.world);
   const now = opts.now ?? (() => Date.now());
-  const query = opts.query ?? queryRelays9;
+  const query = opts.query ?? queryRelays10;
   const publish = opts.publish ?? publishEvent7;
-  const usual = () => opts.relays ?? DEFAULT_RELAYS11;
+  const usual = () => opts.relays ?? DEFAULT_RELAYS12;
   const list = opts.list.filter((a) => cleanAchievementId(a.id) && a.title);
   const one = (id) => list.find((a) => a.id === id) ?? null;
   const store = (() => {
@@ -11866,7 +12271,18 @@ function createSounds(o = {}) {
   let songs = cleanSongs(read(songsKey));
   let disposed = false;
   if (came) write(levelsKey, levels);
-  const stopReporting = reportSettings("sound", () => ({ sound: { off: levels.off, effects: levels.effects, music: levels.music, voices: levels.voices, hum: levels.hum } }));
+  const stopReporting = reportSettings(
+    "sound",
+    () => ({ sound: { off: levels.off, effects: levels.effects, music: levels.music, voices: levels.voices, hum: levels.hum } }),
+    // Their client's menu changed a volume (settings.ts, `changeSettings`): as their own hand on it here would.
+    (now) => {
+      if (!now.sound || disposed) return;
+      levels = cleanLevels({ ...levels, ...now.sound });
+      write(levelsKey, levels);
+      apply();
+      changed();
+    }
+  );
   const master = ctx.createGain();
   const limiter = ctx.createDynamicsCompressor();
   limiter.threshold.value = -14;
@@ -12436,7 +12852,7 @@ function createSounds(o = {}) {
     }
   };
 }
-function addSoundControls(controls, sounds) {
+function addSoundControls(controls, sounds, opts = {}) {
   const word = (v) => LEVEL_WORDS[levelStep(v)];
   let listed = [];
   const picker = document.createElement("input");
@@ -12524,7 +12940,7 @@ function addSoundControls(controls, sounds) {
       section: "sound",
       icon: "sound",
       on: () => sounds.levels.hum,
-      hidden: () => !sounds.hasHum,
+      hidden: () => !(opts.hasHum ? opts.hasHum() : sounds.hasHum),
       label: () => sounds.levels.hum ? "The room's hum: on" : "The room's hum: off",
       act: () => sounds.setLevels({ hum: !sounds.levels.hum })
     },
@@ -12572,15 +12988,15 @@ function addSoundControls(controls, sounds) {
   );
   refresh();
   controls.onSignal((name) => {
-    if (CUES.includes(name)) sounds.play(name);
+    if (CUES.includes(name) && !opts.quiet?.(name)) sounds.play(name);
   });
-  controls.onSay(() => sounds.play("notice"));
+  controls.onSay(() => void (opts.quiet?.("notice") || sounds.play("notice")));
   sounds.onChange(() => refresh());
   return { refresh };
 }
 
 // packages/sdk/src/chamber.ts
-import * as THREE18 from "three";
+import * as THREE19 from "three";
 var R = 1.8;
 var H4 = 2.8;
 var BAYS = 10;
@@ -12605,16 +13021,16 @@ function signTexture(lines, color) {
     const y = rows.length === 1 ? 192 : rows.length === 2 ? 138 + i * 118 : 92 + i * 100;
     g.fillText(line, 512, y, 944);
   });
-  const texture = new THREE18.CanvasTexture(canvas);
-  texture.colorSpace = THREE18.SRGBColorSpace;
+  const texture = new THREE19.CanvasTexture(canvas);
+  texture.colorSpace = THREE19.SRGBColorSpace;
   return texture;
 }
 function createChamber(accent, opts = {}) {
-  const light = new THREE18.Color(accent);
+  const light = new THREE19.Color(accent);
   const metal = createAlloy(light, { gloss: 0.5, speed: 0.9 });
   const builder = () => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE18.Color(1317668);
+    b.tone = new THREE19.Color(1317668);
     b.light = light.clone();
     return b;
   };
@@ -12626,7 +13042,7 @@ function createChamber(accent, opts = {}) {
   const wallShape = builder();
   for (let i = 1; i < BAYS; i++) {
     const a = i * 2 * Math.PI / BAYS;
-    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE18.MathUtils.radToDeg(a));
+    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE19.MathUtils.radToDeg(a));
     wallShape.box([bay, H4, 0.12], [0, H4 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
     for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H4 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
   }
@@ -12646,31 +13062,31 @@ function createChamber(accent, opts = {}) {
     leaf.position.set(side * DOOR_W / 2, 0, -reach);
     return leaf;
   });
-  const sign = new THREE18.Mesh(new THREE18.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE18.MeshBasicMaterial({ transparent: true }));
+  const sign = new THREE19.Mesh(new THREE19.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE19.MeshBasicMaterial({ transparent: true }));
   sign.position.set(0, DOOR_H + (H4 - DOOR_H) / 2, -reach + 0.085);
-  const rising = new THREE18.Group();
+  const rising = new THREE19.Group();
   rising.add(walls, ...leaves, sign);
-  const clear = new THREE18.Mesh(new THREE18.BufferGeometry().setAttribute("position", new THREE18.BufferAttribute(new Float32Array(9), 3)), new THREE18.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
+  const clear = new THREE19.Mesh(new THREE19.BufferGeometry().setAttribute("position", new THREE19.BufferAttribute(new Float32Array(9), 3)), new THREE19.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
   clear.frustumCulled = false;
   clear.renderOrder = CHAMBER_ORDER;
   clear.onBeforeRender = (renderer) => renderer.clearDepth();
   for (const part of [floor, walls, lid, ...leaves]) part.renderOrder = CHAMBER_ORDER + 1;
   sign.renderOrder = CHAMBER_ORDER + 1.3;
-  const depthOnly = (depth, o) => new THREE18.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE18.AlwaysDepth, depthWrite: true, side: THREE18.DoubleSide, ...o });
+  const depthOnly = (depth, o) => new THREE19.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE19.AlwaysDepth, depthWrite: true, side: THREE19.DoubleSide, ...o });
   const nearest2 = depthOnly("0.0", {});
   const farthest = depthOnly("1.0", { transparent: true });
-  const real = new THREE18.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE18.DoubleSide });
+  const real = new THREE19.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE19.DoubleSide });
   const shutOut = [];
   for (const part of [floor, walls, lid, ...leaves]) {
     for (const [material, order] of [[nearest2, SHUT_ORDER], [farthest, CHAMBER_ORDER + 1.1], [real, CHAMBER_ORDER + 1.2]]) {
-      const pass = new THREE18.Mesh(part.geometry, material);
+      const pass = new THREE19.Mesh(part.geometry, material);
       pass.renderOrder = order;
       pass.frustumCulled = false;
       part.add(pass);
       shutOut.push(pass);
     }
   }
-  const group = new THREE18.Group();
+  const group = new THREE19.Group();
   group.add(clear, floor, rising, lid);
   let door = 0;
   let presence = 1;
@@ -12737,8 +13153,8 @@ function createCrossing(o) {
   let hold;
   let shut = null;
   const moves = () => o.motion?.() ?? true;
-  const at = new THREE18.Vector3();
-  const facing2 = new THREE18.Vector3();
+  const at = new THREE19.Vector3();
+  const facing2 = new THREE19.Vector3();
   const place = () => {
     chamber?.dispose();
     const made = createChamber(o.accent, o.textColor ? { textColor: o.textColor } : {});
@@ -12841,16 +13257,36 @@ function createCrossing(o) {
 }
 
 // packages/sdk/src/camera.ts
-import * as THREE19 from "three";
+import * as THREE20 from "three";
+
+// packages/sdk/src/save-file.ts
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.rel = "noopener";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3e4);
+}
+function saveFile(blob, name) {
+  if (handUp(blob)) return true;
+  download(blob, name);
+  return false;
+}
+
+// packages/sdk/src/camera.ts
 async function takePicture(renderer, scene, camera, opts = {}) {
   const width = Math.round(opts.width ?? 1920);
   const height = Math.round(opts.height ?? 1080);
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
   const xrWasEnabled = renderer.xr.enabled;
   const previousTarget = renderer.getRenderTarget();
-  const target = new THREE19.WebGLRenderTarget(width, height, { samples: 4 });
-  target.texture.colorSpace = THREE19.SRGBColorSpace;
-  const eye = new THREE19.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
+  const target = new THREE20.WebGLRenderTarget(width, height, { samples: 4 });
+  target.texture.colorSpace = THREE20.SRGBColorSpace;
+  const eye = new THREE20.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
   camera.updateWorldMatrix(true, false);
   camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
   eye.updateMatrixWorld(true);
@@ -12881,17 +13317,17 @@ async function takePicture(renderer, scene, camera, opts = {}) {
 }
 async function takeSelfie(renderer, scene, head, look, opts = {}) {
   head.updateWorldMatrix(true, false);
-  const at = new THREE19.Vector3();
-  const facing2 = new THREE19.Quaternion();
-  head.matrixWorld.decompose(at, facing2, new THREE19.Vector3());
-  const ahead = new THREE19.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
+  const at = new THREE20.Vector3();
+  const facing2 = new THREE20.Quaternion();
+  head.matrixWorld.decompose(at, facing2, new THREE20.Vector3());
+  const ahead = new THREE20.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
   if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
   ahead.normalize();
   const figure = createFigure(look);
   figure.group.position.copy(at);
   figure.group.rotation.y = Math.atan2(-ahead.x, -ahead.z);
   scene.add(figure.group);
-  const eye = new THREE19.PerspectiveCamera(58, 1, 0.05, head.far);
+  const eye = new THREE20.PerspectiveCamera(58, 1, 0.05, head.far);
   eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
   eye.position.y = at.y + 0.08;
   eye.lookAt(at.x, at.y - 0.22, at.z);
@@ -12933,17 +13369,6 @@ function recordClip(canvas, opts = {}) {
     }
   };
 }
-function saveFile(blob, name) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.rel = "noopener";
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 3e4);
-}
 var stamp = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace(/[T:]/g, "-");
 var slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "world";
 function addCameraControls(controls, d) {
@@ -12964,8 +13389,10 @@ function addCameraControls(controls, d) {
     if (presenting()) {
       kept2.push(capture);
       tell(`Kept. Save ${kept2.length === 1 ? "it" : `all ${kept2.length}`} from the Camera menu when you leave VR.`);
-    } else {
-      saveFile(capture.blob, capture.name);
+    } else if (savesWait()) {
+      kept2.push(capture);
+      tell(`Kept. Save ${kept2.length === 1 ? "it" : `all ${kept2.length}`} from the Camera menu.`);
+    } else if (!saveFile(capture.blob, capture.name)) {
       tell(capture.kind === "clip" ? "Clip saved to this device." : "Picture saved to this device.");
     }
   };
@@ -12985,12 +13412,15 @@ function addCameraControls(controls, d) {
   };
   controls.addSection({ id: "camera", label: "Camera", icon: "camera", note: () => clip ? `Recording: ${Math.floor(clip.seconds())} s. Others in the room can see that you are.` : last });
   controls.add(
-    { id: "camera-picture", section: "camera", icon: "camera", label: "Take a picture", short: "Picture", act: () => shoot("picture") },
-    { id: "camera-selfie", section: "camera", icon: "selfie", label: "Take a selfie", short: "Selfie", act: () => shoot("selfie") },
+    // Each of these may end in something to save, so each is a row that saves: where a client above has the menu,
+    // its press there is what the picture or the clip answers.
+    { id: "camera-picture", section: "camera", icon: "camera", kind: "save", label: "Take a picture", short: "Picture", act: () => shoot("picture") },
+    { id: "camera-selfie", section: "camera", icon: "selfie", kind: "save", label: "Take a selfie", short: "Selfie", act: () => shoot("selfie") },
     {
       id: "camera-clip",
       section: "camera",
       icon: "record",
+      kind: "save",
       label: () => clip ? "Stop recording" : "Record a clip",
       short: () => clip ? "Stop" : "Clip",
       on: () => !!clip,
@@ -13014,13 +13444,19 @@ function addCameraControls(controls, d) {
       id: "camera-save",
       section: "camera",
       icon: "save",
+      kind: "save",
       label: () => kept2.length === 1 ? "Save 1 picture" : `Save ${kept2.length} pictures`,
       short: "Save",
       tone: "primary",
       hidden: () => kept2.length === 0 || presenting(),
       act: () => {
-        for (const c of kept2.splice(0)) saveFile(c.blob, c.name);
-        tell("Saved to this device.");
+        let here = 0;
+        while (kept2.length && !savesWait()) {
+          const c = kept2.shift();
+          if (!saveFile(c.blob, c.name)) here++;
+        }
+        if (kept2.length) tell(`${kept2.length} more to save. Press again.`);
+        else if (here) tell("Saved to this device.");
       }
     }
   );
@@ -13041,8 +13477,8 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE20.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE20.HalfFloatType });
-  const faceCamera = new THREE20.PerspectiveCamera(90, 1, 0.05, 700);
+  const faceTarget = new THREE21.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE21.HalfFloatType });
+  const faceCamera = new THREE21.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   let painter = null;
   try {
@@ -13052,7 +13488,7 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     painter = paintPanorama(renderer, width);
     PANORAMA_VIEWS.forEach((view, i) => {
       faceCamera.up.fromArray(view.up);
-      faceCamera.lookAt(position.clone().add(new THREE20.Vector3().fromArray(view.forward)));
+      faceCamera.lookAt(position.clone().add(new THREE21.Vector3().fromArray(view.forward)));
       faceCamera.updateMatrixWorld(true);
       renderer.autoClear = true;
       renderer.setRenderTarget(faceTarget);
@@ -13071,24 +13507,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE20.Texture(image);
-  texture.colorSpace = THREE20.SRGBColorSpace;
-  texture.wrapS = THREE20.RepeatWrapping;
+  const texture = new THREE21.Texture(image);
+  texture.colorSpace = THREE21.SRGBColorSpace;
+  texture.wrapS = THREE21.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE20.LinearFilter;
-  texture.magFilter = THREE20.LinearFilter;
+  texture.minFilter = THREE21.LinearFilter;
+  texture.magFilter = THREE21.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE20.ShaderMaterial({
+  const material = new THREE21.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE20.Matrix3() },
-      center: { value: new THREE20.Vector3() },
+      toLocal: { value: new THREE21.Matrix3() },
+      center: { value: new THREE21.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -13108,10 +13544,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE20.DoubleSide
+    side: THREE21.DoubleSide
   });
-  const mesh = new THREE20.Mesh(geometry, material);
-  const rotation = new THREE20.Matrix4();
+  const mesh = new THREE21.Mesh(geometry, material);
+  const rotation = new THREE21.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();
@@ -13147,6 +13583,12 @@ async function addViewControls(controls, d) {
     });
     answered();
   };
+  const launch = () => {
+    if (offer || presenting() || !supported) return;
+    offer = offerHeadset(controls.view().title, () => void enter(), answered, { asked: true });
+    d.onOffer?.(true);
+  };
+  const pressedHere = () => navigator.userActivation?.isActive !== false;
   let entering = false;
   const enter = async () => {
     if (presenting() || entering) return;
@@ -13156,6 +13598,7 @@ async function addViewControls(controls, d) {
     } catch (err) {
       d.onState?.(`error: ${err instanceof Error ? err.message : String(err)}`);
       if (offer) offer.failed();
+      else if (err instanceof Error && err.name === "SecurityError") launch();
       else controls.say("Couldn't start VR on this device.");
     } finally {
       entering = false;
@@ -13192,6 +13635,7 @@ async function addViewControls(controls, d) {
       short: "VR",
       act: async () => {
         if (presenting()) return void await d.renderer.xr.getSession()?.end();
+        if (!pressedHere()) return launch();
         await enter();
       }
     },
@@ -13276,9 +13720,6 @@ export {
   textSprite,
   speechSprite,
   createPresence,
-  createMessages,
-  addMessagingControls,
-  addRoomControls,
   WALK_SPEED,
   RUN,
   KEY_TURN,
@@ -13297,6 +13738,16 @@ export {
   dotsBetween,
   createStepPace,
   createStroll,
+  LOOK_SPEED,
+  PITCH_LIMIT,
+  SPRINT,
+  lookAfter,
+  strideOf,
+  heldKey,
+  createFps,
+  createMessages,
+  addMessagingControls,
+  addRoomControls,
   readPad,
   DEFAULT_COMFORT,
   CASUAL_COMFORT,
@@ -13321,13 +13772,6 @@ export {
   doorArcStep,
   doorsOnArc,
   doorsTooClose,
-  LOOK_SPEED,
-  PITCH_LIMIT,
-  SPRINT,
-  lookAfter,
-  strideOf,
-  heldKey,
-  createFps,
   JUMP_HEIGHT,
   JUMP_GRAVITY,
   JUMP_SPEED,
@@ -13352,11 +13796,11 @@ export {
   CHAMBER_ORDER,
   createChamber,
   createCrossing,
+  saveFile,
   takePicture,
   takeSelfie,
   canRecord,
   recordClip,
-  saveFile,
   addCameraControls,
   capturePanorama,
   panoramaTexture,

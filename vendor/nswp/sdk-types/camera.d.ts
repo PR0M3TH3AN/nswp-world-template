@@ -13,6 +13,8 @@
 import * as THREE from "three";
 import type { Look } from "@nswp/core";
 import type { Controls } from "./ui/model.js";
+import { saveFile } from "./save-file.js";
+export { saveFile };
 export interface PictureOptions {
     /** Pixels across and down. Default 1920 by 1080. */
     width?: number;
@@ -57,8 +59,6 @@ export declare function recordClip(canvas: HTMLCanvasElement, opts?: {
     fps?: number;
     maxSeconds?: number;
 }): Clip;
-/** Hand a file to the visitor: their device's own save, as a download. */
-export declare function saveFile(blob: Blob, name: string): void;
 export interface Capture {
     kind: "picture" | "selfie" | "clip";
     blob: Blob;

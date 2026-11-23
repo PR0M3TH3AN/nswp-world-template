@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.83.0";
+var KIT_VERSION = "0.84.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -2858,9 +2858,9 @@ function finalizeEvent(template, secretKey, auxRand) {
     content: template.content,
     pubkey
   };
-  const id = getEventHash(unsigned);
-  const sig = bytesToHex(schnorr.sign(hexToBytes(id), secretKey, auxRand));
-  return { ...unsigned, id, sig };
+  const id2 = getEventHash(unsigned);
+  const sig = bytesToHex(schnorr.sign(hexToBytes(id2), secretKey, auxRand));
+  return { ...unsigned, id: id2, sig };
 }
 function hasEventShape(v) {
   if (typeof v !== "object" || v === null) return false;
@@ -2925,10 +2925,10 @@ function anumArr(label, input) {
     throw new TypeError(`${label}: array of numbers expected`);
 }
 function chain(...args) {
-  const id = (a) => a;
+  const id2 = (a) => a;
   const wrap = (a, b) => (c) => a(b(c));
-  const encode = args.map((x) => x.encode).reduceRight(wrap, id);
-  const decode = args.map((x) => x.decode).reduce(wrap, id);
+  const encode = args.map((x) => x.encode).reduceRight(wrap, id2);
+  const decode = args.map((x) => x.decode).reduce(wrap, id2);
   return { encode, decode };
 }
 var powers = /* @__PURE__ */ (() => {
@@ -4822,10 +4822,10 @@ function worldOffers(world) {
     home: line("home", says("home"))
   };
   const onDoor = new Set(DOOR_OFFERS);
-  return OFFERS.map((id) => ({ id, on: read[id][0], name: NAMES[id], words: read[id][1], onDoor: onDoor.has(id) }));
+  return OFFERS.map((id2) => ({ id: id2, on: read[id2][0], name: NAMES[id2], words: read[id2][1], onDoor: onDoor.has(id2) }));
 }
-function line(id, on) {
-  return [on, WORDS[id][on ? 0 : 1]];
+function line(id2, on) {
+  return [on, WORDS[id2][on ? 0 : 1]];
 }
 
 // packages/core/src/chat.ts
@@ -4868,26 +4868,26 @@ function chatId() {
   globalThis.crypto.getRandomValues(bytes);
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-function buildSay(text2, id = chatId()) {
+function buildSay(text2, id2 = chatId()) {
   const cleaned = cleanChat(text2);
-  if (!cleaned || !/^[0-9a-f]{8}$/.test(id)) return null;
-  return `say:${id}:${cleaned}`;
+  if (!cleaned || !/^[0-9a-f]{8}$/.test(id2)) return null;
+  return `say:${id2}:${cleaned}`;
 }
 function parseSay(data) {
   if (typeof data !== "string" || !data.startsWith("say:") || data[12] !== ":") return null;
-  const id = data.slice(4, 12);
-  if (!/^[0-9a-f]{8}$/.test(id)) return null;
+  const id2 = data.slice(4, 12);
+  if (!/^[0-9a-f]{8}$/.test(id2)) return null;
   const text2 = cleanChat(data.slice(13));
-  return text2 ? { id, text: text2 } : null;
+  return text2 ? { id: id2, text: text2 } : null;
 }
 function createChatGate(limits = CHAT_LIMITS) {
   const ids = [];
   let times = [];
   const recent = (now) => times = times.filter((t) => now - t < limits.perMs);
   return {
-    take(id, now) {
-      if (ids.includes(id)) return false;
-      ids.push(id);
+    take(id2, now) {
+      if (ids.includes(id2)) return false;
+      ids.push(id2);
       if (ids.length > limits.remembered) ids.shift();
       if (recent(now).length >= limits.burst) return false;
       times.push(now);
@@ -5162,8 +5162,8 @@ function parseManifest(input, opts = {}) {
   if (!isPlainObject(input.worlds)) {
     c.error("missing_field", "worlds", "worlds must be an object keyed by world ID.");
   } else {
-    for (const [id, raw] of Object.entries(input.worlds)) {
-      const p = `worlds.${id}`;
+    for (const [id2, raw] of Object.entries(input.worlds)) {
+      const p = `worlds.${id2}`;
       if (!isPlainObject(raw) || !isPlainObject(raw.entry) || !isHttpsUrl(raw.entry.url)) {
         c.error("invalid_entry", `${p}.entry.url`, "Each world needs entry.url as an https URL.");
         continue;
@@ -5189,6 +5189,10 @@ function parseManifest(input, opts = {}) {
         w.avatar = { formats: stringArray(a.formats) ? a.formats : [] };
         if (typeof a.max_file_size_mb === "number") w.avatar.maxFileSizeMb = a.max_file_size_mb;
         if (typeof a.max_triangles === "number") w.avatar.maxTriangles = a.max_triangles;
+        if (Array.isArray(a.height) && a.height.length === 2 && a.height.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0) && a.height[0] <= a.height[1]) w.avatar.height = [a.height[0], a.height[1]];
+        else if (a.height !== void 0) c.warn("invalid_field", `${p}.avatar.height`, "avatar.height must be [least, most] in metres; ignored.");
+        if (a.dress === "own") w.avatar.dress = "own";
+        else if (a.dress !== void 0) c.warn("invalid_field", `${p}.avatar.dress`, 'avatar.dress may only be "own"; ignored.');
       }
       if (raw.multiplayer !== void 0) {
         if (isPlainObject(raw.multiplayer) && isWssUrl(raw.multiplayer.endpoint)) {
@@ -5210,7 +5214,7 @@ function parseManifest(input, opts = {}) {
           for (const said2 of raw.access) {
             const listing2 = cleanListing(said2);
             if (!listing2) c.warn("invalid_listing", `${p}.access`, "Ignoring an access entry that is not a listing's coordinate (30078:<pubkey>:<name>).");
-            else if (!publishers[listingSeller(listing2)]?.worlds.includes(id)) c.warn("access_not_own", `${p}.access`, "Ignoring an access listing sold by a key that isn't a publisher of this world.");
+            else if (!publishers[listingSeller(listing2)]?.worlds.includes(id2)) c.warn("access_not_own", `${p}.access`, "Ignoring an access listing sold by a key that isn't a publisher of this world.");
             else if (access.includes(listing2)) continue;
             else if (access.length >= ACCESS_MOST) c.warn("too_many_listings", `${p}.access`, `Only the first ${ACCESS_MOST} access listings are used.`);
             else access.push(listing2);
@@ -5233,7 +5237,7 @@ function parseManifest(input, opts = {}) {
         if (raw.named_only === true) w.namedOnly = true;
         else if (raw.named_only !== false) c.warn("invalid_field", `${p}.named_only`, "named_only must be true or false; ignored.");
       }
-      worlds[id] = w;
+      worlds[id2] = w;
     }
   }
   const relays = [];
@@ -5291,14 +5295,14 @@ function verifyOrigin(world, manifest, manifestUrl) {
 }
 function doorFor(manifest, url) {
   const here = normalizeUrl(url);
-  const d = Object.keys(manifest.worlds).find((id) => normalizeUrl(manifest.worlds[id].entry.url) === here);
+  const d = Object.keys(manifest.worlds).find((id2) => normalizeUrl(manifest.worlds[id2].entry.url) === here);
   const publishers = d === void 0 ? [] : Object.keys(manifest.publishers).filter((key) => manifest.publishers[key].worlds.includes(d));
   if (d === void 0 || publishers.length !== 1) return { url };
   return { naddr: encodeNaddr({ kind: WORLD_KIND, pubkey: publishers[0], identifier: d, relays: manifest.relays.slice(0, 2) }), url };
 }
 function accessFor(manifest, url) {
   const here = normalizeUrl(url);
-  const d = Object.keys(manifest.worlds).find((id) => normalizeUrl(manifest.worlds[id].entry.url) === here);
+  const d = Object.keys(manifest.worlds).find((id2) => normalizeUrl(manifest.worlds[id2].entry.url) === here);
   if (d === void 0) return null;
   const sellers = Object.keys(manifest.publishers).filter((key) => manifest.publishers[key].worlds.includes(d));
   const w = manifest.worlds[d];
@@ -5609,6 +5613,7 @@ function cleanSettings(input) {
   if (typeof s.look === "number" && Number.isFinite(s.look)) out.look = Math.round(Math.min(LOOK_RANGE[1], Math.max(LOOK_RANGE[0], s.look)) * 100) / 100;
   if (typeof s.fov === "number" && Number.isFinite(s.fov)) out.fov = Math.round(Math.min(FOV_RANGE[1], Math.max(FOV_RANGE[0], s.fov)));
   if (typeof s.pictures === "boolean") out.pictures = s.pictures;
+  if (typeof s.models === "boolean") out.models = s.models;
   if (typeof s.chat === "boolean") out.chat = s.chat;
   if (typeof s.items === "boolean") out.items = s.items;
   if (s.filesAnywhere === false) out.filesAnywhere = false;
@@ -7240,8 +7245,8 @@ function readMessage(opened, seal, reader) {
   const to = [...new Set(m.tags.filter((t) => t[0] === "p" && isHex64(t[1])).map((t) => t[1]))];
   const text2 = cleanMessage(m.content);
   if (to.length === 0 || !text2 || m.pubkey !== reader && !to.includes(reader)) return null;
-  const id = getEventHash({ kind: MESSAGE_KIND, pubkey: m.pubkey, created_at: m.created_at, tags: m.tags, content: m.content });
-  return { id, from: m.pubkey, to, text: text2, at: m.created_at };
+  const id2 = getEventHash({ kind: MESSAGE_KIND, pubkey: m.pubkey, created_at: m.created_at, tags: m.tags, content: m.content });
+  return { id: id2, from: m.pubkey, to, text: text2, at: m.created_at };
 }
 function writtenWith(message, reader) {
   const others = [.../* @__PURE__ */ new Set([message.from, ...message.to])].filter((k) => k !== reader);
@@ -7413,16 +7418,16 @@ function cleanAchievementId(input) {
 }
 function buildAchievement(o) {
   const world = worldCoordinate(o.world);
-  const id = cleanAchievementId(o.id);
+  const id2 = cleanAchievementId(o.id);
   const title = cleanLine(o.title, ACHIEVEMENT_LIMITS.title);
-  if (!world || !id || !title) return null;
+  if (!world || !id2 || !title) return null;
   return {
     kind: ACHIEVEMENT_KIND,
     created_at: Math.floor(o.now),
     tags: [
-      ["d", `${world}/${id}`],
+      ["d", `${world}/${id2}`],
       ["a", world, ...o.relay ? [o.relay] : []],
-      ["achievement", id],
+      ["achievement", id2],
       ["title", title],
       ["alt", `An achievement in a world: ${title}`]
     ],
@@ -7438,11 +7443,11 @@ function achievementForWorld(o) {
 function parseAchievement(event) {
   if (!event || event.kind !== ACHIEVEMENT_KIND || !isHex64(event.pubkey) || !Array.isArray(event.tags)) return null;
   const world = worldCoordinate(getTags(event, "a")[0]?.[1]);
-  const id = cleanAchievementId(getTags(event, "achievement")[0]?.[1]);
+  const id2 = cleanAchievementId(getTags(event, "achievement")[0]?.[1]);
   const title = cleanLine(getTags(event, "title")[0]?.[1], ACHIEVEMENT_LIMITS.title);
-  if (!world || !id || !title || getTags(event, "d")[0]?.[1] !== `${world}/${id}`) return null;
+  if (!world || !id2 || !title || getTags(event, "d")[0]?.[1] !== `${world}/${id2}`) return null;
   const askedAt = event.tags.filter((t) => SITE_MARKS.includes(t[0] ?? "")).map((t) => cleanOrigin(t[1])).filter(Boolean);
-  return { by: event.pubkey, world, id, title, at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
+  return { by: event.pubkey, world, id: id2, title, at: Number.isInteger(event.created_at) ? event.created_at : 0, askedAt };
 }
 function isAchievementAsked(signed, o) {
   if (!o.pubkey || !verifyEvent(signed) || signed.pubkey !== o.pubkey) return false;
@@ -7756,6 +7761,317 @@ function readHandoffMessage(data) {
   }
   if (d.t === "done" && typeof d.ok === "boolean") return { t: "done", nonce: d.nonce, ok: d.ok };
   return null;
+}
+
+// packages/core/src/menu.ts
+var MENU_VERSION = 1;
+var MENU_LIMITS = {
+  /** Tabs in one description. */
+  sections: 12,
+  /** Rows in one tab. */
+  rows: 60,
+  /** Rows in all. */
+  allRows: 200,
+  /** Characters in a row's label, and in any other short line. */
+  label: 120,
+  /** Pixels a side, for a picture. */
+  picture: 256,
+  /** Bytes of description, as JSON, without its pictures. */
+  bytes: 65536,
+  /** Tabs of its own a world may add. */
+  ownTabs: 2,
+  /** Characters in words shown for a moment. */
+  say: 200,
+  /** Characters of text a `copy` row carries. */
+  copy: 2e3,
+  /** Characters typed into a `field` row. */
+  field: 500,
+  /** Characters in the world's name. */
+  title: 80,
+  /** Characters in a tab's note, and in what a card says at length. */
+  note: 400,
+  /** Bytes in a file the visitor chose for a `file` row: 64 MB. */
+  file: 64 * 1024 * 1024,
+  /** Characters in that file's own name. A longer name is left out, and the file goes without one. */
+  fileName: 255,
+  /** Bytes in a picture or a clip a world hands up to be saved: 64 MB. */
+  save: 64 * 1024 * 1024,
+  /** How many a world may hand up in answer to one press. */
+  saves: 12
+};
+var MENU_WAIT_MS = 300;
+var LEAVE_MS = 1e3;
+var MENU_SAVE_MS = 1e4;
+var MENU_VISITOR_TABS = ["you", "figure", "bag", "wallet", "files", "following", "messages", "look"];
+var MENU_WORLD_TABS = ["travel", "room", "people", "camera", "panels", "view", "scores", "achievements", "guests", "sound", "help", "moving"];
+var MENU_KEYS = ["summon", "escape", "menu", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+var MENU_CARD_PICTURE = "card:";
+var MENU_ROW_KINDS = ["button", "swatch", "tile", "line", "copy", "field", "file", "save"];
+var MENU_FILE_KINDS = ["image", "video"];
+var MENU_SAVE_TYPES = ["image/jpeg", "image/png", "image/webp", "video/webm", "video/mp4"];
+var MENU_SIGN_IN = ["none", "ready", "asking", "unanswered"];
+var TAB_NAME = /^[a-z][a-z0-9-]{0,11}$/;
+var ICON_NAME = /^[a-z][a-z0-9-]{0,23}$/;
+var COLOR = /^#[0-9a-f]{6}$/;
+var LEVELS = ["full", "quiet", "hidden"];
+var CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"];
+var UNSEEN3 = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g;
+var UNSEEN_BUT_LINES = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
+var isObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+var count = (s) => {
+  let n = 0;
+  for (const _ of s) n++;
+  return n;
+};
+function line2(v, most) {
+  if (typeof v !== "string" || v.length > most * 4) return void 0;
+  const s = v.replace(UNSEEN3, " ").replace(/ {2,}/g, " ").trim();
+  return s && count(s) <= most ? s : void 0;
+}
+function whole(v, most) {
+  if (typeof v !== "string" || !v || v.length > most * 4 || UNSEEN_BUT_LINES.test(v)) return void 0;
+  return count(v) <= most ? v : void 0;
+}
+var id = (v) => typeof v === "string" && v.length > 0 && v.length <= MENU_LIMITS.label && !/\s/.test(v) && !UNSEEN_BUT_LINES.test(v) ? v : void 0;
+function fileOf(v, most) {
+  if (typeof Blob === "undefined" || !(v instanceof Blob)) return null;
+  return Number.isInteger(v.size) && v.size > 0 && v.size <= most ? v : null;
+}
+function menuFileKind(type) {
+  if (typeof type !== "string" || type.length > 100) return null;
+  const kind = type.slice(0, type.indexOf("/") === -1 ? 0 : type.indexOf("/")).toLowerCase();
+  return MENU_FILE_KINDS.includes(kind) ? kind : null;
+}
+function menuFileName(name) {
+  return typeof name === "string" && !/[\\/]/.test(name) ? whole(name, MENU_LIMITS.fileName) : void 0;
+}
+function menuSaveType(type) {
+  if (typeof type !== "string" || type.length > 100) return null;
+  const plain = type.split(";")[0].trim().toLowerCase();
+  return MENU_SAVE_TYPES.includes(plain) ? plain : null;
+}
+function readRow(raw, mayType, mayFile, o) {
+  if (!isObject(raw)) return null;
+  const rowId = id(raw.id);
+  const label = line2(raw.label, MENU_LIMITS.label);
+  if (!rowId || !label || rowId.startsWith(MENU_CARD_PICTURE)) return null;
+  const kind = raw.kind === void 0 ? "button" : MENU_ROW_KINDS.includes(raw.kind) ? raw.kind : null;
+  if (!kind) return null;
+  if (kind === "field" && !mayType) return null;
+  if (kind === "file" && !mayFile) return null;
+  const row = { id: rowId, label, kind };
+  if (kind === "file") {
+    const asked = Array.isArray(raw.accept) ? raw.accept.slice(0, 8) : [];
+    const accept = MENU_FILE_KINDS.filter((k) => asked.includes(k));
+    if (!accept.length) return null;
+    row.accept = accept;
+  }
+  if (kind === "copy") {
+    const text2 = whole(raw.copy, MENU_LIMITS.copy);
+    if (!text2) return null;
+    row.copy = text2;
+  }
+  const short = line2(raw.short, MENU_LIMITS.label);
+  if (short) row.short = short;
+  if (typeof raw.icon === "string" && ICON_NAME.test(raw.icon)) row.icon = raw.icon;
+  if (typeof raw.on === "boolean") row.on = raw.on;
+  if (raw.tone === "primary" || raw.tone === "warn") row.tone = raw.tone;
+  if (typeof raw.color === "string" && COLOR.test(raw.color)) row.color = raw.color;
+  if (kind === "swatch" && !row.color) return null;
+  if (typeof raw.mark === "string" && ICON_NAME.test(raw.mark)) row.mark = raw.mark;
+  if (raw.faint === true) row.faint = true;
+  if (raw.bar === true && kind !== "line" && kind !== "field" && kind !== "file") row.bar = true;
+  if (raw.picture !== void 0 && o.picture?.(raw.picture)) row.picture = raw.picture;
+  return row;
+}
+function readCard(raw, o) {
+  if (!isObject(raw)) return void 0;
+  const title = line2(raw.title, MENU_LIMITS.label);
+  if (!title) return void 0;
+  const card = { title };
+  const tag = line2(raw.tag, MENU_LIMITS.label);
+  if (tag) card.tag = tag;
+  if (raw.proven === true && o.own) card.proven = true;
+  const sub = line2(raw.sub, MENU_LIMITS.label);
+  if (sub) card.sub = sub;
+  const copy = whole(raw.copy, MENU_LIMITS.copy);
+  if (copy) card.copy = copy;
+  const text2 = line2(raw.text, MENU_LIMITS.note);
+  if (text2) card.text = text2;
+  if (typeof raw.color === "string" && COLOR.test(raw.color)) card.color = raw.color;
+  if (Array.isArray(raw.now)) {
+    const now = raw.now.slice(0, 8).flatMap((n) => line2(n, MENU_LIMITS.label) ?? []);
+    if (now.length) card.now = now;
+  }
+  if (Array.isArray(raw.acts)) {
+    const acts = raw.acts.slice(0, 8).flatMap((a) => id(a) ?? []);
+    if (acts.length) card.acts = acts;
+  }
+  if (raw.picture !== void 0 && o.picture?.(raw.picture)) card.picture = raw.picture;
+  return card;
+}
+function readState(raw) {
+  const s = isObject(raw) ? raw : {};
+  const room = isObject(s.room) ? s.room : {};
+  const headset = isObject(s.headset) ? s.headset : {};
+  const has = room.has === true;
+  const n = typeof room.count === "number" && Number.isFinite(room.count) ? Math.min(9999, Math.max(0, Math.floor(room.count))) : 0;
+  return {
+    room: { has, joined: has && room.joined === true, mic: has && typeof room.mic === "boolean" ? room.mic : null, count: has ? n : 0 },
+    headset: { supported: headset.supported === true, presenting: headset.supported === true && headset.presenting === true },
+    named: s.named === true,
+    signIn: MENU_SIGN_IN.includes(s.signIn) ? s.signIn : "none",
+    holding: id(s.holding) ?? "",
+    items: cleanItemsRule(s.items),
+    hum: s.hum === true
+  };
+}
+function tabOf(name, o) {
+  if (MENU_WORLD_TABS.includes(name)) return "world";
+  if (MENU_VISITOR_TABS.includes(name)) return o.own || o.also?.includes(name) ? "visitor" : null;
+  return "own";
+}
+function cleanMenuWorld(input, opts = {}) {
+  if (!isObject(input)) return null;
+  const world = {
+    title: line2(input.title, MENU_LIMITS.title) ?? "",
+    level: LEVELS.includes(input.level) ? input.level : "full",
+    keys: input.keys !== false,
+    state: readState(input.state),
+    target: [],
+    loading: null,
+    sections: []
+  };
+  if (CORNERS.includes(input.corner)) world.corner = input.corner;
+  if (Array.isArray(input.target)) {
+    const lines = input.target.slice(0, 6).map((t) => line2(t, MENU_LIMITS.label));
+    if (lines[0]) world.target = lines.filter((t) => !!t);
+  }
+  if (isObject(input.loading)) {
+    const f = input.loading.fraction;
+    world.loading = { fraction: typeof f === "number" && Number.isFinite(f) ? Math.round(Math.min(1, Math.max(0, f)) * 100) / 100 : null, words: line2(input.loading.words, MENU_LIMITS.label) ?? "" };
+  }
+  const tabs = /* @__PURE__ */ new Set();
+  const rows = /* @__PURE__ */ new Set();
+  let own = 0;
+  let all = 0;
+  for (const raw of Array.isArray(input.sections) ? input.sections.slice(0, MENU_LIMITS.sections) : []) {
+    if (!isObject(raw) || typeof raw.id !== "string" || !TAB_NAME.test(raw.id) || tabs.has(raw.id)) continue;
+    const whose = tabOf(raw.id, opts);
+    if (!whose) continue;
+    const section = { id: raw.id, rows: [] };
+    if (whose === "own") {
+      const label = line2(raw.label, MENU_LIMITS.label);
+      if (!label || !opts.own && own >= MENU_LIMITS.ownTabs) continue;
+      own++;
+      section.label = label;
+      if (typeof raw.icon === "string" && ICON_NAME.test(raw.icon)) section.icon = raw.icon;
+    }
+    tabs.add(raw.id);
+    const note = line2(raw.note, MENU_LIMITS.note);
+    if (note) section.note = note;
+    const mayType = !!opts.own || whose === "own" || whose === "visitor" || raw.id === "guests";
+    const mayFile = !!opts.own || whose === "own" || raw.id === "panels";
+    for (const r of Array.isArray(raw.rows) ? raw.rows.slice(0, MENU_LIMITS.rows) : []) {
+      if (all >= MENU_LIMITS.allRows) break;
+      const row = readRow(r, mayType, mayFile, opts);
+      if (!row || rows.has(row.id)) continue;
+      rows.add(row.id);
+      section.rows.push(row);
+      all++;
+    }
+    const card = readCard(raw.card, opts);
+    if (card) {
+      if (card.acts) {
+        const here = new Set(section.rows.map((r) => r.id));
+        const acts = card.acts.filter((a) => here.has(a));
+        if (acts.length) card.acts = acts;
+        else delete card.acts;
+      }
+      section.card = card;
+    }
+    world.sections.push(section);
+  }
+  return menuBytes(world) > MENU_LIMITS.bytes ? null : world;
+}
+function menuBytes(world) {
+  const text2 = JSON.stringify(world, (key, value) => key === "picture" ? void 0 : value);
+  let n = 0;
+  for (let i = 0; i < text2.length; i++) {
+    const c = text2.charCodeAt(i);
+    n += c < 128 ? 1 : c < 2048 ? 2 : c >= 55296 && c <= 56319 ? (i++, 4) : 3;
+  }
+  return n;
+}
+function cleanMenuSettings(input) {
+  return cleanSettings(input);
+}
+var MENU_REPORTED = ["headset", "intense", "turn", "hand", "narrow", "fade", "look", "fov", "wrist", "sound", "motion", "text", "tabs", "pins"];
+function reportedSettings(input) {
+  const clean3 = cleanSettings(input);
+  const out = {};
+  for (const name of MENU_REPORTED) if (clean3[name] !== void 0) out[name] = clean3[name];
+  return out;
+}
+var isMenu = (data) => isObject(data) && data.nswp === "menu";
+var DOWN_ONLY = ["has", "v", "press", "field", "file", "open", "go", "sign"];
+var UP_ONLY = ["world", "key", "say", "picture", "save", "id"];
+var hasAny = (data, names) => names.some((n) => data[n] !== void 0);
+function readMenuWordDown(data) {
+  if (!isMenu(data) || hasAny(data, UP_ONLY)) return null;
+  if (data.has === true) {
+    const v = typeof data.v === "number" && Number.isInteger(data.v) && data.v >= 1 ? Math.min(data.v, MENU_VERSION) : null;
+    return v ? { what: "has", has: true, v, settings: cleanMenuSettings(data.settings) } : null;
+  }
+  if (data.has === false) return { what: "has", has: false };
+  if (data.settings !== void 0) return isObject(data.settings) ? { what: "settings", settings: cleanMenuSettings(data.settings) } : null;
+  if (data.press !== void 0) {
+    const press = id(data.press);
+    if (!press) return null;
+    if (data.file !== void 0) {
+      if (data.field !== void 0) return null;
+      const file = fileOf(data.file, MENU_LIMITS.file);
+      const kind = file && menuFileKind(file.type);
+      if (!file || !kind) return null;
+      const name = menuFileName(file.name);
+      return { what: "press", press, file, kind, ...name ? { name } : {} };
+    }
+    if (data.field === void 0) return { what: "press", press };
+    if (typeof data.field !== "string" || data.field.length > MENU_LIMITS.field * 4 || UNSEEN_BUT_LINES.test(data.field) || count(data.field) > MENU_LIMITS.field) return null;
+    return { what: "press", press, field: data.field };
+  }
+  if (typeof data.open === "boolean") return { what: "open", open: data.open };
+  if (data.go === "home") return { what: "go", go: "home" };
+  if (data.sign === "out") return { what: "sign", sign: "out" };
+  return null;
+}
+function readMenuWordUp(data, opts = {}) {
+  if (!isMenu(data) || hasAny(data, DOWN_ONLY)) return null;
+  if (data.world !== void 0) {
+    const world = cleanMenuWorld(data.world, opts);
+    return world ? { what: "world", world } : null;
+  }
+  if (data.key !== void 0) return MENU_KEYS.includes(data.key) ? { what: "key", key: data.key } : null;
+  if (data.say !== void 0) {
+    const text2 = line2(data.say, MENU_LIMITS.say);
+    return text2 ? { what: "say", say: text2 } : null;
+  }
+  if (data.settings !== void 0) return isObject(data.settings) ? { what: "settings", settings: reportedSettings(data.settings) } : null;
+  if (data.picture !== void 0) {
+    const row = id(data.id);
+    return row && opts.picture?.(data.picture) ? { what: "picture", id: row, picture: data.picture } : null;
+  }
+  if (data.save !== void 0) {
+    const row = id(data.id);
+    const file = fileOf(data.save, MENU_LIMITS.save);
+    const type = file && menuSaveType(file.type);
+    return row && file && type ? { what: "save", id: row, save: file, type } : null;
+  }
+  return null;
+}
+function menuVersionOf(here) {
+  if (!isObject(here) || here.nswp !== "here") return 0;
+  return typeof here.menu === "number" && Number.isInteger(here.menu) && here.menu >= 1 ? Math.min(here.menu, MENU_VERSION) : 0;
 }
 
 // packages/core/src/item.ts
@@ -8477,19 +8793,21 @@ function readGlb(bytes, budget = MODEL_BUDGET) {
   const bin = binAt + 8 <= bytes.length && u322(bytes, binAt + 4) === 5130562 ? bytes.subarray(binAt + 8, Math.min(bytes.length, binAt + 8 + u322(bytes, binAt))) : new Uint8Array(0);
   const list = (name) => Array.isArray(json[name]) ? json[name].filter((x) => !!x && typeof x === "object") : [];
   if (list("buffers").some((b) => b.uri !== void 0) || list("images").some((i) => i.uri !== void 0)) return { ok: false, why: "outside" };
-  if (Array.isArray(json.extensionsRequired) && json.extensionsRequired.length > 0) return { ok: false, why: "needs-more" };
+  if (Array.isArray(json.extensionsRequired) && json.extensionsRequired.some((x) => !budget.extensions?.includes(x))) return { ok: false, why: "needs-more" };
   const accessors = list("accessors");
   const views = list("bufferViews");
   const meshes = list("meshes");
   let triangles = 0;
   let parts = 0;
+  let morphs = 0;
   for (const mesh of meshes) {
     for (const p of Array.isArray(mesh.primitives) ? mesh.primitives : []) {
       parts++;
+      if (Array.isArray(p.targets)) morphs = Math.max(morphs, p.targets.length);
       const mode = typeof p.mode === "number" ? p.mode : 4;
       const from = typeof p.indices === "number" ? p.indices : p.attributes?.POSITION;
-      const count2 = typeof from === "number" && typeof accessors[from]?.count === "number" ? accessors[from].count : 0;
-      triangles += mode === 4 ? Math.floor(count2 / 3) : mode === 5 || mode === 6 ? Math.max(0, count2 - 2) : Math.ceil(count2 / 3);
+      const count3 = typeof from === "number" && typeof accessors[from]?.count === "number" ? accessors[from].count : 0;
+      triangles += mode === 4 ? Math.floor(count3 / 3) : mode === 5 || mode === 6 ? Math.max(0, count3 - 2) : Math.ceil(count3 / 3);
     }
   }
   let texture = 0;
@@ -8502,17 +8820,118 @@ function readGlb(bytes, budget = MODEL_BUDGET) {
     texture = Math.max(texture, size[0], size[1]);
   }
   const materials = list("materials");
-  const count = {
+  const joints = /* @__PURE__ */ new Set();
+  for (const skin of list("skins")) for (const j of Array.isArray(skin.joints) ? skin.joints : []) if (typeof j === "number") joints.add(j);
+  const count2 = {
     triangles,
     // What a renderer makes a mesh of is each part of each mesh.
     meshes: parts,
     materials: materials.length,
     texture,
     animations: list("animations").map((a) => typeof a.name === "string" ? a.name : "").filter(Boolean).slice(0, 8),
-    materialNames: materials.map((m) => typeof m.name === "string" ? m.name : "")
+    materialNames: materials.map((m) => typeof m.name === "string" ? m.name : ""),
+    joints: joints.size,
+    morphs
   };
-  const within2 = parts > 0 && parts <= budget.meshes && triangles <= budget.triangles && count.materials <= budget.materials && texture <= budget.texture;
-  return within2 ? { ok: true, count } : { ok: false, why: "over-budget" };
+  const within2 = parts > 0 && parts <= budget.meshes && triangles <= budget.triangles && count2.materials <= budget.materials && texture <= budget.texture && count2.joints <= (budget.joints ?? Infinity) && morphs <= (budget.morphs ?? Infinity);
+  return within2 ? { ok: true, count: count2 } : { ok: false, why: "over-budget" };
+}
+
+// packages/core/src/look-model.ts
+var LOOK_BUDGET = {
+  /** The most a look's file may weigh, in bytes. */
+  bytes: 1e6,
+  triangles: 12e3,
+  meshes: 24,
+  materials: 8,
+  /** The longest side of any picture its surfaces use, in pixels. */
+  texture: 1024,
+  /** The most joints its skeleton may have. */
+  joints: 128,
+  /** The most morph targets (its faces' shapes) any one of its meshes may have. */
+  morphs: 64,
+  /**
+   * VRM's own extensions, which a VRM may say it requires: read for its skeleton and expressions only, its
+   * materials drawn as the kit's standard material in their base colour. Anything else it requires refuses it.
+   * Spring bones (`VRMC_springBone`) are not among them: hair and cloth that swing are physics the kit would run
+   * for a stranger's file, and are left out in this first round (decided by the owner, 2026-11-22).
+   */
+  extensions: ["VRMC_vrm", "VRMC_materials_mtoon", "KHR_materials_unlit"]
+};
+var LOOK_HEIGHT = { least: 0.85, standard: 1.7, most: 2.55 };
+var LOOK_MODELS_AT_ONCE = 8;
+var LOOK_NOTE_LIMIT = 8e3;
+var LOOK_FORMATS = ["vrm", "glb"];
+var HEX642 = /^[0-9a-f]{64}$/;
+var URL_MOST = 500;
+function cleanUrl(input) {
+  if (typeof input !== "string" || input.length > URL_MOST) return null;
+  try {
+    const u = new URL(input);
+    return u.protocol === "https:" && !u.username && !u.password ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+function lookHeight(asked, world) {
+  let least = LOOK_HEIGHT.least;
+  let most = LOOK_HEIGHT.most;
+  if (world && Number.isFinite(world[0]) && Number.isFinite(world[1])) {
+    const a = Math.max(least, world[0]);
+    const b = Math.min(most, world[1]);
+    if (a <= b) [least, most] = [a, b];
+  }
+  const n = typeof asked === "string" ? Number(asked) : asked;
+  const h = typeof n === "number" && Number.isFinite(n) && n > 0 ? n : LOOK_HEIGHT.standard;
+  return Math.round(Math.min(most, Math.max(least, h)) * 1e3) / 1e3;
+}
+function readLookModel(note) {
+  if (!note || note.kind !== AVATAR_KIND || !Array.isArray(note.tags)) return null;
+  const tag = (name) => note.tags.find((t2) => Array.isArray(t2) && t2[0] === name);
+  const m = tag("model");
+  const url = cleanUrl(m?.[1]);
+  const format = m?.[2];
+  const sha2562 = m?.[3];
+  if (!url || format !== "vrm" && format !== "glb" || typeof sha2562 !== "string" || !HEX642.test(sha2562)) return null;
+  const out = { url, format, sha256: sha2562, height: lookHeight(tag("height")?.[1]) };
+  const t = tag("thumb");
+  const thumbUrl = cleanUrl(t?.[1]);
+  if (thumbUrl && typeof t?.[2] === "string" && HEX642.test(t[2])) out.thumb = { url: thumbUrl, sha256: t[2] };
+  return out;
+}
+var u323 = (b, at) => (b[at] | b[at + 1] << 8 | b[at + 2] << 16 | b[at + 3] << 24) >>> 0;
+function glbJson(bytes) {
+  if (bytes.length < 20 || u323(bytes, 0) !== 1179937895 || u323(bytes, 16) !== 1313821514) return null;
+  const n = u323(bytes, 12);
+  if (20 + n > bytes.length) return null;
+  try {
+    const json = JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + n)));
+    return json && typeof json === "object" && !Array.isArray(json) ? json : null;
+  } catch {
+    return null;
+  }
+}
+function withoutRequired(bytes) {
+  const json = glbJson(bytes);
+  if (!json) return null;
+  if (!Array.isArray(json.extensionsRequired) || json.extensionsRequired.length === 0) return bytes;
+  delete json.extensionsRequired;
+  const text2 = new TextEncoder().encode(JSON.stringify(json));
+  const padded = new Uint8Array(text2.length + (4 - text2.length % 4) % 4).fill(32);
+  padded.set(text2);
+  const rest = bytes.subarray(20 + u323(bytes, 12));
+  const out = new Uint8Array(20 + padded.length + rest.length);
+  out.set(bytes.subarray(0, 20));
+  out.set(padded, 20);
+  out.set(rest, 20 + padded.length);
+  const v = new DataView(out.buffer);
+  v.setUint32(8, out.length, true);
+  v.setUint32(12, padded.length, true);
+  return out;
+}
+function lookFacing(json) {
+  const ext = json.extensions;
+  return ext && typeof ext === "object" && "VRM" in ext && !("VRMC_vrm" in ext) ? "-z" : "+z";
 }
 
 // packages/core/src/people.ts
@@ -8605,13 +9024,13 @@ function parseListEvent(input, opts = {}) {
   for (const t of getTags({ tags }, "a")) {
     const parsed = t[1] ? parseCoordinate(t[1]) : null;
     if (!parsed || parsed.kind !== WORLD_KIND || parsed.identifier === "") continue;
-    const id = coordinate(parsed);
-    if (worlds.includes(id)) continue;
+    const id2 = coordinate(parsed);
+    if (worlds.includes(id2)) continue;
     if (worlds.length === LIST_LIMITS.worlds) {
       over = true;
       break;
     }
-    worlds.push(id);
+    worlds.push(id2);
   }
   if (over) c.warn("too_many_worlds", "tags.a", `Only the first ${LIST_LIMITS.worlds} worlds on a list are read.`);
   const list = { d: d ?? "", title: title || (d ?? ""), description, worlds, createdAt: Number.isInteger(e.created_at) ? e.created_at : 0 };
@@ -8886,10 +9305,10 @@ function openBridgeSignal(event, key, bridge, now = nowSeconds()) {
   if (re !== void 0 && !isHex64(re)) return null;
   return { from: event.pubkey, message, id: event.id, ...re !== void 0 ? { re } : {} };
 }
-var whole = (n, lo, hi) => typeof n === "number" && Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.floor(n))) : null;
+var whole2 = (n, lo, hi) => typeof n === "number" && Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.floor(n))) : null;
 function cleanSize(cols, rows) {
-  const c = whole(cols, BRIDGE_LIMITS.minCols, BRIDGE_LIMITS.maxCols);
-  const r = whole(rows, BRIDGE_LIMITS.minRows, BRIDGE_LIMITS.maxRows);
+  const c = whole2(cols, BRIDGE_LIMITS.minCols, BRIDGE_LIMITS.maxCols);
+  const r = whole2(rows, BRIDGE_LIMITS.minRows, BRIDGE_LIMITS.maxRows);
   return c === null || r === null ? null : { cols: c, rows: r };
 }
 function parseBridgeControl(text2) {
@@ -8913,7 +9332,7 @@ function parseBridgeControl(text2) {
     return { t: "ready", name, speech: o.speech === true };
   }
   if (o.t === "exit") {
-    const code = whole(o.code, -1, 255);
+    const code = whole2(o.code, -1, 255);
     return code === null ? null : { t: "exit", code };
   }
   return null;
@@ -9104,6 +9523,7 @@ export {
   LAYOUT_ACCESS,
   LAYOUT_LIMITS,
   LEAST_PRICE_SATS,
+  LEAVE_MS,
   LIMITS,
   LISTING_KIND,
   LIST_KIND,
@@ -9112,10 +9532,28 @@ export {
   LOCAL_MAP_LIMIT,
   LOCAL_MAP_PATH,
   LOCAL_MAP_WAIT,
+  LOOK_BUDGET,
   LOOK_COLORS,
+  LOOK_FORMATS,
+  LOOK_HEIGHT,
   LOOK_LIMITS,
+  LOOK_MODELS_AT_ONCE,
+  LOOK_NOTE_LIMIT,
   LOOK_PARTS,
   LOOK_RANGE,
+  MENU_CARD_PICTURE,
+  MENU_FILE_KINDS,
+  MENU_KEYS,
+  MENU_LIMITS,
+  MENU_REPORTED,
+  MENU_ROW_KINDS,
+  MENU_SAVE_MS,
+  MENU_SAVE_TYPES,
+  MENU_SIGN_IN,
+  MENU_VERSION,
+  MENU_VISITOR_TABS,
+  MENU_WAIT_MS,
+  MENU_WORLD_TABS,
   MESSAGE_KIND,
   MESSAGE_LIMITS,
   MESSAGE_RELAYS_KIND,
@@ -9242,6 +9680,8 @@ export {
   cleanListing,
   cleanListingName,
   cleanLocalMap,
+  cleanMenuSettings,
+  cleanMenuWorld,
   cleanMessage,
   cleanMore,
   cleanName,
@@ -9294,6 +9734,7 @@ export {
   getPublicKey,
   getTagValue,
   getTags,
+  glbJson,
   grantCode,
   guestColor,
   guestName,
@@ -9327,7 +9768,9 @@ export {
   listD,
   listingSeller,
   localMap,
+  lookFacing,
   lookFromTags,
+  lookHeight,
   lookToTags,
   looksLikeSave,
   looksLikeWrap,
@@ -9337,6 +9780,11 @@ export {
   markGrid,
   measureGlb,
   meetsPerson,
+  menuBytes,
+  menuFileKind,
+  menuFileName,
+  menuSaveType,
+  menuVersionOf,
   newestBag,
   newestFollows,
   nip44Decrypt,
@@ -9391,6 +9839,9 @@ export {
   readGlb,
   readHandoffMessage,
   readListing,
+  readLookModel,
+  readMenuWordDown,
+  readMenuWordUp,
   readMessage,
   readMessageRelays,
   readOwnerList,
@@ -9402,6 +9853,7 @@ export {
   readSignerReply,
   readSignerRequest,
   relayScore,
+  reportedSettings,
   resolveList,
   resolveOwnerList,
   roomTopic,
@@ -9444,6 +9896,7 @@ export {
   verifyWorldGrant,
   wayWithoutDestination,
   wellKnownUrl,
+  withoutRequired,
   worldCoordinate,
   worldDownload,
   worldOffers,

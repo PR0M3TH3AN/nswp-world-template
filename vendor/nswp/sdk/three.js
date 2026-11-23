@@ -138,17 +138,18 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-V7XJYZ4L.js";
-import "./shared-QRGGCX3I.js";
+} from "./shared-LIQX6D2Y.js";
+import "./shared-GPDS23MY.js";
 import {
   PICTURE_LIMITS,
   addDoorControls,
+  createControls,
   loadPicture,
   onPicturesChange,
   setShowsPictures,
   showsPictures,
   vouchedWords
-} from "./shared-FYLN3PQO.js";
+} from "./shared-STBQBWFU.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -174,7 +175,7 @@ import {
   sendWell,
   startingForm,
   usedForm
-} from "./shared-LQ6USDK4.js";
+} from "./shared-TGCMK7IG.js";
 import {
   browserVoice,
   computerVoice,
@@ -250,6 +251,7 @@ export {
   createBag,
   createChamber,
   createConsole,
+  createControls,
   createCrossing,
   createDoorRatings,
   createDragLook,

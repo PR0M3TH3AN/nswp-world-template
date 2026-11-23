@@ -118,6 +118,19 @@ export declare function createSounds(o?: SoundsOptions): Sounds;
  * music. It also makes the kit's controls heard: a press, the menu, and the
  * things other parts of the kit signal (joining a room, a microphone).
  */
-export declare function addSoundControls(controls: Controls, sounds: Sounds): {
+export interface SoundControlsOptions {
+    /**
+     * Whether the place has a hum, where that isn't this page's own to know: a client's page, drawing the menu above
+     * a world, is told by the world. "The room's hum" is shown where this says so. Left out, this page's own sounds say.
+     */
+    hasHum?: () => boolean;
+    /**
+     * A cue that is not to be played here just now. For a world whose client has the menu: the client's page makes
+     * the menu's own sounds (a press, the menu coming and going, words for a moment), so the world doesn't make them
+     * too.
+     */
+    quiet?: (cue: Cue) => boolean;
+}
+export declare function addSoundControls(controls: Controls, sounds: Sounds, opts?: SoundControlsOptions): {
     refresh(): void;
 };

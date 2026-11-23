@@ -87,6 +87,12 @@ export interface FpsOptions {
         readonly open: boolean;
         setOpen(open: boolean): void;
     } | null;
+    /**
+     * Whether the one-time question, "how you move at a desk", is this page's to ask. False where the visitor's
+     * client draws the menu above this world: whoever draws the console asks, and the answer comes down as a setting
+     * (visitor-switches.ts, `askDeskMoving`). Left out, it is this page's.
+     */
+    mayAsk?: () => boolean;
     canStand(x: number, z: number): boolean;
     /** In a headset: this stands down. */
     presenting(): boolean;

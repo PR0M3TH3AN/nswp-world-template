@@ -43,6 +43,12 @@ export declare const arrival: {
      */
     look(): string | undefined;
     /**
+     * Their look note (kind 37301), as the arrival named it (an `naddr`), where they came as themselves with one: it
+     * may name a model of their own (protocol/05-looks.md). Undefined if they came plain or have none. Kept for this
+     * tab's session only. It counts only if its author is the key their pass names: `ownLookNote` checks that.
+     */
+    avatar(): string | undefined;
+    /**
      * Who this visitor chose to be here, if they came by name
      * (protocol/10-identity.md): their public key, the name on their pass, and
      * the pass and session key to hand to a room. Checked against this site and

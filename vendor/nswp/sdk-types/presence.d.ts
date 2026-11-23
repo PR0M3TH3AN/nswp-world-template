@@ -13,6 +13,8 @@ import { type JoinOptions, type Member, type RoomSession } from "./room.js";
 import { type Items } from "./items.js";
 import { type Play, type PlayOptions } from "./play.js";
 import type { ItemBoxOptions } from "./item-box.js";
+import { type LookModels, type LookRefusal } from "./look-models.js";
+import { type NostrEvent } from "@nswp/core";
 export interface PresenceOptions {
     /**
      * Where the visitor arrived, for stepping them aside if they join and find themselves inside someone (protocol/
@@ -104,6 +106,27 @@ export interface PresenceOptions {
     identity?: JoinOptions["identity"] | (() => JoinOptions["identity"] | undefined);
     /** Draw other people in this world's own way (spec §4.2, "What a world may change"). */
     figureStyle?: FigureStyle;
+    /**
+     * What this world draws of people's own models (protocol/05-looks.md, "A model of your own"): its manifest's
+     * `avatar`, as `parseManifest` reads it. Asked each time it matters. Left out, or with no `vrm` or `glb` in its
+     * `formats`, everyone is drawn as their simple look, as before; with `dress: "own"`, too, since the world dresses
+     * everyone itself.
+     */
+    looks?: () => {
+        formats: readonly string[];
+        dress?: "own";
+        height?: readonly [number, number];
+        maxFileSizeMb?: number;
+        maxTriangles?: number;
+    } | null;
+    /**
+     * The visitor's own look note, signed by their own key, to hand to the room where it names a model of theirs.
+     * Asked each time a room is joined. Left out, the one their arrival named (`ownLookNote`), in a world that draws
+     * models; none in one that doesn't.
+     */
+    avatar?: NostrEvent | null | (() => NostrEvent | null | undefined | Promise<NostrEvent | null | undefined>);
+    /** What fetches and checks people's models (look-models.ts). For tests; left out, the kit's own. */
+    lookModels?: LookModels;
     /** Called whenever membership, status or the microphone changes. */
     onChange?: () => void;
     /** False where this world draws what people write in a way of its own: no line is drawn over anyone's head. */
@@ -135,6 +158,21 @@ export interface AvatarInfo {
     musicVolume: number;
     /** How loud their music is arriving, before any of that. */
     musicLevel: number;
+}
+/** How one person is being drawn: their own model, or their simple look and why. For tests and a person's card. */
+export interface LookInfo {
+    pubkey: string;
+    /** The hash of the model they wear, or null for none. */
+    model: string | null;
+    drawn: "model" | "simple";
+    /**
+     * Why they are drawn simple: `none` (they wear no model), `world` (this world draws none of that format, or
+     * dresses everyone), `off` (this visitor turned models off), `person` (this visitor chose their simple look),
+     * `crowd` (more than `LOOK_MODELS_AT_ONCE` nearer), `loading`, or why the file was refused. Null when drawn.
+     */
+    why: "none" | "world" | "off" | "person" | "crowd" | "loading" | LookRefusal | null;
+    /** How tall the model is drawn, in metres, or null. */
+    height: number | null;
 }
 export interface Presence {
     readonly session: RoomSession | null;
@@ -262,6 +300,13 @@ export interface Presence {
      */
     mute(pubkey: string, on: boolean): void;
     isMuted(pubkey: string): boolean;
+    /** Draw one member as their simple look whatever model they wear, or as their own again. Nobody is told. It lasts while they are here. */
+    showSimple(pubkey: string, on: boolean): void;
+    isSimple(pubkey: string): boolean;
+    /** Whether this world draws people's own models at all (its `looks`). */
+    drawsModels(): boolean;
+    /** How each member is being drawn: for tests. */
+    lookInfo(): LookInfo[];
     /**
      * Stop being in a room with one member: the connection to them is closed and not made again. To them, this
      * visitor has left. Someone who came by name stays blocked on this site when they come back; a guest is a new
