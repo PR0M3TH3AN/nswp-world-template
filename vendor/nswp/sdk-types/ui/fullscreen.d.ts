@@ -60,5 +60,5 @@ export declare function leaveFullscreen(): Promise<void>;
 export declare const fullscreenButton: {
     shown(): boolean;
     label: string;
-    press(controls?: Controls): Promise<void>;
+    press(controls?: Pick<Controls, "say">): Promise<void>;
 };

@@ -1,3 +1,18 @@
+/**
+ * The controls a world gives its visitor, as a list of things they can do.
+ *
+ * A world says what the actions are, once. Two renderers draw them: a HUD on a
+ * flat screen (`mountHud`, in `nswp-sdk/ui`) and a console inside a headset
+ * (`createConsole`, in `nswp-sdk/three`). They look nothing alike, and they
+ * always offer the same things, because neither holds any of the logic.
+ *
+ *   const controls = createControls({ title: "My world", address: "example.org" });
+ *   controls.add({ id: "home", section: "travel", label: "Go home", icon: "home", hotbar: true, act: () => portal.home() });
+ *
+ * Adding a button, a section, or a whole new kind of control later means
+ * adding to this list. Nothing about either renderer has to change.
+ */
+import { type MenuFileKind } from "@nswp/core";
 import { type ChatView, type UiChat } from "./chat.js";
 import { type FeedView, type UiFeed } from "./feed.js";
 import { type LettersView, type UiLetters } from "./letters.js";
@@ -12,7 +27,13 @@ export interface UiAction {
     icon?: IconName | (() => IconName);
     /** Which group it belongs to. Sections the kit doesn't know are added after the ones it does. */
     section?: string;
-    act(): void | Promise<void>;
+    /**
+     * What a press does. For a row the visitor types into (`kind: "field"`) it is given what they typed, at their
+     * press and not before. Where the menu has no box to type in (a headset's console draws the row as a button),
+     * it is given nothing, and asks for the text its own way. For a row that takes a file (`kind: "file"`) it is
+     * given the file the visitor chose, second, and nothing first; where the menu can show no chooser, nothing at all.
+     */
+    act(typed?: string, file?: Blob): void | Promise<void>;
     /** Leave it out while this returns true. */
     hidden?: () => boolean;
     /** For something that is on or off: whether it is on now. */
@@ -37,9 +58,19 @@ export interface UiAction {
      * "swatch" is a choice of colour, and needs `color`. "tile" is a thing with a picture of itself, one of several
      * laid out side by side: it needs `picture`. "line" is something to read and not to press: an icon, its words
      * (the whole sentence, in `label`) and whether it is so (`on`). A line never answers a press, is never focused
-     * as a button and never goes on the hotbar; its `act` is never called.
+     * as a button and never goes on the hotbar; its `act` is never called. "copy" is a button that copies its `copy`
+     * for the visitor. "field" is typed into: a box, and a button with the label, whose press gives `act` the text.
+     * Whoever draws the menu does both of those itself: where a client above draws it, a press there is not a press
+     * in this page, and a browser lets a page copy only at one (protocol/02-doors.md, "The client has the menu").
+     * "file" takes a file from the visitor's device: whoever draws the menu opens the browser's chooser at the press,
+     * offering only the kinds in `accept`, and gives `act` the file they chose. "save" is a button whose press may end
+     * in something to save (`saveFile`): where a client above draws the menu, what is saved goes up to it.
      */
-    kind?: "button" | "swatch" | "tile" | "line";
+    kind?: "button" | "swatch" | "tile" | "line" | "copy" | "field" | "file" | "save";
+    /** For a "copy" row: the text to copy. */
+    copy?: Text;
+    /** For a "file" row: the kinds of file it takes (the core's `MENU_FILE_KINDS`). */
+    accept?: readonly MenuFileKind[];
     /**
      * For a tile: its picture as it is now, or null while there is none (a renderer then shows its first letter).
      * Asked again whenever the menu is drawn.
@@ -68,6 +99,12 @@ export interface UiCard {
     text: string;
     /** Where their picture is (for `loadPicture`), or "". */
     picture: string;
+    /**
+     * Their picture itself, already in hand, where there is no address to fetch it from: a card a framed world
+     * described, whose picture crossed to the client's page as a bitmap. A client never fetches an address a world
+     * names (protocol/02-doors.md, "The client has the menu").
+     */
+    face?: CanvasImageSource;
     /** A colour that stands for them where there is no picture, as CSS. */
     color: string;
     /** What is so about them now: recording, sharing their screen. */
@@ -102,7 +139,11 @@ export interface UiItemView {
     /** The number key that presses it from the hotbar, or "". */
     key: string;
     short: string;
-    kind: "button" | "swatch" | "tile" | "line";
+    kind: "button" | "swatch" | "tile" | "line" | "copy" | "field" | "file" | "save";
+    /** For a "copy" row: the text to copy. */
+    copy?: string;
+    /** For a "file" row: the kinds of file it takes. */
+    accept?: readonly MenuFileKind[];
     color: string;
     /** A tile's small icon in its corner, or null. */
     mark: IconName | null;
@@ -110,6 +151,12 @@ export interface UiItemView {
     faint: boolean;
     /** A tile's picture, asked for as it is drawn. Not part of what is written out as text. */
     picture?: () => CanvasImageSource | null;
+    /**
+     * Whose row it is, where it isn't the menu's own: the name of the world in the frame, for a row that world
+     * described to a client drawing the menu above it. Such rows stand below the client's own in a tab both fill,
+     * under this name, so that a world's part is never taken for the client's.
+     */
+    from?: string;
 }
 export interface UiSectionView {
     id: string;
@@ -120,6 +167,14 @@ export interface UiSectionView {
     items: UiItemView[];
     /** The visitor keeps this tab on their bar. */
     pinned: boolean;
+    /**
+     * What the world in the frame says in this tab, where the menu is its client's: a note of the world's own, shown
+     * after the menu's own note and under the world's name. Never in `note`, which is the menu's own words.
+     */
+    said?: {
+        from: string;
+        note: string;
+    };
 }
 /** A tab of the menu the visitor keeps on their bar: pressing it brings the menu up on that tab. */
 export interface UiPinView {
@@ -211,7 +266,7 @@ export interface Controls {
         words?: string;
     } | null): void;
     /** Do an action by its id, as pressing it would. Returns false if it isn't there or isn't showing. */
-    run(id: string): boolean;
+    run(id: string, typed?: string, file?: Blob): boolean;
     /** Change the look. `keep` also remembers it as this visitor's choice, for this site. */
     setTheme(patch: Partial<UiTheme>, keep?: boolean): void;
     readonly presence: Presence;
@@ -267,6 +322,13 @@ export interface ControlsOptions {
     corner?: Corner;
     keys?: Partial<UiKeys>;
 }
+/** The tabs the menu has its own name for, by id, in the order they are shown. */
+export declare const STANDARD_TABS: readonly string[];
+/** What one of them is called, and its icon: the menu's own words for it, whoever fills it. Null for any other tab. */
+export declare const standardTab: (id: string) => {
+    label: string;
+    icon: IconName | null;
+} | null;
 /**
  * The order of the things every place has, wherever in a world's code they
  * were added. So the taskbar reads the same in every world, and the same

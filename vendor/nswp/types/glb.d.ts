@@ -26,6 +26,20 @@ export declare const MODEL_BUDGET: {
     /** The longest side of any picture a model's surfaces may use, in pixels. */
     readonly texture: 1024;
 };
+/** A budget a model is read against: an item's (`MODEL_BUDGET`) or a look's (`LOOK_BUDGET`, look-model.ts). */
+export interface ModelBudget {
+    bytes: number;
+    triangles: number;
+    meshes: number;
+    materials: number;
+    texture: number;
+    /** The most joints its skins may have, all told. Left out, no limit. */
+    joints?: number;
+    /** The most morph targets any one of its meshes may have. Left out, no limit. */
+    morphs?: number;
+    /** Extensions it may say it requires, beyond none: each read for what the kit uses of it and otherwise ignored. */
+    extensions?: readonly string[];
+}
 export interface GlbCount {
     triangles: number;
     meshes: number;
@@ -35,6 +49,10 @@ export interface GlbCount {
     animations: string[];
     /** The names of its materials, in order: a renderer colours the ones named `tint:<slot>`. */
     materialNames: string[];
+    /** How many joints its skins have, all told (each joint once): 0 for a model with no skeleton. */
+    joints: number;
+    /** The most morph targets any one of its meshes has. */
+    morphs: number;
 }
 export type GlbRead = {
     ok: true;
@@ -62,4 +80,4 @@ export declare function measureGlb(bytes: Uint8Array): {
  * a plain reader doesn't have (`needs-more`), or names anything outside itself (`outside`): a buffer or a picture
  * at an address. Nothing is fetched and nothing is drawn.
  */
-export declare function readGlb(bytes: Uint8Array, budget?: typeof MODEL_BUDGET): GlbRead;
+export declare function readGlb(bytes: Uint8Array, budget?: ModelBudget): GlbRead;

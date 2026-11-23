@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.83.0";
+var KIT_VERSION = "0.84.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4209,6 +4209,14 @@ function parseManifest(input, opts = {}) {
           w.avatar.maxFileSizeMb = a.max_file_size_mb;
         if (typeof a.max_triangles === "number")
           w.avatar.maxTriangles = a.max_triangles;
+        if (Array.isArray(a.height) && a.height.length === 2 && a.height.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0) && a.height[0] <= a.height[1])
+          w.avatar.height = [a.height[0], a.height[1]];
+        else if (a.height !== void 0)
+          c.warn("invalid_field", `${p}.avatar.height`, "avatar.height must be [least, most] in metres; ignored.");
+        if (a.dress === "own")
+          w.avatar.dress = "own";
+        else if (a.dress !== void 0)
+          c.warn("invalid_field", `${p}.avatar.dress`, 'avatar.dress may only be "own"; ignored.');
       }
       if (raw.multiplayer !== void 0) {
         if (isPlainObject(raw.multiplayer) && isWssUrl(raw.multiplayer.endpoint)) {
@@ -4629,6 +4637,42 @@ var SIGN_LIMITS = {
    */
   passBurst: 2,
   passHourly: 10
+};
+
+// packages/core/dist/menu.js
+var MENU_LIMITS = {
+  /** Tabs in one description. */
+  sections: 12,
+  /** Rows in one tab. */
+  rows: 60,
+  /** Rows in all. */
+  allRows: 200,
+  /** Characters in a row's label, and in any other short line. */
+  label: 120,
+  /** Pixels a side, for a picture. */
+  picture: 256,
+  /** Bytes of description, as JSON, without its pictures. */
+  bytes: 65536,
+  /** Tabs of its own a world may add. */
+  ownTabs: 2,
+  /** Characters in words shown for a moment. */
+  say: 200,
+  /** Characters of text a `copy` row carries. */
+  copy: 2e3,
+  /** Characters typed into a `field` row. */
+  field: 500,
+  /** Characters in the world's name. */
+  title: 80,
+  /** Characters in a tab's note, and in what a card says at length. */
+  note: 400,
+  /** Bytes in a file the visitor chose for a `file` row: 64 MB. */
+  file: 64 * 1024 * 1024,
+  /** Characters in that file's own name. A longer name is left out, and the file goes without one. */
+  fileName: 255,
+  /** Bytes in a picture or a clip a world hands up to be saved: 64 MB. */
+  save: 64 * 1024 * 1024,
+  /** How many a world may hand up in answer to one press. */
+  saves: 12
 };
 
 // packages/core/dist/item.js
@@ -5165,16 +5209,19 @@ function readGlb(bytes, budget = MODEL_BUDGET) {
   const list = (name) => Array.isArray(json[name]) ? json[name].filter((x) => !!x && typeof x === "object") : [];
   if (list("buffers").some((b) => b.uri !== void 0) || list("images").some((i) => i.uri !== void 0))
     return { ok: false, why: "outside" };
-  if (Array.isArray(json.extensionsRequired) && json.extensionsRequired.length > 0)
+  if (Array.isArray(json.extensionsRequired) && json.extensionsRequired.some((x) => !budget.extensions?.includes(x)))
     return { ok: false, why: "needs-more" };
   const accessors = list("accessors");
   const views = list("bufferViews");
   const meshes = list("meshes");
   let triangles = 0;
   let parts = 0;
+  let morphs = 0;
   for (const mesh of meshes) {
     for (const p of Array.isArray(mesh.primitives) ? mesh.primitives : []) {
       parts++;
+      if (Array.isArray(p.targets))
+        morphs = Math.max(morphs, p.targets.length);
       const mode = typeof p.mode === "number" ? p.mode : 4;
       const from = typeof p.indices === "number" ? p.indices : p.attributes?.POSITION;
       const count2 = typeof from === "number" && typeof accessors[from]?.count === "number" ? accessors[from].count : 0;
@@ -5192,6 +5239,11 @@ function readGlb(bytes, budget = MODEL_BUDGET) {
     texture = Math.max(texture, size[0], size[1]);
   }
   const materials = list("materials");
+  const joints = /* @__PURE__ */ new Set();
+  for (const skin of list("skins"))
+    for (const j of Array.isArray(skin.joints) ? skin.joints : [])
+      if (typeof j === "number")
+        joints.add(j);
   const count = {
     triangles,
     // What a renderer makes a mesh of is each part of each mesh.
@@ -5199,9 +5251,11 @@ function readGlb(bytes, budget = MODEL_BUDGET) {
     materials: materials.length,
     texture,
     animations: list("animations").map((a) => typeof a.name === "string" ? a.name : "").filter(Boolean).slice(0, 8),
-    materialNames: materials.map((m) => typeof m.name === "string" ? m.name : "")
+    materialNames: materials.map((m) => typeof m.name === "string" ? m.name : ""),
+    joints: joints.size,
+    morphs
   };
-  const within2 = parts > 0 && parts <= budget.meshes && triangles <= budget.triangles && count.materials <= budget.materials && texture <= budget.texture;
+  const within2 = parts > 0 && parts <= budget.meshes && triangles <= budget.triangles && count.materials <= budget.materials && texture <= budget.texture && count.joints <= (budget.joints ?? Infinity) && morphs <= (budget.morphs ?? Infinity);
   return within2 ? { ok: true, count } : { ok: false, why: "over-budget" };
 }
 

@@ -7,7 +7,7 @@ import {
   currentSettings,
   reportSettings,
   resumeFullscreen
-} from "./shared-LQ6USDK4.js";
+} from "./shared-TGCMK7IG.js";
 
 // packages/sdk/src/index.ts
 import {
@@ -498,7 +498,11 @@ function filesAnywhere() {
   }
   anywhere = came === false ? false : kept === "on";
   if (came === false) keep(false);
-  reportSettings("files-anywhere", () => filesAnywhere() ? {} : { filesAnywhere: false });
+  reportSettings(
+    "files-anywhere",
+    () => filesAnywhere() ? {} : { filesAnywhere: false },
+    (now) => void (now.filesAnywhere === false && anywhere !== false && setFilesAnywhere(false))
+  );
   return anywhere;
 }
 function setFilesAnywhere(on) {
@@ -2219,7 +2223,11 @@ import {
   shortNpub,
   verifyRoomPass,
   createRate,
-  itemCoordinate
+  itemCoordinate,
+  AVATAR_KIND,
+  LOOK_NOTE_LIMIT,
+  readLookModel,
+  verifyEvent
 } from "@nswp/core";
 var PLAY_WORD = /^(shot|hit|did|st|tint):/;
 var PLAY_SAID = { burst: 40, perSecond: 30 };
@@ -2234,6 +2242,18 @@ var hexToBytes3 = (hex) => {
   if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error("not a key");
   return Uint8Array.from(hex.match(/../g).map((b) => parseInt(b, 16)));
 };
+var AVATAR_EVERY_MS = 3e3;
+function modelOf(note, author) {
+  if (!verifyEvent(note) || note.kind !== AVATAR_KIND || note.pubkey !== author) return void 0;
+  return readLookModel(note) ?? void 0;
+}
+function modelFrom(text, author) {
+  try {
+    return modelOf(JSON.parse(text), author);
+  } catch {
+    return void 0;
+  }
+}
 function seenLook(member, said) {
   const look = said?.look ?? generatedLook(member.pubkey);
   if (member.identity) return { ...look, mark: markFor(member.identity) };
@@ -2288,6 +2308,8 @@ var RoomSession = class {
   origin;
   /** This visitor's own pass, as it is said to the others, and when it stops. */
   pass = null;
+  /** This visitor's own look note, as it is handed to each member: only where it is their pass's key's. */
+  avatar = null;
   /** The item this visitor says they are holding, by its coordinate, or "". */
   held = "";
   /** The colours this visitor chose for what they hold, as they are said ("tint:…"), or "". */
@@ -2340,6 +2362,14 @@ var RoomSession = class {
     this.self = { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: generatedLook(pubkey), recording: false };
     if (proven) Object.assign(this.self, { guest: false, identity: proven.pubkey, name: proven.name || shortNpub(proven.pubkey), ...proven.picture ? { picture: proven.picture } : {}, ...proven.about ? { about: proven.about } : {} });
     this.self.look = seenLook(this.self, mine?.ok ? mine.value : void 0);
+    if (proven && opts.avatar) {
+      const text = JSON.stringify(opts.avatar);
+      const model = text.length <= LOOK_NOTE_LIMIT ? modelOf(opts.avatar, proven.pubkey) : void 0;
+      if (model) {
+        this.avatar = text;
+        this.self.model = model;
+      }
+    }
     this.name = (opts.name ?? "lobby").slice(0, ROOM_LIMITS.maxNameChars);
     this.topic = roomTopic(world, this.name);
     this.relays = opts.relays ?? DEFAULT_RELAYS2;
@@ -2589,7 +2619,15 @@ var RoomSession = class {
         return;
       }
       if (typeof e.data === "string") {
-        if (e.data.startsWith("look:")) {
+        if (e.data.startsWith("avatar:")) {
+          const text = e.data.slice(7);
+          const now = Date.now();
+          if (text.length <= LOOK_NOTE_LIMIT && text !== peer.avatar && now - (peer.avatarAt ?? -AVATAR_EVERY_MS) >= AVATAR_EVERY_MS) {
+            peer.avatar = text;
+            peer.avatarAt = now;
+            this.redraw(peer);
+          }
+        } else if (e.data.startsWith("look:")) {
           const said = decodeLook(e.data.slice(5));
           if (said.ok) {
             peer.said = said.value;
@@ -2625,8 +2663,15 @@ var RoomSession = class {
   /** Draw a member again if what is known about them changes how they look. */
   redraw(peer) {
     const look = seenLook(peer.member, peer.said);
-    if (JSON.stringify(look) === JSON.stringify(peer.member.look)) return;
+    let model;
+    if (peer.member.identity && peer.avatar) {
+      if (peer.avatarRead?.text !== peer.avatar || peer.avatarRead.author !== peer.member.identity) peer.avatarRead = { text: peer.avatar, author: peer.member.identity, model: modelFrom(peer.avatar, peer.member.identity) };
+      model = peer.avatarRead.model;
+    }
+    if (JSON.stringify(look) === JSON.stringify(peer.member.look) && JSON.stringify(model) === JSON.stringify(peer.member.model)) return;
     peer.member.look = look;
+    if (model) peer.member.model = model;
+    else delete peer.member.model;
     this.emit("look", peer.member, look);
   }
   /**
@@ -2696,6 +2741,8 @@ var RoomSession = class {
       delete this.self.identity;
       delete this.self.picture;
       delete this.self.about;
+      delete this.self.model;
+      this.avatar = null;
       Object.assign(this.self, { guest: true, name: guestName(this.self.pubkey) });
       const mine = this.look ? decodeLook(this.look) : null;
       this.self.look = seenLook(this.self, mine?.ok ? mine.value : void 0);
@@ -2709,12 +2756,14 @@ var RoomSession = class {
    */
   introduce(ch) {
     if (!this.look && !this.pass && !this.held) return;
+    const avatar = this.pass ? this.avatar : null;
     let left = 4;
     const say = () => {
       if (this.closed || ch.readyState !== "open") return;
       try {
         if (this.look) ch.send(`look:${this.look}`);
         if (this.pass) ch.send(`id:${this.pass}`);
+        if (avatar) ch.send(`avatar:${avatar}`);
         if (this.held) ch.send(`hold:${this.held}`);
         if (this.held && this.tints) ch.send(this.tints);
       } catch {
@@ -3157,6 +3206,7 @@ function dropBrought() {
 var RETURN_KEY = "nswp:return-airlock";
 var SIGNER_KEY = "nswp:signer";
 var LOOK_KEY = "nswp:look";
+var AVATAR_KEY = "nswp:avatar";
 var PASS_KEY = "nswp:pass";
 var HOME_KEY = "nswp:at-home";
 var defaultAirlock;
@@ -3230,6 +3280,8 @@ var arrival = {
       try {
         if (cached.context.look) session()?.setItem(LOOK_KEY, cached.context.look);
         else session()?.removeItem(LOOK_KEY);
+        if (cached.context.avatar) session()?.setItem(AVATAR_KEY, cached.context.avatar);
+        else session()?.removeItem(AVATAR_KEY);
         const { pass, sessionKey } = cached.context;
         if (pass && sessionKey && verifyRoomPass2(pass, { origin: location.origin }).ok) session()?.setItem(PASS_KEY, JSON.stringify({ pass, sessionKey }));
         else session()?.removeItem(PASS_KEY);
@@ -3246,6 +3298,18 @@ var arrival = {
   look() {
     try {
       return session()?.getItem(LOOK_KEY) ?? void 0;
+    } catch {
+      return void 0;
+    }
+  },
+  /**
+   * Their look note (kind 37301), as the arrival named it (an `naddr`), where they came as themselves with one: it
+   * may name a model of their own (protocol/05-looks.md). Undefined if they came plain or have none. Kept for this
+   * tab's session only. It counts only if its author is the key their pass names: `ownLookNote` checks that.
+   */
+  avatar() {
+    try {
+      return session()?.getItem(AVATAR_KEY) ?? void 0;
     } catch {
       return void 0;
     }

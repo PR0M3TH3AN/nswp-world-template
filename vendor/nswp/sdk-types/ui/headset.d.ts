@@ -11,4 +11,6 @@ export interface HeadsetOffer {
  * screen: with the link, or Escape. Whoever put it up takes it down (`remove`), once a session has started or
  * they have chosen to stay.
  */
-export declare function offerHeadset(title: string, enter: () => void, stay: () => void): HeadsetOffer;
+export declare function offerHeadset(title: string, enter: () => void, stay: () => void, opts?: {
+    asked?: boolean;
+}): HeadsetOffer;

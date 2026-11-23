@@ -48,23 +48,28 @@ function watch() {
 }
 
 // packages/sdk/src/settings.ts
-import { cleanSettings } from "@nswp/core";
+import { cleanMenuSettings, cleanSettings } from "@nswp/core";
 var arrived2 = {};
 var parts = /* @__PURE__ */ new Map();
+var takers = /* @__PURE__ */ new Map();
 function arriveWith(settings) {
   arrived2 = cleanSettings(settings);
 }
 function arrivedSettings() {
   return arrived2;
 }
-function reportSettings(part, now) {
+function reportSettings(part, now, take) {
   parts.set(part, now);
+  if (take) takers.set(part, take);
+  else takers.delete(part);
   return () => {
-    if (parts.get(part) === now) parts.delete(part);
+    if (parts.get(part) !== now) return;
+    parts.delete(part);
+    takers.delete(part);
   };
 }
 function currentSettings() {
-  let out = { ...arrived2 };
+  let out = cleanSettings(arrived2);
   for (const now of parts.values()) {
     let said = {};
     try {
@@ -84,8 +89,35 @@ var framed = () => {
     return false;
   }
 };
+var copiedRefused = (copy, inFrame = framed()) => inFrame ? `What you copied can't be read in a world shown inside another page. Open this world by its own address, ${copy.charAt(0).toLowerCase()}${copy.slice(1)}, and press again.` : `What you copied couldn't be read here. ${copy}, allow this site to read what you copy, and press again.`;
+var mayShareScreen = (inFrame = framed()) => {
+  if (!inFrame) return true;
+  try {
+    const policy = document;
+    const says = policy.permissionsPolicy?.allowsFeature ?? policy.featurePolicy?.allowsFeature;
+    return typeof says === "function" ? says.call(policy.permissionsPolicy ?? policy.featurePolicy, "display-capture") === true : null;
+  } catch {
+    return null;
+  }
+};
+var framedBy = () => {
+  try {
+    const above = framed() ? location.ancestorOrigins?.[0] : void 0;
+    return above ? new URL(above).host : "";
+  } catch {
+    return "";
+  }
+};
+var screenNotHere = (by = framedBy()) => {
+  const named = `Sharing your screen isn't available in a world shown inside ${by}.`;
+  return [by && named.length <= 120 ? named : "Sharing your screen isn't available in a world shown inside another page.", "Open this world by its own address."];
+};
 var holds = false;
 var filled = false;
+var menuSpoken = 0;
+var saidHereAt = null;
+var menuHearer = null;
+var menuUnheard = [];
 var met = false;
 var watchers = /* @__PURE__ */ new Set();
 var signInAt = null;
@@ -143,6 +175,11 @@ function meetClient() {
     if (e.source !== window.parent) return;
     const said = e.data;
     if (!said || typeof said !== "object") return;
+    if (said.nswp === "menu") {
+      if (menuHearer) menuHearer(said);
+      else if (menuSpoken && menuUnheard.length < 32) menuUnheard.push(said);
+      return;
+    }
     if (said.nswp === "sign-in" && typeof said.open === "boolean") {
       const failed = !said.open && said.failed === true;
       if (failed) {
@@ -167,9 +204,17 @@ function meetClient() {
     at = `${location.pathname}${location.search}`.slice(0, 300);
   } catch {
   }
-  say({ nswp: "here", at });
+  const hello = () => {
+    saidHereAt = performance.now();
+    say({ nswp: "here", at, ...menuSpoken ? { menu: menuSpoken } : {} });
+  };
+  if (typeof queueMicrotask === "function") queueMicrotask(hello);
+  else hello();
 }
 meetClient();
+var saver = null;
+var handUp = (file) => saver?.handUp(file) ?? false;
+var savesWait = () => saver?.waits() ?? false;
 
 // packages/sdk/src/ui/fullscreen.ts
 var resumed = false;
@@ -379,7 +424,7 @@ async function sendWell(event, o) {
       tried.push(...rest);
     }
   }
-  if (took === 0 && mayBackUp(tried, !!o.publish) && event.kind !== WRAP_KIND) {
+  if (took === 0 && maySendBackUp(tried, o) && event.kind !== WRAP_KIND) {
     const more = (await foundRelays({ not: tried, now, ...o.query ? { query: o.query } : {} })).open;
     for (let round = 0; round < BACKUP_ROUNDS && took === 0; round++) {
       const batch = more.slice(round * BACKUP_AT_ONCE, (round + 1) * BACKUP_AT_ONCE);
@@ -437,13 +482,14 @@ function foundRelays(o = {}) {
 }
 var BACKUP_AT_ONCE = 4;
 var BACKUP_ROUNDS = 3;
-var mayBackUp = (relays, injected) => backup && relays.length > 0 && (injected || typeof document !== "undefined");
+var mayAskBackUp = (relays, o) => backup && relays.length > 0 && (!!o.query || typeof document !== "undefined");
+var maySendBackUp = (relays, o) => backup && relays.length > 0 && (o.publish ? !!o.query : !o.query && typeof document !== "undefined");
 async function queryBacked(relays, filter, timeoutMs = 4e3, o = {}) {
   const query = o.query ?? queryRelays;
   const now = o.now ?? (() => Date.now());
   const got = await query(relays, filter, timeoutMs);
   learnFrom(got.relays, now());
-  if (!mayBackUp(relays, !!o.query) || Object.values(got.relays).some((said) => said === "eose")) return got;
+  if (!mayAskBackUp(relays, o) || Object.values(got.relays).some((said) => said === "eose")) return got;
   const more = (await foundRelays({ not: relays, ...o })).open.slice(0, BACKUP_AT_ONCE);
   if (!more.length) return got;
   const again = await query(more, filter, timeoutMs).catch(() => null);
@@ -457,7 +503,7 @@ async function publishBacked(relays, event, o = {}) {
   const now = o.now ?? (() => Date.now());
   const sent = await publish(relays, event);
   learnFrom(sent.relays, now());
-  if (!mayBackUp(relays, !!o.publish) || event.kind === WRAP_KIND || Object.values(sent.relays).some((said) => said === "ok")) return sent;
+  if (!maySendBackUp(relays, o) || event.kind === WRAP_KIND || Object.values(sent.relays).some((said) => said === "ok")) return sent;
   const more = (await foundRelays({ not: relays, ...o.query ? { query: o.query } : {}, now })).open;
   const all = { ...sent.relays };
   for (let round = 0; round < BACKUP_ROUNDS; round++) {
@@ -483,12 +529,17 @@ export {
   arrivedSettings,
   reportSettings,
   currentSettings,
+  copiedRefused,
+  mayShareScreen,
+  screenNotHere,
   setMenuPlace,
   onClientScreen,
   clientSignsInAt,
   clientPanelOpen,
   onClientSignIn,
   askClientForSignIn,
+  handUp,
+  savesWait,
   prefersFullscreen,
   holdFullscreen,
   resumeFullscreen,

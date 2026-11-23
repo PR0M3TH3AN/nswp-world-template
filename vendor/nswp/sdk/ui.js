@@ -12,25 +12,21 @@ import {
   addDoorControls,
   ago,
   cleanTheme,
+  createControls,
   createHeldButton,
   createHoldWatch,
-  createUiChat,
-  createUiFeed,
   loadPicture,
-  loadVisitorTheme,
   onChatChange,
   onPicturesChange,
   resolveTheme,
   rgb,
-  saveVisitorTheme,
   setShowsChat,
   setShowsPictures,
   showsChat,
   showsPictures,
   vouchedWords
-} from "./shared-FYLN3PQO.js";
+} from "./shared-STBQBWFU.js";
 import {
-  arrivedSettings,
   askWell,
   escapeDoes,
   escapeHeld,
@@ -44,358 +40,41 @@ import {
   queryBacked,
   relayBackup,
   relaysWell,
-  reportSettings,
   sendWell,
   setMenuPlace
-} from "./shared-LQ6USDK4.js";
+} from "./shared-TGCMK7IG.js";
 import "./shared-QLSLERQ3.js";
 
-// packages/sdk/src/ui/model.ts
-import { cleanSettings, PINS_MOST } from "@nswp/core";
+// packages/sdk/src/ui/hud.ts
+import { MENU_LIMITS, menuFileKind } from "@nswp/core";
 
-// packages/sdk/src/ui/letters.ts
-import { cleanMessage, MESSAGE_LIMITS } from "@nswp/core";
-function createUiLetters(changed, now = () => Date.now()) {
-  let opts = null;
-  let waiting = [];
-  let said = "";
-  let version = 0;
-  let count = 0;
-  const bump = () => {
-    version++;
-    changed();
-  };
+// packages/sdk/src/ui/port.ts
+function portHere(controls) {
   return {
-    attach(next) {
-      opts = next;
-      waiting = [];
-      said = "";
-      bump();
+    view: () => controls.view(),
+    subscribe: (fn) => controls.subscribe(fn),
+    run: (id, typed, file) => controls.run(id, typed, file),
+    say: (text) => controls.say(text),
+    onSay: (fn) => controls.onSay(fn),
+    signal: (name) => controls.signal(name),
+    onSignal: (fn) => controls.onSignal(fn),
+    setPinned: (tab, pinned) => controls.setPinned(tab, pinned),
+    get presence() {
+      return controls.presence;
     },
-    detach() {
-      if (!opts) return;
-      opts = null;
-      waiting = [];
-      said = "";
-      bump();
+    get theme() {
+      return controls.theme;
     },
-    touch: bump,
-    seen() {
-      opts?.seen?.();
+    get chat() {
+      return controls.chat;
     },
-    send(text) {
-      const mine = opts;
-      if (!mine) return "There is nobody to write to: choose someone first.";
-      const words = cleanMessage(text);
-      if (!words) return null;
-      const line = { key: `new-${++count}`, mine: true, who: "You", text: words, at: Math.floor(now() / 1e3), state: "sending" };
-      waiting.push(line);
-      said = "";
-      bump();
-      void mine.send(words).catch(() => ({ ok: false, said: "That wasn't sent." })).then((how) => {
-        if (opts !== mine) return;
-        if (how.ok) waiting = waiting.filter((l) => l !== line);
-        else line.state = "failed";
-        said = how.said;
-        bump();
-      });
-      return null;
+    get feed() {
+      return controls.feed;
     },
-    view() {
-      const name = typeof opts?.with === "function" ? opts.with() : opts?.with ?? "";
-      const lines = opts ? [...opts.lines().map((l) => ({ ...l, state: "out" })), ...waiting].sort((a, b) => a.at - b.at) : [];
-      return {
-        ready: !!opts,
-        title: name ? `${name}, privately` : "Private messages",
-        with: name,
-        lines,
-        said,
-        lead: name ? `Private: only you and ${name} can read what is written here. A relay is told who it is for, and nothing more.` : "",
-        limit: MESSAGE_LIMITS.chars,
-        version
-      };
+    get letters() {
+      return controls.letters;
     }
   };
-}
-
-// packages/sdk/src/ui/model.ts
-var PRESENCES = ["full", "quiet", "hidden"];
-var CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"];
-function cleanKeys(now, k) {
-  const out = { ...now };
-  if (k && (k.menu === null || typeof k.menu === "string" && k.menu.length === 1)) out.menu = k.menu === null ? null : k.menu.toLowerCase();
-  if (k && typeof k.hotbar === "boolean") out.hotbar = k.hotbar;
-  if (k && (k.chat === null || typeof k.chat === "string" && k.chat.length === 1)) out.chat = k.chat === null ? null : k.chat.toLowerCase();
-  return out;
-}
-var read = (t) => typeof t === "function" ? t() : t ?? "";
-var STANDARD = [
-  { id: "travel", label: "Travel", icon: "door" },
-  // Who the visitor is here. It has something in it only for one who came through a client (ui/identity.ts).
-  { id: "you", label: "You", icon: "you" },
-  // How other people see them. A visitor's own client fills this in, in its own place: a look is changed there and
-  // nowhere else (ui/identity.ts, protocol/05-looks.md). In a world it is empty, and isn't shown.
-  { id: "figure", label: "Your look", icon: "look" },
-  { id: "room", label: "Room", icon: "room" },
-  { id: "people", label: "People", icon: "people" },
-  // Who the visitor follows (following.ts). Empty, and not shown, for a guest.
-  { id: "following", label: "Following", icon: "list" },
-  // Their private messages (messaging.ts). Empty, and not shown, for a guest.
-  { id: "messages", label: "Messages", icon: "chat" },
-  // A world's boards, where it keeps score (scoring.ts). Added by the world; empty, and not shown, otherwise.
-  { id: "scores", label: "Scores", icon: "list" },
-  // What a world marks, and which of it the visitor has earned (achieving.ts). Added by the world, like Scores.
-  { id: "achievements", label: "Achievements", icon: "check" },
-  // The items a visitor has, and the one in their hand (bagging.ts). Empty, and not shown, for a guest.
-  { id: "bag", label: "Bag", icon: "save" },
-  { id: "camera", label: "Camera", icon: "camera" },
-  { id: "panels", label: "Panels", icon: "panel" },
-  { id: "view", label: "View", icon: "vr" },
-  { id: "moving", label: "Moving", icon: "step" },
-  { id: "sound", label: "Sound", icon: "sound" },
-  // How the controls themselves look. Called "Display", since "your look" is how other people see you.
-  { id: "look", label: "Display", icon: "look", note: "How these controls look to you: their colour, the size of their text, whether things move. They go with you from world to world." },
-  { id: "help", label: "Help", icon: "help" }
-];
-var STANDARD_ORDER = ["back", "home", "go-home", "doors", "list", "vr", "room-join", "room-mic", "room-chat", "jump"];
-var rank = (id) => {
-  const i = STANDARD_ORDER.indexOf(id);
-  return i === -1 ? STANDARD_ORDER.length : i;
-};
-var inOrder = (list) => list.map((a, i) => [a, i]).sort((x, y) => rank(x[0].id) - rank(y[0].id) || x[1] - y[1]).map((x) => x[0]);
-var PINS_KEY = "nswp:ui:pins";
-function loadPins() {
-  try {
-    const kept = globalThis.localStorage?.getItem(PINS_KEY);
-    return kept === null || kept === void 0 ? null : cleanSettings({ pins: JSON.parse(kept) }).pins ?? null;
-  } catch {
-    return null;
-  }
-}
-function savePins(pins) {
-  try {
-    globalThis.localStorage?.setItem(PINS_KEY, JSON.stringify(pins));
-  } catch {
-  }
-}
-var LOADING_WORDS = 80;
-function cleanLoading(state) {
-  if (!state || typeof state !== "object") return null;
-  const raw = typeof state.words === "string" ? state.words : "";
-  const words = [...raw.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim()].slice(0, LOADING_WORDS).join("").trim();
-  const f = state.fraction;
-  const fraction = typeof f === "number" && Number.isFinite(f) ? Math.min(1, Math.max(0, f)) : null;
-  return { fraction, words };
-}
-function createControls(opts) {
-  const sections = STANDARD.map((s) => ({ ...s }));
-  for (const s of opts.sections ?? []) addSection(s);
-  const actions = [];
-  const listeners = /* @__PURE__ */ new Set();
-  const sayers = /* @__PURE__ */ new Set();
-  const signals = /* @__PURE__ */ new Set();
-  let visitor = loadVisitorTheme();
-  const came = arrivedSettings();
-  const brought = { ...came.text !== void 0 ? { scale: came.text } : {}, ...came.motion !== void 0 ? { motion: came.motion } : {}, ...came.wrist !== void 0 ? { wrist: came.wrist } : {} };
-  if (Object.keys(brought).length) {
-    visitor = { ...visitor, ...brought };
-    saveVisitorTheme(visitor);
-  }
-  reportSettings("look", () => ({ ...visitor.scale !== void 0 ? { text: visitor.scale } : {}, ...visitor.motion !== void 0 ? { motion: visitor.motion } : {}, ...visitor.wrist !== void 0 ? { wrist: visitor.wrist } : {} }));
-  let pins = loadPins();
-  if (came.pins !== void 0) {
-    pins = [...came.pins];
-    savePins(pins);
-  }
-  reportSettings("pins", () => pins ? { pins } : {});
-  let theme = resolveTheme(opts.theme, visitor);
-  let target = "";
-  let detail = [];
-  let loading = null;
-  let presence = PRESENCES.includes(opts.presence) ? opts.presence : "full";
-  let corner = CORNERS.includes(opts.corner) ? opts.corner : "top-left";
-  let keys = cleanKeys({ menu: "m", hotbar: true, chat: "t" }, opts.keys);
-  let claimed = false;
-  const changed = () => {
-    for (const fn of listeners) fn();
-  };
-  const chat = createUiChat(changed);
-  const feed = createUiFeed(changed);
-  const letters = createUiLetters(changed);
-  function addSection(s) {
-    const i = sections.findIndex((x) => x.id === s.id);
-    if (i === -1) sections.push({ ...s });
-    else sections[i] = { ...sections[i], ...s };
-  }
-  const controls = {
-    get theme() {
-      return theme;
-    },
-    add(...more) {
-      for (const a of more) {
-        const i = actions.findIndex((x) => x.id === a.id);
-        if (i === -1) actions.push(a);
-        else actions[i] = a;
-      }
-      changed();
-    },
-    has: (id) => actions.some((x) => x.id === id),
-    remove(id) {
-      const i = actions.findIndex((x) => x.id === id);
-      if (i !== -1) actions.splice(i, 1);
-      changed();
-    },
-    addSection(s) {
-      addSection(s);
-      changed();
-    },
-    get presence() {
-      return presence;
-    },
-    setPresence(next) {
-      if (!PRESENCES.includes(next) || next === presence) return;
-      presence = next;
-      changed();
-    },
-    setCorner(next) {
-      if (!CORNERS.includes(next) || next === corner) return;
-      corner = next;
-      changed();
-    },
-    setKeys(next) {
-      keys = cleanKeys(keys, next);
-      changed();
-    },
-    claimInput(next) {
-      if (claimed === next) return;
-      claimed = next;
-      changed();
-    },
-    setLoading(state) {
-      const next = cleanLoading(state);
-      if (JSON.stringify(next) === JSON.stringify(loading)) return;
-      loading = next;
-      changed();
-    },
-    setTarget(text, more = []) {
-      const next = text ? more.filter((line) => typeof line === "string" && line.trim()).slice(0, 4) : [];
-      if (text === target && next.join("\n") === detail.join("\n")) return;
-      target = text;
-      detail = next;
-      changed();
-    },
-    say(text) {
-      for (const fn of sayers) fn(text);
-    },
-    run(id) {
-      const a = actions.find((x) => x.id === id);
-      if (!a || a.hidden?.() || a.kind === "line") return false;
-      for (const fn of signals) fn("press");
-      void Promise.resolve().then(() => a.act()).catch(() => {
-      }).finally(changed);
-      return true;
-    },
-    setTheme(patch, keep2 = false) {
-      if (keep2) {
-        visitor = { ...visitor, ...patch };
-        saveVisitorTheme(visitor);
-      }
-      theme = resolveTheme({ ...opts.theme, ...keep2 ? {} : patch }, visitor);
-      changed();
-    },
-    get pins() {
-      return pins ?? [];
-    },
-    setPinned(section, pinned) {
-      const now = pins ?? [];
-      if (pinned === now.includes(section)) return true;
-      if (pinned && (now.length >= PINS_MOST || cleanSettings({ pins: [section] }).pins?.length !== 1)) return false;
-      pins = pinned ? [...now, section] : now.filter((id) => id !== section);
-      savePins(pins);
-      changed();
-      return true;
-    },
-    view() {
-      const showing = inOrder(actions.filter((a) => !a.hidden?.()));
-      const pressable = showing.filter((a) => a.kind !== "line");
-      const bar = [...pressable.filter((a) => a.hotbar && a.lead), ...pressable.filter((a) => a.hotbar && !a.lead)].slice(0, 6);
-      const item = (a) => {
-        const slot = bar.indexOf(a);
-        return { id: a.id, label: read(a.label), icon: (typeof a.icon === "function" ? a.icon() : a.icon) ?? null, on: a.on ? a.on() : null, tone: a.tone ?? "normal", key: slot === -1 ? "" : String(slot + 1), short: read(a.short) || read(a.label), kind: a.kind ?? "button", color: read(a.color), ...a.picture ? { picture: a.picture } : {}, mark: (typeof a.mark === "function" ? a.mark() : a.mark) ?? null, faint: a.faint?.() === true };
-      };
-      const known = new Set(sections.map((s) => s.id));
-      const extra = [...new Set(showing.map((a) => a.section ?? "travel").filter((id) => !known.has(id)))].map((id) => ({ id, label: id }));
-      const shown = [...sections, ...extra].map((s) => ({ id: s.id, label: s.label, icon: s.icon ?? null, note: read(s.note), card: s.card?.() ?? null, items: showing.filter((a) => (a.section ?? "travel") === s.id).map(item), pinned: (pins ?? []).includes(s.id) })).filter((s) => s.items.length > 0 || s.note || s.card);
-      return {
-        title: opts.title,
-        address: opts.address ?? "",
-        target,
-        detail,
-        loading,
-        sections: shown,
-        hotbar: bar.map(item),
-        // Only tabs this place has: a tab pinned in another world that isn't here is kept, and not shown.
-        pins: (pins ?? []).flatMap((id, i) => {
-          const tab = shown.find((x) => x.id === id);
-          const n = bar.length + i + 1;
-          return tab ? [{ id, label: tab.label, icon: tab.icon, key: n <= 9 ? String(n) : "" }] : [];
-        }),
-        pinsFull: (pins ?? []).length >= PINS_MOST,
-        theme,
-        presence,
-        corner,
-        keys: claimed ? { menu: null, hotbar: false, chat: null } : keys,
-        chat: chat.view(),
-        feed: feed.view(),
-        letters: letters.view()
-      };
-    },
-    subscribe(fn) {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
-    },
-    signal(name) {
-      for (const fn of signals) {
-        try {
-          fn(name);
-        } catch {
-        }
-      }
-    },
-    onSignal(fn) {
-      signals.add(fn);
-      return () => signals.delete(fn);
-    },
-    onSay(fn) {
-      sayers.add(fn);
-      return () => sayers.delete(fn);
-    },
-    chat,
-    feed,
-    letters
-  };
-  const keep = (patch) => controls.setTheme(patch, true);
-  controls.add(
-    ...UI_PRESETS.map(
-      (p) => ({ id: `look-${p.id}`, section: "look", kind: "swatch", color: p.accent, label: p.label, on: () => theme.accent === p.accent, act: () => keep({ accent: p.accent }) })
-    ),
-    { id: "look-size", section: "look", icon: "size", label: () => theme.scale > 1 ? "Text: larger" : "Text: normal", on: () => theme.scale > 1, act: () => keep({ scale: theme.scale > 1 ? 1 : 1.25 }) },
-    { id: "look-motion", section: "look", icon: "motion", label: () => theme.motion ? "Motion: on" : "Motion: off", on: () => theme.motion, act: () => keep({ motion: !theme.motion }) },
-    {
-      id: "look-wrist",
-      section: "look",
-      icon: "menu",
-      label: () => theme.wrist === "off" ? "Wrist console: off" : `Wrist console: ${theme.wrist} hand`,
-      on: () => theme.wrist !== "off",
-      act: () => keep({ wrist: theme.wrist === "left" ? "right" : theme.wrist === "right" ? "off" : "left" })
-    },
-    { id: "look-reset", section: "look", icon: "turn", label: "Back to this world's look", hidden: () => Object.keys(visitor).length === 0, act: () => {
-      visitor = {};
-      saveVisitorTheme({});
-      theme = resolveTheme(opts.theme, visitor);
-    } }
-  );
-  return controls;
 }
 
 // packages/sdk/src/ui/hud.ts
@@ -514,6 +193,7 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .chat[data-state="peek"] .frame { background: none; border: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
 .chat header { display: flex; align-items: center; gap: 8px; padding: 9px 8px 8px 14px; border-bottom: 1px solid rgba(var(--accent), .22); }
 .chat header b { flex: 1; font-weight: 650; }
+.chat .whose { margin: 0; padding: 8px 14px 0; font-size: .86em; color: rgba(var(--ink), .6); }
 .chat header button { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: rgba(var(--ink), .7); }
 .chat header button:hover { color: rgb(var(--ink)); background: rgba(var(--ink), .1); }
 .chat header svg { width: 1.2em; height: 1.2em; }
@@ -633,7 +313,20 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .line svg { flex: none; margin-top: 1px; opacity: .55; }
 .line.on { color: rgb(var(--ink)); }
 .line.on svg { opacity: 1; color: rgb(var(--accent)); }
+/* The chat's pane and nothing else, for a world whose client has the menu. */
+:host(.chat-only) :is(.corner, .id, .menu, .quiet, .as, .full, .says, .sheet, .low) { display: none !important; }
 .row .grow { flex: 1; min-width: 0; }
+/* A row typed into: a box and its button, and under them where what is typed goes. */
+.field { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; gap: 6px 8px; margin: 0; padding: 8px 12px; border-radius: 10px;
+  border: 1px solid rgba(var(--ink), .12); background: rgba(var(--ink), .03); }
+.field input { min-width: 0; min-height: 40px; padding: 6px 10px; border-radius: 8px; font: inherit; color: inherit;
+  border: 1px solid rgba(var(--ink), .25); background: rgba(var(--glass), .6); }
+.field input:focus-visible { outline: 2px solid rgb(var(--ink)); outline-offset: 2px; }
+.field button { min-height: 40px; padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(var(--accent), .7); background: rgba(var(--accent), .13); }
+.field .to { grid-column: 1 / -1; margin: 0; font-size: .86em; color: rgba(var(--ink), .6); }
+/* A row that takes a file: its button, and under it where the file goes. */
+.takes { grid-column: 1 / -1; display: grid; gap: 4px; }
+.takes .to { margin: 0; padding: 0 12px; font-size: .86em; color: rgba(var(--ink), .6); }
 .row .state { font-size: .86em; color: rgba(var(--ink), .6); }
 .row[aria-pressed="true"] { border-color: rgba(var(--accent), .8); }
 .row[aria-pressed="true"] .state { color: rgb(var(--accent)); }
@@ -665,6 +358,10 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .person blockquote { grid-column: 1 / -1; margin: 7px 0 0; padding: 1px 0 1px 10px; border-left: 2px solid rgba(var(--accent), .6); overflow-wrap: anywhere; }
 .person .now { grid-column: 1 / -1; margin: 5px 0 0; font-size: .9em; color: rgb(var(--accent)); }
 
+/* A world's part of a tab its client draws: the world's name over its rows, and before its words. */
+.from { grid-column: 1 / -1; margin: 6px 0 0; padding: 0 12px; font-size: .82em; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: rgba(var(--ink), .55); }
+.note.said { border-left-color: rgba(var(--ink), .3); }
+.note.said b { color: rgba(var(--ink), .9); margin-right: .45em; }
 .note { margin: 0; padding: 4px 12px 0 12px; color: rgba(var(--ink), .78); border-left: 2px solid rgba(var(--accent), .6); margin-left: 12px; font-size: .95em; }
 .note:empty { display: none; }
 .foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 0 12px 12px; }
@@ -764,8 +461,11 @@ function el(tag, attrs = {}, ...children) {
   for (const c of children) if (c) e.append(c);
   return e;
 }
-function mountHud(controls, opts = {}) {
+function mountMenu(port, opts = {}) {
+  const controls = port;
   const host = document.createElement("nswp-hud");
+  const chatOnly = opts.only === "chat";
+  if (chatOnly) host.classList.add("chat-only");
   const root = host.attachShadow({ mode: "open" });
   let style = "";
   try {
@@ -871,11 +571,13 @@ function mountHud(controls, opts = {}) {
   let barDrawn = "";
   const rows = el("div", { class: "rows" });
   const note = el("p", { class: "note" });
+  const said = el("p", { class: "note said", hidden: "" });
   const close = el("button", { class: "close", type: "button" }, "Close");
   const pinWords = el("span");
   const pinIt = el("button", { class: "pin-it", type: "button", "aria-pressed": "false" }, icon("pin"), pinWords);
-  const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabbar, rows, note, el("div", { class: "foot" }, pinIt, close));
+  const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabbar, rows, note, said, el("div", { class: "foot" }, pinIt, close));
   const chatTitle = el("b");
+  const chatWhose = el("p", { class: "whose", hidden: "" });
   const tabRoom = el("button", { type: "button", class: "tab", role: "tab" }, "Room chat");
   const tabFeed = el("button", { type: "button", class: "tab", role: "tab" }, "My public feed");
   const tabLetters = el("button", { type: "button", class: "tab", role: "tab" }, "Private messages");
@@ -890,14 +592,81 @@ function mountHud(controls, opts = {}) {
   const chatHint = el("p", { class: "hint", role: "status" });
   const chatSend = el("button", { type: "submit" }, "Send");
   const chatForm = el("form", {}, chatField, chatSend);
-  const chat = el("section", { class: "chat", "aria-label": "Room chat", "data-state": "closed", "data-tab": "room" }, el("div", { class: "frame glass" }, el("header", {}, chatTitle, chatTabs, chatClose), feedLead, chatEmpty, chatLines, chatHint, feedSaid, chatForm));
+  const chat = el("section", { class: "chat", "aria-label": "Room chat", "data-state": "closed", "data-tab": "room" }, el("div", { class: "frame glass" }, chatWhose, el("header", {}, chatTitle, chatTabs, chatClose), feedLead, chatEmpty, chatLines, chatHint, feedSaid, chatForm));
   root.append(style, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, el("div", { class: "low" }, loadingLine, target, bar));
   (opts.parent ?? document.body).append(host);
   let open = false;
   let section = "";
   let chose = false;
   let drawn = "";
-  const press = (item) => controls.run(item.id);
+  const marks = /* @__PURE__ */ new WeakMap();
+  let marked = 0;
+  const markOf = (picture) => {
+    if (!picture || typeof picture !== "object") return 0;
+    let n = marks.get(picture);
+    if (!n) marks.set(picture, n = ++marked);
+    return n;
+  };
+  const kindsWords = (accept) => accept.length === 1 ? accept[0] === "image" ? "pictures" : "video" : "pictures and video";
+  const fileRow = (item) => {
+    const accept = item.accept ?? [];
+    const picker = el("input", { type: "file", accept: accept.map((k) => `${k}/*`).join(","), hidden: "" });
+    picker.addEventListener("cancel", () => picker.remove());
+    picker.addEventListener("change", () => {
+      const file = picker.files?.[0];
+      picker.remove();
+      if (!file) return;
+      const kind = menuFileKind(file.type);
+      if (!kind || !accept.includes(kind)) return controls.say(`Only ${kindsWords(accept)} can go here.`);
+      if (file.size > MENU_LIMITS.file) return controls.say("That file is too large to hand over: 64 MB at most.");
+      if (file.size < 1) return controls.say("That file is empty.");
+      controls.run(item.id, void 0, file);
+    });
+    root.append(picker);
+    picker.click();
+    return true;
+  };
+  const press = (item) => item.kind === "file" ? fileRow(item) : controls.run(item.id);
+  const copyRow = (item) => {
+    const text = item.copy ?? "";
+    void (text && navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject(new Error("nothing to copy with"))).then(
+      () => controls.say("Copied."),
+      () => controls.say(text ? `It couldn't be copied here. It is: ${text}`.slice(0, 200) : "There is nothing to copy.")
+    );
+    press(item);
+  };
+  const fields = /* @__PURE__ */ new Map();
+  const typingNow = () => {
+    let at = document.activeElement;
+    while (at?.shadowRoot?.activeElement) at = at.shadowRoot.activeElement;
+    return [...fields.values()].find((f) => f.input === at);
+  };
+  const drawField = (item, whose) => {
+    let f = fields.get(item.id);
+    if (!f) {
+      const input = el("input", { type: "text", maxlength: String(MENU_LIMITS.field), autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false", enterkeyhint: "done" });
+      const button = el("button", { type: "submit" });
+      const to = el("p", { class: "to" });
+      const form = el("form", { class: "field" }, input, button, to);
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const text = input.value;
+        if (!text.trim()) return;
+        input.value = "";
+        controls.run(item.id, text);
+      });
+      f = { form, input, button, to };
+      fields.set(item.id, f);
+    }
+    f.input.setAttribute("aria-label", item.label);
+    f.button.textContent = item.label;
+    f.to.textContent = whose ? `What you type here goes to ${whose}.` : "";
+    return f.form;
+  };
+  const clearFields = () => {
+    for (const f of fields.values()) f.input.value = "";
+    fields.clear();
+  };
   const openPin = (id2) => {
     controls.signal("press");
     if (open && section === id2) setOpen(false);
@@ -929,6 +698,17 @@ function mountHud(controls, opts = {}) {
         tick2();
       };
       requestAnimationFrame(begin);
+    }
+    if (card.face && !paint) {
+      const from = card.face;
+      const copy = document.createElement("canvas");
+      copy.width = Math.max(1, Math.min(256, Math.round(from.width ?? 128)));
+      copy.height = Math.max(1, Math.min(256, Math.round(from.height ?? 128)));
+      try {
+        copy.getContext("2d")?.drawImage(card.face, 0, 0, copy.width, copy.height);
+        face.replaceChildren(copy);
+      } catch {
+      }
     }
     if (card.picture) {
       void loadPicture(card.picture).then((drawn2) => {
@@ -998,6 +778,10 @@ function mountHud(controls, opts = {}) {
     if (c.ready && newest && newest !== chatNewest && chatState !== "open" && !c.lines[c.lines.length - 1].mine) setChatState("peek");
     chatNewest = newest;
     const showing = chatState === "open" ? dockTab : "room";
+    if (chatOnly) {
+      chatWhose.hidden = false;
+      chatWhose.textContent = controls.view().title;
+    }
     const now = JSON.stringify([chatState, showing, c.version, c.ready, f.version, f.ready, l.version, l.ready, showing === "feed" ? [Math.floor(Date.now() / 6e4), f.lead] : showing === "letters" ? [Math.floor(Date.now() / 6e4), l.title] : 0]);
     if (now === chatDrawn) return;
     chatDrawn = now;
@@ -1221,7 +1005,9 @@ function mountHud(controls, opts = {}) {
     }
     drawChat(view);
     if (!view.sections.some((s) => s.id === section)) section = view.sections[0]?.id ?? "";
-    const now = JSON.stringify([view.hotbar, view.pins, view.pinsFull, view.sections, section, open, view.presence]);
+    const inSight = open ? view.sections.find((s) => s.id === section) : void 0;
+    const pictured = inSight ? [inSight.card?.face ? markOf(inSight.card.face) : 0, ...inSight.items.map((i) => i.picture ? markOf(i.picture()) : 0)] : [];
+    const now = JSON.stringify([view.hotbar, view.pins, view.pinsFull, view.sections, section, open, view.presence, pictured]);
     if (now === drawn) return;
     drawn = now;
     const here = view.sections.find((s) => s.id === section);
@@ -1335,17 +1121,24 @@ function mountHud(controls, opts = {}) {
         item.on !== null && el("span", { class: "state" }, item.on ? "On" : "Off"),
         item.key ? el("kbd", { class: "mono" }, item.key) : null
       );
-      b.addEventListener("click", () => press(item));
+      b.addEventListener("click", () => item.kind === "copy" ? copyRow(item) : press(item));
       return b;
     };
+    const drawFile = (item, whose) => el("div", { class: "takes" }, drawRow(item), whose ? el("p", { class: "to" }, `The file you choose goes to ${whose}.`) : null);
     const drawLine = (item) => el("p", { class: `line ${item.on ? "on" : "off"}` }, icon(item.icon), el("span", {}, item.label));
     const lay = (items) => {
       const laid2 = [];
       let run = null;
+      let whose = "";
       for (const item of items) {
-        if (item.kind === "button" || item.kind === "line") {
+        if ((item.from ?? "") !== whose) {
+          whose = item.from ?? "";
           run = null;
-          laid2.push(item.kind === "line" ? drawLine(item) : drawRow(item));
+          if (whose) laid2.push(el("p", { class: "from" }, whose));
+        }
+        if (item.kind === "button" || item.kind === "line" || item.kind === "copy" || item.kind === "field" || item.kind === "file" || item.kind === "save") {
+          run = null;
+          laid2.push(item.kind === "line" ? drawLine(item) : item.kind === "field" ? drawField(item, view.title) : item.kind === "file" ? drawFile(item, view.title) : drawRow(item));
           continue;
         }
         if (run?.kind !== item.kind) {
@@ -1362,10 +1155,20 @@ function mountHud(controls, opts = {}) {
     const about = current?.card ? `${section}:${current.card.title}` : "";
     const fresh = about !== cardShown;
     cardShown = about;
+    const typingIn = typingNow();
+    const at = typingIn ? [typingIn.input.selectionStart, typingIn.input.selectionEnd] : null;
     rows.replaceChildren(current?.card ? drawCard(current.card, beside) : "", ...laid);
+    if (typingIn?.form.isConnected) {
+      typingIn.input.focus();
+      if (at && at[0] !== null && at[1] !== null) typingIn.input.setSelectionRange(at[0], at[1]);
+    }
+    const still = new Set(view.sections.flatMap((s) => s.items.filter((i) => i.kind === "field").map((i) => i.id)));
+    for (const id2 of [...fields.keys()]) if (!still.has(id2)) fields.delete(id2);
     if (fresh && about) rows.scrollTop = 0;
     rows.hidden = !current?.items.length && !current?.card;
     note.textContent = current?.note ?? "";
+    said.hidden = !current?.said;
+    said.replaceChildren(...current?.said ? [el("b", {}, current.said.from), current.said.note] : []);
     sheet.hidden = !open;
     menu.setAttribute("aria-expanded", String(open));
     quiet.setAttribute("aria-expanded", String(open));
@@ -1377,6 +1180,7 @@ function mountHud(controls, opts = {}) {
   };
   let cameFrom = null;
   const setOpen = (next, at) => {
+    if (chatOnly) return;
     if (next && at) {
       section = at;
       chose = true;
@@ -1389,6 +1193,7 @@ function mountHud(controls, opts = {}) {
       if (!chose) section = "";
     }
     open = next;
+    if (!open) clearFields();
     controls.signal(open ? "menuOpen" : "menuClose");
     draw();
     if (open) return void tabs.querySelector('[aria-selected="true"]')?.focus();
@@ -1423,11 +1228,29 @@ function mountHud(controls, opts = {}) {
     if (!controls.setPinned(here.id, !here.pinned)) return controls.say("Your bar is full. Take a tab off it to keep another on it.");
     controls.say(here.pinned ? `${here.label} is off your bar.` : `${here.label} is on your bar, here and in every world that has it.`);
   });
+  const pressKey = (key) => {
+    if (host.hidden || chatOnly) return;
+    if (key === "summon") return setOpen(!open);
+    if (key === "escape") {
+      const does = escapeDoes({ menuOpen: open, held: escapeHeld() });
+      if (does === "close-menu") return setOpen(false);
+      if (does === "open-menu") return setOpen(true);
+      if (does === "leave-fullscreen") return void leaveFullscreen();
+      return;
+    }
+    const view = controls.view();
+    if (key === "menu") return void (view.keys.menu && view.presence !== "hidden" && setOpen(!open));
+    if (!/^[1-9]$/.test(key) || !view.keys.hotbar || view.presence !== "full") return;
+    const item = view.hotbar.find((i) => i.key === key);
+    if (item) return void press(item);
+    const pin = view.pins.find((p) => p.key && p.key === key);
+    if (pin) openPin(pin.id);
+  };
   const onKey = (e) => {
     if (host.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     const at = e.composedPath()[0];
     if (at && (at.tagName === "INPUT" || at.tagName === "TEXTAREA" || at.isContentEditable)) return;
-    if (e.key === "Escape") {
+    if (e.key === "Escape" && !chatOnly) {
       const does = escapeDoes({ menuOpen: open, held: escapeHeld() });
       if (does !== "nothing") e.preventDefault();
       if (does === "close-menu") return setOpen(false);
@@ -1435,12 +1258,12 @@ function mountHud(controls, opts = {}) {
       if (does === "leave-fullscreen") return void leaveFullscreen();
     }
     const view = controls.view();
-    if (view.keys.menu && e.key.toLowerCase() === view.keys.menu && view.presence !== "hidden") return setOpen(!open);
+    if (!chatOnly && view.keys.menu && e.key.toLowerCase() === view.keys.menu && view.presence !== "hidden") return setOpen(!open);
     if (view.keys.chat && view.chat.ready && view.presence !== "hidden" && !open && !e.repeat && (e.key.toLowerCase() === view.keys.chat || e.key === "Enter" && at?.tagName !== "BUTTON" && at?.tagName !== "A")) {
       e.preventDefault();
       return setChatOpen(true);
     }
-    if (!view.keys.hotbar || view.presence !== "full") return;
+    if (chatOnly || !view.keys.hotbar || view.presence !== "full") return;
     const item = view.hotbar.find((i) => i.key === e.key);
     if (item) return press(item);
     const pin = view.pins.find((p) => p.key && p.key === e.key);
@@ -1476,7 +1299,7 @@ function mountHud(controls, opts = {}) {
   };
   addEventListener("keydown", onTabKey, true);
   const onSummonKey = (e) => {
-    if (e.code !== SUMMON_KEY || host.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (chatOnly || e.code !== SUMMON_KEY || host.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     const at = e.composedPath()[0];
     if (at && (at.tagName === "INPUT" || at.tagName === "TEXTAREA" || at.isContentEditable)) return;
     e.preventDefault();
@@ -1484,7 +1307,7 @@ function mountHud(controls, opts = {}) {
     if (!e.repeat) setOpen(!open);
   };
   const swallow = (e) => {
-    if (e.code === SUMMON_KEY && !host.hidden && !e.ctrlKey && !e.metaKey && !e.altKey) e.stopImmediatePropagation();
+    if (!chatOnly && e.code === SUMMON_KEY && !host.hidden && !e.ctrlKey && !e.metaKey && !e.altKey) e.stopImmediatePropagation();
   };
   const hold = createHoldWatch({
     onHeld: () => {
@@ -1505,6 +1328,10 @@ function mountHud(controls, opts = {}) {
     setTimeout(() => line.remove(), 4200);
   });
   const stop = controls.subscribe(draw);
+  const onPageFocus = () => {
+    if (chatState === "open" && !host.hidden && (document.activeElement === document.body || document.activeElement === null)) chatField.focus({ preventScroll: true });
+  };
+  addEventListener("focus", onPageFocus);
   const stopAsking = controls.onSignal((name) => {
     if (name.startsWith("show:") && !host.hidden) setOpen(true, name.slice(5));
     if (name === "toggle:chat" && !host.hidden) setChatOpen(!(chatState === "open" && dockTab === "room"), "room");
@@ -1538,6 +1365,7 @@ function mountHud(controls, opts = {}) {
       const high = id.getBoundingClientRect();
       return { top: Math.round(high.bottom), bottom: Math.round(innerHeight - low.top) };
     },
+    pressKey,
     setHidden(hidden) {
       host.hidden = hidden;
       if (hidden) {
@@ -1557,6 +1385,7 @@ function mountHud(controls, opts = {}) {
       vv?.removeEventListener("scroll", onViewport);
       stop();
       stopAsking();
+      removeEventListener("focus", onPageFocus);
       stopSay();
       removeEventListener("keydown", onKey);
       stopLeft();
@@ -1569,6 +1398,9 @@ function mountHud(controls, opts = {}) {
       host.remove();
     }
   };
+}
+function mountHud(controls, opts = {}) {
+  return mountMenu(portHere(controls), opts);
 }
 export {
   CHAT_KEY,
@@ -1592,8 +1424,10 @@ export {
   learnFrom,
   loadPicture,
   mountHud,
+  mountMenu,
   onChatChange,
   onPicturesChange,
+  portHere,
   publishBacked,
   queryBacked,
   relayBackup,

@@ -1,4 +1,4 @@
-import { type NostrEvent, type Pose, type Look } from "@nswp/core";
+import { type NostrEvent, type Pose, type Look, type LookModel } from "@nswp/core";
 export interface Member {
     /** Session public key: a throwaway, new each visit. */
     pubkey: string;
@@ -15,6 +15,12 @@ export interface Member {
     color: number;
     /** How they look (spec §4.2). What their session key generates, until they say otherwise. */
     look: Look;
+    /**
+     * The model of their own they wear (protocol/05-looks.md, "A model of your own"), from the look note they handed
+     * the room: only once their pass has checked out, and only if that note is really signed by the key the pass
+     * names. Left out for a guest, and for someone who wears none.
+     */
+    model?: LookModel;
     /** They have said they are recording what they see (spec §9). */
     recording: boolean;
     /** The item they say they are holding, by its coordinate (protocol/17-items.md). Left out when they hold nothing. */
@@ -53,6 +59,12 @@ export interface JoinOptions {
         pass: NostrEvent;
         sessionKey: string;
     };
+    /**
+     * Your look note (kind 37301), signed by your own key, where it names a model of your own: handed to each member
+     * directly, never to a relay, so nobody has to ask one for it (NSWP-06, the `avatar` message). Only sent when you
+     * came by name, and only if it is signed by the key your pass names. At most `LOOK_NOTE_LIMIT` bytes.
+     */
+    avatar?: NostrEvent | null;
     /**
      * Keys this visitor has blocked: the identity keys of people who came by
      * name, or session keys from this visit. Nobody on it is connected to.
@@ -120,6 +132,17 @@ export interface SaidLine {
  * opens and three more times, a second and a half apart, so a member who has one has shown it well before this.
  */
 export declare const NAMED_WAIT_MS = 7000;
+/**
+ * How a member is drawn (protocol/10-identity.md, "The mark"). A proven
+ * member wears their identity key's mark whatever their look says. A look
+ * whose seed is a key is a claim to it, and without a pass the claim isn't
+ * honoured: the mark is the session key's.
+ */
+/**
+ * How often a new look note is taken from one member, at most, in milliseconds. A note doesn't change during a
+ * visit as a rule; a member who sends new ones faster is heard this often and no more.
+ */
+export declare const AVATAR_EVERY_MS = 3000;
 export declare class RoomSession {
     readonly self: Member;
     readonly name: string;
@@ -151,6 +174,8 @@ export declare class RoomSession {
     private readonly origin;
     /** This visitor's own pass, as it is said to the others, and when it stops. */
     private pass;
+    /** This visitor's own look note, as it is handed to each member: only where it is their pass's key's. */
+    private avatar;
     /** The item this visitor says they are holding, by its coordinate, or "". */
     private held;
     /** The colours this visitor chose for what they hold, as they are said ("tint:…"), or "". */
