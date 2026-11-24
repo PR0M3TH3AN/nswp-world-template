@@ -24,6 +24,8 @@ import type { Controls } from "./ui/model.js";
  * once, as the engine script makes its menu. Without it `hands()` still answers, by what was kept and carried.
  */
 export declare function meetHands(controls: Controls | undefined, arrivedIntense?: boolean): void;
+/** The engine draws the console, and a headset session is running: ask how they would like to move, if never asked. */
+export declare function askHowTheyMove(): void;
 /** The engine said whether a headset session is running (`NSWP.headset`). */
 export declare function handsPresenting(on: boolean): void;
 /** What `hands()` answers with: the kit's `Intent`, and what an engine needs beside it to do the same as every world. */

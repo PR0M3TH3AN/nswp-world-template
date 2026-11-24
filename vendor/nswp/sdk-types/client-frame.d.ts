@@ -113,15 +113,22 @@ export declare function meetClient(): void;
 export declare function setSaver(next: {
     handUp(file: Blob): boolean;
     waits(): boolean;
-    making?(): void;
+    making?(): boolean;
 } | null): void;
 /**
  * This page has begun making what a press asked it to save, and it may take a while: a picture drawn afresh at its
  * full size, on a slow device. Said once to the client, as the answer to that press, so that the press is held open
  * for longer (`MENU_MAKING_MS`) and the visitor is told. Call it as the making starts, before anything is waited
  * for. Nothing, where no press on the client's menu is waiting for something to save.
+ *
+ * True where the word was said. **It has then only been said, not sent:** a page's word to the page above leaves
+ * once the script that said it has finished. A world that goes straight on to something long (drawing a picture is
+ * one long piece of script) is heard only when that is done. So where this is true, let the script end first
+ * (`await sent()`), and then begin.
  */
-export declare const making: () => void;
+export declare const making: () => boolean;
+/** A turn of the page's own, after which a word just said to the page above has gone. */
+export declare const sent: () => Promise<void>;
 /** Hand something to save up to the client. False where it isn't the client's to save just now: this page saves it. */
 export declare const handUp: (file: Blob) => boolean;
 /**

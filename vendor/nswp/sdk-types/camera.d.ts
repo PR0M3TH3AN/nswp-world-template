@@ -27,7 +27,8 @@ export interface PictureOptions {
 /**
  * Draw the scene once from `camera` and return it as a JPEG. The camera's
  * own shape is left alone: a copy is fitted to the picture. Works during an
- * immersive session too, since it never draws to the headset.
+ * immersive session too, since it never draws to the headset. The world is
+ * held only for the one drawing: its own frames go on as the file is made.
  */
 export declare function takePicture(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, opts?: PictureOptions): Promise<Blob>;
 export interface SelfieOptions extends PictureOptions {
