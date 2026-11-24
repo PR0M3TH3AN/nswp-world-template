@@ -16,10 +16,16 @@ export interface Hud {
      * signs for them. Left out, the side it was on.
      */
     setChatOpen(open: boolean, tab?: "room" | "feed" | "letters"): void;
-    /** How much of the top and bottom of the window the HUD covers, in pixels. For placing a scene's picture clear of it. Nothing when it is quiet or hidden. */
+    /**
+     * How much of each edge of the window the HUD covers, in pixels. For placing a scene's picture clear of it.
+     * Nothing when it is quiet or hidden. This menu has nothing at a side, so left and right are 0; they are said so
+     * that a world reads the same four whoever draws its menu (`KeptMenu.cover`).
+     */
     cover(): {
         top: number;
         bottom: number;
+        left: number;
+        right: number;
     };
     /** Where each visible part of the HUD is, so a world can lay its own interface out around it. */
     bounds(): {

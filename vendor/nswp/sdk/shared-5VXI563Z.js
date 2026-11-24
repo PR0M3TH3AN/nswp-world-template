@@ -27,6 +27,7 @@ import {
   arrivedSettings,
   askClientForSignIn,
   askWell,
+  clientPanelOpen,
   clientSignsInAt,
   copiedRefused,
   currentForm,
@@ -38,6 +39,7 @@ import {
   making,
   mayShareScreen,
   onClientScreen,
+  onClientSignIn,
   relayBackup,
   reportSettings,
   savesWait,
@@ -481,6 +483,7 @@ function createConsoleDrawing(controls, opts) {
 // packages/sdk/src/console.ts
 var W2 = CONSOLE_W;
 var H2 = CONSOLE_H;
+var MENU_ORDER = 30;
 var FLOAT_W = 0.84;
 var WRIST_W = 0.36;
 var ASPECT = H2 / W2;
@@ -514,7 +517,7 @@ function createConsole(controls, opts) {
   texture.anisotropy = 4;
   const material = holoMaterial(texture);
   const panel = new THREE2.Mesh(new THREE2.PlaneGeometry(1, ASPECT), material);
-  panel.renderOrder = 30;
+  panel.renderOrder = MENU_ORDER;
   panel.visible = false;
   group.add(panel);
   const openerCanvas = document.createElement("canvas");
@@ -523,7 +526,7 @@ function createConsole(controls, opts) {
   const openerTexture = new THREE2.CanvasTexture(openerCanvas);
   openerTexture.colorSpace = THREE2.SRGBColorSpace;
   const opener = new THREE2.Mesh(new THREE2.PlaneGeometry(0.15, 0.15 * 300 / 256), new THREE2.MeshBasicMaterial({ map: openerTexture, transparent: true, depthTest: false }));
-  opener.renderOrder = 30;
+  opener.renderOrder = MENU_ORDER;
   group.add(opener);
   const d = createConsoleDrawing(controls, {
     canvas,
@@ -6919,8 +6922,9 @@ function createFps(o) {
   dot.setAttribute("aria-hidden", "true");
   dot.style.cssText = "position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#fff;opacity:.75;box-shadow:0 0 0 1px rgba(0,0,0,.55);pointer-events:none;z-index:5;display:none";
   document.body.append(dot);
+  const panelUp = () => clientPanelOpen();
   const look = () => {
-    if (!active() || o.hud?.open || looking()) return;
+    if (!active() || o.hud?.open || looking() || panelUp()) return;
     try {
       const asked = o.dom.requestPointerLock();
       asked?.catch?.(() => {
@@ -6933,7 +6937,7 @@ function createFps(o) {
     weLetGo = true;
     document.exitPointerLock();
   };
-  const free = (e) => !looking() && !o.hud?.open && e.target === o.dom && e.buttons === 0;
+  const free = (e) => !looking() && !o.hud?.open && !panelUp() && e.target === o.dom && e.buttons === 0;
   const onMove = (e) => {
     if (!active() || !(looking() || free(e))) return;
     const next = lookAfter(o.rig.rotation.y, pitch, e.movementX, e.movementY, LOOK_SPEED * lookScale() * aimScale());
@@ -6942,7 +6946,7 @@ function createFps(o) {
     o.camera.rotation.x = pitch;
   };
   const onDown = (e) => {
-    if (!active() || e.button !== 0) return;
+    if (!active() || e.button !== 0 || panelUp()) return;
     if (looking()) o.onUse();
     else look();
   };
@@ -6969,7 +6973,7 @@ function createFps(o) {
       } else if (o.hud && !o.hud.open && performance.now() - closedAt > 80) o.hud.setOpen(true);
       return;
     }
-    if (o.hud?.open) return;
+    if (o.hud?.open || panelUp()) return;
     if (!looking() && !e.repeat) look();
     const which = heldKey(e.code);
     if (which) {
@@ -6992,6 +6996,11 @@ function createFps(o) {
   addEventListener("keydown", onKey);
   addEventListener("keyup", onKeyUp);
   addEventListener("blur", onBlur);
+  const stopPanel = onClientSignIn((up) => {
+    if (!up) return;
+    for (const k of Object.keys(held)) held[k] = false;
+    letGo();
+  });
   const stopSignals = o.controls.onSignal((name) => {
     if (name === "menuOpen") letGo();
     if (name === "menuClose") {
@@ -7094,6 +7103,7 @@ function createFps(o) {
       letGo();
       dot.remove();
       stopSignals();
+      stopPanel();
       o.controls.remove("fps");
       o.dom.removeEventListener("mousedown", onDown);
       document.removeEventListener("mousemove", onMove);
@@ -8973,6 +8983,15 @@ function keepComfort(o) {
 // packages/sdk/src/input.ts
 var unpointable = (root) => root.traverse((o) => void (o.raycast = () => {
 }));
+var HANDS_ORDER = 40;
+function drawnLast(root) {
+  root.traverse((o) => {
+    const mesh = o;
+    if (!mesh.isMesh) return;
+    mesh.renderOrder = HANDS_ORDER;
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) if (m) m.transparent = true;
+  });
+}
 function controllerModel(accent) {
   const b = new MeshBuilder().at();
   b.tone = new THREE13.Color(1712684);
@@ -8996,6 +9015,7 @@ function controllerModel(accent) {
   squeeze.rotation.x = THREE13.MathUtils.degToRad(-52);
   group.add(trigger, squeeze);
   unpointable(group);
+  drawnLast(group);
   return { group, metal, trigger, squeeze };
 }
 var VIGNETTE_VERT = `varying float vFar; void main(){ vFar = length(position.xy); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
@@ -9056,6 +9076,7 @@ function createXrInput(opts) {
       const radius = joint.jointRadius;
       mesh.scale.setScalar(Math.min(0.02, Math.max(5e-3, (radius ?? 8e-3) * (tip ? 0.9 : 0.75))));
       unpointable(mesh);
+      drawnLast(mesh);
       joint.add(mesh);
     }
   };
@@ -14052,6 +14073,7 @@ export {
   addScoreControls,
   createBag,
   itemIn,
+  createItemPreviews,
   addBagControls2 as addBagControls,
   TAP_MS,
   addItemControls,

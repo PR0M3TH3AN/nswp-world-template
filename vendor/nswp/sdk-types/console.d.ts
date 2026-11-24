@@ -59,6 +59,11 @@ export interface XrConsole {
     /** Press the thing with these words: a button, a section, "Menu" or "Close". For tests. */
     pressLabelled(label: string): boolean;
 }
+/**
+ * Where the menu a headset shows comes in the order of drawing: over the room, whatever is nearer, and under the
+ * visitor's own hands (`HANDS_ORDER`, input.ts), which are drawn after it.
+ */
+export declare const MENU_ORDER = 30;
 export declare function createConsole(controls: Controls, opts: {
     renderer: THREE.WebGLRenderer;
     rig: THREE.Object3D;

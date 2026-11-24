@@ -31,7 +31,29 @@ export interface MenuAbove {
      */
     readonly menu: {
         readonly open: boolean;
-        setOpen(open: boolean): void;
+        /**
+         * Ask for the client's menu to come up or go. With a tab named (`at`), ask for it to come up on that tab
+         * (`show`): it comes up there, or goes to that tab if it is up, and is never put away by it.
+         */
+        setOpen(open: boolean, at?: string): void;
+        /**
+         * How much of this world's view the client's menu covers at each edge, for what is always there (its bar, its
+         * marks): as the client last said (`covers`), in pixels of this page. Nothing where the client has no menu
+         * or has said nothing. Never more of a side than the view has.
+         */
+        cover(): {
+            top: number;
+            bottom: number;
+            left: number;
+            right: number;
+        };
+        /** The box of each part of the client's menu over this world's view: what is at each edge, and the sheet while it is up. */
+        bounds(): {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+        }[];
     };
     /** Stop: nothing more is said upward or taken from above. */
     dispose(): void;
@@ -71,6 +93,11 @@ export interface MenuAboveOptions {
         sinceHere(): number | null;
         say(word: Record<string, unknown>): void;
         hear(fn: ((word: unknown) => void) | null): void;
+    };
+    /** For tests: the size of this page's view, in pixels. By default the window's own. */
+    view?: () => {
+        w: number;
+        h: number;
     };
     /** For tests: where the visitor's keys are heard. By default this page's window. */
     keys?: Pick<Window, "addEventListener" | "removeEventListener">;

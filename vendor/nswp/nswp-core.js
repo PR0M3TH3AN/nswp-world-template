@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.87.0";
+var KIT_VERSION = "0.88.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -7797,7 +7797,9 @@ var MENU_LIMITS = {
   /** Bytes in a picture or a clip a world hands up to be saved: 64 MB. */
   save: 64 * 1024 * 1024,
   /** How many a world may hand up in answer to one press. */
-  saves: 12
+  saves: 12,
+  /** Pixels, for any number in what a client says its menu covers of a world's view. */
+  covers: 8192
 };
 var MENU_WAIT_MS = 300;
 var LEAVE_MS = 1e3;
@@ -8014,9 +8016,18 @@ function reportedSettings(input) {
   for (const name of MENU_REPORTED) if (clean3[name] !== void 0) out[name] = clean3[name];
   return out;
 }
+var pixels = (n) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= MENU_LIMITS.covers;
+function cleanCovers(input) {
+  if (!isObject(input)) return null;
+  const { top, bottom, left, right, sheet } = input;
+  if (!pixels(top) || !pixels(bottom) || !pixels(left) || !pixels(right)) return null;
+  if (sheet === void 0) return { top, bottom, left, right };
+  if (!isObject(sheet) || !pixels(sheet.x) || !pixels(sheet.y) || !pixels(sheet.width) || !pixels(sheet.height)) return null;
+  return { top, bottom, left, right, ...sheet.width > 0 && sheet.height > 0 ? { sheet: { x: sheet.x, y: sheet.y, width: sheet.width, height: sheet.height } } : {} };
+}
 var isMenu = (data) => isObject(data) && data.nswp === "menu";
-var DOWN_ONLY = ["has", "v", "press", "field", "file", "open", "go", "sign", "playing"];
-var UP_ONLY = ["world", "key", "say", "picture", "save", "id", "making"];
+var DOWN_ONLY = ["has", "v", "press", "field", "file", "open", "go", "sign", "playing", "covers"];
+var UP_ONLY = ["world", "key", "say", "picture", "save", "id", "making", "show"];
 var hasAny = (data, names) => names.some((n) => data[n] !== void 0);
 function readMenuWordDown(data) {
   if (!isMenu(data) || hasAny(data, UP_ONLY)) return null;
@@ -8045,6 +8056,10 @@ function readMenuWordDown(data) {
   if (data.go === "home") return { what: "go", go: "home" };
   if (data.sign === "out") return { what: "sign", sign: "out" };
   if (typeof data.playing === "boolean") return { what: "playing", playing: data.playing };
+  if (data.covers !== void 0) {
+    const covers = cleanCovers(data.covers);
+    return covers ? { what: "covers", covers } : null;
+  }
   return null;
 }
 function readMenuWordUp(data, opts = {}) {
@@ -8072,6 +8087,10 @@ function readMenuWordUp(data, opts = {}) {
   if (data.making !== void 0) {
     const row = id(data.making);
     return row ? { what: "making", id: row } : null;
+  }
+  if (data.show !== void 0) {
+    const tab = id(data.show);
+    return tab ? { what: "show", show: tab } : { what: "show" };
   }
   return null;
 }
