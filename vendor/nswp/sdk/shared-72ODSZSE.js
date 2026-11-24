@@ -1,7 +1,7 @@
 import {
   arrivedSettings,
   reportSettings
-} from "./shared-MGKLTCYB.js";
+} from "./shared-FS6GTOH4.js";
 
 // packages/sdk/src/ui/icons.ts
 var ICONS = {
@@ -662,6 +662,8 @@ function savePins(pins) {
   }
 }
 var LOADING_WORDS = 80;
+var SAY_STAYS = { least: 4200, most: 1e4, easy: 60, each: 70 };
+var sayStays = (text) => Math.min(SAY_STAYS.most, SAY_STAYS.least + Math.max(0, [...text].length - SAY_STAYS.easy) * SAY_STAYS.each);
 function cleanLoading(state) {
   if (!state || typeof state !== "object") return null;
   const raw = typeof state.words === "string" ? state.words : "";
@@ -971,6 +973,7 @@ export {
   OFFER_ICONS,
   vouchedWords,
   addDoorControls,
+  sayStays,
   createControls,
   SUMMON_KEY,
   SUMMON_HOLD,

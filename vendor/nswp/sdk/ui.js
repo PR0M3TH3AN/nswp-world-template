@@ -20,12 +20,13 @@ import {
   onPicturesChange,
   resolveTheme,
   rgb,
+  sayStays,
   setShowsChat,
   setShowsPictures,
   showsChat,
   showsPictures,
   vouchedWords
-} from "./shared-3HJPYJOP.js";
+} from "./shared-72ODSZSE.js";
 import {
   askWell,
   escapeDoes,
@@ -42,7 +43,7 @@ import {
   relaysWell,
   sendWell,
   setMenuPlace
-} from "./shared-MGKLTCYB.js";
+} from "./shared-FS6GTOH4.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/ui/hud.ts
@@ -179,8 +180,23 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 
 /* ---- a few words for a moment: bottom left */
 .says { position: absolute; left: max(12px, env(safe-area-inset-left)); bottom: calc(max(10px, env(safe-area-inset-bottom)) + 128px * var(--s)); display: grid; gap: 6px; max-width: min(80vw, 360px); }
-.say { padding: 8px 12px; border-radius: 4px 12px 12px 4px; border-left: 2px solid rgb(var(--accent)); animation: say-in .22s ease-out both; }
+.say { padding: 8px 12px; border-radius: 4px 12px 12px 4px; border-left: 2px solid rgb(var(--accent)); }
+/* Only a line newly said comes in. One that is moved with the others (below) is simply there. */
+.say.coming { animation: say-in .22s ease-out both; }
 .say.going { opacity: 0; transition: opacity .5s; }
+/* While the menu is up they are in a strip of the sheet's own, between its rows and its foot: the sheet lies over
+   where they otherwise stand on all but the widest screens, and a press in the menu is what most of them answer.
+   A said line never lies over anything that can be pressed: not a row, not a tab, not the foot's buttons. So the
+   strip is always there while the menu is up, one line high when nothing is said or what is said fits, and nothing
+   in the sheet moves as a line comes or goes. One line shows at a time, the newest.
+   Words too long for one line are shown whole, on up to four: what a visitor most needs to read is often long (that
+   others can see they are recording, that pressing Buy again charges nothing). The strip grows for them and the
+   sheet is kept the size it was (fitSays, below), so the room comes from the bottom of the rows' own scrolling
+   area: no row moves, and the last of them are out of sight while the words show. A press on a line puts it away. */
+.sheet > .says { position: static; display: block; flex: none; max-width: none; min-height: calc(1.35em + 18px); margin: 0 12px 8px; }
+.sheet > .says.one { height: calc(1.35em + 18px); overflow: hidden; }
+.sheet > .says .say { line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; pointer-events: auto; cursor: pointer; }
+.sheet > .says .say:not(:last-child) { display: none; }
 
 /* ---- what the room writes: at the right-hand side. Put away, the newest lines pass by; open, a list and a place to write. */
 .chat { position: absolute; right: max(12px, env(safe-area-inset-right)); top: calc(max(12px, env(safe-area-inset-top)) + 54px);
@@ -277,7 +293,9 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .tab { display: flex; align-items: center; gap: 7px; padding: 9px 13px 8px; border-radius: 14px 14px 0 0; color: rgba(var(--ink), .72); border-bottom: 2px solid transparent; white-space: nowrap; }
 .tab:hover { color: rgb(var(--ink)); }
 .tab[aria-selected="true"] { color: rgb(var(--accent)); background: rgba(var(--accent), .1); border-bottom-color: rgb(var(--accent)); }
-.rows { display: grid; gap: 6px; padding: 12px; overflow-y: auto; border-top: 1px solid rgba(var(--accent), .22);
+/* Each row keeps its own height whatever room the list is given: when long words take room from the list's foot,
+   the rows are scrolled out of sight there, and none is squeezed (a squeezed row moves every row under it). */
+.rows { display: grid; gap: 6px; grid-auto-rows: max-content; padding: 12px; overflow-y: auto; border-top: 1px solid rgba(var(--accent), .22);
   scrollbar-width: thin; scrollbar-color: rgba(var(--accent), .5) transparent; }
 /* A choice of colour is a row of small doorways, each lit in its own. */
 .swatches { display: flex; flex-wrap: wrap; gap: 6px 4px; padding: 4px 2px 8px; }
@@ -587,7 +605,8 @@ function mountMenu(port, opts = {}) {
   const close = el("button", { class: "close", type: "button" }, "Close");
   const pinWords = el("span");
   const pinIt = el("button", { class: "pin-it", type: "button", "aria-pressed": "false" }, icon("pin"), pinWords);
-  const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabbar, rows, note, said, el("div", { class: "foot" }, pinIt, close));
+  const foot = el("div", { class: "foot" }, pinIt, close);
+  const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabbar, rows, note, said, foot);
   const chatTitle = el("b");
   const chatWhose = el("p", { class: "whose", hidden: "" });
   const tabRoom = el("button", { type: "button", class: "tab", role: "tab" }, "Room chat");
@@ -1035,6 +1054,15 @@ function mountMenu(port, opts = {}) {
     clearTimeout(asTimer);
     asTimer = setTimeout(() => asWho.classList.remove("shown"), AS_SHOWN_MS);
   };
+  const fitSays = () => {
+    sheet.style.height = "";
+    if (says.parentElement !== sheet || sheet.hidden) return void says.classList.remove("one");
+    says.classList.add("one");
+    const size = sheet.getBoundingClientRect().height;
+    const one = says.getBoundingClientRect().height;
+    says.classList.remove("one");
+    if (says.getBoundingClientRect().height > one + 0.5) sheet.style.height = `${size}px`;
+  };
   const draw = () => {
     const view = controls.view();
     const t = view.theme;
@@ -1239,6 +1267,12 @@ function mountMenu(port, opts = {}) {
     said.replaceChildren(...current?.said ? [el("b", {}, current.said.from), current.said.note] : []);
     sheet.hidden = !open;
     outside.hidden = !open;
+    if (open ? says.parentElement !== sheet : says.parentElement === sheet) {
+      for (const line of says.children) line.classList.remove("coming");
+      if (open) sheet.insertBefore(says, foot);
+      else root.insertBefore(says, chat);
+    }
+    fitSays();
     menu.setAttribute("aria-expanded", String(open));
     quiet.setAttribute("aria-expanded", String(open));
   };
@@ -1397,11 +1431,23 @@ function mountMenu(port, opts = {}) {
   addEventListener("keyup", swallow, listening);
   for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) addEventListener(type, onTouch, watching);
   const stopSay = controls.onSay((text) => {
-    const line = el("div", { class: "say glass" }, text);
+    const line = el("div", { class: "say glass coming" }, text);
+    line.addEventListener("animationend", () => line.classList.remove("coming"), { once: true });
+    line.title = text;
+    const away = () => {
+      line.remove();
+      fitSays();
+    };
+    line.addEventListener("click", (e) => {
+      e.stopPropagation();
+      away();
+    });
     says.append(line);
     while (says.childElementCount > 3) says.firstElementChild?.remove();
-    setTimeout(() => line.classList.add("going"), 3600);
-    setTimeout(() => line.remove(), 4200);
+    fitSays();
+    const stays = sayStays(text);
+    setTimeout(() => line.classList.add("going"), stays - 600);
+    setTimeout(away, stays);
   });
   const stop = controls.subscribe(draw);
   const onPageFocus = () => {

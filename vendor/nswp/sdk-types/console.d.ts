@@ -28,6 +28,7 @@
  */
 import * as THREE from "three";
 import type { Controls } from "./ui/model.js";
+export { BUTTON_WITH_LINES, pageLines, TAB_MIN, tabLayout } from "./console-drawing.js";
 export interface XrConsole {
     /** Add this to the scene (not to the camera or the rig). */
     group: THREE.Group;
@@ -58,28 +59,6 @@ export interface XrConsole {
     /** Press the thing with these words: a button, a section, "Menu" or "Close". For tests. */
     pressLabelled(label: string): boolean;
 }
-/** The least height a section's tab is given in one column; fewer, and the sections go into two columns instead. */
-export declare const TAB_MIN = 52;
-/** A button's height while there are lines under it: room is kept for the lines, never by shrinking their words. */
-export declare const BUTTON_WITH_LINES = 72;
-/**
- * Where the sections go down the left: one column while each tab can have `TAB_MIN`, else two, filled down the first
- * and then the second, so every section is one select away and no icon touches its neighbour. `left` is where the
- * open section's buttons begin.
- */
-export declare function tabLayout(count: number): {
-    cols: 1 | 2;
-    rows: number;
-    tabH: number;
-    colW: number;
-    left: number;
-};
-/**
- * The lines of a section, a page at a time: as many whole lines as fit the room, in order, and the rest on the next
- * page. Their words are always the console's usual size: a page more, never a smaller sentence. Every page has at
- * least one line, even one taller than the room.
- */
-export declare function pageLines(heights: readonly number[], room: number): number[][];
 export declare function createConsole(controls: Controls, opts: {
     renderer: THREE.WebGLRenderer;
     rig: THREE.Object3D;

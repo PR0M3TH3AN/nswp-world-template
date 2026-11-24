@@ -357,6 +357,19 @@ export declare const standardTab: (id: string) => {
  */
 export declare const STANDARD_ORDER: readonly string[];
 /** A world's word that it is still loading, as the console shows it: plain text, one line, a fraction or none. */
+/**
+ * How long words said for a moment stay up, in milliseconds. Four seconds and a little for a short line, as it has
+ * always been; and for a longer one, a little more for each letter past sixty, up to ten seconds: what most needs
+ * reading is often long (that others can see you are recording, that pressing Buy again charges nothing), and four
+ * seconds is not enough to read three lines of it.
+ */
+export declare const SAY_STAYS: {
+    readonly least: 4200;
+    readonly most: 10000;
+    readonly easy: 60;
+    readonly each: 70;
+};
+export declare const sayStays: (text: string) => number;
 export declare function cleanLoading(state: {
     fraction?: unknown;
     words?: unknown;

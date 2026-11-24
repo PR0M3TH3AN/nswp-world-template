@@ -7,7 +7,7 @@ import {
   currentSettings,
   reportSettings,
   resumeFullscreen
-} from "./shared-MGKLTCYB.js";
+} from "./shared-FS6GTOH4.js";
 
 // packages/sdk/src/index.ts
 import {

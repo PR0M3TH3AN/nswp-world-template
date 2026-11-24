@@ -1,5 +1,5 @@
 import { type WorldPort } from "./port.js";
-import type { Controls } from "./model.js";
+import { type Controls } from "./model.js";
 export interface Hud {
     /** The element on the page. */
     element: HTMLElement;

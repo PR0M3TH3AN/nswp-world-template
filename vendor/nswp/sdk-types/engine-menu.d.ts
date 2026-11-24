@@ -9,6 +9,7 @@ export declare const engineParts: () => {
     sounds: Sounds;
     presenting: boolean;
 } | null;
+export declare const onSession: (fn: (presenting: boolean) => void) => void;
 export declare const onMenu: (fn: (look: {
     title: string;
     accent?: string;

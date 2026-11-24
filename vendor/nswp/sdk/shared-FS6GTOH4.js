@@ -213,7 +213,8 @@ function meetClient() {
 }
 meetClient();
 var saver = null;
-var making = () => saver?.making?.();
+var making = () => saver?.making?.() ?? false;
+var sent = () => new Promise((resolve) => setTimeout(resolve, 0));
 var handUp = (file) => saver?.handUp(file) ?? false;
 var savesWait = () => saver?.waits() ?? false;
 
@@ -412,9 +413,9 @@ async function sendWell(event, o) {
   const publish = o.publish ?? publishEvent;
   const now = o.now ?? (() => Date.now());
   const first = relaysWell(o, now());
-  const sent = await publish(first.relays, event).catch(() => ({ relays: Object.fromEntries(first.relays.map((r) => [r, "error: not sent"])) }));
-  learnFrom(sent.relays, now());
-  let took = Object.values(sent.relays).filter((said) => said === "ok").length;
+  const sent2 = await publish(first.relays, event).catch(() => ({ relays: Object.fromEntries(first.relays.map((r) => [r, "error: not sent"])) }));
+  learnFrom(sent2.relays, now());
+  let took = Object.values(sent2.relays).filter((said) => said === "ok").length;
   const tried = [...first.relays];
   if (took === 0) {
     const rest = o.usual.filter((r) => !tried.includes(r));
@@ -502,11 +503,11 @@ async function queryBacked(relays, filter, timeoutMs = 4e3, o = {}) {
 async function publishBacked(relays, event, o = {}) {
   const publish = o.publish ?? publishEvent;
   const now = o.now ?? (() => Date.now());
-  const sent = await publish(relays, event);
-  learnFrom(sent.relays, now());
-  if (!maySendBackUp(relays, o) || event.kind === WRAP_KIND || Object.values(sent.relays).some((said) => said === "ok")) return sent;
+  const sent2 = await publish(relays, event);
+  learnFrom(sent2.relays, now());
+  if (!maySendBackUp(relays, o) || event.kind === WRAP_KIND || Object.values(sent2.relays).some((said) => said === "ok")) return sent2;
   const more = (await foundRelays({ not: relays, ...o.query ? { query: o.query } : {}, now })).open;
-  const all = { ...sent.relays };
+  const all = { ...sent2.relays };
   for (let round = 0; round < BACKUP_ROUNDS; round++) {
     const batch = more.slice(round * BACKUP_AT_ONCE, (round + 1) * BACKUP_AT_ONCE);
     if (!batch.length) break;
@@ -540,6 +541,7 @@ export {
   onClientSignIn,
   askClientForSignIn,
   making,
+  sent,
   handUp,
   savesWait,
   prefersFullscreen,

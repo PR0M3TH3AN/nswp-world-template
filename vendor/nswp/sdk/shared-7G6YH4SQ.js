@@ -7,7 +7,7 @@ import {
   portal,
   room,
   setFilesAnywhere
-} from "./shared-BWTLMGJK.js";
+} from "./shared-VIMETJJ2.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -22,7 +22,7 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-3HJPYJOP.js";
+} from "./shared-72ODSZSE.js";
 import {
   arrivedSettings,
   askClientForSignIn,
@@ -43,8 +43,9 @@ import {
   savesWait,
   screenNotHere,
   sendWell,
+  sent,
   startingForm
-} from "./shared-MGKLTCYB.js";
+} from "./shared-FS6GTOH4.js";
 import {
   LiveKeys,
   TextEntry,
@@ -72,11 +73,12 @@ function turnVisitor(rig, camera, degrees) {
 
 // packages/sdk/src/console.ts
 import * as THREE2 from "three";
-var W = 1024;
-var H = 640;
-var FLOAT_W = 0.84;
-var WRIST_W = 0.36;
-var ASPECT = H / W;
+
+// packages/sdk/src/console-drawing.ts
+var CONSOLE_W = 1024;
+var CONSOLE_H = 640;
+var W = CONSOLE_W;
+var H = CONSOLE_H;
 var TAB_MIN = 52;
 var BUTTON_WITH_LINES = 72;
 function tabLayout(count2) {
@@ -139,92 +141,17 @@ function wrap(g, text, max, lines) {
 }
 var SANS = 'system-ui, "Segoe UI", Roboto, sans-serif';
 var MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
-function holoMaterial(map) {
-  return new THREE2.ShaderMaterial({
-    transparent: true,
-    depthTest: false,
-    side: THREE2.DoubleSide,
-    uniforms: { map: { value: map }, uOpen: { value: 1 }, uTime: { value: 0 }, uAccent: { value: new THREE2.Color() }, uLines: { value: 1 } },
-    vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
-    fragmentShader: `uniform sampler2D map; uniform float uOpen; uniform float uTime; uniform vec3 uAccent; uniform float uLines; varying vec2 vUv;
-      void main(){
-        if (vUv.y > uOpen) discard;
-        vec4 c = texture2D(map, vUv);
-        float lines = 1.0 - uLines * 0.05 * (0.5 + 0.5 * sin(vUv.y * 420.0 - uTime * 1.2));
-        float lead = (1.0 - step(0.999, uOpen)) * smoothstep(0.03, 0.0, uOpen - vUv.y);
-        gl_FragColor = vec4(c.rgb * lines + uAccent * lead, max(c.a, lead * 0.9));
-        #include <colorspace_fragment>
-      }`
-  });
-}
-function createConsole(controls, opts) {
-  const group = new THREE2.Group();
-  group.name = "nswp-console";
-  group.visible = false;
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const g = canvas.getContext("2d");
-  const texture = new THREE2.CanvasTexture(canvas);
-  texture.colorSpace = THREE2.SRGBColorSpace;
-  texture.anisotropy = 4;
-  const material = holoMaterial(texture);
-  const panel = new THREE2.Mesh(new THREE2.PlaneGeometry(1, ASPECT), material);
-  panel.renderOrder = 30;
-  panel.visible = false;
-  group.add(panel);
-  const openerCanvas = document.createElement("canvas");
-  openerCanvas.width = 256;
-  openerCanvas.height = 300;
-  const openerTexture = new THREE2.CanvasTexture(openerCanvas);
-  openerTexture.colorSpace = THREE2.SRGBColorSpace;
-  const opener = new THREE2.Mesh(new THREE2.PlaneGeometry(0.15, 0.15 * 300 / 256), new THREE2.MeshBasicMaterial({ map: openerTexture, transparent: true, depthTest: false }));
-  opener.renderOrder = 30;
-  group.add(opener);
-  let open = false;
-  let mount = "floating";
+function createConsoleDrawing(controls, opts) {
+  const g = opts.context ?? opts.canvas.getContext("2d");
+  const shown2 = opts.shown ?? (() => true);
   let section = "";
   let aimed = null;
   let regions = [];
   let painted = "";
-  let unfold = 1;
-  let clock = 0;
-  let sinceRead = 0;
-  let placed = false;
-  let settling = false;
-  let wristFor = 0;
-  let wristAway = 0;
   let noteNow = "";
   let linePage = 0;
   let linePages = 1;
   let linesFor = "";
-  const paintOpener = (hot) => {
-    const t = controls.theme;
-    const c = openerCanvas.getContext("2d");
-    const w = openerCanvas.width;
-    const h = openerCanvas.height;
-    c.clearRect(0, 0, w, h);
-    c.beginPath();
-    c.moveTo(28, h - 44);
-    c.lineTo(28, 128);
-    c.arc(w / 2, 128, w / 2 - 28, Math.PI, 0);
-    c.lineTo(w - 28, h - 44);
-    c.closePath();
-    c.fillStyle = hot ? `rgba(${rgb(t.accent)}, 0.34)` : `rgba(${rgb(t.glass)}, 0.82)`;
-    c.fill();
-    c.lineWidth = 6;
-    c.strokeStyle = t.accent;
-    c.stroke();
-    c.fillStyle = hot ? t.accent : t.ink;
-    c.fillRect(14, h - 34, w - 28, 8);
-    c.strokeStyle = hot ? t.accent : t.ink;
-    strokeIcon(c, "menu", w / 2 - 44, 60, 88);
-    c.fillStyle = t.ink;
-    c.font = `600 40px ${SANS}`;
-    c.textAlign = "center";
-    c.fillText("Menu", w / 2, 208);
-    openerTexture.needsUpdate = true;
-  };
   const faces = /* @__PURE__ */ new Map();
   const faceOf = (address) => {
     if (!faces.has(address)) {
@@ -233,7 +160,7 @@ function createConsole(controls, opts) {
         if (!drawn2) return;
         faces.set(address, drawn2);
         painted = "";
-        if (group.visible) paint();
+        if (shown2()) paint();
       });
     }
     return faces.get(address) ?? null;
@@ -243,8 +170,9 @@ function createConsole(controls, opts) {
     const t = view.theme;
     if (!view.sections.some((s) => s.id === section)) section = view.sections[0]?.id ?? "";
     const loads = view.loading ? { words: view.loading.words, much: view.loading.fraction === null ? null : Math.floor(view.loading.fraction * 100) } : null;
-    const signature = JSON.stringify([view.title, view.address, loads, view.sections, section, aimed, t, linePage]);
-    if (signature === painted) return;
+    const lit = opts.plain ? null : aimed;
+    const signature = JSON.stringify([view.title, view.address, loads, view.sections, section, lit, t, linePage]);
+    if (signature === painted) return false;
     painted = signature;
     const A = rgb(t.accent);
     const I = rgb(t.ink);
@@ -288,11 +216,11 @@ function createConsole(controls, opts) {
       g.fillText(fit(g, said, (W - 300) / 2 - 16), W - 172, 96);
       g.textAlign = "left";
     }
-    const button = (r, draw) => {
+    const button = (r, draw2) => {
       regions.push(r);
-      draw(aimed === r.id);
+      draw2(lit === r.id);
     };
-    button({ id: "close", x: W - 150, y: 26, w: 116, h: 72, label: "Close" }, (hot) => {
+    button({ id: "close", x: W - 150, y: 26, w: 116, h: 72, label: "Close", lit: { fill: t.ink, fillAlpha: 0.13, stroke: t.ink, strokeAlpha: 0.9, line: 2, corners: [16, 16, 16, 16] } }, (hot) => {
       g.beginPath();
       g.roundRect(W - 150, 26, 116, 72, 16);
       g.fillStyle = hot ? `rgba(${I}, 0.18)` : `rgba(${I}, 0.05)`;
@@ -317,7 +245,7 @@ function createConsole(controls, opts) {
       const y = 134 + (tabs.cols === 2 ? i % tabs.rows : i) * tabs.tabH;
       const h = tabs.tabH - 8;
       const on = s.id === section;
-      button({ id: `tab:${s.id}`, x, y, w: tabs.colW, h, label: s.label }, (hot) => {
+      button({ id: `tab:${s.id}`, x, y, w: tabs.colW, h, label: s.label, lit: on ? null : { fill: t.accent, fillAlpha: 0.08, stroke: t.accent, strokeAlpha: 0, line: 0, corners: [6, 18, 18, 6] } }, (hot) => {
         if (on || hot) {
           g.beginPath();
           g.roundRect(x, y, tabs.colW, h, [6, 18, 18, 6]);
@@ -451,7 +379,9 @@ function createConsole(controls, opts) {
     [...items, ...pager ? [pager] : []].forEach((item, i) => {
       const { x, y, w: cellW } = cellAt(i);
       const tone2 = item.tone === "warn" ? rgb(t.warn) : A;
-      button({ id: item === pager ? "lines-more" : `act:${item.id}`, x, y, w: cellW, h: cellH, label: item.label }, (hot) => {
+      const toneHex = item.tone === "warn" ? t.warn : t.accent;
+      const litLook = { fill: toneHex, fillAlpha: item.tone === "primary" || item.on ? 0.17 : 0.26, stroke: toneHex, strokeAlpha: 1, line: 4, corners: [18, 18, 6, 6] };
+      button({ id: item === pager ? "lines-more" : `act:${item.id}`, x, y, w: cellW, h: cellH, label: item.label, lit: litLook }, (hot) => {
         g.beginPath();
         g.roundRect(x, y, cellW, cellH, [18, 18, 6, 6]);
         g.fillStyle = hot ? `rgba(${tone2}, 0.3)` : item.tone === "primary" || item.on ? `rgba(${tone2}, 0.16)` : `rgba(${I}, 0.05)`;
@@ -513,9 +443,133 @@ function createConsole(controls, opts) {
       g.fillStyle = `rgba(${I}, 0.82)`;
       noteLines.forEach((line, i) => g.fillText(line, left + 16, y + 24 + i * 32));
     }
-    texture.needsUpdate = true;
-    material.uniforms.uAccent.value.set(t.accent);
-    material.uniforms.uLines.value = t.motion ? 1 : 0;
+    opts.painted?.(t);
+    return true;
+  };
+  return {
+    get section() {
+      return section;
+    },
+    set section(next) {
+      section = next;
+    },
+    get aimed() {
+      return aimed;
+    },
+    set aimed(next) {
+      aimed = next;
+    },
+    get regions() {
+      return regions;
+    },
+    get linePage() {
+      return linePage;
+    },
+    get linePages() {
+      return linePages;
+    },
+    turnPage() {
+      linePage = (linePage + 1) % Math.max(1, linePages);
+    },
+    paint,
+    again() {
+      painted = "";
+    }
+  };
+}
+
+// packages/sdk/src/console.ts
+var W2 = CONSOLE_W;
+var H2 = CONSOLE_H;
+var FLOAT_W = 0.84;
+var WRIST_W = 0.36;
+var ASPECT = H2 / W2;
+function holoMaterial(map) {
+  return new THREE2.ShaderMaterial({
+    transparent: true,
+    depthTest: false,
+    side: THREE2.DoubleSide,
+    uniforms: { map: { value: map }, uOpen: { value: 1 }, uTime: { value: 0 }, uAccent: { value: new THREE2.Color() }, uLines: { value: 1 } },
+    vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: `uniform sampler2D map; uniform float uOpen; uniform float uTime; uniform vec3 uAccent; uniform float uLines; varying vec2 vUv;
+      void main(){
+        if (vUv.y > uOpen) discard;
+        vec4 c = texture2D(map, vUv);
+        float lines = 1.0 - uLines * 0.05 * (0.5 + 0.5 * sin(vUv.y * 420.0 - uTime * 1.2));
+        float lead = (1.0 - step(0.999, uOpen)) * smoothstep(0.03, 0.0, uOpen - vUv.y);
+        gl_FragColor = vec4(c.rgb * lines + uAccent * lead, max(c.a, lead * 0.9));
+        #include <colorspace_fragment>
+      }`
+  });
+}
+function createConsole(controls, opts) {
+  const group = new THREE2.Group();
+  group.name = "nswp-console";
+  group.visible = false;
+  const canvas = document.createElement("canvas");
+  canvas.width = W2;
+  canvas.height = H2;
+  const texture = new THREE2.CanvasTexture(canvas);
+  texture.colorSpace = THREE2.SRGBColorSpace;
+  texture.anisotropy = 4;
+  const material = holoMaterial(texture);
+  const panel = new THREE2.Mesh(new THREE2.PlaneGeometry(1, ASPECT), material);
+  panel.renderOrder = 30;
+  panel.visible = false;
+  group.add(panel);
+  const openerCanvas = document.createElement("canvas");
+  openerCanvas.width = 256;
+  openerCanvas.height = 300;
+  const openerTexture = new THREE2.CanvasTexture(openerCanvas);
+  openerTexture.colorSpace = THREE2.SRGBColorSpace;
+  const opener = new THREE2.Mesh(new THREE2.PlaneGeometry(0.15, 0.15 * 300 / 256), new THREE2.MeshBasicMaterial({ map: openerTexture, transparent: true, depthTest: false }));
+  opener.renderOrder = 30;
+  group.add(opener);
+  const d = createConsoleDrawing(controls, {
+    canvas,
+    shown: () => group.visible,
+    painted: (t) => {
+      texture.needsUpdate = true;
+      material.uniforms.uAccent.value.set(t.accent);
+      material.uniforms.uLines.value = t.motion ? 1 : 0;
+    }
+  });
+  const paint = () => void d.paint();
+  let open = false;
+  let mount = "floating";
+  let unfold = 1;
+  let clock = 0;
+  let sinceRead = 0;
+  let placed = false;
+  let settling = false;
+  let wristFor = 0;
+  let wristAway = 0;
+  const paintOpener = (hot) => {
+    const t = controls.theme;
+    const c = openerCanvas.getContext("2d");
+    const w = openerCanvas.width;
+    const h = openerCanvas.height;
+    c.clearRect(0, 0, w, h);
+    c.beginPath();
+    c.moveTo(28, h - 44);
+    c.lineTo(28, 128);
+    c.arc(w / 2, 128, w / 2 - 28, Math.PI, 0);
+    c.lineTo(w - 28, h - 44);
+    c.closePath();
+    c.fillStyle = hot ? `rgba(${rgb(t.accent)}, 0.34)` : `rgba(${rgb(t.glass)}, 0.82)`;
+    c.fill();
+    c.lineWidth = 6;
+    c.strokeStyle = t.accent;
+    c.stroke();
+    c.fillStyle = hot ? t.accent : t.ink;
+    c.fillRect(14, h - 34, w - 28, 8);
+    c.strokeStyle = hot ? t.accent : t.ink;
+    strokeIcon(c, "menu", w / 2 - 44, 60, 88);
+    c.fillStyle = t.ink;
+    c.font = `600 40px ${SANS}`;
+    c.textAlign = "center";
+    c.fillText("Menu", w / 2, 208);
+    openerTexture.needsUpdate = true;
   };
   const grips = [0, 1].map((i) => {
     const grip = opts.renderer.xr.getControllerGrip(i);
@@ -536,7 +590,7 @@ function createConsole(controls, opts) {
   const toHand = new THREE2.Vector3();
   controls.onSignal((name) => {
     if (!name.startsWith("show:") || !opts.renderer.xr.isPresenting) return;
-    section = name.slice(5);
+    d.section = name.slice(5);
     setOpen(true, "floating");
   });
   const setOpen = (next, where = "floating") => {
@@ -545,18 +599,18 @@ function createConsole(controls, opts) {
     open = next;
     mount = where;
     placed = false;
-    aimed = null;
+    d.aimed = null;
     unfold = controls.theme.motion && next ? 0 : 1;
     panel.visible = next;
     opener.visible = !next;
     if (next) {
-      painted = "";
+      d.again();
       paint();
     }
   };
   const stop = controls.subscribe(() => {
-    painted = "";
-    paintOpener(aimed === "open");
+    d.again();
+    paintOpener(d.aimed === "open");
   });
   void stop;
   paintOpener(false);
@@ -571,27 +625,27 @@ function createConsole(controls, opts) {
       if (!open) return opener.visible && raycaster.intersectObject(opener, false).length ? "open" : null;
       const hit = raycaster.intersectObject(panel, false)[0];
       if (!hit?.uv) return null;
-      const x = hit.uv.x * W;
-      const y = (1 - hit.uv.y) * H;
-      return regions.find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)?.id ?? "pane";
+      const x = hit.uv.x * W2;
+      const y = (1 - hit.uv.y) * H2;
+      return d.regions.find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)?.id ?? "pane";
     },
     aim(hit) {
       const next = hit === "pane" ? null : hit;
-      if (next === aimed) return;
-      aimed = next;
+      if (next === d.aimed) return;
+      d.aimed = next;
       if (open) paint();
-      else paintOpener(aimed === "open");
+      else paintOpener(d.aimed === "open");
     },
     press(hit) {
       if (hit === "open") return setOpen(true, "floating");
       if (hit === "close") return setOpen(false, mount);
       if (hit.startsWith("tab:")) {
-        section = hit.slice(4);
+        d.section = hit.slice(4);
         paint();
         return;
       }
       if (hit === "lines-more") {
-        linePage = (linePage + 1) % Math.max(1, linePages);
+        d.turnPage();
         paint();
         return;
       }
@@ -667,21 +721,21 @@ function createConsole(controls, opts) {
         }
       } else {
         opener.visible = presence === "full" || presence === "quiet" && !tracked;
-        opener.scale.setScalar((presence === "quiet" ? 0.7 : 1) * (aimed === "open" ? 1.1 : 1));
+        opener.scale.setScalar((presence === "quiet" ? 0.7 : 1) * (d.aimed === "open" ? 1.1 : 1));
       }
     },
     describe() {
       const view = controls.view();
-      const current = view.sections.find((s) => s.id === section) ?? view.sections[0];
+      const current = view.sections.find((s) => s.id === d.section) ?? view.sections[0];
       return {
         showing: group.visible,
         open,
         mount,
         section: open ? current?.id ?? "" : "",
         sections: open ? view.sections.map((s) => s.label) : [],
-        buttons: open ? [...current?.items.filter((i) => i.kind !== "line" && i.kind !== "slider").map((i) => i.label) ?? [], ...linePages > 1 ? [`Page ${linePage + 1} of ${linePages}`] : []] : opener.visible ? ["Menu"] : [],
+        buttons: open ? [...current?.items.filter((i) => i.kind !== "line" && i.kind !== "slider").map((i) => i.label) ?? [], ...d.linePages > 1 ? [`Page ${d.linePage + 1} of ${d.linePages}`] : []] : opener.visible ? ["Menu"] : [],
         lines: open ? current?.items.filter((i) => i.kind === "line").map((i) => i.label) ?? [] : [],
-        linesPage: { page: open ? linePage + 1 : 0, pages: open ? linePages : 0 },
+        linesPage: { page: open ? d.linePage + 1 : 0, pages: open ? d.linePages : 0 },
         note: open ? current?.note ?? "" : "",
         card: open ? current?.card?.title ?? "" : ""
       };
@@ -693,7 +747,7 @@ function createConsole(controls, opts) {
         return true;
       }
       paint();
-      const region = regions.find((r) => r.label === label);
+      const region = d.regions.find((r) => r.label === label);
       if (!region) return false;
       con.press(region.id);
       return true;
@@ -1850,9 +1904,9 @@ function createPaidGate(opts) {
       rememberList(d, signed);
       applyLists([signed]);
       void look();
-      const sent = await sendWell(signed, { own: ownRelays, usual: opts.relays ?? DEFAULT_RELAYS2, ...opts.publish ? { publish: opts.publish } : {}, ...opts.query ? { query: opts.query } : {}, now }).catch(() => null);
+      const sent2 = await sendWell(signed, { own: ownRelays, usual: opts.relays ?? DEFAULT_RELAYS2, ...opts.publish ? { publish: opts.publish } : {}, ...opts.query ? { query: opts.query } : {}, now }).catch(() => null);
       const done = change2 === "allow" ? "Invited." : change2 === "unallow" ? "Taken off the list." : change2 === "block" ? "Kept out." : "No longer kept out.";
-      if (!sent || sent.took === 0) return { ok: true, said: `${done} It holds here, but no relay took the list yet, so nobody else sees the change.` };
+      if (!sent2 || sent2.took === 0) return { ok: true, said: `${done} It holds here, but no relay took the list yet, so nobody else sees the change.` };
       return { ok: true, said: `${done} Anyone can read this list.` };
     },
     async buy(listing) {
@@ -2183,8 +2237,8 @@ function createPeople(opts) {
     keep3(signed);
     known = { who, list: signed, answered: true, at: now() };
     changed();
-    const sent = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
-    if (!sent || sent.took === 0) return { ok: false, why: "not-sent", said: `Signed, but no relay took it. It is kept on this device and will be sent again.` };
+    const sent2 = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
+    if (!sent2 || sent2.took === 0) return { ok: false, why: "not-sent", said: `Signed, but no relay took it. It is kept on this device and will be sent again.` };
     return { ok: true, said: adding ? `You follow ${them}. Anyone can see who you follow.` : `You no longer follow ${them}.` };
   };
   return {
@@ -2277,8 +2331,8 @@ function createSaves(opts = {}) {
     const signed = await s.save(slot, data).catch(() => null);
     if (!signed) return false;
     writeLocal(who, slot, { data, at: signed.created_at });
-    const sent = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
-    return !!sent && sent.took > 0;
+    const sent2 = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
+    return !!sent2 && sent2.took > 0;
   };
   const save = async (data, slotIn) => {
     const slot = cleanSlot(slotIn ?? SAVE_SLOT);
@@ -4447,7 +4501,7 @@ function createPlay(o) {
   const w = new THREE8.Vector3();
   let clock = 0;
   let lastAt = null;
-  let sent = 0;
+  let sent2 = 0;
   let landed = 0;
   let taken = 0;
   let nextId = Math.floor(Math.random() * 1e3);
@@ -4875,7 +4929,7 @@ function createPlay(o) {
     const said = buildShot(shot);
     const read = said ? parseShot(said) : null;
     if (!said || !read) return;
-    sent++;
+    sent2++;
     void launch(o.me() ?? "", item, read);
     if (o.me()) o.tell(said);
   };
@@ -5207,7 +5261,7 @@ function createPlay(o) {
         stuck: count2("stuck"),
         falling: count2("falling") + count2("lying"),
         things: things.map((t) => ({ by: t.by, id: t.shot.id, state: t.state, on: t.on, onto: `${t.object.parent?.type ?? ""}:${t.object.parent?.name ?? ""}`, at: t.object.getWorldPosition(new THREE8.Vector3()).toArray().map((n) => Math.round(n * 100) / 100) })),
-        sent,
+        sent: sent2,
         landed,
         taken,
         health: { value: own.value, full: own.full },
@@ -7221,8 +7275,8 @@ function createMessages(opts) {
       const relays = offered();
       const signed = await hand.reach(relays).catch(() => null);
       if (!signed) return { ok: false, said: "It couldn't be signed. Nothing was changed." };
-      const sent = await sendWell(signed, { own: own.write, usual: usual(), publish, query, now }).catch(() => null);
-      if (!sent || sent.took === 0) return { ok: false, said: "No relay took it. Try again in a moment." };
+      const sent2 = await sendWell(signed, { own: own.write, usual: usual(), publish, query, now }).catch(() => null);
+      if (!sent2 || sent2.took === 0) return { ok: false, said: "No relay took it. Try again in a moment." };
       inbox = relays;
       state = "ready";
       changed();
@@ -7253,9 +7307,9 @@ function createMessages(opts) {
       const forThem = wrapSeal(sealed.seals[0], to, { now: t });
       const forMe = wrapSeal(sealed.seals[1], me, { now: t });
       if (!forThem || !forMe) return { ok: false, said: "It couldn't be wrapped. Nothing was sent." };
-      const sent = await publish(theirs, forThem).catch(() => null);
-      if (sent) learnFrom(sent.relays, now());
-      if (!sent || !Object.values(sent.relays).some((said) => said === "ok")) return { ok: false, said: `None of the relays ${them === "them" ? "they use" : `${them} uses`} for messages took it. It wasn't sent.` };
+      const sent2 = await publish(theirs, forThem).catch(() => null);
+      if (sent2) learnFrom(sent2.relays, now());
+      if (!sent2 || !Object.values(sent2.relays).some((said) => said === "ok")) return { ok: false, said: `None of the relays ${them === "them" ? "they use" : `${them} uses`} for messages took it. It wasn't sent.` };
       tried.add(forMe.id);
       void publish(inbox, forMe).then((kept2) => learnFrom(kept2.relays, now())).catch(() => void 0);
       const m = sealed.message;
@@ -7293,8 +7347,8 @@ function createMessages(opts) {
 // packages/sdk/src/messaging.ts
 import { shortNpub as shortNpub5, MESSAGE_LIMITS } from "@nswp/core";
 import * as THREE11 from "three";
-var W2 = 768;
-var H2 = 900;
+var W3 = 768;
+var H3 = 900;
 var LEAD = 130;
 var WRITE = 100;
 function addMessagingControls(controls, opts) {
@@ -7325,27 +7379,27 @@ function addMessagingControls(controls, opts) {
     const t = controls.theme;
     const g = panel.canvas.getContext("2d");
     g.fillStyle = t.glass;
-    g.fillRect(0, 0, W2, H2);
+    g.fillRect(0, 0, W3, H3);
     g.textBaseline = "middle";
     g.textAlign = "left";
     const measure = (text) => g.measureText(text).width;
     g.fillStyle = t.ink;
     g.globalAlpha = 0.72;
     g.font = "27px system-ui, sans-serif";
-    wrapWords(view.lead, measure, W2 - 56, 3).forEach((row, r) => g.fillText(row, 28, 26 + r * 33));
+    wrapWords(view.lead, measure, W3 - 56, 3).forEach((row, r) => g.fillText(row, 28, 26 + r * 33));
     g.globalAlpha = 1;
-    const top = H2 - WRITE;
+    const top = H3 - WRITE;
     g.strokeStyle = t.accent;
     g.lineWidth = 3;
     g.fillStyle = `rgba(${rgb(t.accent)}, 0.16)`;
     g.beginPath();
-    g.roundRect(20, top + 8, W2 - 40, WRITE - 24, 22);
+    g.roundRect(20, top + 8, W3 - 40, WRITE - 24, 22);
     g.fill();
     g.stroke();
     g.font = "600 34px system-ui, sans-serif";
     g.fillStyle = t.ink;
     g.textAlign = "center";
-    g.fillText(wrapWords(`Write to ${view.with}`, measure, W2 - 80, 1)[0] ?? "Write", W2 / 2, top + 8 + (WRITE - 24) / 2);
+    g.fillText(wrapWords(`Write to ${view.with}`, measure, W3 - 80, 1)[0] ?? "Write", W3 / 2, top + 8 + (WRITE - 24) / 2);
     g.textAlign = "left";
     const ROW = 40;
     const nowSec = Math.floor(Date.now() / 1e3);
@@ -7353,7 +7407,7 @@ function addMessagingControls(controls, opts) {
     if (view.said) {
       g.font = "italic 28px system-ui, sans-serif";
       g.fillStyle = t.warn;
-      const rows = wrapWords(view.said, measure, W2 - 56, 2);
+      const rows = wrapWords(view.said, measure, W3 - 56, 2);
       y -= rows.length * ROW;
       rows.forEach((row, r) => g.fillText(row, 28, y + ROW * (r + 0.5)));
     }
@@ -7361,13 +7415,13 @@ function addMessagingControls(controls, opts) {
       g.font = "italic 30px system-ui, sans-serif";
       g.fillStyle = t.ink;
       g.globalAlpha = 0.7;
-      wrapWords(`Nothing yet. What you write here is for ${view.with} alone.`, measure, W2 - 56, 3).forEach((row, r) => g.fillText(row, 28, LEAD + ROW * (r + 0.5)));
+      wrapWords(`Nothing yet. What you write here is for ${view.with} alone.`, measure, W3 - 56, 3).forEach((row, r) => g.fillText(row, 28, LEAD + ROW * (r + 0.5)));
       g.globalAlpha = 1;
     }
     for (let i = view.lines.length - 1; i >= 0; i--) {
       const line = view.lines[i];
       g.font = "32px system-ui, sans-serif";
-      const rows = line.text.split("\n").flatMap((part) => wrapWords(part, measure, W2 - 56, 6)).slice(0, 8);
+      const rows = line.text.split("\n").flatMap((part) => wrapWords(part, measure, W3 - 56, 6)).slice(0, 8);
       const tall = (rows.length + 1) * ROW + 10;
       if (y - tall < LEAD) break;
       y -= tall;
@@ -7388,8 +7442,8 @@ function addMessagingControls(controls, opts) {
   const openPanel = () => {
     if (!opts.panels || panel) return;
     const canvas = document.createElement("canvas");
-    canvas.width = W2;
-    canvas.height = H2;
+    canvas.width = W3;
+    canvas.height = H3;
     const texture = new THREE11.CanvasTexture(canvas);
     texture.colorSpace = THREE11.SRGBColorSpace;
     try {
@@ -7398,9 +7452,9 @@ function addMessagingControls(controls, opts) {
           kind: "custom",
           title: controls.letters.view().title,
           texture,
-          aspect: W2 / H2,
+          aspect: W3 / H3,
           onPress: (_x, y) => {
-            if (y < (H2 - WRITE) / H2 || !opts.panels) return;
+            if (y < (H3 - WRITE) / H3 || !opts.panels) return;
             const view = controls.letters.view();
             void opts.panels.keyboard.ask({ title: `Write to ${view.with}. Only they can read it. Done sends it.`, maxLength: MESSAGE_LIMITS.chars, multiline: true }).then((text) => {
               const trouble = text ? controls.letters.send(text) : null;
@@ -7776,15 +7830,15 @@ function addRoomControls(controls, presence, opts = {}) {
     canvas.height = 720;
     const g = canvas.getContext("2d");
     let n = 0;
-    const draw = () => {
+    const draw2 = () => {
       g.fillStyle = "#10243a";
       g.fillRect(0, 0, 1280, 720);
       g.fillStyle = "#ffd166";
       g.font = "64px sans-serif";
       g.fillText(`A shared screen, frame ${++n}`, 80, 380);
     };
-    draw();
-    const timer = setInterval(draw, 200);
+    draw2();
+    const timer = setInterval(draw2, 200);
     const track = canvas.captureStream(10).getVideoTracks()[0];
     track.addEventListener("ended", () => clearInterval(timer));
     return track;
@@ -9438,7 +9492,7 @@ function libraryPage(items, page, perPage) {
 }
 
 // packages/sdk/src/keyboard.ts
-var W3 = 1024;
+var W4 = 1024;
 var SHOW = 300;
 var KEYS = 520;
 var LIVE_STRIP = 92;
@@ -9447,13 +9501,13 @@ function createKeyboard(o) {
   const accent = `#${new THREE14.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   const canvas = document.createElement("canvas");
-  canvas.width = W3;
+  canvas.width = W4;
   canvas.height = SHOW + KEYS;
   const g = canvas.getContext("2d");
   const texture = new THREE14.CanvasTexture(canvas);
   texture.colorSpace = THREE14.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE14.Mesh(new THREE14.PlaneGeometry(WIDTH, WIDTH * canvas.height / W3), new THREE14.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
+  const board = new THREE14.Mesh(new THREE14.PlaneGeometry(WIDTH, WIDTH * canvas.height / W4), new THREE14.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
   board.name = "keyboard";
   const group = new THREE14.Group();
   group.name = "keyboard";
@@ -9482,25 +9536,25 @@ function createKeyboard(o) {
   };
   const paint = () => {
     stale = false;
-    g.clearRect(0, 0, W3, canvas.height);
+    g.clearRect(0, 0, W4, canvas.height);
     const top = live ? SHOW - LIVE_STRIP : 0;
     g.fillStyle = "rgba(10, 16, 24, 0.94)";
     g.beginPath();
-    g.roundRect(0, top, W3, SHOW - 16 - top, 26);
+    g.roundRect(0, top, W4, SHOW - 16 - top, 26);
     g.fill();
     g.textBaseline = "top";
     g.fillStyle = accent;
     g.font = "bold 30px system-ui, sans-serif";
-    if (live) g.fillText(notice || (live.keys.ctrl ? `${title}. Ctrl is on for the next key.` : title), 36, top + 22, W3 - 72);
+    if (live) g.fillText(notice || (live.keys.ctrl ? `${title}. Ctrl is on for the next key.` : title), 36, top + 22, W4 - 72);
     else {
-      g.fillText(notice || title, 36, 24, W3 - 72);
+      g.fillText(notice || title, 36, 24, W4 - 72);
       g.fillStyle = ink;
       g.font = "40px system-ui, sans-serif";
-      const lines = wrapText(`${entry.value}\u258F`, W3 - 72, (s) => g.measureText(s).width, 400);
+      const lines = wrapText(`${entry.value}\u258F`, W4 - 72, (s) => g.measureText(s).width, 400);
       lines.slice(-4).forEach((line, i) => g.fillText(line, 36, 76 + i * 50));
     }
     for (const k of keys) {
-      const [x, y, w, h] = [k.x * W3, SHOW + k.y * KEYS, k.width * W3, k.height * KEYS];
+      const [x, y, w, h] = [k.x * W4, SHOW + k.y * KEYS, k.width * W4, k.height * KEYS];
       const shift = live ? live.keys.shift : entry.shift;
       const on = aimed === k.id || k.kind === "shift" && shift !== "off" || k.kind === "ctrl" && !!live?.keys.ctrl || k.kind === "mic" && voice.state !== "idle";
       g.fillStyle = on ? accent : k.kind === "char" || k.kind === "space" ? "#162231" : k.kind === "done" ? "#24384c" : "#0e1722";
@@ -9679,7 +9733,7 @@ function createKeyboard(o) {
     pointOf(hit) {
       const k = hit.startsWith("kb:") ? keys.find((x) => x.id === hit.slice(3)) : null;
       if (!k || !done && !live) return null;
-      const height = WIDTH * canvas.height / W3;
+      const height = WIDTH * canvas.height / W4;
       const v = (SHOW + (k.y + k.height / 2) * KEYS) / canvas.height;
       local2.set((k.x + k.width / 2 - 0.5) * WIDTH, (0.5 - v) * height, 0);
       group.updateMatrixWorld(true);
@@ -9731,7 +9785,7 @@ async function fileStore(mode, run) {
 
 // packages/sdk/src/library.ts
 async function thumbnail(file, kind) {
-  const draw = (source, w, h) => {
+  const draw2 = (source, w, h) => {
     if (!w || !h) return "";
     const canvas = document.createElement("canvas");
     canvas.width = 240;
@@ -9743,7 +9797,7 @@ async function thumbnail(file, kind) {
   try {
     if (kind === "picture") {
       const bitmap = await createImageBitmap(file);
-      const data = draw(bitmap, bitmap.width, bitmap.height);
+      const data = draw2(bitmap, bitmap.width, bitmap.height);
       bitmap.close();
       return data;
     }
@@ -9759,7 +9813,7 @@ async function thumbnail(file, kind) {
         video.addEventListener("error", () => reject(new Error("unreadable")), { once: true });
         setTimeout(() => reject(new Error("slow")), 4e3);
       });
-      return draw(video, video.videoWidth, video.videoHeight);
+      return draw2(video, video.videoWidth, video.videoHeight);
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -9767,8 +9821,8 @@ async function thumbnail(file, kind) {
     return "";
   }
 }
-var W4 = 1024;
-var H3 = 768;
+var W5 = 1024;
+var H4 = 768;
 var COLS = 4;
 var ROWS = 2;
 var TOP = 96;
@@ -9794,13 +9848,13 @@ function createLibrary(o) {
     }
   };
   const canvas = document.createElement("canvas");
-  canvas.width = W4;
-  canvas.height = H3;
+  canvas.width = W5;
+  canvas.height = H4;
   const g = canvas.getContext("2d");
   const texture = new THREE15.CanvasTexture(canvas);
   texture.colorSpace = THREE15.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE15.Mesh(new THREE15.PlaneGeometry(WIDTH2, WIDTH2 * H3 / W4), new THREE15.MeshBasicMaterial({ map: texture, toneMapped: false }));
+  const board = new THREE15.Mesh(new THREE15.PlaneGeometry(WIDTH2, WIDTH2 * H4 / W5), new THREE15.MeshBasicMaterial({ map: texture, toneMapped: false }));
   board.name = "library";
   const group = new THREE15.Group();
   group.name = "library";
@@ -9830,14 +9884,14 @@ function createLibrary(o) {
     const shown2 = libraryPage(items, page, COLS * ROWS);
     page = shown2.page;
     g.fillStyle = "#0a1018";
-    g.fillRect(0, 0, W4, H3);
+    g.fillRect(0, 0, W5, H4);
     g.fillStyle = "#101a26";
-    g.fillRect(0, 0, W4, TOP);
+    g.fillRect(0, 0, W5, TOP);
     g.fillStyle = ink;
     g.textBaseline = "middle";
     g.textAlign = "left";
     g.font = "bold 40px system-ui, sans-serif";
-    g.fillText(removing ? "Select one to remove it" : "Your pictures and video", 36, TOP / 2 + 2, W4 - 200);
+    g.fillText(removing ? "Select one to remove it" : "Your pictures and video", 36, TOP / 2 + 2, W5 - 200);
     const button = (id, label, x, y, w, h, on = false) => {
       regions.push({ id, x, y, w, h });
       const lit = aimed === id || on;
@@ -9851,20 +9905,20 @@ function createLibrary(o) {
       g.fillText(label, x + w / 2, y + h / 2 + 2, w - 16);
       g.textAlign = "left";
     };
-    button("close", "Close", W4 - 164, 18, 140, TOP - 36);
+    button("close", "Close", W5 - 164, 18, 140, TOP - 36);
     if (shown2.items.length === 0) {
       g.fillStyle = ink;
       g.globalAlpha = 0.8;
       g.font = "34px system-ui, sans-serif";
       g.textAlign = "center";
-      g.fillText("Nothing here yet.", W4 / 2, H3 / 2 - 40);
-      g.fillText("Hang a picture or video on a flat screen,", W4 / 2, H3 / 2 + 10);
-      g.fillText("or take a picture with the camera.", W4 / 2, H3 / 2 + 56);
+      g.fillText("Nothing here yet.", W5 / 2, H4 / 2 - 40);
+      g.fillText("Hang a picture or video on a flat screen,", W5 / 2, H4 / 2 + 10);
+      g.fillText("or take a picture with the camera.", W5 / 2, H4 / 2 + 56);
       g.textAlign = "left";
       g.globalAlpha = 1;
     }
-    const cellW = (W4 - 48) / COLS;
-    const cellH = (H3 - TOP - FOOT - 24) / ROWS;
+    const cellW = (W5 - 48) / COLS;
+    const cellH = (H4 - TOP - FOOT - 24) / ROWS;
     shown2.items.forEach((item, i) => {
       const [x, y] = [24 + i % COLS * cellW + 10, TOP + 12 + Math.floor(i / COLS) * cellH + 8];
       const [w, h] = [cellW - 20, cellH - 16];
@@ -9899,7 +9953,7 @@ function createLibrary(o) {
       g.font = "26px system-ui, sans-serif";
       g.fillText(item.title || (item.kind === "video" ? "A video" : "A picture"), x + 12, y + h - 26, w - 24);
     });
-    const fy = H3 - FOOT + 14;
+    const fy = H4 - FOOT + 14;
     if (shown2.pages > 1) {
       button("prev", "Earlier", 24, fy, 170, FOOT - 28);
       button("next", "Later", 206, fy, 170, FOOT - 28);
@@ -9907,7 +9961,7 @@ function createLibrary(o) {
       g.font = "28px system-ui, sans-serif";
       g.fillText(`${shown2.page + 1} of ${shown2.pages}`, 400, fy + (FOOT - 28) / 2 + 2);
     }
-    if (items.length) button("removing", removing ? "Stop removing" : "Remove one", W4 - 300, fy, 276, FOOT - 28, removing);
+    if (items.length) button("removing", removing ? "Stop removing" : "Remove one", W5 - 300, fy, 276, FOOT - 28, removing);
     texture.needsUpdate = true;
   };
   const at = new THREE15.Vector3();
@@ -9956,7 +10010,7 @@ function createLibrary(o) {
       if (!group.visible) return null;
       const hit = raycaster.intersectObject(board, false)[0];
       if (!hit?.uv) return null;
-      const [x, y] = [hit.uv.x * W4, (1 - hit.uv.y) * H3];
+      const [x, y] = [hit.uv.x * W5, (1 - hit.uv.y) * H4];
       const r = regions.find((q) => x >= q.x && x <= q.x + q.w && y >= q.y && y <= q.y + q.h);
       return `lib:${r?.id ?? ""}`;
     },
@@ -9983,9 +10037,9 @@ function createLibrary(o) {
     pointOf(hit) {
       const r = hit.startsWith("lib:") ? regions.find((q) => q.id === hit.slice(4)) : null;
       if (!r || !group.visible) return null;
-      const height = WIDTH2 * H3 / W4;
+      const height = WIDTH2 * H4 / W5;
       group.updateMatrixWorld(true);
-      return board.localToWorld(new THREE15.Vector3(((r.x + r.w / 2) / W4 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H3) * height, 0));
+      return board.localToWorld(new THREE15.Vector3(((r.x + r.w / 2) / W5 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H4) * height, 0));
     },
     info: () => ({ showing: group.visible, page, pages: libraryPage(items, page, COLS * ROWS).pages, removing, cells: regions.map((r) => r.id) }),
     update() {
@@ -10006,32 +10060,32 @@ var BAR = 0.085;
 var GAP = 0.012;
 var BUTTON = 0.062;
 var DEG = Math.PI / 180;
-function canvasTexture(width, height, draw) {
+function canvasTexture(width, height, draw2) {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  draw(canvas.getContext("2d"), width, height);
+  draw2(canvas.getContext("2d"), width, height);
   const texture = new THREE16.CanvasTexture(canvas);
   texture.colorSpace = THREE16.SRGBColorSpace;
   texture.anisotropy = 8;
   return texture;
 }
 function noteTexture(source, ink) {
-  const W5 = 1024;
+  const W6 = 1024;
   const pad = 56;
   const measure = document.createElement("canvas").getContext("2d");
   measure.font = "40px system-ui, sans-serif";
-  const lines = wrapText(source.text, W5 - pad * 2, (s) => measure.measureText(s).width);
-  const H5 = Math.round(Math.min(2048, Math.max(360, pad * 2 + lines.length * 56 + 12)));
-  const texture = canvasTexture(W5, H5, (g) => {
+  const lines = wrapText(source.text, W6 - pad * 2, (s) => measure.measureText(s).width);
+  const H6 = Math.round(Math.min(2048, Math.max(360, pad * 2 + lines.length * 56 + 12)));
+  const texture = canvasTexture(W6, H6, (g) => {
     g.fillStyle = "#0a1018";
-    g.fillRect(0, 0, W5, H5);
+    g.fillRect(0, 0, W6, H6);
     g.fillStyle = ink;
     g.textBaseline = "top";
     g.font = "40px system-ui, sans-serif";
     lines.forEach((line, i) => g.fillText(line, pad, pad + i * 56));
   });
-  return { texture, aspect: W5 / H5 };
+  return { texture, aspect: W6 / H6 };
 }
 function glyphTexture(glyph, ink) {
   return canvasTexture(128, 128, (g) => {
@@ -10977,8 +11031,8 @@ function createScores(opts) {
       if (had !== null && !better(b, mine, had)) return { ok: true, said: `Your best, ${scoreWords(b, mine)}, is already on the board.` };
       const signed = await opts.hand.sign(world, id, mine, { title: b.title, format: b.format }).catch(() => null);
       if (!signed) return { ok: false, said: "It couldn't be signed, so nothing was posted. Your best is still kept on this device." };
-      const sent = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
-      if (!sent || sent.took === 0) return { ok: false, said: "No relay took it. Your best is still kept on this device: try again in a moment." };
+      const sent2 = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
+      if (!sent2 || sent2.took === 0) return { ok: false, said: "No relay took it. Your best is still kept on this device: try again in a moment." };
       kept2[id] = { best: mine, posted: mine };
       write(who, kept2);
       events = [...events.filter((e) => e.id !== signed.id), signed];
@@ -11201,8 +11255,8 @@ function createBag(opts) {
     keep3(signed);
     known = { who, bag: signed, answered: true, at: now() };
     changed();
-    const sent = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
-    if (!sent || sent.took === 0) return { ok: false, why: "not-sent", said: "Signed, but no relay took it. It is kept on this device and will be sent again." };
+    const sent2 = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
+    if (!sent2 || sent2.took === 0) return { ok: false, why: "not-sent", said: "Signed, but no relay took it. It is kept on this device and will be sent again." };
     return { ok: true, said: adding ? `${it} is in your bag. Anyone can see what is in it.` : `${it} is out of your bag.` };
   };
   const TINTS_KEY = "nswp:tints";
@@ -11683,7 +11737,7 @@ function createItemPreviews(o) {
       return stage = null;
     }
   };
-  const draw = (made, angle, onto) => {
+  const draw2 = (made, angle, onto) => {
     const s = stageNow();
     if (!s) return null;
     s.pivot.clear();
@@ -11755,13 +11809,13 @@ function createItemPreviews(o) {
     still(item, tints) {
       const made = want(item, tints);
       if (!made) return null;
-      return made.still ??= draw(made, -0.62, null);
+      return made.still ??= draw2(made, -0.62, null);
     },
     turning(item, tints, moving = true) {
       const made = want(item, tints);
       if (!made) return null;
       const angle = moving ? (typeof performance === "undefined" ? 0 : performance.now()) / 1e3 * 0.7 : -0.62;
-      return made.live = draw(made, angle, made.live);
+      return made.live = draw2(made, angle, made.live);
     },
     onChange(fn) {
       watchers3.add(fn);
@@ -12188,8 +12242,8 @@ function createAchievements(opts) {
         const a = one(id);
         const signed = await opts.hand.sign(world, id, a.title).catch(() => null);
         if (!signed) break;
-        const sent = await sendWell(signed, { own, usual: usual(), publish, query, now }).catch(() => null);
-        if (!sent || sent.took === 0) break;
+        const sent2 = await sendWell(signed, { own, usual: usual(), publish, query, now }).catch(() => null);
+        if (!sent2 || sent2.took === 0) break;
         kept2.shown.push(id);
         if (!kept2.earned.includes(id)) kept2.earned.push(id);
         write(who);
@@ -13201,7 +13255,7 @@ function addSoundControls(controls, sounds, opts = {}) {
 // packages/sdk/src/chamber.ts
 import * as THREE19 from "three";
 var R = 1.8;
-var H4 = 2.8;
+var H5 = 2.8;
 var BAYS = 10;
 var DOOR_W = 1.04;
 var DOOR_H = 2.2;
@@ -13246,12 +13300,12 @@ function createChamber(accent, opts = {}) {
   for (let i = 1; i < BAYS; i++) {
     const a = i * 2 * Math.PI / BAYS;
     wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE19.MathUtils.radToDeg(a));
-    wallShape.box([bay, H4, 0.12], [0, H4 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
-    for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H4 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
+    wallShape.box([bay, H5, 0.12], [0, H5 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
+    for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H5 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
   }
   wallShape.at([0, 0, -reach]);
-  for (const side of [-1, 1]) wallShape.box([(bay - DOOR_W) / 2, H4, 0.16], [side * (bay + DOOR_W) / 4, H4 / 2, 0], { bevel: 0.02 });
-  wallShape.box([DOOR_W, H4 - DOOR_H, 0.16], [0, DOOR_H + (H4 - DOOR_H) / 2, 0], { bevel: 0.02 });
+  for (const side of [-1, 1]) wallShape.box([(bay - DOOR_W) / 2, H5, 0.16], [side * (bay + DOOR_W) / 4, H5 / 2, 0], { bevel: 0.02 });
+  wallShape.box([DOOR_W, H5 - DOOR_H, 0.16], [0, DOOR_H + (H5 - DOOR_H) / 2, 0], { bevel: 0.02 });
   wallShape.line([-DOOR_W / 2, DOOR_H - 0.012, 0.082], [DOOR_W / 2, DOOR_H - 0.012, 0.082], 0.024, [0, 0, 1]);
   const walls = wallShape.build(metal);
   const lidShape = builder();
@@ -13266,7 +13320,7 @@ function createChamber(accent, opts = {}) {
     return leaf;
   });
   const sign = new THREE19.Mesh(new THREE19.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE19.MeshBasicMaterial({ transparent: true }));
-  sign.position.set(0, DOOR_H + (H4 - DOOR_H) / 2, -reach + 0.085);
+  sign.position.set(0, DOOR_H + (H5 - DOOR_H) / 2, -reach + 0.085);
   const rising = new THREE19.Group();
   rising.add(walls, ...leaves, sign);
   const clear = new THREE19.Mesh(new THREE19.BufferGeometry().setAttribute("position", new THREE19.BufferAttribute(new Float32Array(9), 3)), new THREE19.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
@@ -13300,7 +13354,7 @@ function createChamber(accent, opts = {}) {
     floor.scale.setScalar(Math.max(1e-3, Math.min(1, presence * 1.6)));
     floor.visible = presence > 2e-3;
     clear.visible = presence > 2e-3;
-    lid.position.y = H4 + (1 - up) * 3.5;
+    lid.position.y = H5 + (1 - up) * 3.5;
     lid.visible = presence > 0.5;
     const open = door * door * (3 - 2 * door);
     for (const leaf of leaves) leaf.scale.x = Math.max(0.02, 1 - open);
@@ -13481,7 +13535,7 @@ function saveFile(blob, name) {
 }
 
 // packages/sdk/src/camera.ts
-async function takePicture(renderer, scene, camera, opts = {}) {
+function draw(renderer, scene, camera, opts) {
   const width = Math.round(opts.width ?? 1920);
   const height = Math.round(opts.height ?? 1080);
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
@@ -13493,30 +13547,37 @@ async function takePicture(renderer, scene, camera, opts = {}) {
   camera.updateWorldMatrix(true, false);
   camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
   eye.updateMatrixWorld(true);
+  const pixels = new Uint8Array(width * height * 4);
   try {
     for (const o of hidden) o.visible = false;
     renderer.xr.enabled = false;
     renderer.setRenderTarget(target);
     renderer.clear();
     renderer.render(scene, eye);
-    const pixels = new Uint8Array(width * height * 4);
     renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const g = canvas.getContext("2d");
-    const image = g.createImageData(width, height);
-    for (let y = 0; y < height; y++) image.data.set(pixels.subarray((height - 1 - y) * width * 4, (height - y) * width * 4), y * width * 4);
-    g.putImageData(image, 0, 0);
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", opts.quality ?? 0.92));
-    if (!blob) throw new Error("nswp-sdk: this browser couldn't encode the picture");
-    return blob;
   } finally {
     for (const o of hidden) o.visible = true;
     renderer.xr.enabled = xrWasEnabled;
     renderer.setRenderTarget(previousTarget);
     target.dispose();
   }
+  return { pixels, width, height };
+}
+async function toJpeg(drawn2, quality = 0.92) {
+  const { pixels, width, height } = drawn2;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const g = canvas.getContext("2d");
+  const image = g.createImageData(width, height);
+  for (let y = 0; y < height; y++) image.data.set(pixels.subarray((height - 1 - y) * width * 4, (height - y) * width * 4), y * width * 4);
+  g.putImageData(image, 0, 0);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+  if (!blob) throw new Error("nswp-sdk: this browser couldn't encode the picture");
+  return blob;
+}
+async function takePicture(renderer, scene, camera, opts = {}) {
+  return toJpeg(draw(renderer, scene, camera, opts), opts.quality);
 }
 async function takeSelfie(renderer, scene, head, look, opts = {}) {
   head.updateWorldMatrix(true, false);
@@ -13534,12 +13595,14 @@ async function takeSelfie(renderer, scene, head, look, opts = {}) {
   eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
   eye.position.y = at.y + 0.08;
   eye.lookAt(at.x, at.y - 0.22, at.z);
+  let drawn2;
   try {
-    return await takePicture(renderer, scene, eye, { width: 1600, height: 1200, ...opts });
+    drawn2 = draw(renderer, scene, eye, { width: 1600, height: 1200, ...opts });
   } finally {
     scene.remove(figure.group);
     figure.dispose();
   }
+  return toJpeg(drawn2, opts.quality);
 }
 function canRecord() {
   return typeof MediaRecorder !== "undefined" && typeof HTMLCanvasElement !== "undefined" && "captureStream" in HTMLCanvasElement.prototype;
@@ -13600,7 +13663,7 @@ function addCameraControls(controls, d) {
     }
   };
   const shoot = async (kind) => {
-    making();
+    if (making()) await sent();
     try {
       const hide = d.hide?.() ?? [];
       const blob = kind === "selfie" ? await takeSelfie(d.renderer, d.scene, d.camera, d.look?.() ?? plain, { hide }) : await takePicture(d.renderer, d.scene, d.camera, { hide });
