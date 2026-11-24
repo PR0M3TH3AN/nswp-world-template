@@ -87,6 +87,11 @@ export interface MenuBelowOptions {
     };
     /** For tests: this page's own origin. */
     origin?: string;
+    /** For tests: the size of this page's window, in pixels. By default the window's own. */
+    view?: () => {
+        w: number;
+        h: number;
+    };
     /** For tests: the time, in milliseconds. */
     now?: () => number;
 }
@@ -110,9 +115,20 @@ export interface MenuBelow {
     readonly world: MenuWorld | null;
     /** Be told when any of those change. Returns how to stop. */
     onChange(fn: () => void): () => void;
-    /** The menu that was mounted, so that the keys a world forwards act on it. */
+    /**
+     * The menu that was mounted, so that the keys a world forwards act on it, and so that the world is told what of
+     * its view the menu covers (`covers`): worked out here from the menu's own `cover()`, where its sheet is, and
+     * where the frame is in this page. Nothing for a client to say. A menu with no `cover()` says nothing of it.
+     */
     attach(menu: {
         pressKey(key: string): void;
+        setOpen?(open: boolean, at?: string): void;
+        cover?(): {
+            top: number;
+            bottom: number;
+            left?: number;
+            right?: number;
+        };
     } | null): void;
     /** The visitor's own Home was pressed: the world is told, and they are taken home within `LEAVE_MS` whatever it does. */
     leave(): void;

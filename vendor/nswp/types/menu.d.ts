@@ -51,6 +51,8 @@ export declare const MENU_LIMITS: {
     readonly save: number;
     /** How many a world may hand up in answer to one press. */
     readonly saves: 12;
+    /** Pixels, for any number in what a client says its menu covers of a world's view. */
+    readonly covers: 8192;
 };
 /** How long a framed world waits for a client to say it has the menu, before drawing its own. */
 export declare const MENU_WAIT_MS = 300;
@@ -263,6 +265,25 @@ export declare function cleanMenuSettings(input: unknown): MenuSettings;
 export declare const MENU_REPORTED: readonly ["headset", "intense", "turn", "hand", "narrow", "fade", "look", "fov", "wrist", "sound", "motion", "text", "tabs", "pins"];
 /** What a client takes from the settings a world reported: the ones named in `MENU_REPORTED`, cleaned. Never throws. */
 export declare function reportedSettings(input: unknown): TravelSettings;
+/**
+ * What of a world's view its client's menu covers (`covers`). In whole CSS pixels of the world's own view, which is
+ * the world's page as its own script measures it. Each edge is how far the menu reaches in from that edge, for what
+ * is always there (a bar, the marks); all four are always said, 0 where nothing is covered. `sheet` is the box of
+ * the sheet while it is up, from the view's top left: said as a box and never as an edge, so that a view moved clear
+ * of the edges stays still as the sheet comes and goes.
+ */
+export interface MenuCovers {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    sheet?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    };
+}
 /** What a client may say to a world. */
 export type MenuWordDown = {
     what: "has";
@@ -299,6 +320,9 @@ export type MenuWordDown = {
 } | {
     what: "playing";
     playing: boolean;
+} | {
+    what: "covers";
+    covers: MenuCovers;
 };
 /** What a world may say to a client. */
 export type MenuWordUp = {
@@ -325,10 +349,13 @@ export type MenuWordUp = {
 } | {
     what: "making";
     id: string;
+} | {
+    what: "show";
+    show?: string;
 };
 /**
  * A word from the page above, as a world reads it, or null if it is none of these words. One word says one thing:
- * the first of `has`, `settings`, `press`, `open`, `go`, `sign`, `playing` that is there. A word with anything in it that only a world
+ * the first of `has`, `settings`, `press`, `open`, `go`, `sign`, `playing`, `covers` that is there. A word with anything in it that only a world
  * says is not read at all. Never throws.
  *
  * A `press` is given whatever its id: only the world knows what it last described, and it checks. A press may
@@ -338,7 +365,7 @@ export type MenuWordUp = {
 export declare function readMenuWordDown(data: unknown): MenuWordDown | null;
 /**
  * A word from the page in the frame, as a client reads it, or null if it is none of these words. One word says one
- * thing: the first of `world`, `key`, `say`, `settings`, `picture`, `save`, `making` that is there. A word with anything in
+ * thing: the first of `world`, `key`, `say`, `settings`, `picture`, `save`, `making`, `show` that is there. A word with anything in
  * it that only a client says is not read at all. Never throws.
  *
  * A `save` is read here for what it is (a picture or a clip, within the limit, for a row by id). Whether it is the

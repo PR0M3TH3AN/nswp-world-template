@@ -126,4 +126,23 @@ export interface XrInput {
     info(): XrInputInfo;
     dispose(): void;
 }
+/**
+ * Where the visitor's own hands come in the order of drawing: after the menu a headset shows (`MENU_ORDER`,
+ * console.ts), and so over it.
+ */
+export declare const HANDS_ORDER = 40;
+/**
+ * The visitor's own hands are drawn last, and over the menu, wherever they are held.
+ *
+ * The menu in a headset is drawn over the room with no regard to what is nearer, so that a wall can't hide it. Drawn
+ * the usual way, a hand was painted first and the menu over it: a visitor reaching for a row lost sight of the hand
+ * they were reaching with. The owner, 2026-11-24: "we need to make sure that the menu is not drawn above the hands
+ * in VR", and then "ok lets draw the hands last".
+ *
+ * So everything under `root` is drawn in the last pass, after the menu. It is still hidden by what is really in
+ * front of it in the room (a wall a hand is put through), since it keeps its place in depth; the menu keeps none.
+ * Whatever is drawn of a hand goes through here: the kit's controller and joints today, and a better model or a
+ * world's own when there is one.
+ */
+export declare function drawnLast(root: THREE.Object3D): void;
 export declare function createXrInput(opts: XrInputOptions): XrInput;

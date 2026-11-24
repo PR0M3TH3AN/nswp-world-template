@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.87.0";
+var KIT_VERSION = "0.88.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4672,7 +4672,9 @@ var MENU_LIMITS = {
   /** Bytes in a picture or a clip a world hands up to be saved: 64 MB. */
   save: 64 * 1024 * 1024,
   /** How many a world may hand up in answer to one press. */
-  saves: 12
+  saves: 12,
+  /** Pixels, for any number in what a client says its menu covers of a world's view. */
+  covers: 8192
 };
 
 // packages/core/dist/item.js

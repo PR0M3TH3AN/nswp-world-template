@@ -78,6 +78,12 @@ function portHere(controls) {
   };
 }
 
+// packages/sdk/src/ui/sheet-box.ts
+var sheets = /* @__PURE__ */ new WeakMap();
+function keepSheet(menu, now) {
+  sheets.set(menu, now);
+}
+
 // packages/sdk/src/ui/hud.ts
 var CSS = `
 :host { position: fixed; inset: 0; z-index: 2147483000; pointer-events: none; display: block;
@@ -267,12 +273,18 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
   width: min(480px, calc(100vw - 20px)); max-height: min(70vh, 640px); display: flex; flex-direction: column; pointer-events: auto;
   border-radius: 22px 22px 12px 12px; overflow: hidden; }
 .sheet[hidden] { display: none; }
+/* One size on every tab: what a short tab leaves is here, above the foot. A tab that isn't up is measured in a box nobody sees. */
+.sheet > .room { flex: 1 1 0; min-height: 0; }
+/* It stands beside the sheet and not in it, as wide as the sheet is, so that tabs can be measured while the sheet is down. */
+.measure { position: absolute; left: 0; top: 0; width: min(480px, calc(100vw - 20px)); border: 1px solid transparent; visibility: hidden; pointer-events: none; }
+.measure > .rows { overflow: visible; }
 /* Everything outside the sheet while it is up: a press there closes the menu, and is nothing else. */
 .outside { position: absolute; inset: 0; pointer-events: auto; background: none; }
 .outside[hidden] { display: none; }
 /* Where there is room, at a desk, the menu is larger: more of a list at once, and rows side by side. */
 @media (min-width: 900px) and (min-height: 560px) {
   .sheet { width: min(780px, calc(100vw - 40px)); max-height: min(74vh, 780px); }
+  .measure { width: min(780px, calc(100vw - 40px)); }
   .rows { grid-template-columns: 1fr 1fr; align-content: start; }
   .rows > .person, .rows > .swatches, .rows > .tiles, .rows > .row.primary { grid-column: 1 / -1; }
   .rows > .person.thing { grid-template-columns: 200px 1fr; grid-template-areas: "face about" "face acts"; grid-template-rows: auto 1fr; }
@@ -606,7 +618,9 @@ function mountMenu(port, opts = {}) {
   const pinWords = el("span");
   const pinIt = el("button", { class: "pin-it", type: "button", "aria-pressed": "false" }, icon("pin"), pinWords);
   const foot = el("div", { class: "foot" }, pinIt, close);
-  const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabbar, rows, note, said, foot);
+  const room = el("div", { class: "room", "aria-hidden": "true" });
+  const measure = el("div", { class: "measure", "aria-hidden": "true", inert: "" });
+  const sheet = el("section", { class: "sheet glass", role: "dialog", "aria-label": "Menu", hidden: "" }, tabbar, rows, note, said, room, foot);
   const chatTitle = el("b");
   const chatWhose = el("p", { class: "whose", hidden: "" });
   const tabRoom = el("button", { type: "button", class: "tab", role: "tab" }, "Room chat");
@@ -625,7 +639,7 @@ function mountMenu(port, opts = {}) {
   const chatForm = el("form", {}, chatField, chatSend);
   const chat = el("section", { class: "chat", "aria-label": "Room chat", "data-state": "closed", "data-tab": "room" }, el("div", { class: "frame glass" }, chatWhose, el("header", {}, chatTitle, chatTabs, chatClose), feedLead, chatEmpty, chatLines, chatHint, feedSaid, chatForm));
   const outside = el("div", { class: "outside", "aria-hidden": "true", hidden: "" });
-  root.append(style, outside, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, el("div", { class: "low" }, loadingLine, target, bar));
+  root.append(style, outside, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, measure, el("div", { class: "low" }, loadingLine, target, bar));
   (opts.parent ?? document.body).append(host);
   let open = false;
   let section = "";
@@ -757,10 +771,10 @@ function mountMenu(port, opts = {}) {
     if (open && section === id2) setOpen(false);
     else setOpen(true, id2);
   };
-  const drawCard = (card, acts = []) => {
+  const drawCard = (card, acts = [], onlyMeasured = false) => {
     const face = el("span", { class: "face", "aria-hidden": "true" }, [...card.title][0]?.toUpperCase() ?? "");
     if (card.color) face.style.setProperty("--c", card.color);
-    const paint = card.draw;
+    const paint = onlyMeasured ? void 0 : card.draw;
     if (paint) {
       const canvas = document.createElement("canvas");
       canvas.width = canvas.height = 256;
@@ -784,7 +798,7 @@ function mountMenu(port, opts = {}) {
       };
       requestAnimationFrame(begin);
     }
-    if (card.face && !paint) {
+    if (card.face && !card.draw && !onlyMeasured) {
       const from = card.face;
       const copy = document.createElement("canvas");
       copy.width = Math.max(1, Math.min(256, Math.round(from.width ?? 128)));
@@ -795,7 +809,7 @@ function mountMenu(port, opts = {}) {
       } catch {
       }
     }
-    if (card.picture) {
+    if (card.picture && !onlyMeasured) {
       void loadPicture(card.picture).then((drawn2) => {
         if (!drawn2 || !face.isConnected) return;
         const copy = document.createElement("canvas");
@@ -1054,7 +1068,115 @@ function mountMenu(port, opts = {}) {
     clearTimeout(asTimer);
     asTimer = setTimeout(() => asWho.classList.remove("shown"), AS_SHOWN_MS);
   };
+  const measured = /* @__PURE__ */ new Map();
+  let heldFor = "";
+  let heldTall = 0;
+  const tallOf = (r, n, w) => r.scrollHeight + (r.offsetHeight - r.clientHeight) + n.getBoundingClientRect().height + w.getBoundingClientRect().height;
+  const placeOf = (wide) => `${wide}|${host.style.getPropertyValue("--s")}|`;
+  const keyOf = (at, s) => `${at}${s.id}|${JSON.stringify([s.note ?? "", s.said ?? null, s.card ? [s.card.title, s.card.sub, s.card.text, s.card.now, !!s.card.draw, s.card.acts ?? []] : null, s.items.map((i) => [i.id, i.kind, i.label, i.short, i.on, i.from ?? "", i.tone])])}`;
+  const measureTab = (s, layOut) => {
+    const r = el("div", { class: "rows" }, ...layOut(s));
+    r.hidden = !s.items.length && !s.card;
+    const n = el("p", { class: "note" }, s.note ?? "");
+    const w = el("p", { class: "note said" }, ...s.said ? [el("b", {}, s.said.from), s.said.note] : []);
+    w.hidden = !s.said;
+    measure.replaceChildren(r, n, w);
+    return tallOf(r, n, w);
+  };
+  let lastView = null;
+  let lastLayOut = null;
+  let aheadWaiting = false;
+  const idle = (fn) => {
+    const ask = globalThis.requestIdleCallback;
+    if (typeof ask === "function") ask((d) => fn(() => d.timeRemaining()), { timeout: 2e3 });
+    else setTimeout(() => fn(() => 4), 250);
+  };
+  const measureAhead = () => {
+    if (aheadWaiting) return;
+    aheadWaiting = true;
+    idle((left) => {
+      aheadWaiting = false;
+      if (!lastView || !lastLayOut || !sheet.hidden || host.hidden) return;
+      measure.style.width = "";
+      const at = placeOf(Math.round(measure.getBoundingClientRect().width));
+      let more = false;
+      let done = 0;
+      for (const s of lastView.sections) {
+        const key = keyOf(at, s);
+        if (measured.has(key)) continue;
+        if (done > 0 && left() < 3) {
+          more = true;
+          break;
+        }
+        measured.set(key, measureTab(s, lastLayOut));
+        done++;
+      }
+      measure.replaceChildren();
+      if (more) measureAhead();
+    });
+  };
+  const sizeSheet = (view, layOut) => {
+    lastView = view;
+    lastLayOut = layOut;
+    sheet.style.height = "";
+    says.classList.remove("one");
+    if (sheet.hidden) {
+      heldFor = "";
+      heldTall = 0;
+      measureAhead();
+      return;
+    }
+    const inSheet = says.parentElement === sheet;
+    if (inSheet) says.classList.add("one");
+    sheet.style.maxHeight = "none";
+    const across = sheet.getBoundingClientRect().width;
+    const wide = Math.round(across);
+    measure.style.width = `${across}px`;
+    const here = tallOf(rows, note, said);
+    const around = sheet.getBoundingClientRect().height - here;
+    const at = placeOf(wide);
+    let most = here;
+    const still = /* @__PURE__ */ new Set();
+    for (const s of view.sections) {
+      const key = keyOf(at, s);
+      still.add(key);
+      if (s.id === section) {
+        measured.set(key, here);
+        continue;
+      }
+      let tall = measured.get(key);
+      if (tall === void 0) {
+        tall = measureTab(s, layOut);
+        measured.set(key, tall);
+      }
+      most = Math.max(most, tall);
+    }
+    measure.replaceChildren();
+    for (const key of [...measured.keys()]) if (!still.has(key)) measured.delete(key);
+    sheet.style.maxHeight = "";
+    if (heldFor !== at) {
+      heldFor = at;
+      heldTall = 0;
+    }
+    heldTall = Math.max(heldTall, Math.ceil(around + most));
+    sheet.style.height = `${heldTall}px`;
+    if (inSheet) says.classList.remove("one");
+  };
+  let resized = null;
+  const onWindowSize = () => {
+    if (sheet.hidden) return;
+    sheet.style.height = "";
+    heldFor = "";
+    heldTall = 0;
+    if (resized) clearTimeout(resized);
+    resized = setTimeout(() => {
+      resized = null;
+      if (open) draw();
+    }, 120);
+  };
+  addEventListener("resize", onWindowSize);
   const fitSays = () => {
+    if (!sheet.hidden && heldTall > 0) return;
     sheet.style.height = "";
     if (says.parentElement !== sheet || sheet.hidden) return void says.classList.remove("one");
     says.classList.add("one");
@@ -1063,7 +1185,34 @@ function mountMenu(port, opts = {}) {
     says.classList.remove("one");
     if (says.getBoundingClientRect().height > one + 0.5) sheet.style.height = `${size}px`;
   };
+  const PRESS_MS = 1200;
+  const DRAG_MS = 8e3;
+  let pressedAt = -Infinity;
+  let waitFor = PRESS_MS;
+  let owed = false;
+  const pressing = () => performance.now() - pressedAt < waitFor;
+  const pressBegan = (e) => {
+    const at = e.composedPath()[0];
+    waitFor = at instanceof HTMLInputElement && at.type === "range" ? DRAG_MS : PRESS_MS;
+    pressedAt = performance.now();
+  };
+  const pressOver = () => {
+    if (pressedAt === -Infinity) return;
+    pressedAt = -Infinity;
+    if (!owed) return;
+    owed = false;
+    setTimeout(draw, 0);
+  };
+  const onSpace = (e) => void (e.key === " " && (e.type === "keyup" ? pressOver() : e.repeat || pressBegan(e)));
+  root.addEventListener("pointerdown", pressBegan, true);
+  root.addEventListener("keydown", onSpace, true);
+  root.addEventListener("keyup", onSpace, true);
+  const PRESS_ENDS = ["pointerup", "pointercancel", "blur"];
+  for (const type of PRESS_ENDS) addEventListener(type, pressOver, true);
+  document.addEventListener("visibilitychange", pressOver);
   const draw = () => {
+    if (pressing()) return void (owed = true);
+    owed = false;
     const view = controls.view();
     const t = view.theme;
     host.style.setProperty("--accent", rgb(t.accent));
@@ -1272,7 +1421,10 @@ function mountMenu(port, opts = {}) {
       if (open) sheet.insertBefore(says, foot);
       else root.insertBefore(says, chat);
     }
-    fitSays();
+    sizeSheet(view, (s) => {
+      const within = new Set(s.card?.draw ? s.card.acts ?? [] : []);
+      return [s.card ? drawCard(s.card, lay(s.items.filter((i) => within.has(i.id))), true) : "", ...lay(s.items.filter((i) => !within.has(i.id)))];
+    });
     menu.setAttribute("aria-expanded", String(open));
     quiet.setAttribute("aria-expanded", String(open));
   };
@@ -1464,7 +1616,7 @@ function mountMenu(port, opts = {}) {
   host.classList.add("arriving");
   setTimeout(() => host.classList.remove("arriving"), 1200);
   draw();
-  return {
+  const hud = {
     element: host,
     get open() {
       return open;
@@ -1482,10 +1634,10 @@ function mountMenu(port, opts = {}) {
       return [id, menu, quiet, bar, target, loadingLine, sheet, ...chatState === "open" ? [chat] : []].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0).map((r) => ({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }));
     },
     cover() {
-      if (host.hidden || controls.presence !== "full") return { top: 0, bottom: 0 };
+      if (host.hidden || controls.presence !== "full") return { top: 0, bottom: 0, left: 0, right: 0 };
       const low = bar.getBoundingClientRect();
       const high = id.getBoundingClientRect();
-      return { top: Math.round(high.bottom), bottom: Math.round(innerHeight - low.top) };
+      return { top: Math.round(high.bottom), bottom: Math.round(innerHeight - low.top), left: 0, right: 0 };
     },
     pressKey,
     setHidden(hidden) {
@@ -1509,6 +1661,10 @@ function mountMenu(port, opts = {}) {
       stop();
       stopAsking();
       removeEventListener("focus", onPageFocus);
+      removeEventListener("resize", onWindowSize);
+      if (resized) clearTimeout(resized);
+      for (const type of PRESS_ENDS) removeEventListener(type, pressOver, true);
+      document.removeEventListener("visibilitychange", pressOver);
       stopSay();
       removeEventListener("keydown", onKey);
       stopLeft();
@@ -1521,6 +1677,13 @@ function mountMenu(port, opts = {}) {
       host.remove();
     }
   };
+  keepSheet(hud, () => {
+    if (host.hidden || !open) return { box: null, moving: false };
+    const r = sheet.getBoundingClientRect();
+    const moving = typeof sheet.getAnimations === "function" && sheet.getAnimations().some((a) => a.playState === "running");
+    return { box: r.width > 0 && r.height > 0 ? { x: r.x, y: r.y, width: r.width, height: r.height } : null, moving };
+  });
+  return hud;
 }
 function mountHud(controls, opts = {}) {
   return mountMenu(portHere(controls), opts);

@@ -116,6 +116,7 @@ export { createItems, fitToSize, ITEM_BUDGET, onItemsChange, setShowsItems, show
 export { createBag, type Bag, type BagHand, type BagOptions, type BagResult } from "./bag.js";
 export { itemIn, type Bagging, type BaggingOptions } from "./bagging.js";
 export { addBagControls } from "./bag-pictures.js";
+export { createItemPreviews, type ItemPreviews, type ItemPreviewsOptions } from "./item-preview.js";
 export { allowScript, createPlay, mayHold, paintHealth, scriptAllowed, type Play, type PlayInfo, type PlayOptions, type PlayPerson, type PlaySnapshot } from "./play.js";
 export { runInBox, type BoxAsk, type BoxRun, type ItemBoxOptions } from "./item-box.js";
 export { addItemControls, TAP_MS, type ItemControls, type ItemControlsOptions } from "./item-controls.js";
