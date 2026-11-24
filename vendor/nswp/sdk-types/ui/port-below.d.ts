@@ -68,6 +68,14 @@ export interface MenuBelowOptions {
      */
     onSave?: (file: Blob, about: SavedAbout) => string | void;
     /**
+     * Whether the visitor's own music is playing in this page. A world is told when that changes, and once as it
+     * comes up if it is playing then, so that it steps its own music back and the two aren't heard on top of one
+     * another. Nothing of the music itself is said: not its name, not where it is from. It is read whenever the
+     * controls say something changed, which the kit's Sound controls do as a song starts and stops. Left out, no
+     * world is told anything.
+     */
+    playing?: () => boolean;
+    /**
      * The frame's first page had already finished loading when this was made. Say so if it may have: a `here` is
      * told apart from the next page's by whether a load is still waiting for one (below).
      */

@@ -79,6 +79,14 @@ export interface Sounds {
     setLevels(patch: Partial<SoundLevels>): void;
     /** The visitor's own music. */
     readonly jukebox: Jukebox;
+    /**
+     * The visitor's own music is playing somewhere else: in their client's page, above this world. The place's music
+     * steps back to a tenth while it is, as it does for a song of theirs played here, and comes up again at `false`.
+     * Only the place's own music: the hum, and music shared by people nearby, are left as they are.
+     */
+    stepBack(on: boolean): void;
+    /** Whether the place's music is stepped back for music playing elsewhere. For tests. */
+    readonly steppedBack: boolean;
     /** Be told when a volume or the jukebox changed. Called once at the start. */
     onChange(fn: (levels: SoundLevels) => void): () => void;
     /** What the place's music is: the world's own, the kit's recorded default, the one made in the browser, or none. */

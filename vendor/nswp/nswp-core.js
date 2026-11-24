@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.85.0";
+var KIT_VERSION = "0.86.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -7802,6 +7802,7 @@ var MENU_LIMITS = {
 var MENU_WAIT_MS = 300;
 var LEAVE_MS = 1e3;
 var MENU_SAVE_MS = 1e4;
+var MENU_MAKING_MS = 6e4;
 var MENU_VISITOR_TABS = ["you", "figure", "bag", "wallet", "files", "following", "messages", "look"];
 var MENU_WORLD_TABS = ["travel", "room", "people", "camera", "panels", "view", "scores", "achievements", "guests", "sound", "help", "moving"];
 var MENU_KEYS = ["summon", "escape", "menu", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
@@ -8014,8 +8015,8 @@ function reportedSettings(input) {
   return out;
 }
 var isMenu = (data) => isObject(data) && data.nswp === "menu";
-var DOWN_ONLY = ["has", "v", "press", "field", "file", "open", "go", "sign"];
-var UP_ONLY = ["world", "key", "say", "picture", "save", "id"];
+var DOWN_ONLY = ["has", "v", "press", "field", "file", "open", "go", "sign", "playing"];
+var UP_ONLY = ["world", "key", "say", "picture", "save", "id", "making"];
 var hasAny = (data, names) => names.some((n) => data[n] !== void 0);
 function readMenuWordDown(data) {
   if (!isMenu(data) || hasAny(data, UP_ONLY)) return null;
@@ -8043,6 +8044,7 @@ function readMenuWordDown(data) {
   if (typeof data.open === "boolean") return { what: "open", open: data.open };
   if (data.go === "home") return { what: "go", go: "home" };
   if (data.sign === "out") return { what: "sign", sign: "out" };
+  if (typeof data.playing === "boolean") return { what: "playing", playing: data.playing };
   return null;
 }
 function readMenuWordUp(data, opts = {}) {
@@ -8066,6 +8068,10 @@ function readMenuWordUp(data, opts = {}) {
     const file = fileOf(data.save, MENU_LIMITS.save);
     const type = file && menuSaveType(file.type);
     return row && file && type ? { what: "save", id: row, save: file, type } : null;
+  }
+  if (data.making !== void 0) {
+    const row = id(data.making);
+    return row ? { what: "making", id: row } : null;
   }
   return null;
 }
@@ -9545,6 +9551,7 @@ export {
   MENU_FILE_KINDS,
   MENU_KEYS,
   MENU_LIMITS,
+  MENU_MAKING_MS,
   MENU_REPORTED,
   MENU_ROW_KINDS,
   MENU_SAVE_MS,

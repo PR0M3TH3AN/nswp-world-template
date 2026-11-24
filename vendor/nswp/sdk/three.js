@@ -138,8 +138,8 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-JN7XYZWL.js";
-import "./shared-GPDS23MY.js";
+} from "./shared-2FGUTF6G.js";
+import "./shared-BWTLMGJK.js";
 import {
   PICTURE_LIMITS,
   addDoorControls,
@@ -149,7 +149,7 @@ import {
   setShowsPictures,
   showsPictures,
   vouchedWords
-} from "./shared-O7B432A3.js";
+} from "./shared-3HJPYJOP.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -175,7 +175,7 @@ import {
   sendWell,
   startingForm,
   usedForm
-} from "./shared-TGCMK7IG.js";
+} from "./shared-MGKLTCYB.js";
 import {
   browserVoice,
   computerVoice,
