@@ -687,7 +687,9 @@ function mountMenu(port, opts = {}) {
     while (at?.shadowRoot?.activeElement) at = at.shadowRoot.activeElement;
     return [...fields.values()].find((f) => f.input === at);
   };
+  let measuringOnly = false;
   const drawField = (item, whose) => {
+    if (measuringOnly) return el("form", { class: "field" }, el("input", { type: "text" }), el("button", { type: "submit" }, item.label), el("p", { class: "to" }, whose ? `What you type here goes to ${whose}.` : ""));
     let f = fields.get(item.id);
     if (!f) {
       const input = el("input", { type: "text", maxlength: String(MENU_LIMITS.field), autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false", enterkeyhint: "done" });
@@ -727,6 +729,7 @@ function mountMenu(port, opts = {}) {
     s.time.textContent = s.item.slider?.text?.() ?? "";
   };
   const drawSlider = (item) => {
+    if (measuringOnly) return el("label", { class: item.on === true ? "slide on" : "slide" }, icon(item.icon), el("span", { class: "name" }, item.label), el("input", { type: "range", min: "0", step: "1", value: "0" }), el("span", { class: "time mono" }, "0:00 of 0:00"));
     let s = sliders.get(item.id);
     if (!s) {
       const range = el("input", { type: "range", min: "0", step: "1", value: "0" });
@@ -774,6 +777,7 @@ function mountMenu(port, opts = {}) {
   const drawCard = (card, acts = [], onlyMeasured = false) => {
     const face = el("span", { class: "face", "aria-hidden": "true" }, [...card.title][0]?.toUpperCase() ?? "");
     if (card.color) face.style.setProperty("--c", card.color);
+    onlyMeasured ||= measuringOnly;
     const paint = onlyMeasured ? void 0 : card.draw;
     if (paint) {
       const canvas = document.createElement("canvas");
@@ -1075,7 +1079,14 @@ function mountMenu(port, opts = {}) {
   const placeOf = (wide) => `${wide}|${host.style.getPropertyValue("--s")}|`;
   const keyOf = (at, s) => `${at}${s.id}|${JSON.stringify([s.note ?? "", s.said ?? null, s.card ? [s.card.title, s.card.sub, s.card.text, s.card.now, !!s.card.draw, s.card.acts ?? []] : null, s.items.map((i) => [i.id, i.kind, i.label, i.short, i.on, i.from ?? "", i.tone])])}`;
   const measureTab = (s, layOut) => {
-    const r = el("div", { class: "rows" }, ...layOut(s));
+    let made;
+    measuringOnly = true;
+    try {
+      made = layOut(s);
+    } finally {
+      measuringOnly = false;
+    }
+    const r = el("div", { class: "rows" }, ...made);
     r.hidden = !s.items.length && !s.card;
     const n = el("p", { class: "note" }, s.note ?? "");
     const w = el("p", { class: "note said" }, ...s.said ? [el("b", {}, s.said.from), s.said.note] : []);
@@ -1086,10 +1097,25 @@ function mountMenu(port, opts = {}) {
   let lastView = null;
   let lastLayOut = null;
   let aheadWaiting = false;
+  let lastInput = -Infinity;
+  let downs = 0;
+  const AHEAD_ROOM_MS = 5;
+  const AHEAD_QUIET_MS = 500;
+  const onInput = (e) => {
+    if (e.type === "pointermove" && !e.buttons) return;
+    lastInput = performance.now();
+    if (e.type === "keydown" && !e.repeat) downs++;
+    if (e.type === "keyup") downs = Math.max(0, downs - 1);
+  };
+  const INPUTS = ["keydown", "keyup", "pointerdown", "pointerup", "pointermove", "wheel"];
+  for (const type of INPUTS) addEventListener(type, onInput, { capture: true, passive: true });
+  const onBlurKeys = () => void (downs = 0);
+  addEventListener("blur", onBlurKeys);
+  const doing = () => downs > 0 || document.pointerLockElement !== null || performance.now() - lastInput < AHEAD_QUIET_MS;
   const idle = (fn) => {
     const ask = globalThis.requestIdleCallback;
-    if (typeof ask === "function") ask((d) => fn(() => d.timeRemaining()), { timeout: 2e3 });
-    else setTimeout(() => fn(() => 4), 250);
+    if (typeof ask === "function") ask((d) => fn(() => d.timeRemaining()));
+    else setTimeout(() => fn(() => AHEAD_ROOM_MS + 1), 250);
   };
   const measureAhead = () => {
     if (aheadWaiting) return;
@@ -1099,21 +1125,44 @@ function mountMenu(port, opts = {}) {
       if (!lastView || !lastLayOut || !sheet.hidden || host.hidden) return;
       measure.style.width = "";
       const at = placeOf(Math.round(measure.getBoundingClientRect().width));
-      let more = false;
-      let done = 0;
-      for (const s of lastView.sections) {
-        const key = keyOf(at, s);
-        if (measured.has(key)) continue;
-        if (done > 0 && left() < 3) {
-          more = true;
-          break;
-        }
-        measured.set(key, measureTab(s, lastLayOut));
-        done++;
-      }
+      const next = lastView.sections.find((s) => !measured.has(keyOf(at, s)));
+      if (!next) return;
+      if (doing() || left() < AHEAD_ROOM_MS) return void setTimeout(measureAhead, doing() ? AHEAD_QUIET_MS : 50);
+      measured.set(keyOf(at, next), measureTab(next, lastLayOut));
       measure.replaceChildren();
-      if (more) measureAhead();
+      if (lastView.sections.some((s) => !measured.has(keyOf(at, s)))) measureAhead();
     });
+  };
+  const TOP_GAP = 10;
+  const SHEET_LEAST = 240;
+  const tucked = /* @__PURE__ */ new Set();
+  const untuck = () => {
+    for (const thing of tucked) thing.style.visibility = "";
+    tucked.clear();
+  };
+  const roomFor = (across) => {
+    untuck();
+    sheet.style.maxHeight = "";
+    const ruled = parseFloat(getComputedStyle(sheet).maxHeight);
+    const all = host.getBoundingClientRect();
+    const foot2 = all.bottom - parseFloat(getComputedStyle(sheet).bottom);
+    const left = all.left + all.width / 2 - across / 2;
+    const over = [];
+    let lowest = -Infinity;
+    for (const thing of [id, menu, quiet, asWho, full]) {
+      const r = thing.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0) || r.right + TOP_GAP <= left || r.left - TOP_GAP >= left + across || r.top >= foot2) continue;
+      over.push(thing);
+      lowest = Math.max(lowest, r.bottom);
+    }
+    if (!over.length) return ruled;
+    const room2 = foot2 - lowest - TOP_GAP;
+    if (room2 >= SHEET_LEAST) return Math.min(ruled, room2);
+    for (const thing of over) {
+      thing.style.visibility = "hidden";
+      tucked.add(thing);
+    }
+    return Math.min(ruled, Math.max(SHEET_LEAST, foot2 - all.top - TOP_GAP));
   };
   const sizeSheet = (view, layOut) => {
     lastView = view;
@@ -1121,6 +1170,8 @@ function mountMenu(port, opts = {}) {
     sheet.style.height = "";
     says.classList.remove("one");
     if (sheet.hidden) {
+      untuck();
+      sheet.style.maxHeight = "";
       heldFor = "";
       heldTall = 0;
       measureAhead();
@@ -1128,8 +1179,9 @@ function mountMenu(port, opts = {}) {
     }
     const inSheet = says.parentElement === sheet;
     if (inSheet) says.classList.add("one");
-    sheet.style.maxHeight = "none";
     const across = sheet.getBoundingClientRect().width;
+    const tallest = roomFor(across);
+    sheet.style.maxHeight = "none";
     const wide = Math.round(across);
     measure.style.width = `${across}px`;
     const here = tallOf(rows, note, said);
@@ -1153,7 +1205,7 @@ function mountMenu(port, opts = {}) {
     }
     measure.replaceChildren();
     for (const key of [...measured.keys()]) if (!still.has(key)) measured.delete(key);
-    sheet.style.maxHeight = "";
+    sheet.style.maxHeight = `${tallest}px`;
     if (heldFor !== at) {
       heldFor = at;
       heldTall = 0;
@@ -1164,8 +1216,10 @@ function mountMenu(port, opts = {}) {
   };
   let resized = null;
   const onWindowSize = () => {
-    if (sheet.hidden) return;
+    if (sheet.hidden) return void measureAhead();
     sheet.style.height = "";
+    sheet.style.maxHeight = "";
+    untuck();
     heldFor = "";
     heldTall = 0;
     if (resized) clearTimeout(resized);
@@ -1338,7 +1392,7 @@ function mountMenu(port, opts = {}) {
     };
     const drawTile = (item) => {
       const shown2 = el("span", { class: "shown", "aria-hidden": "true" }, [...item.short][0]?.toUpperCase() ?? "");
-      const picture = item.picture?.();
+      const picture = measuringOnly ? null : item.picture?.();
       if (picture) {
         const canvas = document.createElement("canvas");
         canvas.width = canvas.height = 192;
@@ -1662,6 +1716,8 @@ function mountMenu(port, opts = {}) {
       stopAsking();
       removeEventListener("focus", onPageFocus);
       removeEventListener("resize", onWindowSize);
+      for (const type of INPUTS) removeEventListener(type, onInput, { capture: true });
+      removeEventListener("blur", onBlurKeys);
       if (resized) clearTimeout(resized);
       for (const type of PRESS_ENDS) removeEventListener(type, pressOver, true);
       document.removeEventListener("visibilitychange", pressOver);
