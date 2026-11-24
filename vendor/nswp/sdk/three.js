@@ -139,7 +139,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-5VXI563Z.js";
+} from "./shared-TU4VY5RA.js";
 import "./shared-VIMETJJ2.js";
 import {
   PICTURE_LIMITS,
