@@ -59,6 +59,12 @@ export interface MenuAboveOptions {
      * itself, so any other page gains nothing by setting this.
      */
     own?: boolean;
+    /**
+     * The visitor's own music began or stopped in the client's page, which is where it plays while the client has the
+     * menu. A world steps its own music back while it does (`sounds.stepBack`). Told `false` too when the client no
+     * longer has the menu, and when this is put away, if it was last told `true`.
+     */
+    playing?: (on: boolean) => void;
     /** For tests and other carriers: the page above. By default the one this page is framed by (client-frame.ts). */
     above?: {
         framed(): boolean;

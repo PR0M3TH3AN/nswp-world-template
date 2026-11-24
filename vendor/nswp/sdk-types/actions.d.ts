@@ -107,6 +107,13 @@ export declare const RUN_FACTOR = 1.75;
 export declare const TURN_SPEED = 110;
 /** One stick pulled back, in step mode: a step backwards of this many metres. */
 export declare const BACK_STEP = 1;
+/**
+ * A jump the kit makes for someone whose `fade` is on: how long the view takes to go dark, and as long again to come
+ * back, in seconds. Long enough that nothing is seen to move, short enough not to feel like waiting.
+ */
+export declare const FADE_S = 0.12;
+/** How far one step reaches in a headset, in metres: further than a tap at a desk, since a step there lands at once. */
+export declare const STEP_REACH = 5;
 /** What each stick is for. With two, one moves and one turns; one alone does both. */
 export declare function stickRoles(pads: HeldPad[], moveHand: Comfort["moveHand"]): Map<number, "move" | "turn" | "both">;
 /**

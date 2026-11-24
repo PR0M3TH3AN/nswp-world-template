@@ -213,6 +213,7 @@ function meetClient() {
 }
 meetClient();
 var saver = null;
+var making = () => saver?.making?.();
 var handUp = (file) => saver?.handUp(file) ?? false;
 var savesWait = () => saver?.waits() ?? false;
 
@@ -538,6 +539,7 @@ export {
   clientPanelOpen,
   onClientSignIn,
   askClientForSignIn,
+  making,
   handUp,
   savesWait,
   prefersFullscreen,

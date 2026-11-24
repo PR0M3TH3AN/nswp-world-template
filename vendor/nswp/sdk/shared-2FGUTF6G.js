@@ -7,7 +7,7 @@ import {
   portal,
   room,
   setFilesAnywhere
-} from "./shared-GPDS23MY.js";
+} from "./shared-BWTLMGJK.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -22,7 +22,7 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-O7B432A3.js";
+} from "./shared-3HJPYJOP.js";
 import {
   arrivedSettings,
   askClientForSignIn,
@@ -35,6 +35,7 @@ import {
   handUp,
   holdFullscreen,
   learnFrom,
+  making,
   mayShareScreen,
   onClientScreen,
   relayBackup,
@@ -43,7 +44,7 @@ import {
   screenNotHere,
   sendWell,
   startingForm
-} from "./shared-TGCMK7IG.js";
+} from "./shared-MGKLTCYB.js";
 import {
   LiveKeys,
   TextEntry,
@@ -8701,6 +8702,7 @@ var WALK_SPEED2 = 1.8;
 var RUN_FACTOR = RUN;
 var TURN_SPEED = 110;
 var BACK_STEP = 1;
+var FADE_S = 0.12;
 var PUSH = 0.6;
 var LET_GO = 0.3;
 function stickRoles(pads, moveHand) {
@@ -8783,6 +8785,137 @@ var Locomotion = class {
   }
 };
 
+// packages/sdk/src/comfort-controls.ts
+var MOVE_QUESTION = {
+  casual: "Casual: point to step, turn in notches",
+  intense: "Intense: walk and turn smoothly with the sticks"
+};
+function keepComfort(o) {
+  const came = arrivedSettings();
+  let answered = came.headset !== void 0 || hasComfort() || o.arrivedIntense === true;
+  let comfort = { ...loadComfort(), ...came.headset === "intense" ? INTENSE_COMFORT : came.headset === "casual" ? CASUAL_COMFORT : {}, ...came.turn !== void 0 ? { turnStep: came.turn } : {}, ...came.hand !== void 0 ? { moveHand: came.hand } : {}, ...came.narrow !== void 0 ? { narrow: came.narrow } : {}, ...came.fade !== void 0 ? { fade: came.fade } : {} };
+  if (came.turn !== void 0 || came.hand !== void 0 || came.narrow !== void 0 || came.fade !== void 0 || came.headset !== void 0) saveComfort(comfort);
+  reportSettings("hands", () => ({ turn: comfort.turnStep, hand: comfort.moveHand, narrow: comfort.narrow, fade: comfort.fade, ...answered ? { headset: isIntense(comfort) ? "intense" : "casual" } : {} }), (now) => {
+    const patch = { ...now.headset === "intense" ? INTENSE_COMFORT : now.headset === "casual" ? CASUAL_COMFORT : {}, ...now.turn !== void 0 ? { turnStep: now.turn } : {}, ...now.hand !== void 0 ? { moveHand: now.hand } : {}, ...now.narrow !== void 0 ? { narrow: now.narrow } : {}, ...now.fade !== void 0 ? { fade: now.fade } : {} };
+    if (now.headset !== void 0) answered = true;
+    if (Object.keys(patch).length) setComfort(patch, true);
+  });
+  const stops = [];
+  const setComfort = (patch, keep3 = false) => {
+    comfort = { ...comfort, ...cleanComfort(patch) };
+    if (keep3) {
+      saveComfort(comfort);
+      answered = true;
+    }
+  };
+  if (o.arrivedIntense && !isIntense(comfort)) setComfort(INTENSE_COMFORT, true);
+  if (o.controls) {
+    const controls = o.controls;
+    let headset = false;
+    void navigator.xr?.isSessionSupported("immersive-vr").then((ok) => {
+      headset = ok;
+      controls.addSection({ id: "moving", label: "Moving", icon: "step", note });
+    }).catch(() => {
+    });
+    const hidden = () => !headset;
+    const note = () => comfort.move === "steps" ? "With a controller: push a stick forward, point at the floor and let go to step there. Flick the other stick to turn. Squeeze the grip to pick things up. Pointing and selecting does everything too." : "With a controller: one stick walks, the other turns. If it makes you feel unwell, go back to stepping: it is the comfortable way.";
+    controls.addSection({ id: "moving", label: "Moving", icon: "step", note });
+    const change2 = (patch) => {
+      setComfort(patch, true);
+      controls.addSection({ id: "moving", label: "Moving", icon: "step", note });
+    };
+    controls.add(
+      {
+        // One switch for the two ways of moving in a headset. The settings under it are what it sets, and can
+        // each be changed afterwards.
+        id: "move-style",
+        section: "moving",
+        icon: "motion",
+        hidden,
+        on: () => isIntense(comfort),
+        label: () => `${o.presenting() ? "How you move" : "In a headset"}: ${isIntense(comfort) ? "intense" : "casual"}`,
+        short: "Style",
+        act: () => {
+          const intense = !isIntense(comfort);
+          change2(intense ? INTENSE_COMFORT : CASUAL_COMFORT);
+          controls.say(
+            intense ? "Intense: one stick walks, the other turns, smoothly, with the whole view. If it makes you feel unwell, go back to casual." : "Casual: point at the floor to step there, and turn a notch at a time. The comfortable way."
+          );
+        }
+      },
+      { id: "move-mode", section: "moving", icon: "step", hidden, on: () => comfort.move === "smooth", label: () => comfort.move === "steps" ? "Moving in steps. Walk smoothly instead" : "Walking smoothly. Move in steps instead", short: "Walk", act: () => change2({ move: comfort.move === "steps" ? "smooth" : "steps" }) },
+      {
+        id: "turn-mode",
+        section: "moving",
+        icon: "turn",
+        hidden,
+        on: () => comfort.turn === "smooth",
+        label: () => comfort.turn === "smooth" ? "Turning smoothly. Turn in steps instead" : `Turning ${comfort.turnStep}\xB0 at a time. Change`,
+        short: "Turn",
+        // In steps of 30, then 45, then 90, then smoothly, and round again.
+        act: () => change2(comfort.turn === "smooth" ? { turn: "steps", turnStep: 30 } : comfort.turnStep === 30 ? { turnStep: 45 } : comfort.turnStep === 45 ? { turnStep: 90 } : { turn: "smooth" })
+      },
+      { id: "move-hand", section: "moving", icon: "motion", hidden, label: () => `The ${comfort.moveHand} stick moves you. Swap hands`, short: "Hands", act: () => change2({ moveHand: comfort.moveHand === "left" ? "right" : "left" }) },
+      {
+        id: "move-narrow",
+        section: "moving",
+        icon: "look",
+        hidden: () => hidden() || comfort.move === "steps" && comfort.turn === "steps",
+        on: () => comfort.narrow,
+        label: () => comfort.narrow ? "The view narrows while you move. Turn that off" : "Narrow the view while you move",
+        short: "Narrow",
+        act: () => change2({ narrow: !comfort.narrow })
+      },
+      {
+        // A jump the kit makes (a step, being stepped aside) fades to black and back: casual's default, intense's not.
+        id: "move-fade",
+        section: "moving",
+        icon: "look",
+        hidden,
+        on: () => comfort.fade,
+        label: () => comfort.fade ? "The view fades when you step. Turn that off" : "Fade the view when you step",
+        short: "Fade",
+        act: () => change2({ fade: !comfort.fade })
+      }
+    );
+    let asking = false;
+    const answer = (intense) => {
+      asking = false;
+      setComfort(intense ? INTENSE_COMFORT : CASUAL_COMFORT, true);
+      controls.say(intense ? "Intense: one stick walks, the other turns, smoothly. You can change it in Moving." : "Casual: point at the floor to step there, and turn a notch at a time. You can change it in Moving.");
+    };
+    controls.addSection({ id: "how-you-move", label: "How you move", icon: "step", note: () => asking ? "You can change this whenever you like, in Moving." : "" });
+    controls.add(
+      { id: "how-casual", section: "how-you-move", icon: "step", hidden: () => !asking, label: MOVE_QUESTION.casual, act: () => answer(false) },
+      { id: "how-intense", section: "how-you-move", icon: "motion", hidden: () => !asking, label: MOVE_QUESTION.intense, act: () => answer(true) }
+    );
+    let askedAt = 0;
+    const stopAsking = controls.onSignal((name) => {
+      if (name === "menuClose" && asking && o.presenting() && performance.now() - askedAt > 1500) answer(false);
+    });
+    const ask = () => {
+      if (answered || asking || !mayAskHowTheyMove()) return;
+      asking = true;
+      askedAt = performance.now();
+      controls.signal("show:how-you-move");
+    };
+    const stopStart = o.onSessionStart?.(ask);
+    stops.push(() => {
+      stopStart?.();
+      stopAsking();
+    });
+  }
+  return {
+    get comfort() {
+      return comfort;
+    },
+    setComfort,
+    dispose() {
+      for (const stop of stops.splice(0)) stop();
+    }
+  };
+}
+
 // packages/sdk/src/input.ts
 var unpointable = (root) => root.traverse((o) => void (o.raycast = () => {
 }));
@@ -8813,24 +8946,22 @@ function controllerModel(accent) {
 }
 var VIGNETTE_VERT = `varying float vFar; void main(){ vFar = length(position.xy); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 var VIGNETTE_FRAG = `uniform float uAmount; varying float vFar; void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.24, 0.42, vFar) * uAmount); }`;
-var MOVE_QUESTION = {
-  casual: "Casual: point to step, turn in notches",
-  intense: "Intense: walk and turn smoothly with the sticks"
-};
 function createXrInput(opts) {
   const { renderer, rig, camera } = opts;
   const accent = new THREE13.Color(opts.accent ?? 16758364);
-  const came = arrivedSettings();
-  let answered = came.headset !== void 0 || hasComfort() || opts.arrivedIntense === true;
-  let comfort = { ...loadComfort(), ...came.headset === "intense" ? INTENSE_COMFORT : came.headset === "casual" ? CASUAL_COMFORT : {}, ...came.turn !== void 0 ? { turnStep: came.turn } : {}, ...came.hand !== void 0 ? { moveHand: came.hand } : {}, ...came.narrow !== void 0 ? { narrow: came.narrow } : {}, ...came.fade !== void 0 ? { fade: came.fade } : {} };
-  if (came.turn !== void 0 || came.hand !== void 0 || came.narrow !== void 0 || came.fade !== void 0 || came.headset !== void 0) saveComfort(comfort);
-  reportSettings("hands", () => ({ turn: comfort.turnStep, hand: comfort.moveHand, narrow: comfort.narrow, fade: comfort.fade, ...answered ? { headset: isIntense(comfort) ? "intense" : "casual" } : {} }), (now) => {
-    const patch = { ...now.headset === "intense" ? INTENSE_COMFORT : now.headset === "casual" ? CASUAL_COMFORT : {}, ...now.turn !== void 0 ? { turnStep: now.turn } : {}, ...now.hand !== void 0 ? { moveHand: now.hand } : {}, ...now.narrow !== void 0 ? { narrow: now.narrow } : {}, ...now.fade !== void 0 ? { fade: now.fade } : {} };
-    if (now.headset !== void 0) answered = true;
-    if (Object.keys(patch).length) setComfort(patch, true);
+  const keeper = keepComfort({
+    ...opts.controls ? { controls: opts.controls } : {},
+    ...opts.arrivedIntense ? { arrivedIntense: true } : {},
+    presenting: () => renderer.xr.isPresenting,
+    onSessionStart: (fn) => {
+      renderer.xr.addEventListener("sessionstart", fn);
+      return () => renderer.xr.removeEventListener("sessionstart", fn);
+    }
   });
+  const setComfort = keeper.setComfort;
   const loco = new Locomotion();
   const stops = [];
+  stops.push(() => keeper.dispose());
   const listeners = [];
   const listen = (target, type, fn) => {
     target.addEventListener(type, fn);
@@ -8885,7 +9016,6 @@ function createXrInput(opts) {
   unpointable(vignette);
   camera.add(vignette);
   let narrow = 0;
-  const FADE_S = 0.12;
   const sheet = new THREE13.Mesh(
     new THREE13.PlaneGeometry(4, 4),
     new THREE13.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0, depthTest: false, depthWrite: false })
@@ -8906,7 +9036,7 @@ function createXrInput(opts) {
     fn();
   };
   const jump = (fn) => {
-    if (!renderer.xr.isPresenting || !comfort.fade) return made(fn);
+    if (!renderer.xr.isPresenting || !keeper.comfort.fade) return made(fn);
     jumps.push(fn);
     fading = "out";
   };
@@ -9027,110 +9157,6 @@ function createXrInput(opts) {
       if (held.get(i)?.by === "pinch") release(i);
     }));
   });
-  const setComfort = (patch, keep3 = false) => {
-    comfort = { ...comfort, ...cleanComfort(patch) };
-    if (keep3) {
-      saveComfort(comfort);
-      answered = true;
-    }
-  };
-  if (opts.arrivedIntense && !isIntense(comfort)) setComfort(INTENSE_COMFORT, true);
-  if (opts.controls) {
-    const controls = opts.controls;
-    let headset = false;
-    void navigator.xr?.isSessionSupported("immersive-vr").then((ok) => {
-      headset = ok;
-      controls.addSection({ id: "moving", label: "Moving", icon: "step", note });
-    }).catch(() => {
-    });
-    const hidden = () => !headset;
-    const note = () => comfort.move === "steps" ? "With a controller: push a stick forward, point at the floor and let go to step there. Flick the other stick to turn. Squeeze the grip to pick things up. Pointing and selecting does everything too." : "With a controller: one stick walks, the other turns. If it makes you feel unwell, go back to stepping: it is the comfortable way.";
-    controls.addSection({ id: "moving", label: "Moving", icon: "step", note });
-    const change2 = (patch) => {
-      setComfort(patch, true);
-      controls.addSection({ id: "moving", label: "Moving", icon: "step", note });
-    };
-    controls.add(
-      {
-        // One switch for the two ways of moving in a headset. The settings under it are what it sets, and can
-        // each be changed afterwards.
-        id: "move-style",
-        section: "moving",
-        icon: "motion",
-        hidden,
-        on: () => isIntense(comfort),
-        label: () => `${renderer.xr.isPresenting ? "How you move" : "In a headset"}: ${isIntense(comfort) ? "intense" : "casual"}`,
-        short: "Style",
-        act: () => {
-          const intense = !isIntense(comfort);
-          change2(intense ? INTENSE_COMFORT : CASUAL_COMFORT);
-          controls.say(
-            intense ? "Intense: one stick walks, the other turns, smoothly, with the whole view. If it makes you feel unwell, go back to casual." : "Casual: point at the floor to step there, and turn a notch at a time. The comfortable way."
-          );
-        }
-      },
-      { id: "move-mode", section: "moving", icon: "step", hidden, on: () => comfort.move === "smooth", label: () => comfort.move === "steps" ? "Moving in steps. Walk smoothly instead" : "Walking smoothly. Move in steps instead", short: "Walk", act: () => change2({ move: comfort.move === "steps" ? "smooth" : "steps" }) },
-      {
-        id: "turn-mode",
-        section: "moving",
-        icon: "turn",
-        hidden,
-        on: () => comfort.turn === "smooth",
-        label: () => comfort.turn === "smooth" ? "Turning smoothly. Turn in steps instead" : `Turning ${comfort.turnStep}\xB0 at a time. Change`,
-        short: "Turn",
-        // In steps of 30, then 45, then 90, then smoothly, and round again.
-        act: () => change2(comfort.turn === "smooth" ? { turn: "steps", turnStep: 30 } : comfort.turnStep === 30 ? { turnStep: 45 } : comfort.turnStep === 45 ? { turnStep: 90 } : { turn: "smooth" })
-      },
-      { id: "move-hand", section: "moving", icon: "motion", hidden, label: () => `The ${comfort.moveHand} stick moves you. Swap hands`, short: "Hands", act: () => change2({ moveHand: comfort.moveHand === "left" ? "right" : "left" }) },
-      {
-        id: "move-narrow",
-        section: "moving",
-        icon: "look",
-        hidden: () => hidden() || comfort.move === "steps" && comfort.turn === "steps",
-        on: () => comfort.narrow,
-        label: () => comfort.narrow ? "The view narrows while you move. Turn that off" : "Narrow the view while you move",
-        short: "Narrow",
-        act: () => change2({ narrow: !comfort.narrow })
-      },
-      {
-        // A jump the kit makes (a step, being stepped aside) fades to black and back: casual's default, intense's not.
-        id: "move-fade",
-        section: "moving",
-        icon: "look",
-        hidden,
-        on: () => comfort.fade,
-        label: () => comfort.fade ? "The view fades when you step. Turn that off" : "Fade the view when you step",
-        short: "Fade",
-        act: () => change2({ fade: !comfort.fade })
-      }
-    );
-    let asking = false;
-    const answer = (intense) => {
-      asking = false;
-      setComfort(intense ? INTENSE_COMFORT : CASUAL_COMFORT, true);
-      controls.say(intense ? "Intense: one stick walks, the other turns, smoothly. You can change it in Moving." : "Casual: point at the floor to step there, and turn a notch at a time. You can change it in Moving.");
-    };
-    controls.addSection({ id: "how-you-move", label: "How you move", icon: "step", note: () => asking ? "You can change this whenever you like, in Moving." : "" });
-    controls.add(
-      { id: "how-casual", section: "how-you-move", icon: "step", hidden: () => !asking, label: MOVE_QUESTION.casual, act: () => answer(false) },
-      { id: "how-intense", section: "how-you-move", icon: "motion", hidden: () => !asking, label: MOVE_QUESTION.intense, act: () => answer(true) }
-    );
-    let askedAt = 0;
-    const stopAsking = controls.onSignal((name) => {
-      if (name === "menuClose" && asking && renderer.xr.isPresenting && performance.now() - askedAt > 1500) answer(false);
-    });
-    const ask = () => {
-      if (answered || asking || !mayAskHowTheyMove()) return;
-      asking = true;
-      askedAt = performance.now();
-      controls.signal("show:how-you-move");
-    };
-    renderer.xr.addEventListener("sessionstart", ask);
-    stops.push(() => {
-      renderer.xr.removeEventListener("sessionstart", ask);
-      stopAsking();
-    });
-  }
   let aiming = [];
   const read = () => slots.flatMap((s, index) => kindOf(s) === "controller" && s.source?.gamepad ? [{ index, hand: handOf(s), pad: readPad(s.source.gamepad) }] : []);
   const update = (dt) => {
@@ -9146,14 +9172,14 @@ function createXrInput(opts) {
       for (const slot of [...held.keys()]) release(slot);
     } else {
       const pads = read();
-      const intent = loco.frame(dt, pads, comfort);
+      const intent = loco.frame(dt, pads, keeper.comfort);
       if (intent.turn !== 0) {
         turnVisitor(rig, camera, intent.turn);
-        if (comfort.turn === "steps") {
+        if (keeper.comfort.turn === "steps") {
           for (const p of pads) if (Math.abs(p.pad.stick[0]) > 0.5) pulse(p.index, 0.2, 12);
         }
       }
-      const stepped = comfort.move === "steps";
+      const stepped = keeper.comfort.move === "steps";
       if ((intent.walk[0] !== 0 || intent.walk[1] !== 0) && (!stepped || !opts.pace || opts.pace.take(Math.hypot(intent.walk[0], intent.walk[1])))) {
         const [x, z] = intent.walk;
         if (stepped) jump(() => walk(x, z));
@@ -9200,10 +9226,10 @@ function createXrInput(opts) {
   };
   return {
     get comfort() {
-      return comfort;
+      return keeper.comfort;
     },
     get intense() {
-      return isIntense(comfort);
+      return isIntense(keeper.comfort);
     },
     setComfort,
     update,
@@ -9220,7 +9246,7 @@ function createXrInput(opts) {
     info() {
       const pads = renderer.xr.isPresenting ? read() : [];
       return {
-        comfort,
+        comfort: keeper.comfort,
         slots: slots.map((s, i) => ({ hand: handOf(s), kind: kindOf(s), pad: pads.find((p) => p.index === i)?.pad ?? NO_PAD })),
         aiming,
         holding: [0, 1].map((i) => held.get(i)?.thing.object.name || (held.has(i) ? "(unnamed)" : null)),
@@ -12354,12 +12380,13 @@ function createSounds(o = {}) {
       }
     }
   };
+  let elsewhere = false;
   const juke = { audio: null, url: "", current: null, playing: false, tap: null };
   const apply = () => {
     const t = ctx.currentTime;
     master.gain.setTargetAtTime(levels.off ? 0 : 1, t, 0.05);
     effects.gain.setTargetAtTime(levels.effects, t, 0.05);
-    placeMusic.gain.setTargetAtTime(levels.music * (juke.playing ? 0.1 : 1), t, 0.4);
+    placeMusic.gain.setTargetAtTime(levels.music * (juke.playing || elsewhere ? 0.1 : 1), t, 0.4);
     ownMusic.gain.setTargetAtTime(levels.music, t, 0.05);
     humGain.gain.setTargetAtTime(levels.hum ? 1 : 0, t, 0.3);
   };
@@ -12891,6 +12918,14 @@ function createSounds(o = {}) {
     },
     nextPiece() {
       return pieces?.next() ?? false;
+    },
+    stepBack(on) {
+      if (on === elsewhere) return;
+      elsewhere = on;
+      apply();
+    },
+    get steppedBack() {
+      return elsewhere;
     },
     get hasHum() {
       return !!humAddress;
@@ -13565,6 +13600,7 @@ function addCameraControls(controls, d) {
     }
   };
   const shoot = async (kind) => {
+    making();
     try {
       const hide = d.hide?.() ?? [];
       const blob = kind === "selfie" ? await takeSelfie(d.renderer, d.scene, d.camera, d.look?.() ?? plain, { hide }) : await takePicture(d.renderer, d.scene, d.camera, { hide });
@@ -13596,7 +13632,10 @@ function addCameraControls(controls, d) {
       // The page's canvas isn't what a headset is shown, so there is nothing to record there.
       hidden: () => !canRecord() || presenting() && !clip,
       act: async () => {
-        if (clip) return void clip.stop();
+        if (clip) {
+          making();
+          return void clip.stop();
+        }
         try {
           clip = recordClip(d.renderer.domElement, { maxSeconds: d.maxSeconds ?? 30 });
           d.recording?.(true);

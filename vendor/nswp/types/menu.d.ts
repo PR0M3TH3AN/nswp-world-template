@@ -59,6 +59,12 @@ export declare const LEAVE_MS = 1000;
 /** How long after a press on a `save` row a client still takes what the world hands up for it. */
 export declare const MENU_SAVE_MS = 10000;
 /**
+ * How long that press is held open instead, once the world has answered it with `making`: it heard the press and
+ * is making what was asked for. A slow device takes longer than ten seconds over a picture, and a visitor who
+ * pressed should not get nothing for it. It is still that one press, on that one row.
+ */
+export declare const MENU_MAKING_MS = 60000;
+/**
  * The visitor's own tabs. A world never fills, reads or presses them, and is never told what is in them.
  * (`figure` is "Your look" and `look` is "Display": the names are the kit's, and travel as pins already.)
  */
@@ -290,6 +296,9 @@ export type MenuWordDown = {
 } | {
     what: "sign";
     sign: "out";
+} | {
+    what: "playing";
+    playing: boolean;
 };
 /** What a world may say to a client. */
 export type MenuWordUp = {
@@ -313,10 +322,13 @@ export type MenuWordUp = {
     id: string;
     save: Blob;
     type: MenuSaveType;
+} | {
+    what: "making";
+    id: string;
 };
 /**
  * A word from the page above, as a world reads it, or null if it is none of these words. One word says one thing:
- * the first of `has`, `settings`, `press`, `open`, `go`, `sign` that is there. A word with anything in it that only a world
+ * the first of `has`, `settings`, `press`, `open`, `go`, `sign`, `playing` that is there. A word with anything in it that only a world
  * says is not read at all. Never throws.
  *
  * A `press` is given whatever its id: only the world knows what it last described, and it checks. A press may
@@ -326,7 +338,7 @@ export type MenuWordUp = {
 export declare function readMenuWordDown(data: unknown): MenuWordDown | null;
 /**
  * A word from the page in the frame, as a client reads it, or null if it is none of these words. One word says one
- * thing: the first of `world`, `key`, `say`, `settings`, `picture`, `save` that is there. A word with anything in
+ * thing: the first of `world`, `key`, `say`, `settings`, `picture`, `save`, `making` that is there. A word with anything in
  * it that only a client says is not read at all. Never throws.
  *
  * A `save` is read here for what it is (a picture or a clip, within the limit, for a row by id). Whether it is the

@@ -25,7 +25,7 @@ import {
   showsChat,
   showsPictures,
   vouchedWords
-} from "./shared-O7B432A3.js";
+} from "./shared-3HJPYJOP.js";
 import {
   askWell,
   escapeDoes,
@@ -42,7 +42,7 @@ import {
   relaysWell,
   sendWell,
   setMenuPlace
-} from "./shared-TGCMK7IG.js";
+} from "./shared-MGKLTCYB.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/ui/hud.ts

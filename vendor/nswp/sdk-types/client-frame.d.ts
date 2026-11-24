@@ -113,7 +113,15 @@ export declare function meetClient(): void;
 export declare function setSaver(next: {
     handUp(file: Blob): boolean;
     waits(): boolean;
+    making?(): void;
 } | null): void;
+/**
+ * This page has begun making what a press asked it to save, and it may take a while: a picture drawn afresh at its
+ * full size, on a slow device. Said once to the client, as the answer to that press, so that the press is held open
+ * for longer (`MENU_MAKING_MS`) and the visitor is told. Call it as the making starts, before anything is waited
+ * for. Nothing, where no press on the client's menu is waiting for something to save.
+ */
+export declare const making: () => void;
 /** Hand something to save up to the client. False where it isn't the client's to save just now: this page saves it. */
 export declare const handUp: (file: Blob) => boolean;
 /**
