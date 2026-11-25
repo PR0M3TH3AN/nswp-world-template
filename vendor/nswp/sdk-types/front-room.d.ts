@@ -115,6 +115,10 @@ export interface PaidGate {
     readonly ownerBlocked: readonly string[];
     /** Whether this world's rooms show only people whose pass checks out (its manifest's `named_only`). */
     readonly namedOnly: boolean;
+    /** Whether guest accounts may come in (its manifest's `guests`; true where it says nothing). Not `guests`, the guest list. */
+    readonly takesGuests: boolean;
+    /** Whether guest accounts may use items here (its manifest's `guest_items`; true where it says nothing). */
+    readonly guestItems: boolean;
     /** How the owner's block list stands. */
     readonly lists: ListState;
     /** Whether this world is by invitation (its manifest's `by_invitation`). */

@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.92.0";
+var KIT_VERSION = "0.93.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4273,6 +4273,18 @@ function parseManifest(input, opts = {}) {
         else if (raw.by_invitation !== false)
           c.warn("invalid_field", `${p}.by_invitation`, "by_invitation must be true or false; ignored.");
       }
+      if (raw.guest_items !== void 0) {
+        if (raw.guest_items === false)
+          w.guestItems = false;
+        else if (raw.guest_items !== true)
+          c.warn("invalid_field", `${p}.guest_items`, "guest_items must be true or false; ignored.");
+      }
+      if (raw.guests !== void 0) {
+        if (raw.guests === false)
+          w.guests = false;
+        else if (raw.guests !== true)
+          c.warn("invalid_field", `${p}.guests`, "guests must be true or false; ignored.");
+      }
       if (raw.named_only !== void 0) {
         if (raw.named_only === true)
           w.namedOnly = true;
@@ -4844,6 +4856,8 @@ function buildItem(o) {
     tags.push(["fits", ...fits]);
   if (o.use === "granted")
     tags.push(["use", "granted"]);
+  if (o.guests === false)
+    tags.push(["guests", "no"]);
   if (o.script) {
     const script = cleanFile(o.script.url, o.script.sha256);
     if (!script)
@@ -4929,6 +4943,8 @@ function parseItem(event) {
     behaviors,
     fits: ITEM_FITS.filter((f) => fitsTag.includes(f)),
     use: tag("use")?.[1] === "granted" ? "granted" : "anyone",
+    // Only exactly "no" keeps guests from it: a word that can't be read shuts nobody out.
+    guests: tag("guests")?.[1] !== "no",
     // Named, and run by nothing yet: where it runs, and what it may ask for, is protocol/17-items.md.
     script: sc ? cleanFile(sc[1], sc[2]) : null,
     sounds: Object.fromEntries(getTags(event, "sound").slice(0, ITEM_LIMITS.sounds).map((t) => [t[1], cleanFile(t[2], t[3])]).filter((s) => typeof s[0] === "string" && PLAIN.test(s[0]) && s[1] !== null)),

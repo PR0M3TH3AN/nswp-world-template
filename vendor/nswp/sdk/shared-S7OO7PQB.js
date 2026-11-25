@@ -7,7 +7,7 @@ import {
   portal,
   room,
   setFilesAnywhere
-} from "./shared-XEKT46JH.js";
+} from "./shared-GNE6RSHI.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -66,7 +66,7 @@ import {
 } from "./shared-UBZ34GUM.js";
 
 // packages/sdk/src/three.ts
-import * as THREE21 from "three";
+import * as THREE22 from "three";
 
 // packages/sdk/src/turn.ts
 import * as THREE from "three";
@@ -1268,7 +1268,7 @@ function addFollowingControls(controls, opts) {
   let looked = false;
   const nameOf = (pubkey) => profiles.get(pubkey)?.name || shortNpub(pubkey);
   const say = (text) => controls.say(text);
-  const press = (pubkey, name, adding) => {
+  const press2 = (pubkey, name, adding) => {
     const now = async () => {
       const done = await (adding ? f.people.follow(pubkey, name) : f.people.unfollow(pubkey, name));
       say(done.said);
@@ -1298,7 +1298,7 @@ function addFollowingControls(controls, opts) {
     if (key === me) return say("That is your own key.");
     chosen = key;
     await profiles.fetch([key]);
-    press(key, nameOf(key), true);
+    press2(key, nameOf(key), true);
   };
   const refresh = () => {
     for (const id of shown2) controls.remove(id);
@@ -1371,7 +1371,7 @@ function addFollowingControls(controls, opts) {
     if (chosen) {
       const them = chosen;
       const following = follows.includes(them);
-      add({ id: "following-toggle", icon: "check", on: () => following, label: following ? `Unfollow ${nameOf(them)}` : `Follow ${nameOf(them)}`, act: () => press(them, nameOf(them), !following) });
+      add({ id: "following-toggle", icon: "check", on: () => following, label: following ? `Unfollow ${nameOf(them)}` : `Follow ${nameOf(them)}`, act: () => press2(them, nameOf(them), !following) });
       add(...opts.more?.({ pubkey: them, name: nameOf(them) }) ?? []);
     }
     const named = follows.filter((k) => profiles.get(k)?.name).sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
@@ -1423,7 +1423,7 @@ function addFollowingControls(controls, opts) {
       void profiles.fetch([pubkey]);
       refresh();
     },
-    press,
+    press: press2,
     profiles
   };
 }
@@ -1541,6 +1541,8 @@ function createPaidGate(opts) {
   let listState = "none";
   let ownerBlocked = [];
   let namedOnly = false;
+  let takesGuests = true;
+  let guestItems = true;
   let byInvitation = false;
   let inviteState = "none";
   let invited = [];
@@ -1751,6 +1753,8 @@ function createPaidGate(opts) {
     retries = 0;
     worldName = access.d;
     namedOnly = access.namedOnly;
+    takesGuests = access.takesGuests;
+    guestItems = access.guestItems;
     listings = cleanAccess(opts.listings ? [...opts.listings] : access.listings, access.sellers);
     const named = file?.worlds?.[access.d]?.access;
     const meant = opts.listings ? opts.listings.length > 0 : Array.isArray(named) ? named.length > 0 : named !== void 0;
@@ -1836,6 +1840,12 @@ function createPaidGate(opts) {
     },
     get namedOnly() {
       return namedOnly;
+    },
+    get takesGuests() {
+      return takesGuests;
+    },
+    get guestItems() {
+      return guestItems;
     },
     get lists() {
       return listState;
@@ -1938,7 +1948,7 @@ function createPaidGate(opts) {
       return () => void watchers3.delete(fn);
     },
     info() {
-      return { state, open: state === "free" || state === "open" || state === "ending", reason, why: why(), offers: offerList(), unread: Object.fromEntries(unread), until: state === "open" && held ? held.expiresAt : null, endsAt: endsAt ? Math.round(endsAt / 1e3) : null, signedIn: signedIn(), buying, listings: [...listings], lists: listState, changing, ownerBlocked: ownerBlocked.length, namedOnly, byInvitation, invites: inviteState, invited: invited.length };
+      return { state, open: state === "free" || state === "open" || state === "ending", reason, why: why(), offers: offerList(), unread: Object.fromEntries(unread), until: state === "open" && held ? held.expiresAt : null, endsAt: endsAt ? Math.round(endsAt / 1e3) : null, signedIn: signedIn(), buying, listings: [...listings], lists: listState, changing, ownerBlocked: ownerBlocked.length, namedOnly, takesGuests, guestItems, byInvitation, invites: inviteState, invited: invited.length };
     },
     dispose() {
       disposed = true;
@@ -1957,7 +1967,7 @@ function addGateControls(controls, gate, opts = {}) {
   const section = opts.section ?? "travel";
   const signIn = opts.signIn ?? (() => controls.run("signer"));
   let saidFor = "";
-  const press = (listing) => {
+  const press2 = (listing) => {
     const offer = gate.offers.find((o) => o.listing === listing) ?? gate.offers[0];
     if (!gate.signedIn) {
       if (!signIn()) controls.say("No sign-in address answered here, so nothing can be bought just now. Reload the page to try again.");
@@ -1993,7 +2003,7 @@ function addGateControls(controls, gate, opts = {}) {
         return gate.signedIn ? "Ask again what this costs" : "Sign in, to show what you hold";
       },
       hidden: () => !showing2() || !offer() && (i > 0 || gate.offers.length > 0),
-      act: () => press(offer()?.listing)
+      act: () => press2(offer()?.listing)
     });
   }
   const refresh = () => {
@@ -2008,7 +2018,7 @@ function addGateControls(controls, gate, opts = {}) {
   gate.onChange(refresh);
   refresh();
   addOwnersScreen(controls, gate, opts);
-  return { refresh, press };
+  return { refresh, press: press2 };
 }
 var SCREEN_MOST = 40;
 function addOwnersScreen(controls, gate, opts) {
@@ -2976,7 +2986,7 @@ function worldGate(opts = {}) {
 var pageGate = null;
 var rulesWatchers = /* @__PURE__ */ new Set();
 function pageRules() {
-  return pageGate ? { blocked: pageGate.ownerBlocked, namedOnly: pageGate.namedOnly, invited: pageGate.invited } : { blocked: [], namedOnly: false, invited: null };
+  return pageGate ? { blocked: pageGate.ownerBlocked, namedOnly: pageGate.namedOnly, invited: pageGate.invited, takesGuests: pageGate.takesGuests, guestItems: pageGate.guestItems } : { blocked: [], namedOnly: false, invited: null, takesGuests: true, guestItems: true };
 }
 function onPageRules(fn) {
   rulesWatchers.add(fn);
@@ -4249,7 +4259,7 @@ function fitToSize(root, size) {
 }
 function createItems(opts = {}) {
   const store = createItemStore(opts);
-  const made = /* @__PURE__ */ new Map();
+  const made2 = /* @__PURE__ */ new Map();
   const clipsOf = /* @__PURE__ */ new Map();
   const marker = (item) => {
     const [w, h, d] = item.size;
@@ -4261,13 +4271,13 @@ function createItems(opts = {}) {
   };
   const load2 = (named) => {
     const key = `${named.model.sha256}:${named.size.join(",")}`;
-    let got = made.get(key);
+    let got = made2.get(key);
     if (!got) {
       const asking = (async () => {
         const checked = await store.modelBytes(named);
         if (!checked) {
           queueMicrotask(() => {
-            if (made.get(key) === asking) made.delete(key);
+            if (made2.get(key) === asking) made2.delete(key);
           });
           return null;
         }
@@ -4287,7 +4297,7 @@ function createItems(opts = {}) {
         }
       })();
       got = asking;
-      made.set(key, got);
+      made2.set(key, got);
     }
     return got;
   };
@@ -4355,6 +4365,8 @@ function mayHold(described, o) {
   if (!showsItems()) return { ok: false, said: "You have items turned off. Turn them on to hold one." };
   if (!described) return { ok: false, said: "That item's description couldn't be found." };
   if (!(described.behaviors.includes("holdable") || described.fits.includes("hand-right") || described.fits.includes("hand-left"))) return { ok: false, said: `${described.title} isn't something to hold.` };
+  if (o.guest && o.guestItems === false) return { ok: false, said: "Guests can't use items in this world. Secure your account to use them here." };
+  if (o.guest && !described.guests) return { ok: false, said: `${described.title} isn't for guests. Secure your account to use it.` };
   if (described.use === "granted") return { ok: false, said: `${described.title} has to be granted by its maker, which can't be checked here yet.` };
   if (described.script && o.scripts && !scriptAllowed(described.script.sha256)) {
     if (o.asked.sha !== described.script.sha256) {
@@ -5795,6 +5807,7 @@ function createPresence(d) {
     if (!item || !d.items || itemsRule() === "none" || !showsItems()) return;
     const described = await d.items.describe(item);
     if (!described || a.heldItem !== item || !canBeHeld(described) || described.use === "granted") return;
+    if (a.member.guestAccount && (rulesNow().guestItems === false || !described.guests)) return;
     const model = await d.items.model(described, a.tints);
     if (a.heldItem !== item) return;
     if (a.tints) applyTints(model, described, a.tints);
@@ -6165,8 +6178,10 @@ function createPresence(d) {
     if (rules.namedOnly && !identity) throw new Error("this world's rooms show only people who are signed in. Sign in, then join.");
     if (identity && rules.blocked.includes(identity.pass.pubkey)) throw new Error("the owner of this world has asked you not to come in.");
     if (identity && invitedOnly && !invitedOnly.includes(identity.pass.pubkey)) throw new Error("this world is by invitation, and its owner hasn't invited you.");
+    const asGuest = !!identity && identity.pass.tags.some((t) => t[0] === "nswp:guest" && t[1] === "1");
+    if (asGuest && rules.takesGuests === false) throw new Error("this world doesn't take guests. Secure your account to come in.");
     const avatar = identity ? await (typeof d.avatar === "function" ? d.avatar() : d.avatar !== void 0 ? d.avatar : drawsModels() ? ownLookNote() : null) : null;
-    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {}, ...avatar ? { avatar } : {}, blocked: blockedKeys(), ownerBlocked: rules.blocked, namedOnly: rules.namedOnly, invited: invitedOnly });
+    const s = await room.join({ ...name ? { name } : {}, ...look ? { look } : {}, ...identity ? { identity } : {}, ...avatar ? { avatar } : {}, blocked: blockedKeys(), ownerBlocked: rules.blocked, namedOnly: rules.namedOnly, invited: invitedOnly, ...rules.takesGuests === false ? { takesGuests: false } : {} });
     session = s;
     if (!offsetApplied) {
       offsetApplied = true;
@@ -6354,7 +6369,8 @@ function createPresence(d) {
         }
         if (!d.items) return { ok: false, said: "Nothing carried is drawn or works in this place." };
         const described = itemsRule() === "none" || !showsItems() ? null : await d.items.describe(item);
-        const may = mayHold(described, { rule: itemsRule(), scripts: !!d.itemScripts, asked: askedScript });
+        const guest = session?.self.guestAccount === true || signerNamed() && worldSigner().guest === true;
+        const may = mayHold(described, { rule: itemsRule(), scripts: !!d.itemScripts, asked: askedScript, guest, guestItems: rulesNow().guestItems !== false });
         if (!may.ok || !described) return may.ok ? { ok: false, said: "That item's description couldn't be found." } : may;
         mineTints = cleanTints(described, tints ?? {});
         const model = await d.items.model(described, mineTints);
@@ -7492,7 +7508,7 @@ function addMessagingControls(controls, opts) {
     const texture = new THREE11.CanvasTexture(canvas);
     texture.colorSpace = THREE11.SRGBColorSpace;
     try {
-      const made = opts.panels.open(
+      const made2 = opts.panels.open(
         {
           kind: "custom",
           title: controls.letters.view().title,
@@ -7513,7 +7529,7 @@ function addMessagingControls(controls, opts) {
         },
         { id: "private-messages", keep: false, place: { width: 0.46 }, pin: [-0.46, -0.04, -0.8] }
       );
-      panel = { panel: made, canvas, texture, drawn: "" };
+      panel = { panel: made2, canvas, texture, drawn: "" };
       drawPanel();
     } catch (err) {
       texture.dispose();
@@ -8748,7 +8764,7 @@ function addRoomControls(controls, presence, opts = {}) {
 }
 
 // packages/sdk/src/input.ts
-import * as THREE13 from "three";
+import * as THREE14 from "three";
 
 // packages/sdk/src/actions.ts
 var NO_PAD = { stick: [0, 0], from: "none", trigger: 0, squeeze: 0, primary: false, secondary: false, press: false };
@@ -8912,6 +8928,124 @@ var Locomotion = class {
   }
 };
 
+// packages/sdk/src/held-hands.ts
+import * as THREE13 from "three";
+import { GLTFLoader as GLTFLoader3 } from "three/examples/jsm/loaders/GLTFLoader.js";
+function wantsHeldHands(profiles) {
+  return !!profiles && profiles.some((p) => /^(meta-quest-|oculus-touch)/.test(p));
+}
+function thumbOn(b) {
+  const on = (i) => !!b[i] && (!!b[i].touched || b[i].pressed);
+  if (on(4)) return "lower";
+  if (on(5)) return "upper";
+  if (on(3)) return "stick";
+  if (on(6)) return "rest";
+  return "up";
+}
+function rimMaterial(o) {
+  const m = new THREE13.MeshPhongMaterial({ color: o.color, transparent: true, opacity: o.opacity, depthWrite: false, shininess: 60, specular: 3359829, vertexColors: !!o.vertexAlpha, side: THREE13.FrontSide });
+  m.onBeforeCompile = (s) => {
+    s.uniforms.rimColor = { value: new THREE13.Color(o.rim) };
+    s.uniforms.rimPower = { value: o.rimPower };
+    s.fragmentShader = s.fragmentShader.replace("#include <common>", "#include <common>\nuniform vec3 rimColor;\nuniform float rimPower;").replace(
+      "#include <opaque_fragment>",
+      `
+        float fr = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), rimPower);
+        float seen = clamp(diffuseColor.a * 3.0, 0.0, 1.0);
+        outgoingLight = mix(outgoingLight, rimColor, fr * seen);
+        diffuseColor.a = clamp(diffuseColor.a * (1.0 + 1.5 * fr), 0.0, 1.0);
+        #include <opaque_fragment>`
+    );
+  };
+  return m;
+}
+var press = (part, t) => {
+  if (!part) return;
+  part.value.position.lerpVectors(part.min.position, part.max.position, t);
+  part.value.quaternion.slerpQuaternions(part.min.quaternion, part.max.quaternion, t);
+};
+var loader = null;
+var loadGlb = (url) => (loader ??= new GLTFLoader3()).loadAsync(url);
+var made = /* @__PURE__ */ new Map();
+function heldHand(at, side, finish) {
+  const base = at.endsWith("/") ? at : `${at}/`;
+  const key = `${base}|${side}`;
+  let got = made.get(key);
+  if (!got) {
+    got = Promise.all([loadGlb(`${base}controller-${side}.glb`), loadGlb(`${base}hand-${side}.glb`)]).then(([ctl, hand]) => build(ctl, hand, finish)).catch(() => null);
+    made.set(key, got);
+  }
+  return got;
+}
+function build(ctl, hand, finish) {
+  const group = new THREE13.Group();
+  group.name = "nswp-held-hand";
+  group.add(ctl.scene, hand.scene);
+  const edges = new THREE13.LineBasicMaterial({ color: 10479871, transparent: true, opacity: 0.55 });
+  ctl.scene.traverse((o) => {
+    const mesh = o;
+    if (!mesh.isMesh) return;
+    mesh.material = rimMaterial({ color: 13163762, rim: 15268863, opacity: 0.16, rimPower: 3 });
+    mesh.add(new THREE13.LineSegments(new THREE13.EdgesGeometry(mesh.geometry, 35), edges));
+  });
+  hand.scene.traverse((o) => {
+    const mesh = o;
+    if (!mesh.isMesh) return;
+    mesh.material = rimMaterial({ color: 4163327, rim: 10479871, opacity: 0.55, rimPower: 2.2, vertexAlpha: true });
+    mesh.frustumCulled = false;
+  });
+  finish(group);
+  ctl.scene.traverse((o) => {
+    if (o.isLineSegments && o.parent) o.renderOrder = o.parent.renderOrder;
+  });
+  hand.scene.traverse((o) => {
+    if (o.isMesh) o.renderOrder += 1;
+  });
+  const mixer = new THREE13.AnimationMixer(hand.scene);
+  const actions = {};
+  for (const clip of hand.animations) {
+    const a = mixer.clipAction(clip);
+    a.play();
+    a.setEffectiveWeight(0);
+    actions[clip.name] = a;
+  }
+  const node = (n) => ctl.scene.getObjectByName(n);
+  const parts = {};
+  for (const v of ["xr_standard_trigger", "xr_standard_squeeze", "xr_standard_thumbstick", "xr_standard_thumbstick_xaxis", "xr_standard_thumbstick_yaxis", "a_button", "b_button", "x_button", "y_button"]) {
+    const value = node(`${v}_pressed_value`);
+    const min = node(`${v}_pressed_min`);
+    const max = node(`${v}_pressed_max`);
+    if (value && min && max) parts[v] = { value, min, max };
+  }
+  const w = (n, v) => actions[n]?.setEffectiveWeight(v);
+  return {
+    group,
+    pose(pad) {
+      const b = pad?.buttons ?? [];
+      const a = pad?.axes ?? [];
+      const trigger = b[0]?.value ?? 0;
+      const grip = b[1]?.value ?? 0;
+      const thumb = thumbOn(b);
+      w("hold", 1);
+      w("index-rest", 1 - trigger);
+      w("index-pulled", trigger);
+      w("fingers-open", 1 - grip);
+      w("fingers-squeezed", grip);
+      for (const n of Object.keys(actions)) if (n.startsWith("thumb-")) w(n, n === `thumb-${thumb}` ? 1 : 0);
+      press(parts.xr_standard_trigger, trigger);
+      press(parts.xr_standard_squeeze, grip);
+      press(parts.xr_standard_thumbstick, b[3]?.pressed ? 1 : 0);
+      press(parts.xr_standard_thumbstick_xaxis, ((a[2] ?? 0) + 1) / 2);
+      press(parts.xr_standard_thumbstick_yaxis, ((a[3] ?? 0) + 1) / 2);
+      const lower = parts.a_button ? "a_button" : "x_button";
+      const upper = parts.b_button ? "b_button" : "y_button";
+      press(parts[lower], b[4]?.pressed ? 1 : 0);
+      press(parts[upper], b[5]?.pressed ? 1 : 0);
+      mixer.update(0);
+    }
+  };
+}
+
 // packages/sdk/src/comfort-controls.ts
 var MOVE_QUESTION = {
   casual: "Casual: point to step, turn in notches",
@@ -9057,25 +9191,25 @@ function drawnLast(root) {
 }
 function controllerModel(accent) {
   const b = new MeshBuilder().at();
-  b.tone = new THREE13.Color(1712684);
+  b.tone = new THREE14.Color(1712684);
   b.light = accent.clone();
-  const lean = new THREE13.Matrix4().makeRotationX(THREE13.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
+  const lean = new THREE14.Matrix4().makeRotationX(THREE14.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
   b.place(lean);
   b.lathe([[5e-4, -0.07], [0.014, -0.068], [0.018, -0.02], [0.017, 0.03], [0.012, 0.046], [5e-4, 0.048]], [0, 0, 0], 6, (row) => row === 1 ? { glow: 0.5 } : { shade: 0.9 + row % 2 * 0.2 });
-  b.place(new THREE13.Matrix4());
+  b.place(new THREE14.Matrix4());
   b.box([0.03, 0.022, 0.07], [0, 4e-3, -0.045], { bevel: 6e-3, shade: 1.05 });
   b.box([0.018, 0.012, 4e-3], [0, 4e-3, -0.082], { glow: 1 });
-  b.place(new THREE13.Matrix4().makeRotationX(THREE13.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
+  b.place(new THREE14.Matrix4().makeRotationX(THREE14.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
   b.lathe([[0.046, -4e-3], [0.052, 0], [0.046, 4e-3], [0.041, 0]], [0, 0, 0], 12, (row) => row === 1 ? { glow: 0.7 } : { shade: 0.85 });
   const metal = createAlloy(accent, { gloss: 0.6 });
-  const group = new THREE13.Group();
+  const group = new THREE14.Group();
   group.add(b.build(metal));
-  const light = () => new THREE13.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
-  const trigger = new THREE13.Mesh(new THREE13.BoxGeometry(0.012, 0.02, 0.014), light());
+  const light = () => new THREE14.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
+  const trigger = new THREE14.Mesh(new THREE14.BoxGeometry(0.012, 0.02, 0.014), light());
   trigger.position.set(0, -0.016, -0.036);
-  const squeeze = new THREE13.Mesh(new THREE13.BoxGeometry(8e-3, 0.03, 0.012), light());
+  const squeeze = new THREE14.Mesh(new THREE14.BoxGeometry(8e-3, 0.03, 0.012), light());
   squeeze.position.set(0, -0.034, 0.018);
-  squeeze.rotation.x = THREE13.MathUtils.degToRad(-52);
+  squeeze.rotation.x = THREE14.MathUtils.degToRad(-52);
   group.add(trigger, squeeze);
   unpointable(group);
   drawnLast(group);
@@ -9085,7 +9219,7 @@ var VIGNETTE_VERT = `varying float vFar; void main(){ vFar = length(position.xy)
 var VIGNETTE_FRAG = `uniform float uAmount; varying float vFar; void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.24, 0.42, vFar) * uAmount); }`;
 function createXrInput(opts) {
   const { renderer, rig, camera } = opts;
-  const accent = new THREE13.Color(opts.accent ?? 16758364);
+  const accent = new THREE14.Color(opts.accent ?? 16758364);
   const keeper = keepComfort({
     ...opts.controls ? { controls: opts.controls } : {},
     ...opts.arrivedIntense ? { arrivedIntense: true } : {},
@@ -9108,12 +9242,26 @@ function createXrInput(opts) {
     const ray = renderer.xr.getController(i);
     const grip = renderer.xr.getControllerGrip(i);
     const hand = renderer.xr.getHand(i);
-    const slot = { ray, grip, hand, source: null, model: null };
+    const slot = { ray, grip, hand, source: null, model: null, held: null };
     listen(ray, "connected", ((e) => {
-      slot.source = e.data ?? null;
+      const source = e.data ?? null;
+      slot.source = source;
+      const side = source?.handedness;
+      if (opts.handsAt && opts.models !== false && source?.gamepad && !source.hand && (side === "left" || side === "right") && wantsHeldHands(source.profiles))
+        void heldHand(opts.handsAt, side, (root) => {
+          unpointable(root);
+          drawnLast(root);
+        }).then((held2) => {
+          if (!held2 || slot.source !== source) return;
+          held2.group.parent?.remove(held2.group);
+          grip.add(held2.group);
+          slot.held = held2;
+        });
     }));
     listen(ray, "disconnected", (() => {
       slot.source = null;
+      if (slot.held) slot.held.group.parent?.remove(slot.held.group);
+      slot.held = null;
       release(i);
     }));
     for (const o of [ray, grip, hand]) if (!o.parent) rig.add(o);
@@ -9126,16 +9274,16 @@ function createXrInput(opts) {
   });
   const kindOf = (s) => !s.source ? "none" : s.source.hand ? "hand" : "controller";
   const handOf = (s) => s.source?.handedness === "left" || s.source?.handedness === "right" ? s.source.handedness : "none";
-  const jointShape = new THREE13.OctahedronGeometry(1, 1);
-  const jointDark = new THREE13.MeshBasicMaterial({ color: 2568767 });
-  const jointLit = new THREE13.MeshBasicMaterial({ color: accent });
+  const jointShape = new THREE14.OctahedronGeometry(1, 1);
+  const jointDark = new THREE14.MeshBasicMaterial({ color: 2568767 });
+  const jointLit = new THREE14.MeshBasicMaterial({ color: accent });
   const dressHand = (hand) => {
     for (const joint of hand.children) {
       if (joint.userData.nswpJoint) continue;
       joint.userData.nswpJoint = true;
       const name = String(joint.jointName ?? "");
       const tip = name.endsWith("-tip");
-      const mesh = new THREE13.Mesh(jointShape, tip ? jointLit : jointDark);
+      const mesh = new THREE14.Mesh(jointShape, tip ? jointLit : jointDark);
       const radius = joint.jointRadius;
       mesh.scale.setScalar(Math.min(0.02, Math.max(5e-3, (radius ?? 8e-3) * (tip ? 0.9 : 0.75))));
       unpointable(mesh);
@@ -9143,9 +9291,9 @@ function createXrInput(opts) {
       joint.add(mesh);
     }
   };
-  const vignette = new THREE13.Mesh(
-    new THREE13.RingGeometry(0.12, 3, 48, 4),
-    new THREE13.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
+  const vignette = new THREE14.Mesh(
+    new THREE14.RingGeometry(0.12, 3, 48, 4),
+    new THREE14.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
   );
   vignette.position.z = -0.4;
   vignette.renderOrder = 999;
@@ -9154,9 +9302,9 @@ function createXrInput(opts) {
   unpointable(vignette);
   camera.add(vignette);
   let narrow = 0;
-  const sheet = new THREE13.Mesh(
-    new THREE13.PlaneGeometry(4, 4),
-    new THREE13.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0, depthTest: false, depthWrite: false })
+  const sheet = new THREE14.Mesh(
+    new THREE14.PlaneGeometry(4, 4),
+    new THREE14.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0, depthTest: false, depthWrite: false })
   );
   sheet.position.z = -0.3;
   sheet.renderOrder = 1e3;
@@ -9168,13 +9316,13 @@ function createXrInput(opts) {
   let fading = null;
   const jumps = [];
   const jumped = [];
-  const made = (fn) => {
+  const made2 = (fn) => {
     jumped.push(Math.round(dark * 100) / 100);
     if (jumped.length > 8) jumped.shift();
     fn();
   };
   const jump = (fn) => {
-    if (!renderer.xr.isPresenting || !keeper.comfort.fade) return made(fn);
+    if (!renderer.xr.isPresenting || !keeper.comfort.fade) return made2(fn);
     jumps.push(fn);
     fading = "out";
   };
@@ -9182,7 +9330,7 @@ function createXrInput(opts) {
     if (fading === "out") {
       dark = Math.min(1, dark + dt / FADE_S);
       if (dark >= 1) {
-        for (const fn of jumps.splice(0)) made(fn);
+        for (const fn of jumps.splice(0)) made2(fn);
         fading = "in";
       }
     } else if (fading === "in") {
@@ -9205,8 +9353,8 @@ function createXrInput(opts) {
     } catch {
     }
   };
-  const headAt = new THREE13.Vector3();
-  const ahead = new THREE13.Vector3();
+  const headAt = new THREE14.Vector3();
+  const ahead = new THREE14.Vector3();
   const canStand = opts.canStand ?? (() => true);
   const walk = (right, forward) => {
     camera.getWorldPosition(headAt);
@@ -9223,12 +9371,12 @@ function createXrInput(opts) {
   const things = /* @__PURE__ */ new Map();
   const held = /* @__PURE__ */ new Map();
   const returning = [];
-  const box = new THREE13.Box3();
-  const ball = new THREE13.Sphere();
-  const handAt = new THREE13.Vector3();
-  const raycaster = new THREE13.Raycaster();
-  const turnOnly = new THREE13.Matrix4();
-  const HOLD_AT = new THREE13.Vector3(0, 0, -0.06);
+  const box = new THREE14.Box3();
+  const ball = new THREE14.Sphere();
+  const handAt = new THREE14.Vector3();
+  const raycaster = new THREE14.Raycaster();
+  const turnOnly = new THREE14.Matrix4();
+  const HOLD_AT = new THREE14.Vector3(0, 0, -0.06);
   const FAR_REACH = 6;
   const isHeld = (object) => [...held.values()].some((h) => h.thing.object === object);
   const grab = (slot, by) => {
@@ -9337,8 +9485,12 @@ function createXrInput(opts) {
       tendFade(dt);
       slots.forEach((s, i) => {
         const kind = kindOf(s);
+        if (s.held) {
+          s.held.group.visible = kind === "controller";
+          if (s.held.group.visible) s.held.pose(s.source?.gamepad);
+        }
         if (s.model) {
-          s.model.group.visible = kind === "controller";
+          s.model.group.visible = kind === "controller" && !s.held;
           const pad = pads.find((p) => p.index === i)?.pad ?? NO_PAD;
           s.model.trigger.material.color.copy(accent).multiplyScalar(0.2 + 0.8 * pad.trigger);
           s.model.squeeze.material.color.copy(accent).multiplyScalar(0.2 + 0.8 * pad.squeeze);
@@ -9412,10 +9564,10 @@ function createXrInput(opts) {
 }
 
 // packages/sdk/src/panels.ts
-import * as THREE16 from "three";
+import * as THREE17 from "three";
 
 // packages/sdk/src/keyboard.ts
-import * as THREE14 from "three";
+import * as THREE15 from "three";
 
 // packages/sdk/src/panel-store.ts
 var PANEL_LOOKS = [
@@ -9582,18 +9734,18 @@ var KEYS = 520;
 var LIVE_STRIP = 92;
 var WIDTH = 0.8;
 function createKeyboard(o) {
-  const accent = `#${new THREE14.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE15.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   const canvas = document.createElement("canvas");
   canvas.width = W4;
   canvas.height = SHOW + KEYS;
   const g = canvas.getContext("2d");
-  const texture = new THREE14.CanvasTexture(canvas);
-  texture.colorSpace = THREE14.SRGBColorSpace;
+  const texture = new THREE15.CanvasTexture(canvas);
+  texture.colorSpace = THREE15.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE14.Mesh(new THREE14.PlaneGeometry(WIDTH, WIDTH * canvas.height / W4), new THREE14.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
+  const board = new THREE15.Mesh(new THREE15.PlaneGeometry(WIDTH, WIDTH * canvas.height / W4), new THREE15.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
   board.name = "keyboard";
-  const group = new THREE14.Group();
+  const group = new THREE15.Group();
   group.name = "keyboard";
   group.add(board);
   group.visible = false;
@@ -9713,9 +9865,9 @@ function createKeyboard(o) {
     field.focus();
   };
   const unheard = voice.subscribe(() => done || live ? lay() : void 0);
-  const at = new THREE14.Vector3();
-  const facing2 = new THREE14.Vector3();
-  const local2 = new THREE14.Vector3();
+  const at = new THREE15.Vector3();
+  const facing2 = new THREE15.Vector3();
+  const local2 = new THREE15.Vector3();
   const putUp = (under = false) => {
     o.camera.getWorldPosition(at);
     o.camera.getWorldDirection(facing2);
@@ -9842,7 +9994,7 @@ function createKeyboard(o) {
 }
 
 // packages/sdk/src/library.ts
-import * as THREE15 from "three";
+import * as THREE16 from "three";
 
 // packages/sdk/src/file-store.ts
 var DB = "nswp-panels";
@@ -9913,7 +10065,7 @@ var TOP = 96;
 var FOOT = 104;
 var WIDTH2 = 1.1;
 function createLibrary(o) {
-  const accent = `#${new THREE15.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE16.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   let items = [];
   if (o.keep) {
@@ -9935,12 +10087,12 @@ function createLibrary(o) {
   canvas.width = W5;
   canvas.height = H4;
   const g = canvas.getContext("2d");
-  const texture = new THREE15.CanvasTexture(canvas);
-  texture.colorSpace = THREE15.SRGBColorSpace;
+  const texture = new THREE16.CanvasTexture(canvas);
+  texture.colorSpace = THREE16.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE15.Mesh(new THREE15.PlaneGeometry(WIDTH2, WIDTH2 * H4 / W5), new THREE15.MeshBasicMaterial({ map: texture, toneMapped: false }));
+  const board = new THREE16.Mesh(new THREE16.PlaneGeometry(WIDTH2, WIDTH2 * H4 / W5), new THREE16.MeshBasicMaterial({ map: texture, toneMapped: false }));
   board.name = "library";
-  const group = new THREE15.Group();
+  const group = new THREE16.Group();
   group.name = "library";
   group.add(board);
   group.visible = false;
@@ -10048,8 +10200,8 @@ function createLibrary(o) {
     if (items.length) button("removing", removing ? "Stop removing" : "Remove one", W5 - 300, fy, 276, FOOT - 28, removing);
     texture.needsUpdate = true;
   };
-  const at = new THREE15.Vector3();
-  const facing2 = new THREE15.Vector3();
+  const at = new THREE16.Vector3();
+  const facing2 = new THREE16.Vector3();
   const api = {
     group,
     list: () => items,
@@ -10123,7 +10275,7 @@ function createLibrary(o) {
       if (!r || !group.visible) return null;
       const height = WIDTH2 * H4 / W5;
       group.updateMatrixWorld(true);
-      return board.localToWorld(new THREE15.Vector3(((r.x + r.w / 2) / W5 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H4) * height, 0));
+      return board.localToWorld(new THREE16.Vector3(((r.x + r.w / 2) / W5 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H4) * height, 0));
     },
     info: () => ({ showing: group.visible, page, pages: libraryPage(items, page, COLS * ROWS).pages, removing, cells: regions.map((r) => r.id) }),
     update() {
@@ -10149,8 +10301,8 @@ function canvasTexture(width, height, draw2) {
   canvas.width = width;
   canvas.height = height;
   draw2(canvas.getContext("2d"), width, height);
-  const texture = new THREE16.CanvasTexture(canvas);
-  texture.colorSpace = THREE16.SRGBColorSpace;
+  const texture = new THREE17.CanvasTexture(canvas);
+  texture.colorSpace = THREE17.SRGBColorSpace;
   texture.anisotropy = 8;
   return texture;
 }
@@ -10236,9 +10388,9 @@ function barTexture(title, ink) {
   });
 }
 function createPanels(o) {
-  const accent = new THREE16.Color(o.accent ?? 16758364);
+  const accent = new THREE17.Color(o.accent ?? 16758364);
   const ink = o.textColor ?? "#eef5fb";
-  const root = new THREE16.Group();
+  const root = new THREE17.Group();
   root.name = "panels";
   o.scene.add(root);
   const live = /* @__PURE__ */ new Map();
@@ -10247,13 +10399,13 @@ function createPanels(o) {
   const glyph = (g) => glyphs.get(g) ?? (glyphs.set(g, glyphTexture(g, ink)), glyphs.get(g));
   const frameShape = (() => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE16.Color(1186340);
+    b.tone = new THREE17.Color(1186340);
     b.light = accent.clone();
     b.box([1, 1, 0.022], [0, 0, 0], { bevel: 8e-3 });
     return b.geometry();
   })();
-  const head = new THREE16.Vector3();
-  const at = new THREE16.Vector3();
+  const head = new THREE17.Vector3();
+  const at = new THREE17.Vector3();
   const headV3 = () => {
     o.camera.getWorldPosition(head);
     return [head.x, head.y, head.z];
@@ -10342,10 +10494,10 @@ function createPanels(o) {
   };
   const presenting = () => !!o.session?.();
   let follow = null;
-  const anchorAt = new THREE16.Vector3();
-  const anchorTurn = new THREE16.Quaternion();
-  const offset = new THREE16.Vector3();
-  const UP = new THREE16.Vector3(0, 1, 0);
+  const anchorAt = new THREE17.Vector3();
+  const anchorTurn = new THREE17.Quaternion();
+  const offset = new THREE17.Vector3();
+  const UP = new THREE17.Vector3(0, 1, 0);
   const anchor = (dt) => {
     o.camera.getWorldPosition(anchorAt);
     if (!presenting()) {
@@ -10386,20 +10538,20 @@ function createPanels(o) {
     save();
     if (p.source.kind === "custom") p.source.onClose?.();
   };
-  const flat = (texture, w = 1, h = 1) => new THREE16.Mesh(new THREE16.PlaneGeometry(w, h), new THREE16.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
+  const flat = (texture, w = 1, h = 1) => new THREE17.Mesh(new THREE17.PlaneGeometry(w, h), new THREE17.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
   const open = (content, opts = {}) => {
     const source = content.kind === "custom" ? content : cleanSource(content);
     if (!source) throw new Error("nswp-sdk: a panel needs something to show (a note with words, or a picture or video with an address).");
     if (live.size >= PANEL_LIMITS.count && !(opts.id && live.has(opts.id))) throw new Error(`nswp-sdk: ${PANEL_LIMITS.count} panels are open. Put one away first.`);
     const id = opts.id ?? newId();
     live.get(id)?.close();
-    const group = new THREE16.Group();
+    const group = new THREE17.Group();
     group.name = `panel:${id}`;
     const body = flat(null);
     body.name = `${id}:body`;
     const bar = flat(barTexture(source.title || (source.kind === "note" ? "Note" : source.kind === "picture" ? "Picture" : source.kind === "video" ? "Video" : ""), ink), 1, BAR);
     bar.name = `${id}:bar`;
-    const frame = new THREE16.Mesh(frameShape, metal);
+    const frame = new THREE17.Mesh(frameShape, metal);
     frame.name = "frame";
     frame.raycast = () => {
     };
@@ -10453,7 +10605,7 @@ function createPanels(o) {
         save();
       },
       place() {
-        const e = new THREE16.Euler().setFromQuaternion(group.quaternion, "YXZ");
+        const e = new THREE17.Euler().setFromQuaternion(group.quaternion, "YXZ");
         const round = (n) => Math.round(n * 1e3) / 1e3;
         return { position: group.position.toArray().map(round), yaw: round((e.y / DEG % 360 + 360) % 360), pitch: round(e.x / DEG), width: round(p.width) };
       },
@@ -10491,8 +10643,8 @@ function createPanels(o) {
           const image = new Image();
           image.onload = () => {
             if (!live.has(id)) return;
-            const texture = new THREE16.Texture(image);
-            texture.colorSpace = THREE16.SRGBColorSpace;
+            const texture = new THREE17.Texture(image);
+            texture.colorSpace = THREE17.SRGBColorSpace;
             texture.needsUpdate = true;
             show(texture, image.naturalWidth / Math.max(1, image.naturalHeight));
           };
@@ -10505,8 +10657,8 @@ function createPanels(o) {
           p.video = video;
           video.addEventListener("loadedmetadata", () => {
             if (!live.has(id) || !video.videoWidth) return;
-            const texture = new THREE16.VideoTexture(video);
-            texture.colorSpace = THREE16.SRGBColorSpace;
+            const texture = new THREE17.VideoTexture(video);
+            texture.colorSpace = THREE17.SRGBColorSpace;
             show(texture, video.videoWidth / video.videoHeight);
           });
           const mark = () => {
@@ -10573,9 +10725,9 @@ function createPanels(o) {
   const tint = (hit, on) => {
     const found = hit ? find(hit) : null;
     const mesh = found?.[0].buttons.get(found[1]);
-    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE16.Color(16777215));
+    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE17.Color(16777215));
   };
-  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE16.Color(16777215));
+  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE17.Color(16777215));
   const api = {
     open,
     async openFile(file) {
@@ -10808,14 +10960,14 @@ function addPanelControls(controls, panels, o) {
 }
 
 // packages/sdk/src/floor-mark.ts
-import * as THREE17 from "three";
+import * as THREE18 from "three";
 var MOST3 = 140;
 var TURNS = 16;
 function createFloorMarks(accent, opts = {}) {
   const y = opts.height ?? 0.02;
-  const group = new THREE17.Group();
+  const group = new THREE18.Group();
   group.name = "floor-marks";
-  const paint = (opacity) => new THREE17.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
+  const paint = (opacity) => new THREE18.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
   const flat = (o) => {
     o.rotation.x = -Math.PI / 2;
     o.renderOrder = 5;
@@ -10825,19 +10977,19 @@ function createFloorMarks(accent, opts = {}) {
     group.add(o);
     return o;
   };
-  const ring = flat(new THREE17.Mesh(new THREE17.RingGeometry(0.26, 0.34, 48), paint(0.85)));
-  const dot = flat(new THREE17.Mesh(new THREE17.CircleGeometry(0.14, 28), paint(0.95)));
-  const halo = flat(new THREE17.Mesh(new THREE17.RingGeometry(0.26, 0.3, 48), paint(0.7)));
-  const line = flat(new THREE17.InstancedMesh(new THREE17.CircleGeometry(0.07, 14), paint(0.8), MOST3));
+  const ring = flat(new THREE18.Mesh(new THREE18.RingGeometry(0.26, 0.34, 48), paint(0.85)));
+  const dot = flat(new THREE18.Mesh(new THREE18.CircleGeometry(0.14, 28), paint(0.95)));
+  const halo = flat(new THREE18.Mesh(new THREE18.RingGeometry(0.26, 0.3, 48), paint(0.7)));
+  const line = flat(new THREE18.InstancedMesh(new THREE18.CircleGeometry(0.07, 14), paint(0.8), MOST3));
   line.rotation.x = 0;
   line.frustumCulled = false;
-  const knots = flat(new THREE17.InstancedMesh(new THREE17.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
+  const knots = flat(new THREE18.InstancedMesh(new THREE18.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
   knots.rotation.x = 0;
   knots.frustumCulled = false;
-  const place = new THREE17.Matrix4();
-  const lie = new THREE17.Quaternion().setFromEuler(new THREE17.Euler(-Math.PI / 2, 0, 0));
-  const at = new THREE17.Vector3();
-  const one = new THREE17.Vector3(1, 1, 1);
+  const place = new THREE18.Matrix4();
+  const lie = new THREE18.Quaternion().setFromEuler(new THREE18.Euler(-Math.PI / 2, 0, 0));
+  const at = new THREE18.Vector3();
+  const one = new THREE18.Vector3(1, 1, 1);
   let shown2 = { ring: null, dot: null, dots: 0, turns: 0 };
   return {
     group,
@@ -11088,11 +11240,11 @@ function createScores(opts) {
     posted: (id) => cleanScore(of(opts.hand.pubkey())[id]?.posted),
     record(id, score) {
       const b = boardOf(id);
-      const made = cleanScore(score);
-      if (!world || !b || made === null || !better(b, made, best(id))) return false;
+      const made2 = cleanScore(score);
+      if (!world || !b || made2 === null || !better(b, made2, best(id))) return false;
       const who = opts.hand.pubkey();
       const kept2 = of(who);
-      kept2[id] = { ...kept2[id], best: made };
+      kept2[id] = { ...kept2[id], best: made2 };
       write(who, kept2);
       changed();
       return true;
@@ -11351,9 +11503,9 @@ function createBag(opts) {
     offered = null;
     const has = bagIn(at.bag).includes(item);
     if (adding === has) return { ok: true, why: "already", said: adding ? `${it} is already in your bag.` : `${it} isn't in your bag.` };
-    const made = changeBag(at.bag, { ...adding ? { add: item } : { remove: item }, now: now() / 1e3, fromNothing: at.bag === null });
-    const signed = made ? await opts.hand.sign(made).catch(() => null) : null;
-    const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
+    const made2 = changeBag(at.bag, { ...adding ? { add: item } : { remove: item }, now: now() / 1e3, fromNothing: at.bag === null });
+    const signed = made2 ? await opts.hand.sign(made2).catch(() => null) : null;
+    const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made2.tags);
     if (!signed || !same) return { ok: false, why: "refused", said: "It couldn't be signed. Your bag is as it was." };
     keep3(signed);
     known = { who, bag: signed, answered: true, own: at.own, at: now() };
@@ -11378,12 +11530,12 @@ function createBag(opts) {
     if (!at) return { ok: false, why: "unreachable", said: "Your bag couldn't be looked for, so none was started." };
     if (at.bag) return { ok: false, why: "already", said: "You have a bag already. Nothing was put in it." };
     if (!at.none) return { ok: false, why: "unreachable", said: "Too few of your relays answered to be sure you have no bag, so none was started." };
-    let made = null;
-    for (const item of items) made = changeBag(made, { add: item, now: now() / 1e3, fromNothing: made === null }) ?? made;
-    if (!made) return { ok: false, why: "refused", said: "There was nothing to put in your bag." };
-    made = { ...made, created_at: Math.floor(now() / 1e3) };
-    const signed = await opts.hand.sign(made).catch(() => null);
-    const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
+    let made2 = null;
+    for (const item of items) made2 = changeBag(made2, { add: item, now: now() / 1e3, fromNothing: made2 === null }) ?? made2;
+    if (!made2) return { ok: false, why: "refused", said: "There was nothing to put in your bag." };
+    made2 = { ...made2, created_at: Math.floor(now() / 1e3) };
+    const signed = await opts.hand.sign(made2).catch(() => null);
+    const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made2.tags);
     if (!signed || !same) return { ok: false, why: "refused", said: "It couldn't be signed. No bag was started." };
     keep3(signed);
     known = { who, bag: signed, answered: true, own: at.own, at: now() };
@@ -11409,9 +11561,9 @@ function createBag(opts) {
     if (!who || !opts.hand?.ready()) return;
     await load2(true);
     const at = known && known.who === who ? known : null;
-    const made = at?.bag ? tintBag(at.bag, { item, tints: keptTints()[item] ?? {}, now: now() / 1e3 }) : null;
-    const signed = made ? await opts.hand.sign(made).catch(() => null) : null;
-    const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
+    const made2 = at?.bag ? tintBag(at.bag, { item, tints: keptTints()[item] ?? {}, now: now() / 1e3 }) : null;
+    const signed = made2 ? await opts.hand.sign(made2).catch(() => null) : null;
+    const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made2.tags);
     if (!signed || !same) return;
     keep3(signed);
     known = { who, bag: signed, answered: true, own: at?.own ?? [], at: now() };
@@ -11866,7 +12018,7 @@ function addBagControls(controls, opts) {
 }
 
 // packages/sdk/src/item-preview.ts
-import * as THREE18 from "three";
+import * as THREE19 from "three";
 var KEPT = 36;
 function createItemPreviews(o) {
   const size = o.size ?? 256;
@@ -11878,36 +12030,36 @@ function createItemPreviews(o) {
     if (stage !== void 0) return stage;
     if (typeof document === "undefined") return stage = null;
     try {
-      const renderer = new THREE18.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
+      const renderer = new THREE19.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
       renderer.setPixelRatio(1);
       renderer.setSize(size, size, false);
       renderer.setClearColor(0, 0);
-      const scene = new THREE18.Scene();
-      scene.add(new THREE18.HemisphereLight(16777215, 2699837, 1.7));
-      const key = new THREE18.DirectionalLight(16777215, 2.4);
+      const scene = new THREE19.Scene();
+      scene.add(new THREE19.HemisphereLight(16777215, 2699837, 1.7));
+      const key = new THREE19.DirectionalLight(16777215, 2.4);
       key.position.set(1.6, 2.6, 2.2);
-      const rim = new THREE18.DirectionalLight(12572927, 1.3);
+      const rim = new THREE19.DirectionalLight(12572927, 1.3);
       rim.position.set(-2, 1.2, -2.4);
-      const pivot = new THREE18.Group();
+      const pivot = new THREE19.Group();
       scene.add(key, rim, pivot);
-      const camera = new THREE18.PerspectiveCamera(28, 1, 0.01, 50);
+      const camera = new THREE19.PerspectiveCamera(28, 1, 0.01, 50);
       return stage = { renderer, scene, camera, pivot };
     } catch {
       return stage = null;
     }
   };
-  const draw2 = (made, angle, onto) => {
+  const draw2 = (made2, angle, onto) => {
     const s = stageNow();
     if (!s) return null;
     s.pivot.clear();
-    s.pivot.add(made.object);
-    made.object.position.copy(made.middle).multiplyScalar(-1);
+    s.pivot.add(made2.object);
+    made2.object.position.copy(made2.middle).multiplyScalar(-1);
     s.pivot.rotation.set(0, angle, 0);
-    const away = made.radius / Math.sin(THREE18.MathUtils.degToRad(s.camera.fov / 2)) * 1.08;
+    const away = made2.radius / Math.sin(THREE19.MathUtils.degToRad(s.camera.fov / 2)) * 1.08;
     s.camera.position.set(0, away * 0.3, away * 0.95);
     s.camera.lookAt(0, 0, 0);
-    s.camera.near = Math.max(5e-3, away - made.radius * 2);
-    s.camera.far = away + made.radius * 2;
+    s.camera.near = Math.max(5e-3, away - made2.radius * 2);
+    s.camera.far = away + made2.radius * 2;
     s.camera.updateProjectionMatrix();
     s.renderer.render(s.scene, s.camera);
     s.pivot.clear();
@@ -11942,8 +12094,8 @@ function createItemPreviews(o) {
           else solids++;
         });
         if (frames > 0 && solids === 0) return void again(key);
-        const box = new THREE18.Box3().setFromObject(object);
-        const ball = box.getBoundingSphere(new THREE18.Sphere());
+        const box = new THREE19.Box3().setFromObject(object);
+        const ball = box.getBoundingSphere(new THREE19.Sphere());
         if (!Number.isFinite(ball.radius) || ball.radius <= 0) return void ready.delete(key);
         ready.set(key, { object, middle: ball.center.clone(), radius: ball.radius, still: null, live: null });
         for (const fn of watchers3) fn();
@@ -11966,15 +12118,15 @@ function createItemPreviews(o) {
   }
   return {
     still(item, tints) {
-      const made = want(item, tints);
-      if (!made) return null;
-      return made.still ??= draw2(made, -0.62, null);
+      const made2 = want(item, tints);
+      if (!made2) return null;
+      return made2.still ??= draw2(made2, -0.62, null);
     },
     turning(item, tints, moving = true) {
-      const made = want(item, tints);
-      if (!made) return null;
+      const made2 = want(item, tints);
+      if (!made2) return null;
       const angle = moving ? (typeof performance === "undefined" ? 0 : performance.now()) / 1e3 * 0.7 : -0.62;
-      return made.live = draw2(made, angle, made.live);
+      return made2.live = draw2(made2, angle, made2.live);
     },
     onChange(fn) {
       watchers3.add(fn);
@@ -12050,7 +12202,7 @@ function createThumbPresses(o) {
   const pad = root.querySelector(".pad");
   const first = root.querySelector(".first");
   const second = root.querySelector(".second");
-  const press = (button, act) => {
+  const press2 = (button, act) => {
     button.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -12063,8 +12215,8 @@ function createThumbPresses(o) {
     });
     button.addEventListener("contextmenu", (e) => e.preventDefault());
   };
-  press(first, () => o.use());
-  press(second, () => o.second());
+  press2(first, () => o.use());
+  press2(second, () => o.second());
   let showing2 = { side: "" };
   let attached = false;
   return {
@@ -13408,7 +13560,7 @@ function addSoundControls(controls, sounds, opts = {}) {
 }
 
 // packages/sdk/src/chamber.ts
-import * as THREE19 from "three";
+import * as THREE20 from "three";
 var R = 1.8;
 var H5 = 2.8;
 var BAYS = 10;
@@ -13433,16 +13585,16 @@ function signTexture(lines, color) {
     const y = rows.length === 1 ? 192 : rows.length === 2 ? 138 + i * 118 : 92 + i * 100;
     g.fillText(line, 512, y, 944);
   });
-  const texture = new THREE19.CanvasTexture(canvas);
-  texture.colorSpace = THREE19.SRGBColorSpace;
+  const texture = new THREE20.CanvasTexture(canvas);
+  texture.colorSpace = THREE20.SRGBColorSpace;
   return texture;
 }
 function createChamber(accent, opts = {}) {
-  const light = new THREE19.Color(accent);
+  const light = new THREE20.Color(accent);
   const metal = createAlloy(light, { gloss: 0.5, speed: 0.9 });
   const builder = () => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE19.Color(1317668);
+    b.tone = new THREE20.Color(1317668);
     b.light = light.clone();
     return b;
   };
@@ -13454,7 +13606,7 @@ function createChamber(accent, opts = {}) {
   const wallShape = builder();
   for (let i = 1; i < BAYS; i++) {
     const a = i * 2 * Math.PI / BAYS;
-    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE19.MathUtils.radToDeg(a));
+    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE20.MathUtils.radToDeg(a));
     wallShape.box([bay, H5, 0.12], [0, H5 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
     for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H5 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
   }
@@ -13474,31 +13626,31 @@ function createChamber(accent, opts = {}) {
     leaf.position.set(side * DOOR_W / 2, 0, -reach);
     return leaf;
   });
-  const sign = new THREE19.Mesh(new THREE19.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE19.MeshBasicMaterial({ transparent: true }));
+  const sign = new THREE20.Mesh(new THREE20.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE20.MeshBasicMaterial({ transparent: true }));
   sign.position.set(0, DOOR_H + (H5 - DOOR_H) / 2, -reach + 0.085);
-  const rising = new THREE19.Group();
+  const rising = new THREE20.Group();
   rising.add(walls, ...leaves, sign);
-  const clear = new THREE19.Mesh(new THREE19.BufferGeometry().setAttribute("position", new THREE19.BufferAttribute(new Float32Array(9), 3)), new THREE19.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
+  const clear = new THREE20.Mesh(new THREE20.BufferGeometry().setAttribute("position", new THREE20.BufferAttribute(new Float32Array(9), 3)), new THREE20.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
   clear.frustumCulled = false;
   clear.renderOrder = CHAMBER_ORDER;
   clear.onBeforeRender = (renderer) => renderer.clearDepth();
   for (const part of [floor, walls, lid, ...leaves]) part.renderOrder = CHAMBER_ORDER + 1;
   sign.renderOrder = CHAMBER_ORDER + 1.3;
-  const depthOnly = (depth, o) => new THREE19.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE19.AlwaysDepth, depthWrite: true, side: THREE19.DoubleSide, ...o });
+  const depthOnly = (depth, o) => new THREE20.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE20.AlwaysDepth, depthWrite: true, side: THREE20.DoubleSide, ...o });
   const nearest2 = depthOnly("0.0", {});
   const farthest = depthOnly("1.0", { transparent: true });
-  const real = new THREE19.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE19.DoubleSide });
+  const real = new THREE20.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE20.DoubleSide });
   const shutOut = [];
   for (const part of [floor, walls, lid, ...leaves]) {
     for (const [material, order] of [[nearest2, SHUT_ORDER], [farthest, CHAMBER_ORDER + 1.1], [real, CHAMBER_ORDER + 1.2]]) {
-      const pass = new THREE19.Mesh(part.geometry, material);
+      const pass = new THREE20.Mesh(part.geometry, material);
       pass.renderOrder = order;
       pass.frustumCulled = false;
       part.add(pass);
       shutOut.push(pass);
     }
   }
-  const group = new THREE19.Group();
+  const group = new THREE20.Group();
   group.add(clear, floor, rising, lid);
   let door = 0;
   let presence = 1;
@@ -13565,18 +13717,18 @@ function createCrossing(o) {
   let hold;
   let shut = null;
   const moves = () => o.motion?.() ?? true;
-  const at = new THREE19.Vector3();
-  const facing2 = new THREE19.Vector3();
+  const at = new THREE20.Vector3();
+  const facing2 = new THREE20.Vector3();
   const place = () => {
     chamber?.dispose();
-    const made = createChamber(o.accent, o.textColor ? { textColor: o.textColor } : {});
+    const made2 = createChamber(o.accent, o.textColor ? { textColor: o.textColor } : {});
     o.camera.getWorldPosition(at);
     o.camera.getWorldDirection(facing2);
-    made.group.position.set(at.x, 0, at.z);
-    made.group.rotation.y = Math.atan2(-facing2.x, -facing2.z);
-    o.scene.add(made.group);
-    chamber = made;
-    return made;
+    made2.group.position.set(at.x, 0, at.z);
+    made2.group.rotation.y = Math.atan2(-facing2.x, -facing2.z);
+    o.scene.add(made2.group);
+    chamber = made2;
+    return made2;
   };
   const usual = /* @__PURE__ */ new Map();
   const keepInSight = (on) => {
@@ -13669,7 +13821,7 @@ function createCrossing(o) {
 }
 
 // packages/sdk/src/camera.ts
-import * as THREE20 from "three";
+import * as THREE21 from "three";
 
 // packages/sdk/src/save-file.ts
 function download(blob, name) {
@@ -13696,9 +13848,9 @@ function draw(renderer, scene, camera, opts) {
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
   const xrWasEnabled = renderer.xr.enabled;
   const previousTarget = renderer.getRenderTarget();
-  const target = new THREE20.WebGLRenderTarget(width, height, { samples: 4 });
-  target.texture.colorSpace = THREE20.SRGBColorSpace;
-  const eye = new THREE20.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
+  const target = new THREE21.WebGLRenderTarget(width, height, { samples: 4 });
+  target.texture.colorSpace = THREE21.SRGBColorSpace;
+  const eye = new THREE21.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
   camera.updateWorldMatrix(true, false);
   camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
   eye.updateMatrixWorld(true);
@@ -13736,17 +13888,17 @@ async function takePicture(renderer, scene, camera, opts = {}) {
 }
 async function takeSelfie(renderer, scene, head, look, opts = {}) {
   head.updateWorldMatrix(true, false);
-  const at = new THREE20.Vector3();
-  const facing2 = new THREE20.Quaternion();
-  head.matrixWorld.decompose(at, facing2, new THREE20.Vector3());
-  const ahead = new THREE20.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
+  const at = new THREE21.Vector3();
+  const facing2 = new THREE21.Quaternion();
+  head.matrixWorld.decompose(at, facing2, new THREE21.Vector3());
+  const ahead = new THREE21.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
   if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
   ahead.normalize();
   const figure = createFigure(look);
   figure.group.position.copy(at);
   figure.group.rotation.y = Math.atan2(-ahead.x, -ahead.z);
   scene.add(figure.group);
-  const eye = new THREE20.PerspectiveCamera(58, 1, 0.05, head.far);
+  const eye = new THREE21.PerspectiveCamera(58, 1, 0.05, head.far);
   eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
   eye.position.y = at.y + 0.08;
   eye.lookAt(at.x, at.y - 0.22, at.z);
@@ -13902,8 +14054,8 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE21.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE21.HalfFloatType });
-  const faceCamera = new THREE21.PerspectiveCamera(90, 1, 0.05, 700);
+  const faceTarget = new THREE22.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE22.HalfFloatType });
+  const faceCamera = new THREE22.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   let painter = null;
   try {
@@ -13913,7 +14065,7 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     painter = paintPanorama(renderer, width);
     PANORAMA_VIEWS.forEach((view, i) => {
       faceCamera.up.fromArray(view.up);
-      faceCamera.lookAt(position.clone().add(new THREE21.Vector3().fromArray(view.forward)));
+      faceCamera.lookAt(position.clone().add(new THREE22.Vector3().fromArray(view.forward)));
       faceCamera.updateMatrixWorld(true);
       renderer.autoClear = true;
       renderer.setRenderTarget(faceTarget);
@@ -13932,24 +14084,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE21.Texture(image);
-  texture.colorSpace = THREE21.SRGBColorSpace;
-  texture.wrapS = THREE21.RepeatWrapping;
+  const texture = new THREE22.Texture(image);
+  texture.colorSpace = THREE22.SRGBColorSpace;
+  texture.wrapS = THREE22.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE21.LinearFilter;
-  texture.magFilter = THREE21.LinearFilter;
+  texture.minFilter = THREE22.LinearFilter;
+  texture.magFilter = THREE22.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE21.ShaderMaterial({
+  const material = new THREE22.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE21.Matrix3() },
-      center: { value: new THREE21.Vector3() },
+      toLocal: { value: new THREE22.Matrix3() },
+      center: { value: new THREE22.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -13969,10 +14121,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE21.DoubleSide
+    side: THREE22.DoubleSide
   });
-  const mesh = new THREE21.Mesh(geometry, material);
-  const rotation = new THREE21.Matrix4();
+  const mesh = new THREE22.Mesh(geometry, material);
+  const rotation = new THREE22.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();

@@ -40,6 +40,8 @@ export interface PresenceOptions {
         blocked: readonly string[];
         namedOnly: boolean;
         invited?: readonly string[] | null;
+        takesGuests?: boolean;
+        guestItems?: boolean;
     };
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;

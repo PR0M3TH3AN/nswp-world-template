@@ -100,6 +100,8 @@ export declare function pageRules(): {
     blocked: readonly string[];
     namedOnly: boolean;
     invited: readonly string[] | null;
+    takesGuests: boolean;
+    guestItems: boolean;
 };
 /** Be told when those rules may have changed. Returns how to stop. */
 export declare function onPageRules(fn: () => void): () => void;
