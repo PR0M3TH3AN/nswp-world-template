@@ -5,6 +5,7 @@
  */
 export { createControls, type Controls, type ControlsOptions, type UiAction, type UiCard, type UiSection, type UiView, type UiItemView, type UiSectionView, type Presence, type Corner, type UiKeys } from "./ui/model.js";
 export { mountHud, mountMenu, type Hud } from "./ui/hud.js";
+export { signInHere } from "./ui/sign-in-here.js";
 export { portHere, type WorldPort } from "./ui/port.js";
 export { addDoorControls, vouchedWords, type DoorControls, type DoorControlsOptions, type MenuDoor } from "./door-controls.js";
 export { CHAT_KEY, onChatChange, setShowsChat, showsChat, type ChatLine, type ChatView, type UiChat } from "./ui/chat.js";

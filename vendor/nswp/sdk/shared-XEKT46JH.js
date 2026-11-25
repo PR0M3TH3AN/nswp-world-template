@@ -2204,7 +2204,7 @@ import {
   CHAT_LIMITS,
   createChatGate,
   parseSay,
-  DEFAULT_RELAYS as DEFAULT_RELAYS2,
+  ROOM_RELAYS,
   getPublicKey,
   guestColor,
   guestName,
@@ -2212,6 +2212,7 @@ import {
   packPose,
   ROOM_LIMITS,
   ROOM_SIGNAL_KIND,
+  lobbyName,
   roomTopic,
   shouldInitiate,
   unpackPose,
@@ -2232,9 +2233,32 @@ import {
 var PLAY_WORD = /^(shot|hit|did|st|tint):/;
 var PLAY_SAID = { burst: 40, perSecond: 30 };
 var DEFAULT_ICE = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
+var ICE_FROM = null;
+var ICE_FROM_WAIT_MS = 3e3;
+async function askIce(url) {
+  try {
+    const res = await fetch(url, { credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(ICE_FROM_WAIT_MS) });
+    if (!res.ok) return null;
+    const got = await res.json();
+    if (!Array.isArray(got.iceServers) || typeof got.ttl !== "number" || !(got.ttl >= 60)) return null;
+    const servers = [];
+    for (const s of got.iceServers.slice(0, 8)) {
+      const urls = (Array.isArray(s?.urls) ? s.urls : []).filter((u) => typeof u === "string" && u.length < 200 && /^(stun|turns?):[^\s]+$/.test(u)).slice(0, 8);
+      if (!urls.length) continue;
+      const turn = urls.some((u) => u.startsWith("turn"));
+      if (turn && (typeof s.username !== "string" || typeof s.credential !== "string")) continue;
+      servers.push(turn ? { urls, username: s.username, credential: s.credential } : { urls });
+    }
+    return servers.length ? { servers, ttl: Math.min(got.ttl, 86400) } : null;
+  } catch {
+    return null;
+  }
+}
 var HELLO_EVERY_MS = 2e4;
 var RECORDING_HOLD_MS = 6e3;
 var CONNECT_TIMEOUT_MS = 25e3;
+var RETRY_AT_MS = 15e3;
+var FULL_WINDOW_S = 15;
 var SILENT_TIMEOUT_MS = 8e3;
 var NAMED_WAIT_MS = 7e3;
 var GATHER_TIMEOUT_MS = 2500;
@@ -2263,10 +2287,13 @@ function seenLook(member, said) {
 var PASS_TRIES = 4;
 var RoomSession = class {
   self;
+  /** The room's name. For the default room it changes as a full lobby sends this visitor on: "lobby", "lobby-2", … */
   name;
+  /** Where its handshake happens (`roomTopic`): changes with the name. */
   topic;
   status = "connecting";
   key;
+  /** The relays this room's handshake goes through: the world's own, or `ROOM_RELAYS`. */
   relays;
   /** Keys this visitor won't be in a room with: session keys, and the identity keys behind names. */
   blocked = /* @__PURE__ */ new Set();
@@ -2283,6 +2310,9 @@ var RoomSession = class {
   waiting = /* @__PURE__ */ new Map();
   maxMembers;
   iceServers;
+  /** Where TURN servers are asked for (`JoinOptions.iceFrom`), or null. */
+  iceFrom;
+  iceTimer;
   sockets = /* @__PURE__ */ new Map();
   peers = /* @__PURE__ */ new Map();
   seen = /* @__PURE__ */ new Set();
@@ -2301,11 +2331,22 @@ var RoomSession = class {
     music: /* @__PURE__ */ new Set(),
     audio: /* @__PURE__ */ new Set(),
     said: /* @__PURE__ */ new Set(),
-    status: /* @__PURE__ */ new Set()
+    status: /* @__PURE__ */ new Set(),
+    unreached: /* @__PURE__ */ new Set()
   };
   look;
   /** The world's origin: the only place a pass shown here may have been made for. */
   origin;
+  /** The world's address, which the room's topic is made from. */
+  world;
+  /** Which lobby this is, where it is the world's default room ("lobby" is 1); null for a room by name. */
+  lobby = null;
+  /** Whose hello this visitor has heard in this lobby: a "full" is taken only from one of them. */
+  heardHello = /* @__PURE__ */ new Set();
+  /** Who said "full" before their hello was heard: taken if their hello comes while it still may be. */
+  fullBefore = /* @__PURE__ */ new Set();
+  /** When each member's joining hello was signed, in seconds: who joined before whom, for a full lobby. */
+  joinedAtOf = /* @__PURE__ */ new Map();
   /** This visitor's own pass, as it is said to the others, and when it stops. */
   pass = null;
   /** This visitor's own look note, as it is handed to each member: only where it is their pass's key's. */
@@ -2336,6 +2377,8 @@ var RoomSession = class {
   /** When this visitor joined, in unix seconds, and who has joined since (by a joining hello signed after it). */
   joinedAt = Math.floor(Date.now() / 1e3);
   newer = /* @__PURE__ */ new Set();
+  /** How many tries at connecting to each member there have been since they were last connected (`Peer.attempt`). */
+  attempts = /* @__PURE__ */ new Map();
   constructor(opts = {}) {
     const world = opts.world ?? `${location.origin}${location.pathname}`;
     this.origin = new URL(world).origin;
@@ -2360,7 +2403,7 @@ var RoomSession = class {
     const mine = opts.look ? decodeLook(opts.look) : null;
     this.look = mine?.ok ? opts.look : null;
     this.self = { pubkey, guest: true, name: guestName(pubkey), color: guestColor(pubkey), look: generatedLook(pubkey), recording: false };
-    if (proven) Object.assign(this.self, { guest: false, identity: proven.pubkey, name: proven.name || shortNpub(proven.pubkey), ...proven.picture ? { picture: proven.picture } : {}, ...proven.about ? { about: proven.about } : {} });
+    if (proven) Object.assign(this.self, { guest: false, identity: proven.pubkey, name: proven.name || (proven.guest ? guestName(proven.pubkey) : shortNpub(proven.pubkey)), ...proven.guest ? { guestAccount: true } : {}, ...proven.picture ? { picture: proven.picture } : {}, ...proven.about ? { about: proven.about } : {} });
     this.self.look = seenLook(this.self, mine?.ok ? mine.value : void 0);
     if (proven && opts.avatar) {
       const text = JSON.stringify(opts.avatar);
@@ -2371,10 +2414,13 @@ var RoomSession = class {
       }
     }
     this.name = (opts.name ?? "lobby").slice(0, ROOM_LIMITS.maxNameChars);
+    this.world = world;
+    this.lobby = this.name === "lobby" ? 1 : null;
     this.topic = roomTopic(world, this.name);
-    this.relays = opts.relays ?? DEFAULT_RELAYS2;
+    this.relays = opts.relays ?? [...ROOM_RELAYS];
     this.maxMembers = opts.maxMembers ?? ROOM_LIMITS.defaultMaxMembers;
     this.iceServers = opts.iceServers ?? DEFAULT_ICE;
+    this.iceFrom = opts.iceFrom === void 0 ? ICE_FROM : opts.iceFrom;
     for (const k of opts.blocked ?? []) if (/^[0-9a-f]{64}$/.test(k)) this.blocked.add(k);
     for (const k of opts.ownerBlocked ?? []) if (/^[0-9a-f]{64}$/.test(k)) this.ownerBlocked.add(k);
     this.invited = opts.invited ? new Set([...opts.invited].filter((k) => /^[0-9a-f]{64}$/.test(k))) : null;
@@ -2528,9 +2574,21 @@ var RoomSession = class {
       switch (message.t) {
         case "hello":
         case "welcome": {
+          if (message.t === "hello") {
+            if (this.heardHello.size > 500) this.heardHello.clear();
+            this.heardHello.add(from);
+            if (this.fullBefore.has(from) && this.mayMoveOn()) return this.moveOn(this.lobby + 1);
+          }
           if (existing) return;
-          if (this.peers.size >= this.maxMembers - 1) return;
           const at = raw.created_at;
+          if (message.t === "hello" && message.first === true && typeof at === "number") {
+            if (this.joinedAtOf.size > 500) this.joinedAtOf.clear();
+            this.joinedAtOf.set(from, at);
+          }
+          if (this.peers.size >= this.maxMembers - 1) {
+            if (message.t === "hello" && message.first === true && typeof at === "number" && this.answersForFull()) this.tellFull(from, at);
+            if (this.peers.size >= this.maxMembers - 1) return;
+          }
           if (message.t === "hello" && message.first === true && typeof at === "number" && (at > this.joinedAt || at === this.joinedAt && from > this.self.pubkey)) this.newer.add(from);
           if (shouldInitiate(this.self.pubkey, from)) await this.offerTo(from);
           else if (message.t === "hello") this.publish(buildSignal(this.topic, this.key, from, { t: "welcome" }));
@@ -2550,7 +2608,13 @@ var RoomSession = class {
           return;
         }
         case "bye":
+          this.attempts.delete(from);
           this.drop(from, true);
+          return;
+        case "full":
+          if (!this.mayMoveOn()) return;
+          if (this.heardHello.has(from)) return this.moveOn(this.lobby + 1);
+          if (this.fullBefore.size < 50) this.fullBefore.add(from);
           return;
       }
     } catch (err) {
@@ -2568,8 +2632,11 @@ var RoomSession = class {
       plays: createRate(PLAY_SAID.burst, PLAY_SAID.perSecond),
       open: false,
       lastSeen: Date.now(),
-      startedAt: Date.now()
+      startedAt: Date.now(),
+      attempt: (this.attempts.get(pubkey) ?? 0) + 1
     };
+    if (this.attempts.size > 500) this.attempts.clear();
+    this.attempts.set(pubkey, peer.attempt);
     this.peers.set(pubkey, peer);
     pc.ontrack = (e) => {
       const stream = e.streams[0] ?? new MediaStream([e.track]);
@@ -2577,7 +2644,9 @@ var RoomSession = class {
       else this.emit(e.transceiver && e.transceiver === this.musicTransceiver(pc) ? "music" : "audio", peer.member, stream);
     };
     pc.onconnectionstatechange = () => {
-      if ((pc.connectionState === "failed" || pc.connectionState === "closed") && this.peers.get(pubkey) === peer) this.drop(pubkey, peer.open);
+      if (this.peers.get(pubkey) !== peer) return;
+      if (pc.connectionState === "failed" && !peer.open) this.notOpened(pubkey, peer);
+      else if (pc.connectionState === "failed" || pc.connectionState === "closed") this.drop(pubkey, peer.open);
     };
     return peer;
   }
@@ -2589,6 +2658,7 @@ var RoomSession = class {
       peer.open = true;
       peer.lastSeen = Date.now();
       peer.openedAt = Date.now();
+      this.attempts.delete(peer.member.pubkey);
       this.emit("member", peer.member);
       this.introduce(ch);
     };
@@ -2705,7 +2775,9 @@ var RoomSession = class {
     }
     if (this.ownerBlocked.has(checked.value.pubkey) || this.invited && !this.invited.has(checked.value.pubkey)) return this.turnAway(peer.member.pubkey);
     peer.passUntil = checked.value.expiresAt;
-    Object.assign(peer.member, { guest: false, identity: checked.value.pubkey, name: checked.value.name || shortNpub(checked.value.pubkey) });
+    Object.assign(peer.member, { guest: false, identity: checked.value.pubkey, name: checked.value.name || (checked.value.guest ? guestName(checked.value.pubkey) : shortNpub(checked.value.pubkey)) });
+    if (checked.value.guest) peer.member.guestAccount = true;
+    else delete peer.member.guestAccount;
     if (this.namedOnly && !this.announced.has(peer.member.pubkey)) {
       this.announced.add(peer.member.pubkey);
       if (peer.open) this.emit("member", peer.member);
@@ -2732,6 +2804,7 @@ var RoomSession = class {
       delete peer.member.identity;
       delete peer.member.picture;
       delete peer.member.about;
+      delete peer.member.guestAccount;
       Object.assign(peer.member, { guest: true, name: guestName(peer.member.pubkey) });
       this.emit("identity", peer.member);
       this.redraw(peer);
@@ -2742,6 +2815,7 @@ var RoomSession = class {
       delete this.self.picture;
       delete this.self.about;
       delete this.self.model;
+      delete this.self.guestAccount;
       this.avatar = null;
       Object.assign(this.self, { guest: true, name: guestName(this.self.pubkey) });
       const mine = this.look ? decodeLook(this.look) : null;
@@ -3048,6 +3122,107 @@ var RoomSession = class {
     if (announce && peer.open) this.emit("leave", peer.member);
     this.announced.delete(pubkey);
   }
+  /**
+   * A try at connecting to someone that failed, or never opened. A first try is made again at once, afresh, by the
+   * one who makes the offer; the other answers the new offer as it comes. A later one is given up, and said
+   * (`unreached`): the room tries again at the next hello.
+   */
+  notOpened(pubkey, peer) {
+    if (this.peers.get(pubkey) !== peer || peer.open) return;
+    this.drop(pubkey, false);
+    if (this.closed) return;
+    if (peer.attempt === 1 && shouldInitiate(this.self.pubkey, pubkey)) {
+      void this.offerTo(pubkey).catch(() => this.drop(pubkey, false));
+      return;
+    }
+    if (peer.attempt >= 2) this.emit("unreached", pubkey);
+  }
+  /**
+   * Whether this visitor is the one who tells a newcomer that this full room is full: the member with the lowest
+   * session key of those it is connected to, so a newcomer hears it once, not from everyone here.
+   */
+  /** Whether a "full" may still send this visitor on: in a lobby before the last, and only just joined it. */
+  mayMoveOn() {
+    return this.lobby !== null && this.lobby < ROOM_LIMITS.lobbies && Math.floor(Date.now() / 1e3) - this.joinedAt <= FULL_WINDOW_S;
+  }
+  answersForFull() {
+    for (const p of this.peers.values()) if (p.open && p.member.pubkey < this.self.pubkey) return false;
+    return true;
+  }
+  /**
+   * A newcomer (`from`, who signed their joining hello at `at`) finds this room full. Who stays is who joined first,
+   * then the lower key: where someone here joined after them, only a moment ago, it is that one who is told to go
+   * on, and the newcomer takes their place. Otherwise the newcomer is told.
+   */
+  tellFull(from, at) {
+    const now = Math.floor(Date.now() / 1e3);
+    const later = (k, t) => t > at || t === at && k > from;
+    let last = null;
+    for (const p of this.peers.values()) {
+      const t = this.joinedAtOf.get(p.member.pubkey);
+      if (t === void 0 || now - t > FULL_WINDOW_S || !later(p.member.pubkey, t)) continue;
+      if (!last || t > last.at || t === last.at && p.member.pubkey > last.pubkey) last = { pubkey: p.member.pubkey, at: t };
+    }
+    const go = last ? last.pubkey : from;
+    this.publish(buildHello(this.topic, this.key));
+    this.publish(buildSignal(this.topic, this.key, go, { t: "full" }));
+    if (last) this.drop(last.pubkey, true);
+  }
+  /**
+   * Told that this lobby is full: say goodbye to anyone here, and go to lobby `n` on the same relays, as someone
+   * just joining it. The sockets stay open; only what they listen for changes.
+   */
+  moveOn(n) {
+    const name = lobbyName(n);
+    if (!name || this.closed) return;
+    for (const pubkey of [...this.peers.keys()]) {
+      try {
+        this.publish(buildSignal(this.topic, this.key, pubkey, { t: "bye" }));
+      } catch {
+      }
+      this.drop(pubkey, true);
+    }
+    this.newer.clear();
+    this.attempts.clear();
+    this.joinedAtOf.clear();
+    this.heardHello.clear();
+    this.fullBefore.clear();
+    this.lobby = n;
+    this.name = name;
+    this.topic = roomTopic(this.world, name);
+    this.joinedAt = Math.floor(Date.now() / 1e3);
+    for (const ws of this.sockets.values()) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      ws.send(JSON.stringify(["REQ", "room", { kinds: [ROOM_SIGNAL_KIND], "#x": [this.topic], since: Math.floor(Date.now() / 1e3) - 5 }]));
+      ws.send(JSON.stringify(["EVENT", buildHello(this.topic, this.key, void 0, { first: true })]));
+    }
+    this.emit("status", this.status);
+  }
+  /**
+   * Ask for TURN servers (`iceFrom`), and use them beside the room's own STUN: for connections made from now on, and,
+   * when they are asked for again before they run out, for those already made (`setConfiguration`). Where none come,
+   * what the room had is kept, and nothing more is asked. Asked again at four fifths of what they are good for.
+   *
+   * @internal Called by `room.join`; not for a world.
+   */
+  async askForIce() {
+    if (!this.iceFrom || this.closed) return;
+    const got = await askIce(this.iceFrom);
+    if (this.closed) return;
+    if (got) {
+      const own2 = this.iceServers.filter((s) => !s.username);
+      const stun = own2.length ? own2 : DEFAULT_ICE;
+      this.iceServers = [...stun, ...got.servers.filter((s) => s.username)];
+      for (const peer of this.peers.values()) {
+        try {
+          peer.pc.setConfiguration({ iceServers: this.iceServers });
+        } catch {
+        }
+      }
+    }
+    clearTimeout(this.iceTimer);
+    if (got) this.iceTimer = setTimeout(() => void this.askForIce(), got.ttl * 800);
+  }
   sweep() {
     const now = Date.now();
     for (const [pubkey, peer] of this.peers) {
@@ -3056,7 +3231,8 @@ var RoomSession = class {
       void this.feed(peer);
       this.markTune(peer);
       void this.feedTune(peer);
-      if (!peer.open && now - peer.startedAt > CONNECT_TIMEOUT_MS) this.drop(pubkey, false);
+      if (!peer.open && peer.attempt === 1 && now - peer.startedAt > RETRY_AT_MS && shouldInitiate(this.self.pubkey, pubkey)) this.notOpened(pubkey, peer);
+      else if (!peer.open && now - peer.startedAt > CONNECT_TIMEOUT_MS) this.notOpened(pubkey, peer);
       else if (this.namedOnly && peer.open && !this.announced.has(pubkey) && now - (peer.openedAt ?? now) > NAMED_WAIT_MS) this.turnAway(pubkey);
       else if (peer.open && now - peer.lastSeen > SILENT_TIMEOUT_MS) this.drop(pubkey, true);
     }
@@ -3111,6 +3287,7 @@ var RoomSession = class {
       }
     }
     this.closed = true;
+    clearTimeout(this.iceTimer);
     clearInterval(this.screenTimer);
     clearInterval(this.watchTimer);
     clearInterval(this.tuneTimer);
@@ -3136,10 +3313,14 @@ var room = {
   async join(opts = {}) {
     if (typeof RTCPeerConnection === "undefined") throw new Error("nswp-sdk: this browser has no WebRTC support");
     const session2 = new RoomSession(opts);
+    await session2.askForIce();
     session2.start();
     return session2;
   }
 };
+
+// packages/sdk/src/index.ts
+import { guestName as guestName2 } from "@nswp/core";
 
 // packages/sdk/src/bring.ts
 import { readBrought } from "@nswp/core";
@@ -3578,5 +3759,6 @@ export {
   dropBrought,
   configure,
   arrival,
-  portal
+  portal,
+  guestName2 as guestName
 };

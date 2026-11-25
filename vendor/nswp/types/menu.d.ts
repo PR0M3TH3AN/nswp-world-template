@@ -54,8 +54,13 @@ export declare const MENU_LIMITS: {
     /** Pixels, for any number in what a client says its menu covers of a world's view. */
     readonly covers: 8192;
 };
-/** How long a framed world waits for a client to say it has the menu, before drawing its own. */
-export declare const MENU_WAIT_MS = 300;
+/**
+ * How long a framed world waits for a client to say it has the menu, before drawing its own. 100 ms (300 until
+ * 2026-11-25): a world under a page that says nothing is that much late with its menu, for every visitor, and a
+ * client that has the menu answers from its first script. Not less without timing a real client on a real phone:
+ * a world that gives up too soon shows its own menu under its client's (docs/plans/the-clients-menu.md, section 6).
+ */
+export declare const MENU_WAIT_MS = 100;
 /**
  * How long a menu keeps an asking for a tab it doesn't have yet (`show`, or a world's own "show this tab"). A world
  * may ask for a tab of its own a moment before whoever draws the menu has heard of that tab; the menu comes up

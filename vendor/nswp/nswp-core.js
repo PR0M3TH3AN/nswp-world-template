@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.91.0";
+var KIT_VERSION = "0.92.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6149,6 +6149,7 @@ function parseAirlockFragment(hash) {
 
 // packages/core/src/relay.ts
 var DEFAULT_RELAYS = ["wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://nostr.mom"];
+var ROOM_RELAYS = [...DEFAULT_RELAYS, "wss://offchain.pub", "wss://relay.nostr.net", "wss://nostr.bitcoiner.social", "wss://nostr.oxtr.dev"];
 var RELAY_LIST_KIND = 10002;
 function cleanRelayUrl(url) {
   if (typeof url !== "string" || url.length > 200) return "";
@@ -6865,13 +6866,22 @@ var ROOM_LIMITS = {
   /** Handshake messages older or newer than this are ignored. */
   signalMaxAgeSec: 60,
   maxSdpChars: 2e4,
-  maxNameChars: 48
+  maxNameChars: 48,
+  /**
+   * How many lobbies a world's default room may run to: "lobby", "lobby-2", … "lobby-32". A newcomer told a lobby
+   * is full goes on to the next (protocol/06-rooms.md, "Lobbies that fill"). With 8 to a lobby, 256 people.
+   */
+  lobbies: 32
 };
 function roomTopic(worldUrl, roomName) {
   const u = new URL(worldUrl);
   return bytesToHex(sha256(utf8ToBytes(`nswp/room/spike-1
 ${u.origin}${u.pathname}
 ${roomName}`)));
+}
+function lobbyName(n) {
+  if (!Number.isInteger(n) || n < 1 || n > ROOM_LIMITS.lobbies) return null;
+  return n === 1 ? "lobby" : `lobby-${n}`;
 }
 function shouldInitiate(self, other) {
   return self < other;
@@ -6899,6 +6909,7 @@ function validMessage(m) {
       return o.v === 1;
     case "welcome":
     case "bye":
+    case "full":
       return true;
     case "offer":
     case "answer":
@@ -7136,7 +7147,7 @@ function verifyRoomPass(event, opts) {
   const told = getTags(event, "about")[0]?.[1] ?? "";
   const about = cleanAbout(told);
   if (told !== about) c.warn("about_cleaned", "tags.about", "What they wrote about themselves was tidied or cut short before being shown.");
-  return c.result({ pubkey: event.pubkey, session: session ?? "", name, picture, about, expiresAt, id: event.id });
+  return c.result({ pubkey: event.pubkey, session: session ?? "", name, picture, about, expiresAt, id: event.id, guest: getTags(event, "nswp:guest")[0]?.[1] === "1" });
 }
 
 // packages/core/src/save.ts
@@ -7711,7 +7722,7 @@ function readSignerRequest(data) {
   if (d.t === "save" && cleanSlot(d.slot) && fitsInSave(d.data)) return { t: "save", id: d.id, slot: cleanSlot(d.slot), data: d.data };
   if (d.t === "find" && cleanSlot(d.slot)) return { t: "find", id: d.id, slot: cleanSlot(d.slot) };
   if (d.t === "open" && d.event && typeof d.event === "object") return { t: "open", id: d.id, event: d.event };
-  if (d.t === "want" && Array.isArray(d.more)) return { t: "want", id: d.id, more: cleanMore(d.more) };
+  if (d.t === "want" && (Array.isArray(d.more) || cleanFamily(d.family))) return { t: "want", id: d.id, ...Array.isArray(d.more) ? { more: cleanMore(d.more) } : {}, ...cleanFamily(d.family) ? { family: cleanFamily(d.family), ...d.guest === true ? { guest: true } : {} } : {} };
   if (d.t === "score" && worldCoordinate(d.world) && cleanBoard(d.board) && cleanScore(d.score) !== null) {
     const title = cleanLine(d.title, SCORE_LIMITS.title);
     return { t: "score", id: d.id, world: worldCoordinate(d.world), board: cleanBoard(d.board), score: cleanScore(d.score), ...title ? { title } : {}, ...d.format === "time" ? { format: "time" } : {} };
@@ -7734,6 +7745,9 @@ function readSignerRequest(data) {
   }
   return null;
 }
+function cleanFamily(value) {
+  return typeof value === "string" && value.length <= 260 && /^https:\/\/\*\.[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(value) ? value : "";
+}
 function readSignerReply(data) {
   const d = wrapped(data);
   if (!d) return null;
@@ -7755,7 +7769,12 @@ function readSignerReply(data) {
       // What the visitor let this world do beyond a note and a reaction. Nothing, from a signer that doesn't say.
       ...pubkey && d.unlocked && cleanMore(d.more).length ? { more: cleanMore(d.more) } : {},
       // What this signer can be asked for at all, locked or not. Left out by one that doesn't say: then it is asked.
-      ...Array.isArray(d.offers) ? { offers: cleanMore(d.offers) } : {}
+      ...Array.isArray(d.offers) ? { offers: cleanMore(d.offers) } : {},
+      // Whether it took the world's whole family at the sign-in (`family`, asked with `want`). Left out by one that
+      // doesn't know the word, which is "not offered".
+      ...typeof d.familyTaken === "boolean" ? { familyTaken: d.familyTaken } : {},
+      // Whether who it is unlocked as is a guest account it made (`guest`, asked with `want`), not yet secured.
+      ...pubkey && d.unlocked && typeof d.guest === "boolean" ? { guest: d.guest } : {}
     };
   }
   if (typeof d.id !== "string" || !ID.test(d.id)) return null;
@@ -7836,7 +7855,7 @@ var MENU_LIMITS = {
   /** Pixels, for any number in what a client says its menu covers of a world's view. */
   covers: 8192
 };
-var MENU_WAIT_MS = 300;
+var MENU_WAIT_MS = 100;
 var MENU_SHOW_KEEP_MS = 2e3;
 var LEAVE_MS = 1e3;
 var MENU_SAVE_MS = 1e4;
@@ -9648,6 +9667,7 @@ export {
   RELAY_PICK,
   ROOM_LIMITS,
   ROOM_PASS_KIND,
+  ROOM_RELAYS,
   ROOM_SIGNAL_KIND,
   ROOM_TEMPLATES,
   SAVE_KIND,
@@ -9830,6 +9850,7 @@ export {
   leastEntryPlaces,
   listD,
   listingSeller,
+  lobbyName,
   localMap,
   lookFacing,
   lookFromTags,

@@ -7,7 +7,7 @@ import {
   portal,
   room,
   setFilesAnywhere
-} from "./shared-2YNEIVGV.js";
+} from "./shared-XEKT46JH.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -15,6 +15,7 @@ import {
   ago,
   createHeldButton,
   loadPicture,
+  offerSignIn,
   onChatChange,
   onPicturesChange,
   paintMark,
@@ -23,8 +24,10 @@ import {
   setShowsPictures,
   showsChat,
   showsPictures,
+  signInFirst,
+  signInHere,
   wrapWords
-} from "./shared-LOMPMZFF.js";
+} from "./shared-66ZN65AC.js";
 import {
   arrivedSettings,
   askClientForSignIn,
@@ -1272,13 +1275,13 @@ function addFollowingControls(controls, opts) {
       if (done.ok && adding) void profiles.fetch([pubkey]);
       refresh();
     };
-    if (!f.pubkey()) return say("Sign in to follow people: it is under You.");
+    if (!f.pubkey()) return signInFirst(controls, "Sign in to follow people.");
     if (f.allowed()) return void now();
     say(f.ask(() => void now()));
   };
   const byKey = async (typed) => {
     const me = f.pubkey();
-    if (!me) return say("Sign in to follow people: it is under You.");
+    if (!me) return signInFirst(controls, "Sign in to follow people.");
     let text = typed ?? "";
     const keyboard = opts.presenting?.() ? opts.keyboard?.() ?? null : null;
     if (typed !== void 0) {
@@ -2334,7 +2337,7 @@ function createSaves(opts = {}) {
 }
 
 // packages/sdk/src/signer.ts
-import { isListSubject, isOwnerListAsked as isOwnerListAsked2, isAchievementAsked, cleanFileBytes, cleanFileName, cleanFileType, cleanInvoice, cleanListing as cleanListing2, cleanMessage, cleanTip, readReceipt as readReceipt2, fileUrlNames, cleanMore, cleanWalletUri, PROPOSE_KINDS, provesPayment, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex644, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent4, verifyRoomPass, WORLD_TAG } from "@nswp/core";
+import { checkDestination, isListSubject, isOwnerListAsked as isOwnerListAsked2, isAchievementAsked, cleanFileBytes, cleanFileName, cleanFileType, cleanInvoice, cleanListing as cleanListing2, cleanMessage, cleanTip, readReceipt as readReceipt2, fileUrlNames, cleanMore, cleanWalletUri, PROPOSE_KINDS, provesPayment, cleanOrigin, cleanSlot as cleanSlot2, fitsInSave as fitsInSave2, isFollowAsked as isFollowAsked2, isHex64 as isHex644, isReachAsked, isScoreAsked, isSealAsked, looksLikeWrap, isWhatWasAsked, looksLikeSave, readSignerReply, signerAddresses, signerAt, signerMessage, toLocal, verifyEvent as verifyEvent4, verifyRoomPass, WORLD_TAG } from "@nswp/core";
 var NONE = {
   state: "none",
   pubkey: null,
@@ -2342,6 +2345,8 @@ var NONE = {
   picture: null,
   about: null,
   remembered: null,
+  family: null,
+  guest: null,
   host: null,
   more: [],
   offers: null,
@@ -2414,6 +2419,20 @@ function createWorldSigner(opts) {
   let picture = null;
   let about = null;
   let remembered = null;
+  let family = null;
+  let guest = null;
+  const ownFamily = (() => {
+    try {
+      const here = new URL(location.origin);
+      if (here.protocol !== "https:") return "";
+      const seen = checkDestination(here.origin);
+      const domain = seen.ok ? seen.value.registrableDomain : null;
+      return domain ? `https://*.${domain}` : "";
+    } catch {
+      return "";
+    }
+  })();
+  let familyAsked = false;
   let more = [];
   let offers = null;
   let origin = "";
@@ -2481,6 +2500,10 @@ function createWorldSigner(opts) {
     if (reply.t === "ready") {
       asking = false;
       if (state === "none") state = "locked";
+      if (ownFamily && !familyAsked) {
+        familyAsked = true;
+        tell({ t: "want", id: `w${++n}`, family: ownFamily, guest: true });
+      }
       tell({ t: "state", id: `s${++n}` });
       return changed();
     }
@@ -2495,6 +2518,8 @@ function createWorldSigner(opts) {
       remembered = reply.unlocked ? reply.remembered ?? null : null;
       more = reply.unlocked ? cleanMore(reply.more) : [];
       if (reply.offers) offers = reply.offers;
+      if (typeof reply.familyTaken === "boolean") family = reply.familyTaken;
+      guest = reply.unlocked && typeof reply.guest === "boolean" ? reply.guest : null;
       for (const go of [...firstAnswer]) go();
       return changed();
     }
@@ -2575,6 +2600,12 @@ function createWorldSigner(opts) {
     },
     get about() {
       return about;
+    },
+    get family() {
+      return family;
+    },
+    get guest() {
+      return guest;
     },
     get remembered() {
       return remembered;
@@ -2962,6 +2993,10 @@ function worldPeople() {
     }
   });
 }
+function signInWanted(signer) {
+  if (signer.state === "unlocked") return false;
+  return !(signer.state === "none" && !signer.unanswered && !signer.asking);
+}
 function signerAction(controls, opts = {}) {
   const signer = worldSigner();
   let was = signer.state;
@@ -2985,30 +3020,38 @@ function signerAction(controls, opts = {}) {
     controls.signal("signer");
   });
   onHereAs(() => controls.signal("signer"));
+  const signedOut = () => signer.asking ? `Asking ${signer.host ?? "your signer"} again\u2026` : signer.unanswered ? `${signer.host ?? "Your signer"} didn't answer. Press to ask again` : `Sign in${signer.host ? `, at ${signer.host}` : ""}`;
+  const signIn = () => {
+    const host = signer.host ?? "your own client";
+    if (signer.asking) return;
+    if (signer.unanswered) {
+      if (signer.retry()) return controls.say(`Asking ${host} again. It has ten seconds to answer.`);
+      return controls.say(unansweredWords(signer));
+    }
+    if (opts.presenting?.()) return controls.say(`${signer.panel ? `${host} has to ask you this itself, and that can't be seen from inside a headset` : `A window from ${host} is needed for this, and none can open in a headset`}. Leave the headset view for a moment, sign in, and come back in.`);
+    const here = signer.panel;
+    if (signer.unlock()) controls.say(here ? `${host} is asking, here. Say yes there, and you are signed in.` : `A window from ${host} has opened. Say yes there, and you are signed in here.`);
+    else controls.say(`Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`);
+  };
+  offerSignIn(controls, {
+    wanted: () => signInWanted(signer),
+    label: signedOut,
+    press: () => {
+      if (signer.state !== "unlocked") signIn();
+    }
+  });
   return {
     id: "signer",
     section: "you",
     icon: "key",
     // Signed out, it says whose window will open, before anything is pressed: an address to recognise.
-    label: () => signer.state === "unlocked" ? `Signed in as ${hereAs()?.name || signer.name || short()}. Sign out here` : signer.asking ? `Asking ${signer.host ?? "your signer"} again\u2026` : signer.unanswered ? `${signer.host ?? "Your signer"} didn't answer. Press to ask again` : `Sign in${signer.host ? `, at ${signer.host}` : ""}`,
+    label: () => signer.state === "unlocked" ? `Signed in as ${hereAs()?.name || signer.name || short()}. Sign out here` : signedOut(),
     short: () => signer.state === "unlocked" ? "Sign out" : "Sign in",
     on: () => signer.state === "unlocked",
     // Nothing to offer where no signer was named. One that was named and doesn't answer is said so, not hidden:
     // a row that isn't there can't be asked about.
     hidden: () => signer.state === "none" && !signer.unanswered && !signer.asking,
-    act: () => {
-      if (signer.state === "unlocked") return signer.lock();
-      const host = signer.host ?? "your own client";
-      if (signer.asking) return;
-      if (signer.unanswered) {
-        if (signer.retry()) return controls.say(`Asking ${host} again. It has ten seconds to answer.`);
-        return controls.say(unansweredWords(signer));
-      }
-      if (opts.presenting?.()) return controls.say(`${signer.panel ? `${host} has to ask you this itself, and that can't be seen from inside a headset` : `A window from ${host} is needed for this, and none can open in a headset`}. Leave the headset view for a moment, sign in, and come back in.`);
-      const here = signer.panel;
-      if (signer.unlock()) controls.say(here ? `${host} is asking, here. Say yes there, and you are signed in.` : `A window from ${host} has opened. Say yes there, and you are signed in here.`);
-      else controls.say(`Your browser didn't let a window open. Allow pop-ups for this site and press this again. Nothing is typed in this world: ${host} asks.`);
-    }
+    act: () => signer.state === "unlocked" ? signer.lock() : signIn()
   };
 }
 function accountAction(controls, opts = {}) {
@@ -6604,7 +6647,7 @@ function createPresence(d) {
 
 // packages/sdk/src/room-controls.ts
 import * as THREE12 from "three";
-import { CHAT_LIMITS, cleanLightningAddress, DEFAULT_RELAYS as DEFAULT_RELAYS8, DELETION_KIND, encodeNpub as encodeNpub3, shortNpub as shortNpub6, verifyEvent as verifyEvent7 } from "@nswp/core";
+import { CHAT_LIMITS, cleanLightningAddress, DEFAULT_RELAYS as DEFAULT_RELAYS8, guestName, DELETION_KIND, encodeNpub as encodeNpub3, shortNpub as shortNpub6, verifyEvent as verifyEvent7 } from "@nswp/core";
 
 // packages/sdk/src/ask-once.ts
 function mayAskHowTheyMove() {
@@ -7495,7 +7538,7 @@ function addMessagingControls(controls, opts) {
   };
   const write = (pubkey) => {
     const me = hand.pubkey();
-    if (!me) return say("Sign in to write to people: it is under You.");
+    if (!me) return signInFirst(controls, "Sign in to write to people.");
     if (pubkey === me) return;
     const go = () => void m.load().then(() => open(pubkey));
     if (hand.allowed()) return go();
@@ -7641,9 +7684,13 @@ function addRoomControls(controls, presence, opts = {}) {
     const s = presence.session;
     if (!s) return last;
     const others = s.members.length;
-    const who = s.status === "no-relays" ? "can't reach any relay" : others === 0 ? "nobody else here yet" : others === 1 ? "1 other person here" : `${others} other people here`;
+    const now = Date.now();
+    const lost = [...unreachedAt.values()].filter((at) => now - at < UNREACHED_HELD_MS).length;
+    const reached = s.status === "no-relays" ? "can't reach any relay" : others === 0 ? lost ? "nobody else connected" : "nobody else here yet" : others === 1 ? "1 other person here" : `${others} other people here`;
+    const who = lost && s.status !== "no-relays" ? `${reached}, and ${lost === 1 ? "1 person" : `${lost} people`} couldn't be reached` : reached;
+    const thin = thinRelays && s.status !== "no-relays" && s.relays.length >= 2 && s.relayCount < 2 ? ` ${relaysWords(s)}` : "";
     const as = s.self.guest ? "" : ` You are here as ${s.self.name}.`;
-    return `${presence.roomName ? "Private room" : "Open room"}: ${who}.${as}${presence.micOn ? " Your microphone is on." : ""}${presence.musicOn ? ` Your music is offered to people near you: ${presence.musicListeners === 0 ? "nobody is hearing it" : presence.musicListeners === 1 ? "1 person is hearing it" : `${presence.musicListeners} people are hearing it`}.` : ""}${presence.screenOn ? ` You are sharing your screen: ${presence.screenViewers === 0 ? "nobody is watching" : presence.screenViewers === 1 ? "1 person is watching" : `${presence.screenViewers} people are watching`}.` : ""}`;
+    return `${presence.roomName ? "Private room" : s.name.startsWith("lobby-") ? `Open room, ${s.name.replace(/^lobby-/, "Lobby ")}` : "Open room"}: ${who}.${thin}${as}${presence.micOn ? " Your microphone is on." : ""}${presence.musicOn ? ` Your music is offered to people near you: ${presence.musicListeners === 0 ? "nobody is hearing it" : presence.musicListeners === 1 ? "1 person is hearing it" : `${presence.musicListeners} people are hearing it`}.` : ""}${presence.screenOn ? ` You are sharing your screen: ${presence.screenViewers === 0 ? "nobody is watching" : presence.screenViewers === 1 ? "1 person is watching" : `${presence.screenViewers} people are watching`}.` : ""}`;
   };
   const waitingFor = /* @__PURE__ */ new Map();
   let watchingSigner = false;
@@ -7905,7 +7952,8 @@ function addRoomControls(controls, presence, opts = {}) {
         if (!who2) return null;
         return {
           title: who2.name,
-          tag: who2.guest ? "Guest" : "By name",
+          // A guest account is proven by its key, and is still a guest: said so, as it is the same guest everywhere.
+          tag: who2.guest || who2.guestAccount ? "Guest" : "By name",
           proven: !who2.guest,
           // A name is not unique and a picture can be copied: the key behind them is what tells two people apart.
           sub: who2.identity ? shortNpub6(who2.identity) : "Nobody has vouched for who they are.",
@@ -8082,6 +8130,11 @@ function addRoomControls(controls, presence, opts = {}) {
     }
   };
   let chatFor = null;
+  const unreachedAt = /* @__PURE__ */ new Map();
+  const UNREACHED_HELD_MS = 9e4;
+  const RELAYS_SETTLE_MS = 1e4;
+  let thinRelays = false;
+  const relaysWords = (s) => `Only ${s.relayCount} of ${s.relays.length} room relays answered here; people may not find you.`;
   let chatStops = [];
   const CHAT_W = 768;
   const CHAT_H = 900;
@@ -8201,6 +8254,8 @@ function addRoomControls(controls, presence, opts = {}) {
     for (const stop of chatStops) stop();
     chatStops = [];
     chatFor = s;
+    unreachedAt.clear();
+    thinRelays = false;
     controls.chat.detach();
     closeChatPanel();
     if (!s) return;
@@ -8228,8 +8283,27 @@ function addRoomControls(controls, presence, opts = {}) {
           if (chatFor === s && s.members.includes(m)) controls.chat.add({ note: true, text: `${m.name} is here.` });
         }, 1500);
       }),
-      s.on("leave", (m) => controls.chat.add({ note: true, text: `${m.name} left.` }))
+      s.on("leave", (m) => controls.chat.add({ note: true, text: `${m.name} left.` })),
+      // Someone here who couldn't be connected to (room.ts, `unreached`): said once for each, and counted in the
+      // room's line while they are still being tried, so "in the room" is never all it says.
+      s.on("unreached", (pubkey) => {
+        if (chatFor !== s) return;
+        const first = !unreachedAt.has(pubkey);
+        unreachedAt.set(pubkey, Date.now());
+        if (first) tell(`Someone else is here (${guestName(pubkey)}), but your computers couldn't connect directly. Trying again.`);
+        refresh();
+      }),
+      s.on("member", (m) => {
+        if (unreachedAt.delete(m.pubkey)) refresh();
+      })
     );
+    const relaysLook = setTimeout(() => {
+      if (chatFor !== s || s.status === "no-relays" || s.relays.length < 2 || s.relayCount >= 2) return;
+      thinRelays = true;
+      tell(relaysWords(s));
+      refresh();
+    }, RELAYS_SETTLE_MS);
+    chatStops.push(() => clearTimeout(relaysLook));
   };
   onChatChange(() => {
     if (!showsChat()) closeChatPanel();
@@ -8512,7 +8586,11 @@ function addRoomControls(controls, presence, opts = {}) {
           await presence.join(invited);
           controls.signal("join");
         } catch (err) {
-          tell(`Couldn't join: ${err instanceof Error ? err.message : String(err)}`);
+          const why = `Couldn't join: ${err instanceof Error ? err.message : String(err)}`;
+          if (/Sign in, then join\.$/.test(why)) {
+            last = why;
+            signInFirst(controls, why);
+          } else tell(why);
         } finally {
           busy = false;
           refresh();
@@ -11023,7 +11101,7 @@ function createScores(opts) {
       const b = boardOf(id);
       const who = opts.hand.pubkey();
       if (!world || !b) return { ok: false, said: "This world has no such board." };
-      if (!who) return { ok: false, said: "Sign in here to post a score: it is under You." };
+      if (!who) return { ok: false, said: "Sign in to post a score." };
       const mine = best(id);
       if (mine === null) return { ok: false, said: "You have no score here yet." };
       const kept2 = of(who);
@@ -11096,6 +11174,7 @@ function addScoreControls(controls, opts) {
       icon: "list",
       note: () => "A score here is what someone says they made: nothing checks it. People you follow are listed first. Posting yours says publicly that you were here, and how you did."
     });
+    if (!opts.signedIn() && scores.boards.some((b) => scores.best(b.id) !== null)) add(signInHere(controls, "scores"));
     for (const b of scores.boards) {
       const best = scores.best(b.id);
       const posted = scores.posted(b.id);
@@ -11108,6 +11187,7 @@ function addScoreControls(controls, opts) {
         short: "Post",
         act: async () => {
           if (best === null) return controls.say("Make a score first: it is kept on this device until you post it.");
+          if (!opts.signedIn()) return signInFirst(controls, "Sign in to post a score.");
           const done = await scores.post(b.id);
           controls.say(done.said);
           if (done.ok) look(b.id, true);
@@ -11152,7 +11232,7 @@ function addScoreControls(controls, opts) {
 }
 
 // packages/sdk/src/bag.ts
-import { BAG_KIND, bagIn, bagTints, changeBag, tintBag, DEFAULT_RELAYS as DEFAULT_RELAYS10, itemCoordinate as itemCoordinate3, newestBag, publishEvent as publishEvent6, queryRelays as queryRelays8, RELAY_PICK, SITE_MARKS, verifyEvent as verifyEvent8 } from "@nswp/core";
+import { BAG_KIND, BAG_LIMITS, bagIn, bagTints, changeBag, tintBag, DEFAULT_RELAYS as DEFAULT_RELAYS10, itemCoordinate as itemCoordinate3, newestBag, publishEvent as publishEvent6, queryRelays as queryRelays8, RELAY_PICK, SITE_MARKS, verifyEvent as verifyEvent8 } from "@nswp/core";
 var FRESH_MS4 = 6e4;
 function createBag(opts) {
   const now = opts.now ?? (() => Date.now());
@@ -11228,7 +11308,7 @@ function createBag(opts) {
       void sendWell(kept2, { own, usual: usual(), publish, query, now }).then((sent2) => markSent(kept2, sent2.took)).catch(() => null);
     if (bag && bag !== kept2) keep3(bag);
     if (opts.me() !== who) return;
-    known = { who, bag, answered, own, at: now() };
+    known = { who, bag, answered, own, at: now(), none: !bag && got?.state === "none" };
     changed();
   };
   const inBag = (at) => at.bag || at.answered ? bagIn(at.bag) : null;
@@ -11285,6 +11365,35 @@ function createBag(opts) {
     if (sent2.took < RELAY_PICK.took) return { ok: true, said: `${done} Only ${sent2.took === 1 ? "1 relay has" : `${sent2.took} relays have`} it so far; it is sent again the next time your bag is looked at.` };
     return { ok: true, said: done };
   };
+  let starting = null;
+  const start = async (itemsIn) => {
+    const who = opts.me();
+    if (!who) return { ok: false, why: "signed-out", said: "Sign in to keep a bag." };
+    if (!opts.hand) return { ok: false, why: "read-only", said: "Your bag is changed at your home, not from here." };
+    if (!opts.hand.ready()) return { ok: false, why: "not-allowed", said: "This place hasn't been let change your bag." };
+    const items = [...new Set(itemsIn.map((i) => itemCoordinate3(i)).filter(Boolean))].slice(0, BAG_LIMITS.items);
+    if (!items.length) return { ok: false, why: "refused", said: "There was nothing to put in your bag." };
+    await load2(true);
+    const at = known && known.who === who ? known : null;
+    if (!at) return { ok: false, why: "unreachable", said: "Your bag couldn't be looked for, so none was started." };
+    if (at.bag) return { ok: false, why: "already", said: "You have a bag already. Nothing was put in it." };
+    if (!at.none) return { ok: false, why: "unreachable", said: "Too few of your relays answered to be sure you have no bag, so none was started." };
+    let made = null;
+    for (const item of items) made = changeBag(made, { add: item, now: now() / 1e3, fromNothing: made === null }) ?? made;
+    if (!made) return { ok: false, why: "refused", said: "There was nothing to put in your bag." };
+    made = { ...made, created_at: Math.floor(now() / 1e3) };
+    const signed = await opts.hand.sign(made).catch(() => null);
+    const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
+    if (!signed || !same) return { ok: false, why: "refused", said: "It couldn't be signed. No bag was started." };
+    keep3(signed);
+    known = { who, bag: signed, answered: true, own: at.own, at: now() };
+    changed();
+    const sent2 = await sendWell(signed, { own: at.own, usual: usual(), publish, query, now }).catch(() => null);
+    markSent(signed, sent2?.took ?? 0);
+    const many = items.length === 1 ? "1 thing" : `${items.length} things`;
+    if (!sent2 || sent2.took === 0) return { ok: false, why: "not-sent", said: `Your bag was started with ${many}, but no relay took it yet. It is kept on this device and will be sent again.` };
+    return { ok: true, said: `Your bag is started, with ${many} in it. Anyone can see what is in it.` };
+  };
   const TINTS_KEY = "nswp:tints";
   const keptTints = () => {
     try {
@@ -11336,6 +11445,18 @@ function createBag(opts) {
     canChange: () => !!opts.hand,
     add: (item, title = "") => change2(item, true, title),
     remove: (item, title = "") => change2(item, false, title),
+    start(items) {
+      const before = starting;
+      const run = (async () => {
+        if (before) await before.catch(() => null);
+        return start(items);
+      })();
+      starting = run;
+      void run.finally(() => {
+        if (starting === run) starting = null;
+      });
+      return run;
+    },
     onChange(fn) {
       watchers3.add(fn);
       return () => void watchers3.delete(fn);
@@ -12264,7 +12385,7 @@ function createAchievements(opts) {
     async show() {
       const who = opts.hand.pubkey();
       if (!world) return { ok: false, said: "This world has no achievements." };
-      if (!who) return { ok: false, said: "Sign in here to show what you have earned: it is under You." };
+      if (!who) return { ok: false, said: "Sign in to show what you have earned." };
       const kept2 = of(who);
       const waiting = earned().filter((id) => !kept2.shown.includes(id));
       if (waiting.length === 0) return { ok: true, said: earned().length ? "Everything you have earned here is already shown." : "You haven't earned anything here yet." };
@@ -12347,6 +12468,7 @@ function addAchievementControls(controls, opts) {
       icon: "check",
       note: () => `You have earned ${earned.length} of ${a.list.length} here. What you earn is kept on this device until you show it. Showing it says publicly that you were here, and what you did. Nothing checks what anyone shows.`
     });
+    if (earned.length > 0 && !opts.signedIn()) add(signInHere(controls, "achievements"));
     add({
       id: "achievements-show",
       icon: "check",
@@ -12355,6 +12477,7 @@ function addAchievementControls(controls, opts) {
       short: "Show",
       act: async () => {
         if (earned.length === 0) return controls.say("Earn one first: it is kept on this device until you show it.");
+        if (!opts.signedIn()) return signInFirst(controls, "Sign in to show what you have earned.");
         const done = await a.show();
         controls.say(done.said);
         look(true);

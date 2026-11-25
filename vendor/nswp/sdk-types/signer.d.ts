@@ -16,6 +16,18 @@ export interface WorldSigner {
      * null where it is locked or doesn't say. False means this visit only: the visitor is asked again next time.
      */
     readonly remembered: boolean | null;
+    /**
+     * Whether the signer took this world's whole family at the sign-in (BitLogin's `family`): true, so one sign-in
+     * carries to every world under its registrable domain; false, not taken; null where it was not asked (no domain
+     * of its own, or not https) or the signer says nothing of it, which is "not offered".
+     */
+    readonly family: boolean | null;
+    /**
+     * Whether who it is unlocked as is a guest account the signer made for the family (BitLogin's `guest`), not yet
+     * secured: true; false, an account; null where it is locked or says nothing of it. A guest has a key of its own,
+     * the same in every world of the family, and may do less (no wallet, no messages; protocol/10-identity.md).
+     */
+    readonly guest: boolean | null;
     /** The visitor's client, as a host to name in words, or null. */
     readonly host: string | null;
     /**

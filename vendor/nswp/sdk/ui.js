@@ -27,8 +27,9 @@ import {
   setShowsPictures,
   showsChat,
   showsPictures,
+  signInHere,
   vouchedWords
-} from "./shared-LOMPMZFF.js";
+} from "./shared-66ZN65AC.js";
 import {
   askWell,
   escapeDoes,
@@ -479,10 +480,26 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 @keyframes say-in { from { opacity: 0; transform: translateX(-8px); } }
 @keyframes chat-in { from { opacity: 0; transform: translateX(8px); } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
-@keyframes unfold { from { clip-path: inset(100% 0 0 0 round 22px); opacity: .4; } to { clip-path: inset(0 0 0 0 round 22px); opacity: 1; } }
+/* The menu's motion (the owner, 2026-11-24: "menu opens and closes as fine lines that fill in"; rows come in). Its
+   outline first, as fine lines drawn out from the top, then the glass and what it holds; closed, the lines draw back.
+   Nothing that can be pressed moves: motion is in how things are seen, never where they are, and all of it can be
+   pressed from the first frame. A fraction of a second, and off with less motion (the rule below). */
+@keyframes trace { from { clip-path: inset(0 50% 100% 50%); } 45% { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes trace-settle { to { opacity: 0; } }
+@keyframes untrace { from { clip-path: inset(0 0 0 0); opacity: .9; } 55% { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 50% 100% 50%); opacity: 0; } }
+@keyframes fill-in { from { background-color: transparent; } }
+@keyframes hold-in { from { opacity: 0; } }
 :host(.moving.arriving) .key { animation: rise .32s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i) * 45ms + 120ms); }
 :host(.moving.arriving) .id, :host(.moving.arriving) .menu { animation: rise .32s cubic-bezier(.2, .8, .2, 1) both; }
-:host(.moving) .sheet:not([hidden]) { animation: unfold .24s cubic-bezier(.2, .8, .2, 1) both; }
+:host(.moving) .sheet:not([hidden]) { animation: fill-in .16s ease-out .08s both; }
+:host(.moving) .sheet:not([hidden]) > :not(.room) { animation: hold-in .16s ease-out .08s both; }
+:host(.moving) .sheet:not([hidden])::after { content: ""; position: absolute; inset: 0; border: 1px solid rgba(var(--accent), .9); border-radius: inherit; pointer-events: none;
+  animation: trace .14s ease-out both, trace-settle .3s ease-out .14s both; }
+/* Rows come in, when a tab is chosen or the menu comes up: by how they are seen, a few at a time, never where they are. */
+:host(.moving) .rows.arriving > * { animation: hold-in .16s ease-out both; animation-delay: calc(min(var(--n, 0), 8) * 18ms); }
+/* The lines left where the sheet was as it goes, drawing back: pressed through, and gone in a moment. */
+.trace { position: fixed; pointer-events: none; display: none; border: 1px solid rgba(var(--accent), .9); border-radius: 22px 22px 12px 12px; }
+:host(.moving) .trace.leaving { display: block; animation: untrace .16s ease-in both; }
 :host(:not(.moving)) * { transition: none !important; animation: none !important; }
 
 /* ---- a phone: the same things, closer together */
@@ -659,7 +676,11 @@ function mountMenu(port, opts = {}) {
   const chatForm = el("form", {}, chatField, chatSend);
   const chat = el("section", { class: "chat", "aria-label": "Room chat", "data-state": "closed", "data-tab": "room" }, el("div", { class: "frame glass" }, chatWhose, el("header", {}, chatTitle, chatTabs, chatClose), feedLead, chatEmpty, chatLines, chatHint, feedSaid, chatForm));
   const outside = el("div", { class: "outside", "aria-hidden": "true", hidden: "" });
-  root.append(style, outside, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, measure, el("div", { class: "low" }, loadingLine, target, bar));
+  const trace = el("div", { class: "trace", "aria-hidden": "true" });
+  let rowsFor = "";
+  let rowsOpen = false;
+  let arrivingTimer = null;
+  root.append(style, outside, trace, el("i", { class: "corner a", "aria-hidden": "true" }), el("i", { class: "corner b", "aria-hidden": "true" }), id, menu, quiet, asWho, full, says, chat, sheet, measure, el("div", { class: "low" }, loadingLine, target, bar));
   (opts.parent ?? document.body).append(host);
   let open = false;
   let section = "";
@@ -1488,6 +1509,16 @@ function mountMenu(port, opts = {}) {
     const typingIn = typingNow();
     const at = typingIn ? [typingIn.input.selectionStart, typingIn.input.selectionEnd] : null;
     rows.replaceChildren(current?.card ? drawCard(current.card, beside) : "", ...laid);
+    if (open && (section !== rowsFor || !rowsOpen) && controls.theme.motion) {
+      [...rows.children].forEach((row, n) => row.style.setProperty("--n", String(n)));
+      rows.classList.remove("arriving");
+      void rows.offsetWidth;
+      rows.classList.add("arriving");
+      if (arrivingTimer) clearTimeout(arrivingTimer);
+      arrivingTimer = setTimeout(() => rows.classList.remove("arriving"), 400);
+    }
+    rowsFor = open ? section : "";
+    rowsOpen = open;
     if (typingIn?.form.isConnected) {
       typingIn.input.focus();
       if (at && at[0] !== null && at[1] !== null) typingIn.input.setSelectionRange(at[0], at[1]);
@@ -1545,6 +1576,14 @@ function mountMenu(port, opts = {}) {
       if (chatState === "open") setChatOpen(false);
       cameFrom = focused();
       if (!chose) section = "";
+    }
+    if (!next && open && controls.theme.motion && !sheet.hidden) {
+      const was = sheet.getBoundingClientRect();
+      Object.assign(trace.style, { left: `${was.left}px`, top: `${was.top}px`, width: `${was.width}px`, height: `${was.height}px` });
+      trace.classList.remove("leaving");
+      void trace.offsetWidth;
+      trace.classList.add("leaving");
+      setTimeout(() => trace.classList.remove("leaving"), 260);
     }
     open = next;
     if (!open) clearFields();
@@ -1823,5 +1862,6 @@ export {
   setShowsPictures,
   showsChat,
   showsPictures,
+  signInHere,
   vouchedWords
 };

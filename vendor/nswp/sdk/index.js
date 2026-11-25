@@ -9,6 +9,7 @@ import {
   fileHosts,
   filesAnywhere,
   forgetFileHosts,
+  guestName,
   keptElsewhere,
   learnFileHosts,
   onFileHostsChange,
@@ -18,7 +19,7 @@ import {
   somethingBrought,
   takeBrought,
   watchBrought
-} from "./shared-2YNEIVGV.js";
+} from "./shared-XEKT46JH.js";
 import {
   arriveWith,
   arrivedSettings,
@@ -43,6 +44,7 @@ export {
   fileHosts,
   filesAnywhere,
   forgetFileHosts,
+  guestName,
   keptElsewhere,
   learnFileHosts,
   onFileHostsChange,

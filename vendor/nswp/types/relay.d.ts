@@ -14,6 +14,15 @@ export interface Filter {
     [tag: `#${string}`]: string[] | undefined;
 }
 export declare const DEFAULT_RELAYS: string[];
+/**
+ * Where a room's handshake happens (protocol/06-rooms.md, "Finding each other"): eight relays, the four above and
+ * four more, each run by someone else, so two visitors who each reach most of them share several. The owner,
+ * 2026-11-25: two of his computers met in the Grove's room on one relay only, one of them reaching nothing else.
+ * The four were chosen on 2026-11-25 by the relay monitors' reports (NIP-66), each one's own document (NIP-11: no
+ * sign-in, payment or proof of work asked) and an answer from here; all run strfry, which passes room handshakes on.
+ * That they carry them is untried until rooms use them. A world that names its own relays uses those instead.
+ */
+export declare const ROOM_RELAYS: readonly string[];
 /** A person's own relay list (NIP-65): the relays they say they write to and read from. */
 export declare const RELAY_LIST_KIND = 10002;
 export interface RelayList {

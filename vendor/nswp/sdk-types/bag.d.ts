@@ -56,6 +56,13 @@ export interface Bag {
     add(item: string, title?: string): Promise<BagResult>;
     remove(item: string, title?: string): Promise<BagResult>;
     /**
+     * Start a visitor's first bag with these items, in one note (one signature), as a client does for someone new
+     * (BitPortal's starter things for a guest). Only where there is surely none yet: enough of their relays answered
+     * and none has one, and this device keeps none (as the Bag says "empty" only then). Never over a bag found
+     * anywhere, and never where too few relays answered to know: then nothing is written, and it says why.
+     */
+    start(items: string[]): Promise<BagResult>;
+    /**
      * The colours they chose for one of their things (protocol/17-items.md, "A holder's own colours"): what this
      * device keeps for this place, over what their bag says. Empty where they chose none.
      */

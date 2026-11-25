@@ -6,6 +6,12 @@ export interface Member {
     guest: boolean;
     /** The identity key behind them, once their pass has checked out. Never taken on their say-so. */
     identity?: string;
+    /**
+     * Their pass is a guest account's (`VerifiedPass.guest`): a key their sign-in address made for them, not yet
+     * secured, the same in every world of its family. They are proven by it (`guest` is false), and named by it
+     * (`guestName` of that key, where the pass gives no name). Left out for anyone else.
+     */
+    guestAccount?: true;
     /** A proven member's own name, or the short form of their key. A guest is "Guest" and four digits. */
     name: string;
     /** Where a proven member's picture is, as their pass says. Never there for a guest. */
@@ -41,9 +47,17 @@ export interface JoinOptions {
     name?: string;
     /** The world this room is in. Default: this page, without query or fragment. */
     world?: string;
+    /** The relays its handshake goes through. Default `ROOM_RELAYS`, eight; a world that names its own uses those. */
     relays?: string[];
     maxMembers?: number;
     iceServers?: RTCIceServer[];
+    /**
+     * Where to ask for TURN servers (a relay for connections, for two people who can't reach each other directly):
+     * an address that answers `{ iceServers, ttl }`, as bitblocks-ice does (services/ice/). Asked once as the room is
+     * joined, waited for at most 3 seconds, and asked again before what it gave runs out. Default `ICE_FROM`; null asks
+     * nowhere. Where it doesn't answer, the room has STUN alone, as before.
+     */
+    iceFrom?: string | null;
     /**
      * Your look, in its inline form (spec §4.2), to be drawn as by the others.
      * It is sent to each member directly, once connected, never to a relay.
@@ -118,6 +132,13 @@ interface Events {
      */
     said: (member: Member, line: SaidLine) => void;
     status: (status: RoomStatus) => void;
+    /**
+     * Someone is here, and finding each other worked, but no connection to them opened: it was tried twice (the second
+     * time afresh), and each try failed or never opened. Their session key; nothing else of them is known before a
+     * connection. Said again each time a later try fails, while they are still here, so a page can tell they are; the
+     * room goes on trying at each hello. Gone from these once they connect (`member`).
+     */
+    unreached: (pubkey: string) => void;
 }
 /** A few words someone wrote to the room. */
 export interface SaidLine {
@@ -127,6 +148,11 @@ export interface SaidLine {
     /** When it was read here, in milliseconds. A line carries no time of its own. */
     at: number;
 }
+/**
+ * The kit's own place to ask for TURN servers (`JoinOptions.iceFrom`): none yet. It is to be the owner's bitblocks-ice
+ * once he has deployed it; until then rooms have STUN alone.
+ */
+export declare const ICE_FROM: string | null;
 /**
  * How long a member has to show a pass in a room that shows only named people. A pass is said as the channel
  * opens and three more times, a second and a half apart, so a member who has one has shown it well before this.
@@ -145,11 +171,14 @@ export declare const NAMED_WAIT_MS = 7000;
 export declare const AVATAR_EVERY_MS = 3000;
 export declare class RoomSession {
     readonly self: Member;
-    readonly name: string;
-    readonly topic: string;
+    /** The room's name. For the default room it changes as a full lobby sends this visitor on: "lobby", "lobby-2", … */
+    name: string;
+    /** Where its handshake happens (`roomTopic`): changes with the name. */
+    topic: string;
     status: RoomStatus;
     private readonly key;
-    private readonly relays;
+    /** The relays this room's handshake goes through: the world's own, or `ROOM_RELAYS`. */
+    readonly relays: string[];
     /** Keys this visitor won't be in a room with: session keys, and the identity keys behind names. */
     private readonly blocked;
     /** Identity keys the world's owner keeps out. Never the visitor's own: never kept or carried on. */
@@ -164,7 +193,10 @@ export declare class RoomSession {
     private readonly announced;
     private readonly waiting;
     private readonly maxMembers;
-    private readonly iceServers;
+    private iceServers;
+    /** Where TURN servers are asked for (`JoinOptions.iceFrom`), or null. */
+    private readonly iceFrom;
+    private iceTimer;
     private readonly sockets;
     private readonly peers;
     private readonly seen;
@@ -172,6 +204,16 @@ export declare class RoomSession {
     private readonly look;
     /** The world's origin: the only place a pass shown here may have been made for. */
     private readonly origin;
+    /** The world's address, which the room's topic is made from. */
+    private readonly world;
+    /** Which lobby this is, where it is the world's default room ("lobby" is 1); null for a room by name. */
+    private lobby;
+    /** Whose hello this visitor has heard in this lobby: a "full" is taken only from one of them. */
+    private readonly heardHello;
+    /** Who said "full" before their hello was heard: taken if their hello comes while it still may be. */
+    private readonly fullBefore;
+    /** When each member's joining hello was signed, in seconds: who joined before whom, for a full lobby. */
+    private readonly joinedAtOf;
     /** This visitor's own pass, as it is said to the others, and when it stops. */
     private pass;
     /** This visitor's own look note, as it is handed to each member: only where it is their pass's key's. */
@@ -202,6 +244,8 @@ export declare class RoomSession {
     /** When this visitor joined, in unix seconds, and who has joined since (by a joining hello signed after it). */
     private joinedAt;
     private readonly newer;
+    /** How many tries at connecting to each member there have been since they were last connected (`Peer.attempt`). */
+    private readonly attempts;
     constructor(opts?: JoinOptions);
     /** Who may be in this world's rooms, as its gate last read the owner's allow list. Anyone here not on it is let go at once. */
     setInvited(keys: Iterable<string> | null): void;
@@ -318,6 +362,38 @@ export declare class RoomSession {
     tellPlay(said: string): void;
     setRecording(on: boolean): void;
     private drop;
+    /**
+     * A try at connecting to someone that failed, or never opened. A first try is made again at once, afresh, by the
+     * one who makes the offer; the other answers the new offer as it comes. A later one is given up, and said
+     * (`unreached`): the room tries again at the next hello.
+     */
+    private notOpened;
+    /**
+     * Whether this visitor is the one who tells a newcomer that this full room is full: the member with the lowest
+     * session key of those it is connected to, so a newcomer hears it once, not from everyone here.
+     */
+    /** Whether a "full" may still send this visitor on: in a lobby before the last, and only just joined it. */
+    private mayMoveOn;
+    private answersForFull;
+    /**
+     * A newcomer (`from`, who signed their joining hello at `at`) finds this room full. Who stays is who joined first,
+     * then the lower key: where someone here joined after them, only a moment ago, it is that one who is told to go
+     * on, and the newcomer takes their place. Otherwise the newcomer is told.
+     */
+    private tellFull;
+    /**
+     * Told that this lobby is full: say goodbye to anyone here, and go to lobby `n` on the same relays, as someone
+     * just joining it. The sockets stay open; only what they listen for changes.
+     */
+    private moveOn;
+    /**
+     * Ask for TURN servers (`iceFrom`), and use them beside the room's own STUN: for connections made from now on, and,
+     * when they are asked for again before they run out, for those already made (`setConfiguration`). Where none come,
+     * what the room had is kept, and nothing more is asked. Asked again at four fifths of what they are good for.
+     *
+     * @internal Called by `room.join`; not for a world.
+     */
+    askForIce(): Promise<void>;
     private sweep;
     /** Send your pose to everyone. Call 10–20 times a second, from a timer rather than the render loop. */
     /**

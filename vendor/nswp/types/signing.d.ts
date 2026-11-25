@@ -150,11 +150,20 @@ export type SignerRequest = {
 /**
  * This world would like to be let do more than a note and a reaction (protocol/10-identity.md, "Asking for
  * more"). It approves nothing: the signer remembers it for its own window, where the visitor is shown it.
+ * `family` asks, before the first sign-in, that it be for the world's whole family: `"https://*.<registrable
+ * domain>"`, the world's own, so one sign-in carries to every world under that domain. BitLogin's word, carried
+ * unchanged; a signer honours it only for a family it knows, judged by the browser's own origin, and says so in
+ * its state (`familyTaken`). One that doesn't know the word says nothing of it.
+ * `guest`, with `family`, asks that a visitor nobody is signed in as be given a guest account for the family, made
+ * and kept by the signer, the same guest in every world of it (BitLogin's word, carried unchanged; its
+ * docs/guest-accounts.md, G3). It asks for one, never for a second; the signer says in its state that it is one.
  */
  | {
     t: "want";
     id: string;
-    more: SignerMore[];
+    more?: SignerMore[];
+    family?: string;
+    guest?: true;
 }
 /**
  * Follow or unfollow one person (protocol/14-people-and-messages.md). The world hands over the newest follow
@@ -344,6 +353,8 @@ export type SignerReply = {
     remembered?: boolean;
     more?: SignerMore[];
     offers?: SignerMore[];
+    familyTaken?: boolean;
+    guest?: boolean;
 } | {
     t: "signed";
     id: string;
@@ -447,7 +458,6 @@ export declare const signerMessage: <T extends SignerRequest | SignerReply>(mess
 };
 /** Read what a world sent the signer. Null for anything else. The event is checked later, by `prepareForWorld`. */
 export declare function readSignerRequest(data: unknown): SignerRequest | null;
-/** Read what the signer sent a world. Null for anything else. A signed note is checked by the caller. */
 export declare function readSignerReply(data: unknown): SignerReply | null;
 export declare const HANDOFF_PROTOCOL = "nswp-handoff";
 export type HandoffMessage = 
