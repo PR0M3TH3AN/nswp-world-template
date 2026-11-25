@@ -1,7 +1,7 @@
 import {
   arrivedSettings,
   reportSettings
-} from "./shared-FS6GTOH4.js";
+} from "./shared-ASWBWEMK.js";
 
 // packages/sdk/src/ui/icons.ts
 var ICONS = {
@@ -532,7 +532,7 @@ function addDoorControls(controls, opts) {
 }
 
 // packages/sdk/src/ui/model.ts
-import { cleanSettings, PINS_MOST } from "@nswp/core";
+import { cleanMenuWorld, cleanSettings, PINS_MOST } from "@nswp/core";
 
 // packages/sdk/src/ui/letters.ts
 import { cleanMessage, MESSAGE_LIMITS } from "@nswp/core";
@@ -600,6 +600,7 @@ function createUiLetters(changed, now = () => Date.now()) {
 }
 
 // packages/sdk/src/ui/model.ts
+var KIT_QUESTION_TABS = ["how-you-move-desk", "how-you-move"];
 var PRESENCES = ["full", "quiet", "hidden"];
 var CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"];
 function cleanKeys(now, k) {
@@ -728,7 +729,15 @@ function createControls(opts) {
   const chat = createUiChat(changed);
   const feed = createUiFeed(changed);
   const letters = createUiLetters(changed);
+  const toldOfTabs = /* @__PURE__ */ new Set();
+  const tellOfTab = (id) => {
+    if (toldOfTabs.has(id) || KIT_QUESTION_TABS.includes(id)) return;
+    toldOfTabs.add(id);
+    if (cleanMenuWorld({ sections: [{ id, label: "a tab", rows: [] }] }, { own: true })?.sections.length) return;
+    console.warn(`NSWP: the tab "${id}" is in this world's own menu, but will not be in a client's (BitPortal's): a tab's id is a lowercase word of letters, digits and hyphens, beginning with a letter, twelve at most. Its rows go with it.`);
+  };
   function addSection(s) {
+    tellOfTab(s.id);
     const i = sections.findIndex((x) => x.id === s.id);
     if (i === -1) sections.push({ ...s });
     else sections[i] = { ...sections[i], ...s };

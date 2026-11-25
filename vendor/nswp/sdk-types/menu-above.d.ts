@@ -14,7 +14,7 @@
  * This file is not the menu and doesn't load it. It is small, and is what lets a framed world never fetch the menu.
  */
 import { type MenuState } from "@nswp/core";
-import type { Controls, UiView } from "./ui/model.js";
+import { type Controls, type UiView } from "./ui/model.js";
 export { helpWords } from "./ui/help.js";
 export { keepMenu, type KeptMenu } from "./menu-keeper.js";
 export interface MenuAbove {

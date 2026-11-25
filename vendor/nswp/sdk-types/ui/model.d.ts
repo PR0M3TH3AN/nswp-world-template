@@ -18,6 +18,12 @@ import { type FeedView, type UiFeed } from "./feed.js";
 import { type LettersView, type UiLetters } from "./letters.js";
 import type { IconName } from "./icons.js";
 import { DEFAULT_THEME, type UiTheme } from "./theme.js";
+/**
+ * The kit's one-time questions on how a visitor moves (fps.ts, visitor-switches.ts, comfort-controls.ts). At a
+ * desk each is asked by whoever draws the menu, which above a world is the client; so a world never describes
+ * them to a client (menu-above.ts), and their ids need not be a client's. Not part of the package's entries.
+ */
+export declare const KIT_QUESTION_TABS: readonly string[];
 type Text = string | (() => string);
 /** A bar that is moved along: where it is, where it ends, and words for where it is. Each is asked for as it is drawn. */
 export interface UiSlider {
@@ -210,8 +216,10 @@ export interface UiPinView {
  * own leads, and these controls stay out of its way (spec §21.3).
  *
  * - "full": the whole HUD, and in a headset the Menu button and the wrist.
- * - "quiet": one small mark in a corner, which opens everything else. In a
- *   headset, the wrist; the Menu button only where no hand is tracked.
+ * - "quiet": one small mark in a corner, which opens everything else. Where the
+ *   visit started by touch, the bar as well: a touch screen has no keyboard to
+ *   keep for play. In a headset, the wrist; the Menu button only where no hand
+ *   is tracked.
  * - "hidden": nothing until the world opens it. For a world that draws these
  *   actions in menus of its own, or for a moment that shouldn't be interrupted.
  */

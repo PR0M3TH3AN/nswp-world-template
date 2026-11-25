@@ -26,7 +26,8 @@ export declare function forgetDeskMoving(): void;
  * words, as a world draws for itself. Not offered where there is no mouse, or in a headset.
  */
 export declare function deskMovingSwitch(controls: Pick<Controls, "say">, o?: {
-    presenting?: () => boolean;
+    presenting?: () => boolean; /** Keep the choice under this name, for this site (as `createFps` takes it). */
+    keep?: string;
 }): UiAction;
 /**
  * The one-time question, "how you move at a desk": casual or intense, asked once and kept (the owner, 2026-11-21:
@@ -42,5 +43,6 @@ export declare function deskMovingSwitch(controls: Pick<Controls, "say">, o?: {
  */
 export declare function askDeskMoving(controls: Controls, o?: {
     presenting?: () => boolean;
-    after?: number;
+    after?: number; /** Keep the answer under this name, for this site (as `createFps` takes it). */
+    keep?: string;
 }): () => void;

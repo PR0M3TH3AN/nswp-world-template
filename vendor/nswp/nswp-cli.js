@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.89.0";
+var KIT_VERSION = "0.90.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4467,7 +4467,34 @@ var RELAY_PICK = {
   /** A relay that hasn't been tried for this long is given another chance: what was known of it is forgotten. */
   staleMs: 7 * 24 * 3600 * 1e3,
   /** No more relays than this are remembered. */
-  kept: 40
+  kept: 40,
+  /** How many of a person's listed relays are taken from their list (NIP-65): enough to find a note on any of them. */
+  listed: 24,
+  /**
+   * Where a look for a visitor's own note on their own device found nothing, how many more of their relays are asked
+   * at once, and how long each such wave is waited for. Waves go on until it is found or every listed relay is asked.
+   */
+  wave: 4,
+  waveMs: 3e3,
+  /** A relay that ran out of time is asked once more, at the end of the waves, and waited for this long. */
+  lateMs: 6e3,
+  /** A note of a person's is sent once this many relays said they took it (OK true). Fewer is said, and sent again. */
+  took: 3,
+  /** At most this many relays have a visitor's own newest note put back on them after a look, each at most once a day. */
+  mend: 6,
+  /**
+   * A person's own note always goes to at least this many of the usual relays too, whether or not enough of their
+   * own took it: a world that hasn't their relay list yet looks only there, and the list itself is found only there.
+   */
+  usual: 1,
+  /** How long a look waits for a person's relay list, at the most, while the usual relays are asked. */
+  listWaitMs: 6e3,
+  /**
+   * Once one relay has given what was asked for (a person's relay list, or their note), how long the rest are given
+   * before it is taken: a newer one may be on another. Sooner where every relay asked has answered. So one relay
+   * that never answers holds nothing up once another has answered with it.
+   */
+  graceMs: 1e3
 };
 async function queryRelays(relays, filter, timeoutMs = 4e3) {
   const byId = /* @__PURE__ */ new Map();

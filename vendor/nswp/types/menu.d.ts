@@ -56,6 +56,15 @@ export declare const MENU_LIMITS: {
 };
 /** How long a framed world waits for a client to say it has the menu, before drawing its own. */
 export declare const MENU_WAIT_MS = 300;
+/**
+ * How long a menu keeps an asking for a tab it doesn't have yet (`show`, or a world's own "show this tab"). A world
+ * may ask for a tab of its own a moment before whoever draws the menu has heard of that tab; the menu comes up
+ * where it last was, and goes to the tab if it arrives within this, unless the visitor has chosen a tab meanwhile
+ * or put the menu away. Two seconds: a world says a changed description within an eighth of a second of the
+ * change, and a slow device a few times that, so two seconds has room to spare; and it is short enough that a tab
+ * arriving later doesn't move a visitor who has settled on another.
+ */
+export declare const MENU_SHOW_KEEP_MS = 2000;
 /** How long a client waits for a world to leave by itself, before taking the visitor home. */
 export declare const LEAVE_MS = 1000;
 /** How long after a press on a `save` row a client still takes what the world hands up for it. */

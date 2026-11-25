@@ -9,7 +9,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.89.0";
+var KIT_VERSION = "0.90.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -6163,7 +6163,7 @@ function cleanRelayUrl(url) {
     return "";
   }
 }
-function readRelayList(events, pubkey, max = 8) {
+function readRelayList(events, pubkey, max = RELAY_PICK.listed) {
   const latest = events.filter((e) => e.kind === RELAY_LIST_KIND && e.pubkey === pubkey).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0];
   if (!latest) return null;
   const write = [];
@@ -6199,8 +6199,39 @@ var RELAY_PICK = {
   /** A relay that hasn't been tried for this long is given another chance: what was known of it is forgotten. */
   staleMs: 7 * 24 * 3600 * 1e3,
   /** No more relays than this are remembered. */
-  kept: 40
+  kept: 40,
+  /** How many of a person's listed relays are taken from their list (NIP-65): enough to find a note on any of them. */
+  listed: 24,
+  /**
+   * Where a look for a visitor's own note on their own device found nothing, how many more of their relays are asked
+   * at once, and how long each such wave is waited for. Waves go on until it is found or every listed relay is asked.
+   */
+  wave: 4,
+  waveMs: 3e3,
+  /** A relay that ran out of time is asked once more, at the end of the waves, and waited for this long. */
+  lateMs: 6e3,
+  /** A note of a person's is sent once this many relays said they took it (OK true). Fewer is said, and sent again. */
+  took: 3,
+  /** At most this many relays have a visitor's own newest note put back on them after a look, each at most once a day. */
+  mend: 6,
+  /**
+   * A person's own note always goes to at least this many of the usual relays too, whether or not enough of their
+   * own took it: a world that hasn't their relay list yet looks only there, and the list itself is found only there.
+   */
+  usual: 1,
+  /** How long a look waits for a person's relay list, at the most, while the usual relays are asked. */
+  listWaitMs: 6e3,
+  /**
+   * Once one relay has given what was asked for (a person's relay list, or their note), how long the rest are given
+   * before it is taken: a newer one may be on another. Sooner where every relay asked has answered. So one relay
+   * that never answers holds nothing up once another has answered with it.
+   */
+  graceMs: 1e3
 };
+function relayClosed(note, to, now) {
+  const at = note?.closed?.[to];
+  return at !== void 0 && now - at <= RELAY_PICK.staleMs;
+}
 function relayScore(note, now) {
   if (!note || now - note.at > RELAY_PICK.staleMs) return 0.5;
   return (note.ok + 1) / (note.ok + note.failed + 2);
@@ -6218,19 +6249,23 @@ function learnRelays(notes, results, now) {
       ok = Math.round(ok / 2);
       failed = Math.round(failed / 2);
     }
-    next[clean3] = { ok, failed, at: now };
+    const closed = { ...had.closed ?? {} };
+    if (/^closed: (auth-required|restricted):/.test(said2)) closed.read = now;
+    if (/^rejected: (auth-required|restricted):/.test(said2)) closed.write = now;
+    next[clean3] = { ok, failed, at: now, ...closed.read !== void 0 || closed.write !== void 0 ? { closed } : {} };
   }
   const kept = Object.entries(next).sort((a, b) => b[1].at - a[1].at).slice(0, RELAY_PICK.kept);
   return Object.fromEntries(kept);
 }
 function pickRelays(o) {
+  const open = (url) => !o.for || !relayClosed(o.notes[url], o.for, o.now);
   const score = (url) => relayScore(o.notes[url], o.now);
   const best = (urls) => urls.map((url, i) => ({ url, i, s: score(url) })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.url);
-  const own = best([...new Set(o.own.map(cleanRelayUrl).filter(Boolean))]).slice(0, RELAY_PICK.most);
+  const own = best([...new Set(o.own.map(cleanRelayUrl).filter(Boolean))].filter(open)).slice(0, RELAY_PICK.most);
   const working = own.filter((url) => score(url) >= RELAY_PICK.working).length;
   const added = [];
-  for (const url of best([...new Set(o.usual.map(cleanRelayUrl).filter(Boolean))].filter((u) => !own.includes(u)))) {
-    if (working + added.length >= RELAY_PICK.least) break;
+  for (const url of best([...new Set(o.usual.map(cleanRelayUrl).filter(Boolean))].filter((u) => !own.includes(u) && open(u)))) {
+    if (working + added.length >= RELAY_PICK.least && added.length >= (o.usualAtLeast ?? 0)) break;
     if (score(url) < RELAY_PICK.working && added.length > 0) continue;
     added.push(url);
   }
@@ -7802,6 +7837,7 @@ var MENU_LIMITS = {
   covers: 8192
 };
 var MENU_WAIT_MS = 300;
+var MENU_SHOW_KEEP_MS = 2e3;
 var LEAVE_MS = 1e3;
 var MENU_SAVE_MS = 1e4;
 var MENU_MAKING_MS = 6e4;
@@ -9575,6 +9611,7 @@ export {
   MENU_ROW_KINDS,
   MENU_SAVE_MS,
   MENU_SAVE_TYPES,
+  MENU_SHOW_KEEP_MS,
   MENU_SIGN_IN,
   MENU_VERSION,
   MENU_VISITOR_TABS,
