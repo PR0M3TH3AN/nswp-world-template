@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.91.0";
+var KIT_VERSION = "0.92.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4455,6 +4455,7 @@ function parsePortal(input) {
 
 // packages/core/dist/relay.js
 var DEFAULT_RELAYS = ["wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://nostr.mom"];
+var ROOM_RELAYS = [...DEFAULT_RELAYS, "wss://offchain.pub", "wss://relay.nostr.net", "wss://nostr.bitcoiner.social", "wss://nostr.oxtr.dev"];
 var RELAY_PICK = {
   /** A person's own relays are used up to this many. */
   most: 6,

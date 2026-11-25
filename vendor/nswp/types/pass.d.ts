@@ -70,6 +70,11 @@ export interface VerifiedPass {
     about: string;
     expiresAt: number;
     id: string;
+    /**
+     * The pass is a guest account's (`["nswp:guest", "1"]`, protocol/10-identity.md, "A guest"): a key its sign-in
+     * address made for a visitor nobody was signed in as, not yet secured. The same key in every world of its family.
+     */
+    guest: boolean;
 }
 /** Check a pass. Nothing about it is believed until this says so. */
 export declare function verifyRoomPass(event: unknown, opts: VerifyPassOptions): Result<VerifiedPass>;

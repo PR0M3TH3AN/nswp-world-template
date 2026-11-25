@@ -299,6 +299,30 @@ function markSvg(o = {}) {
   ].join("");
 }
 
+// packages/sdk/src/ui/sign-in-here.ts
+var offers = /* @__PURE__ */ new WeakMap();
+function offerSignIn(controls, offer) {
+  offers.set(controls, offer);
+}
+function signInHere(controls, section) {
+  const offer = () => offers.get(controls);
+  return {
+    id: `sign-in-${section}`,
+    section,
+    icon: "key",
+    tone: "primary",
+    label: () => offer()?.label() ?? "Sign in",
+    short: "Sign in",
+    hidden: () => !offer()?.wanted(),
+    act: () => offer()?.press()
+  };
+}
+function signInFirst(controls, line) {
+  controls.say(line);
+  const offer = offers.get(controls);
+  if (offer?.wanted()) offer.press();
+}
+
 // packages/sdk/src/ui/chat.ts
 import { CHAT_LIMITS, cleanChat } from "@nswp/core";
 var CHAT_KEY = "nswp:chat";
@@ -1066,6 +1090,9 @@ export {
   MARK,
   paintMark,
   markSvg,
+  offerSignIn,
+  signInHere,
+  signInFirst,
   CHAT_KEY,
   showsChat,
   setShowsChat,

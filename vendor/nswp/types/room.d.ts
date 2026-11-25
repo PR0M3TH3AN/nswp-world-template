@@ -8,12 +8,22 @@ export declare const ROOM_LIMITS: {
     readonly signalMaxAgeSec: 60;
     readonly maxSdpChars: 20000;
     readonly maxNameChars: 48;
+    /**
+     * How many lobbies a world's default room may run to: "lobby", "lobby-2", … "lobby-32". A newcomer told a lobby
+     * is full goes on to the next (protocol/06-rooms.md, "Lobbies that fill"). With 8 to a lobby, 256 people.
+     */
+    readonly lobbies: 32;
 };
 /**
  * Where a room's handshake happens on relays. It is a hash, so knowing a
  * world's address is not enough to find a room with an unguessable name.
  */
 export declare function roomTopic(worldUrl: string, roomName: string): string;
+/**
+ * The name of a world's `n`th lobby, counting from 1: "lobby", then "lobby-2", "lobby-3" and on, to
+ * `ROOM_LIMITS.lobbies`. Null for anything else. Only the default room fills this way; a room by name is one room.
+ */
+export declare function lobbyName(n: number): string | null;
 /** Of two members, the one with the lower session pubkey makes the offer. */
 export declare function shouldInitiate(self: string, other: string): boolean;
 export declare function guestName(pubkey: string): string;
@@ -41,6 +51,10 @@ export type SignalMessage = {
     sdp: string;
 } | {
     t: "bye";
+}
+/** Said by a member of a full room to someone joining it: go on to the next lobby (or, in a room by name, it is full). */
+ | {
+    t: "full";
 };
 /** A public "I'm here" on the room's topic. Carries nothing but the session key. */
 /**
