@@ -55,6 +55,16 @@ export interface ManifestWorld {
     keepers?: string[];
     /** In this world's rooms a visitor's kit shows and hears only people whose pass checks out: no guests. */
     namedOnly?: boolean;
+    /**
+     * Whether guest accounts may come in (protocol/10-identity.md, "A guest"). Left out, they may: only `false` is ever
+     * kept. Where false, someone whose pass is a guest account's is not shown, heard or answered in its rooms.
+     */
+    guests?: false;
+    /**
+     * Whether guest accounts may use items here (protocol/17-items.md, "Guests"). Left out, they may, where its `items`
+     * rule lets anyone: only `false` is ever kept.
+     */
+    guestItems?: false;
     /** Only people a keeper's allow list names (and the keepers) may go in; its rooms show only them. */
     byInvitation?: boolean;
 }
@@ -111,6 +121,8 @@ export declare function accessFor(manifest: Manifest, url: string): {
     keepers: string[] | null;
     namedOnly: boolean;
     byInvitation: boolean;
+    takesGuests: boolean;
+    guestItems: boolean;
 } | null;
 export interface FetchManifestResult {
     url: string;

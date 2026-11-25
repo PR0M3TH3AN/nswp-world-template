@@ -2303,6 +2303,8 @@ var RoomSession = class {
   turnedAway = /* @__PURE__ */ new Set();
   /** Whether this room shows only people whose pass checks out: so where it is by invitation, too. */
   namedOnly;
+  /** Whether guest accounts may be in this room (`JoinOptions.takesGuests`). */
+  takesGuests;
   /** Where the world is by invitation, who may be in its rooms; null where it isn't. */
   invited = null;
   /** In a room that shows only named people: the members shown, by session key, and what arrived for each before. */
@@ -2425,6 +2427,7 @@ var RoomSession = class {
     for (const k of opts.ownerBlocked ?? []) if (/^[0-9a-f]{64}$/.test(k)) this.ownerBlocked.add(k);
     this.invited = opts.invited ? new Set([...opts.invited].filter((k) => /^[0-9a-f]{64}$/.test(k))) : null;
     this.namedOnly = opts.namedOnly === true || this.invited !== null;
+    this.takesGuests = opts.takesGuests !== false;
   }
   /** Who may be in this world's rooms, as its gate last read the owner's allow list. Anyone here not on it is let go at once. */
   setInvited(keys) {
@@ -2774,6 +2777,7 @@ var RoomSession = class {
       return;
     }
     if (this.ownerBlocked.has(checked.value.pubkey) || this.invited && !this.invited.has(checked.value.pubkey)) return this.turnAway(peer.member.pubkey);
+    if (checked.value.guest && !this.takesGuests) return this.turnAway(peer.member.pubkey);
     peer.passUntil = checked.value.expiresAt;
     Object.assign(peer.member, { guest: false, identity: checked.value.pubkey, name: checked.value.name || (checked.value.guest ? guestName(checked.value.pubkey) : shortNpub(checked.value.pubkey)) });
     if (checked.value.guest) peer.member.guestAccount = true;

@@ -101,6 +101,11 @@ export interface JoinOptions {
      * anyone else is let go. Left out or null, the world isn't by invitation.
      */
     invited?: Iterable<string> | null;
+    /**
+     * False where the world takes no guests (its announcement's `"guests": false`, protocol/10-identity.md, "A
+     * guest"): someone whose pass is a guest account's is let go, as someone not invited is. Left out, guests may come.
+     */
+    takesGuests?: boolean;
 }
 export type RoomStatus = "connecting" | "open" | "no-relays" | "closed";
 interface Events {
@@ -187,6 +192,8 @@ export declare class RoomSession {
     private readonly turnedAway;
     /** Whether this room shows only people whose pass checks out: so where it is by invitation, too. */
     readonly namedOnly: boolean;
+    /** Whether guest accounts may be in this room (`JoinOptions.takesGuests`). */
+    private readonly takesGuests;
     /** Where the world is by invitation, who may be in its rooms; null where it isn't. */
     private invited;
     /** In a room that shows only named people: the members shown, by session key, and what arrived for each before. */

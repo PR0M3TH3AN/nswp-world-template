@@ -20,6 +20,8 @@ export declare function mayHold(described: Item | null, o: {
     asked: {
         sha: string;
     };
+    guest?: boolean;
+    guestItems?: boolean;
 }): {
     ok: true;
 } | {

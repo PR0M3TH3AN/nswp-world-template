@@ -81,6 +81,13 @@ export interface XrInputOptions {
     controls?: Controls;
     /** Draw controllers and hands. Default true. A world with hands of its own turns this off. */
     models?: boolean;
+    /**
+     * Where this world serves the kit's held hands (packages/sdk/assets/hands/, copied beside the page as the kit's
+     * sounds are), for example "/hands/kit/". Given, a Quest's controllers are drawn as the kit's see-through hand
+     * holding a see-through controller, moved by the trigger, grip and thumb (held-hands.ts). Left out, or where they
+     * can't be had, the kit's own drawing is kept, as for any other controller.
+     */
+    handsAt?: string;
 }
 export interface XrInputInfo {
     comfort: Comfort;
