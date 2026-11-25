@@ -7,7 +7,7 @@ import {
   portal,
   room,
   setFilesAnywhere
-} from "./shared-VIMETJJ2.js";
+} from "./shared-SFAPUCNO.js";
 import {
   FEED_LIMITS,
   ICONS,
@@ -22,10 +22,11 @@ import {
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-72ODSZSE.js";
+} from "./shared-TN7WDBRE.js";
 import {
   arrivedSettings,
   askClientForSignIn,
+  askOwn,
   askWell,
   clientPanelOpen,
   clientSignsInAt,
@@ -41,13 +42,14 @@ import {
   onClientScreen,
   onClientSignIn,
   relayBackup,
+  relaysOf,
   reportSettings,
   savesWait,
   screenNotHere,
   sendWell,
   sent,
   startingForm
-} from "./shared-FS6GTOH4.js";
+} from "./shared-ASWBWEMK.js";
 import {
   LiveKeys,
   TextEntry,
@@ -2135,7 +2137,7 @@ var count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 var capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // packages/sdk/src/people.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS3, FOLLOWS_KIND, followsIn, isFollowAsked, isHex64 as isHex643, newestFollows, publishEvent as publishEvent2, queryRelays as queryRelays2, readRelayList, RELAY_LIST_KIND, verifyEvent as verifyEvent2 } from "@nswp/core";
+import { DEFAULT_RELAYS as DEFAULT_RELAYS3, FOLLOWS_KIND, followsIn, isFollowAsked, isHex64 as isHex643, newestFollows, publishEvent as publishEvent2, queryRelays as queryRelays2, verifyEvent as verifyEvent2 } from "@nswp/core";
 var KEPT_MOST = 4e5;
 var FRESH_MS2 = 6e4;
 function createPeople(opts) {
@@ -2173,27 +2175,28 @@ function createPeople(opts) {
     } catch {
     }
   };
-  let relaysKept = null;
-  const ownRelays = (key) => {
-    if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList(got.events, key)?.write ?? []).catch(() => []);
-    relaysKept = { key, at: now(), found };
-    return found;
-  };
+  const ownRelays = (key) => relaysOf(key, { usual: usual(), mine: true, query, publish, now });
   let known = null;
   let looking = null;
   let offered = null;
   const look = async (who) => {
     const kept2 = readKept(who);
-    const own = await ownRelays(who);
-    const got = await askWell({ kinds: [FOLLOWS_KIND], authors: [who], limit: 4 }, { own, usual: usual(), query, timeoutMs: 4e3, now }).catch(() => null);
-    const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
+    const onNewer = (later) => {
+      const newer = newestFollows(later.events.filter((e) => verifyEvent2(e)), who);
+      if (!newer || !known || known.who !== who || known.list && newer.created_at <= known.list.created_at) return;
+      keep3(newer);
+      known = { ...known, list: newer, answered: true };
+      changed();
+    };
+    const got = await askOwn({ kinds: [FOLLOWS_KIND], authors: [who], limit: 4 }, who, { usual: usual(), mine: { kept: kept2 }, query, publish, timeoutMs: 4e3, now, onNewer }).catch(() => null);
+    const answered = !!got && got.state !== "unreached";
+    const own = got?.own ?? [];
     const found = newestFollows((got?.events ?? []).filter((e) => verifyEvent2(e)), who);
     const list = found && kept2 ? kept2.created_at > found.created_at ? kept2 : found : found ?? kept2;
     if (kept2 && list === kept2 && answered && (!found || found.id !== kept2.id)) void sendWell(kept2, { own, usual: usual(), publish, query, now }).catch(() => null);
     if (list && list !== kept2) keep3(list);
     if (hand.pubkey() !== who) return;
-    known = { who, list, answered, at: now() };
+    known = { who, list, answered, own, at: now() };
     changed();
   };
   const load2 = async (fresh = false) => {
@@ -2238,7 +2241,7 @@ function createPeople(opts) {
     const signed = await hand.change(list, asked).catch(() => null);
     if (!signed || !isFollowAsked(signed, { list, ...asked, pubkey: who })) return { ok: false, why: "refused", said: "It couldn't be signed. Who you follow is as it was." };
     keep3(signed);
-    known = { who, list: signed, answered: true, at: now() };
+    known = { who, list: signed, answered: true, own: known?.own ?? [], at: now() };
     changed();
     const sent2 = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
     if (!sent2 || sent2.took === 0) return { ok: false, why: "not-sent", said: `Signed, but no relay took it. It is kept on this device and will be sent again.` };
@@ -2260,7 +2263,7 @@ function createPeople(opts) {
 }
 
 // packages/sdk/src/saves.ts
-import { cleanSlot, DEFAULT_RELAYS as DEFAULT_RELAYS4, fitsInSave, publishEvent as publishEvent3, queryRelays as queryRelays3, readRelayList as readRelayList2, RELAY_LIST_KIND as RELAY_LIST_KIND2, SAVE_KIND, SAVE_SLOT, verifyEvent as verifyEvent3 } from "@nswp/core";
+import { cleanSlot, DEFAULT_RELAYS as DEFAULT_RELAYS4, fitsInSave, publishEvent as publishEvent3, queryRelays as queryRelays3, SAVE_KIND, SAVE_SLOT, verifyEvent as verifyEvent3 } from "@nswp/core";
 function createSaves(opts = {}) {
   const now = opts.now ?? (() => Date.now());
   const query = opts.query ?? queryRelays3;
@@ -2293,20 +2296,14 @@ function createSaves(opts = {}) {
       return false;
     }
   };
-  let relaysKept = null;
-  const ownRelays = (key) => {
-    if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND2], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList2(got.events, key)?.write ?? []).catch(() => []);
-    relaysKept = { key, at: now(), found };
-    return found;
-  };
+  const ownRelays = (key) => relaysOf(key, { usual: usual(), mine: true, query, publish, now });
   const fromAccount = async (slot) => {
     const s = signer();
     const who = s?.state === "unlocked" ? s.pubkey : null;
     if (!s || !who) return null;
     const d = await s.find(slot);
     if (!d) return null;
-    const got = await askWell({ kinds: [SAVE_KIND], authors: [who], "#d": [d], limit: 4 }, { own: await ownRelays(who), usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
+    const got = await askOwn({ kinds: [SAVE_KIND], authors: [who], "#d": [d], limit: 4 }, who, { usual: usual(), mine: { kept: null }, query, publish, timeoutMs: 3500, now }).catch(() => null);
     const newest = (got?.events ?? []).filter((e) => e.kind === SAVE_KIND && e.pubkey === who && e.tags.some((t) => t[0] === "d" && t[1] === d) && verifyEvent3(e)).sort((a, b) => b.created_at - a.created_at)[0];
     if (!newest) return null;
     const opened = await s.open(newest);
@@ -5458,7 +5455,7 @@ async function ownLookNote(opts = {}) {
   }
   if (at.kind !== AVATAR_KIND || at.pubkey !== author) return null;
   const relays = [.../* @__PURE__ */ new Set([...(at.relays ?? []).filter((r) => r.startsWith("wss://")).slice(0, 3), ...opts.relays ?? DEFAULT_RELAYS6])];
-  const got = await askWell({ kinds: [AVATAR_KIND], authors: [author], "#d": [at.identifier], limit: 4 }, { own: [], usual: relays, ...opts.query ? { query: opts.query } : {}, timeoutMs: 4e3, ...opts.now ? { now: opts.now } : {} }).catch(() => null);
+  const got = await askOwn({ kinds: [AVATAR_KIND], authors: [author], "#d": [at.identifier], limit: 4 }, author, { usual: relays, mine: { kept: null }, ...opts.query ? { query: opts.query } : {}, timeoutMs: 4e3, ...opts.now ? { now: opts.now } : {} }).catch(() => null);
   const newest = (got?.events ?? []).filter((e) => e.kind === AVATAR_KIND && e.pubkey === author && verifyEvent6(e) && e.tags.some((t) => t[0] === "d" && t[1] === at.identifier)).sort((a, b) => b.created_at - a.created_at)[0];
   return newest && JSON.stringify(newest).length <= LOOK_NOTE_LIMIT ? newest : null;
 }
@@ -6622,7 +6619,7 @@ function createPresence(d) {
 
 // packages/sdk/src/room-controls.ts
 import * as THREE12 from "three";
-import { CHAT_LIMITS, cleanLightningAddress, DEFAULT_RELAYS as DEFAULT_RELAYS8, DELETION_KIND, encodeNpub as encodeNpub3, readRelayList as readRelayList4, RELAY_LIST_KIND as RELAY_LIST_KIND4, shortNpub as shortNpub6, verifyEvent as verifyEvent7 } from "@nswp/core";
+import { CHAT_LIMITS, cleanLightningAddress, DEFAULT_RELAYS as DEFAULT_RELAYS8, DELETION_KIND, encodeNpub as encodeNpub3, shortNpub as shortNpub6, verifyEvent as verifyEvent7 } from "@nswp/core";
 
 // packages/sdk/src/ask-once.ts
 function mayAskHowTheyMove() {
@@ -6917,6 +6914,7 @@ function createFps(o) {
   let closedAt = -1;
   let shown2 = false;
   const looking = () => document.pointerLockElement === o.dom;
+  let lockedBefore = typeof document !== "undefined" && looking();
   const active = () => enabled && !o.presenting();
   const dot = document.createElement("div");
   dot.setAttribute("aria-hidden", "true");
@@ -6951,7 +6949,10 @@ function createFps(o) {
     else look();
   };
   const onLock = () => {
-    if (looking()) {
+    const now = looking();
+    if (now === lockedBefore) return;
+    lockedBefore = now;
+    if (now) {
       if (panelUp() || o.hud?.open) letGo();
       return;
     }
@@ -7156,7 +7157,7 @@ var chatSwitch = (tell) => ({
 });
 
 // packages/sdk/src/messages.ts
-import { DEFAULT_RELAYS as DEFAULT_RELAYS7, isHex64 as isHex645, looksLikeWrap as looksLikeWrap2, MESSAGE_RELAYS_KIND, publishEvent as publishEvent4, queryRelays as queryRelays6, readMessageRelays, readRelayList as readRelayList3, RELAY_LIST_KIND as RELAY_LIST_KIND3, WRAP_KIND, wrapSeal, writtenWith } from "@nswp/core";
+import { DEFAULT_RELAYS as DEFAULT_RELAYS7, isHex64 as isHex645, looksLikeWrap as looksLikeWrap2, MESSAGE_RELAYS_KIND, publishEvent as publishEvent4, queryRelays as queryRelays6, readMessageRelays, readRelayList, RELAY_LIST_KIND, WRAP_KIND, wrapSeal, writtenWith } from "@nswp/core";
 var MOST2 = 300;
 var FRESH_MS3 = 45e3;
 function createMessages(opts) {
@@ -7227,12 +7228,15 @@ function createMessages(opts) {
   const unreadIn = (peer, list) => list.filter((m) => m.from === peer && m.at > (seenAt()[peer] ?? 0)).length;
   const knownTo = (peer, list) => !!opts.known?.(peer) || list.some((m) => m.from === who);
   const look = async (me) => {
-    const lists = await askWell({ kinds: [RELAY_LIST_KIND3, MESSAGE_RELAYS_KIND], authors: [me], limit: 8 }, { own: [], usual: usual(), query, timeoutMs: 3500, now }).catch(() => null);
+    const [lists, inboxNote] = await Promise.all([
+      askWell({ kinds: [RELAY_LIST_KIND], authors: [me], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 3500, now }).catch(() => null),
+      askOwn({ kinds: [MESSAGE_RELAYS_KIND], authors: [me], limit: 4 }, me, { usual: usual(), mine: { kept: null }, query, publish, timeoutMs: 3500, now }).catch(() => null)
+    ]);
     if (hand.pubkey() !== me) return;
-    const answered = !!lists && Object.values(lists.relays).some((said) => said === "eose");
-    const relayList = readRelayList3(lists?.events ?? [], me);
-    own = { read: relayList?.read ?? [], write: relayList?.write ?? [] };
-    const found = readMessageRelays(lists?.events ?? [], me);
+    const answered = inboxNote?.state === "none" || inboxNote?.state === "found";
+    const relayList = readRelayList(lists?.events ?? [], me);
+    own = { read: relayList?.read ?? [], write: relayList?.write ?? inboxNote?.own ?? [] };
+    const found = readMessageRelays(inboxNote?.events ?? [], me);
     if (found.length) inbox = found;
     if (!inbox.length) {
       if (answered && relayBackup()) monitors = await foundRelays({ query, now }).catch(() => monitors);
@@ -8260,14 +8264,7 @@ function addRoomControls(controls, presence, opts = {}) {
     who: () => hereAs()?.name || worldSigner().name
   };
   const usualRelays = () => opts.noteRelays ?? DEFAULT_RELAYS8;
-  let relaysKept = null;
-  const ownRelays = (key) => {
-    if (!key) return Promise.resolve([]);
-    if (relaysKept && relaysKept.key === key && Date.now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND4], authors: [key], limit: 4 }, { own: [], usual: usualRelays(), timeoutMs: 2500 }).then((got) => readRelayList4(got.events, key)?.write ?? []).catch(() => []);
-    relaysKept = { key, at: Date.now(), found };
-    return found;
-  };
+  const ownRelays = (key) => key ? relaysOf(key, { usual: usualRelays(), mine: true }) : Promise.resolve([]);
   let wantsFeed = false;
   const postNote = async (words) => {
     const signed = await notes.sign({ kind: 1, content: words, tags: [] }).catch(() => null);
@@ -8295,8 +8292,8 @@ function addRoomControls(controls, presence, opts = {}) {
   const loadPosts = async () => {
     const key = notes.pubkey?.();
     if (!key) return [];
-    const got = await askWell({ kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, { own: await ownRelays(key), usual: usualRelays(), timeoutMs: 5e3 });
-    if (!got.events.length && !Object.values(got.relays).some((said) => said === "eose")) return null;
+    const got = await askOwn({ kinds: [1], authors: [key], limit: FEED_LIMITS.kept }, key, { usual: usualRelays(), timeoutMs: 5e3 });
+    if (!got.events.length && got.state === "unreached") return null;
     return got.events.filter((e) => e.pubkey === key && e.kind === 1 && !e.tags.some((t) => t[0] === "e")).map((e) => ({ id: e.id, text: e.content, at: e.created_at }));
   };
   let feedFor = null;
@@ -10959,7 +10956,7 @@ function viewScale(metres, opts) {
 }
 
 // packages/sdk/src/scores.ts
-import { cleanBoard, cleanScore, DEFAULT_RELAYS as DEFAULT_RELAYS9, publishEvent as publishEvent5, queryRelays as queryRelays7, rankScores, readRelayList as readRelayList5, RELAY_LIST_KIND as RELAY_LIST_KIND5, SCORE_KIND, scoreWords, worldCoordinate } from "@nswp/core";
+import { cleanBoard, cleanScore, DEFAULT_RELAYS as DEFAULT_RELAYS9, publishEvent as publishEvent5, queryRelays as queryRelays7, rankScores, SCORE_KIND, scoreWords, worldCoordinate } from "@nswp/core";
 function createScores(opts) {
   const world = worldCoordinate(opts.world);
   const now = opts.now ?? (() => Date.now());
@@ -11010,13 +11007,7 @@ function createScores(opts) {
     if (mine === null) return guest;
     return guest !== null && better(b, guest, mine) ? guest : mine;
   };
-  let relaysKept = null;
-  const ownRelays = (key) => {
-    if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND5], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList5(got.events, key)?.write ?? []).catch(() => []);
-    relaysKept = { key, at: now(), found };
-    return found;
-  };
+  const ownRelays = (key) => relaysOf(key, { usual: usual(), mine: true, query, publish, now });
   let events = [];
   let asked = 0;
   let answered = false;
@@ -11176,7 +11167,7 @@ function addScoreControls(controls, opts) {
 }
 
 // packages/sdk/src/bag.ts
-import { BAG_KIND, bagIn, bagTints, changeBag, tintBag, DEFAULT_RELAYS as DEFAULT_RELAYS10, itemCoordinate as itemCoordinate3, newestBag, publishEvent as publishEvent6, queryRelays as queryRelays8, readRelayList as readRelayList6, RELAY_LIST_KIND as RELAY_LIST_KIND6, SITE_MARKS, verifyEvent as verifyEvent8 } from "@nswp/core";
+import { BAG_KIND, bagIn, bagTints, changeBag, tintBag, DEFAULT_RELAYS as DEFAULT_RELAYS10, itemCoordinate as itemCoordinate3, newestBag, publishEvent as publishEvent6, queryRelays as queryRelays8, RELAY_PICK, SITE_MARKS, verifyEvent as verifyEvent8 } from "@nswp/core";
 var FRESH_MS4 = 6e4;
 function createBag(opts) {
   const now = opts.now ?? (() => Date.now());
@@ -11210,29 +11201,46 @@ function createBag(opts) {
     } catch {
     }
   };
-  let relaysKept = null;
-  const ownRelays = (key) => {
-    if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND6], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList6(got.events, key)?.write ?? []).catch(() => []);
-    relaysKept = { key, at: now(), found };
-    return found;
+  const unsentKey = (who) => `nswp:bag:${who}:unsent`;
+  const unsent = (who) => {
+    try {
+      return store?.getItem(unsentKey(who)) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const markSent = (bag, took) => {
+    try {
+      if (took >= RELAY_PICK.took) store?.removeItem(unsentKey(bag.pubkey));
+      else store?.setItem(unsentKey(bag.pubkey), bag.id);
+    } catch {
+    }
   };
   let known = null;
   let looking = null;
   let offered = null;
   const look = async (who) => {
     const kept2 = readKept(who);
-    const own = await ownRelays(who);
-    const got = await askWell({ kinds: [BAG_KIND], authors: [who], limit: 4 }, { own, usual: usual(), query, timeoutMs: 4e3, now }).catch(() => null);
-    const answered = !!got && Object.values(got.relays).some((said) => said === "eose");
+    const onNewer = (later) => {
+      const newer = newestBag(later.events.filter((e) => verifyEvent8(e)), who);
+      if (!newer || !known || known.who !== who || known.bag && newer.created_at <= known.bag.created_at) return;
+      keep3(newer);
+      known = { ...known, bag: newer, answered: true };
+      changed();
+    };
+    const got = await askOwn({ kinds: [BAG_KIND], authors: [who], limit: 4 }, who, { usual: usual(), mine: { kept: kept2 }, query, publish, timeoutMs: 4e3, now, onNewer }).catch(() => null);
+    const answered = !!got && got.state !== "unreached";
+    const own = got?.own ?? [];
     const found = newestBag((got?.events ?? []).filter((e) => verifyEvent8(e)), who);
     const bag = found && kept2 ? kept2.created_at > found.created_at ? kept2 : found : found ?? kept2;
-    if (kept2 && bag === kept2 && answered && (!found || found.id !== kept2.id)) void sendWell(kept2, { own, usual: usual(), publish, query, now }).catch(() => null);
+    if (kept2 && bag === kept2 && (unsent(who) === kept2.id || answered && (!found || found.id !== kept2.id)))
+      void sendWell(kept2, { own, usual: usual(), publish, query, now }).then((sent2) => markSent(kept2, sent2.took)).catch(() => null);
     if (bag && bag !== kept2) keep3(bag);
     if (opts.me() !== who) return;
-    known = { who, bag, answered, at: now() };
+    known = { who, bag, answered, own, at: now() };
     changed();
   };
+  const inBag = (at) => at.bag || at.answered ? bagIn(at.bag) : null;
   const load2 = async (fresh = false) => {
     const who = opts.me();
     if (!who) {
@@ -11243,12 +11251,12 @@ function createBag(opts) {
       return null;
     }
     if (known && known.who !== who) known = null;
-    if (!fresh && known && now() - known.at < FRESH_MS4) return bagIn(known.bag);
+    if (!fresh && known && now() - known.at < FRESH_MS4) return inBag(known);
     looking ??= look(who).finally(() => {
       looking = null;
     });
     await looking;
-    return known && known.who === who ? bagIn(known.bag) : null;
+    return known && known.who === who ? inBag(known) : null;
   };
   const change2 = async (itemIn2, adding, title) => {
     const who = opts.me();
@@ -11277,11 +11285,14 @@ function createBag(opts) {
     const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
     if (!signed || !same) return { ok: false, why: "refused", said: "It couldn't be signed. Your bag is as it was." };
     keep3(signed);
-    known = { who, bag: signed, answered: true, at: now() };
+    known = { who, bag: signed, answered: true, own: at.own, at: now() };
     changed();
-    const sent2 = await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
+    const sent2 = await sendWell(signed, { own: at.own, usual: usual(), publish, query, now }).catch(() => null);
+    markSent(signed, sent2?.took ?? 0);
     if (!sent2 || sent2.took === 0) return { ok: false, why: "not-sent", said: "Signed, but no relay took it. It is kept on this device and will be sent again." };
-    return { ok: true, said: adding ? `${it} is in your bag. Anyone can see what is in it.` : `${it} is out of your bag.` };
+    const done = adding ? `${it} is in your bag. Anyone can see what is in it.` : `${it} is out of your bag.`;
+    if (sent2.took < RELAY_PICK.took) return { ok: true, said: `${done} Only ${sent2.took === 1 ? "1 relay has" : `${sent2.took} relays have`} it so far; it is sent again the next time your bag is looked at.` };
+    return { ok: true, said: done };
   };
   const TINTS_KEY = "nswp:tints";
   const keptTints = () => {
@@ -11303,9 +11314,10 @@ function createBag(opts) {
     const same = signed && verifyEvent8(signed) && signed.pubkey === who && signed.kind === BAG_KIND && JSON.stringify(signed.tags.filter((t) => !SITE_MARKS.includes(t[0] ?? ""))) === JSON.stringify(made.tags);
     if (!signed || !same) return;
     keep3(signed);
-    known = { who, bag: signed, answered: true, at: now() };
+    known = { who, bag: signed, answered: true, own: at?.own ?? [], at: now() };
     changed();
-    await sendWell(signed, { own: await ownRelays(who), usual: usual(), publish, query, now }).catch(() => null);
+    const sent2 = await sendWell(signed, { own: at?.own ?? [], usual: usual(), publish, query, now }).catch(() => null);
+    markSent(signed, sent2?.took ?? 0);
   };
   return {
     tints(itemIn2) {
@@ -11327,7 +11339,7 @@ function createBag(opts) {
       clearTimeout(tintTimers.get(item));
       tintTimers.set(item, setTimeout(() => void writeTints(item).catch(() => null), 2500));
     },
-    items: () => known && known.who === opts.me() ? bagIn(known.bag) : null,
+    items: () => known && known.who === opts.me() ? inBag(known) : null,
     load: load2,
     canChange: () => !!opts.hand,
     add: (item, title = "") => change2(item, true, title),
@@ -12180,7 +12192,7 @@ function worldPersonLines(o) {
 }
 
 // packages/sdk/src/achievements.ts
-import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS12, publishEvent as publishEvent7, queryRelays as queryRelays10, readRelayList as readRelayList7, RELAY_LIST_KIND as RELAY_LIST_KIND7, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate3 } from "@nswp/core";
+import { achievementsIn, cleanAchievementId, DEFAULT_RELAYS as DEFAULT_RELAYS12, publishEvent as publishEvent7, queryRelays as queryRelays10, ACHIEVEMENT_KIND, worldCoordinate as worldCoordinate3 } from "@nswp/core";
 function createAchievements(opts) {
   const world = worldCoordinate3(opts.world);
   const now = opts.now ?? (() => Date.now());
@@ -12229,13 +12241,7 @@ function createAchievements(opts) {
     const all = /* @__PURE__ */ new Set([...of(who).earned, ...who ? of(null).earned : []]);
     return list.filter((a) => all.has(a.id)).map((a) => a.id);
   };
-  let relaysKept = null;
-  const ownRelays = (key) => {
-    if (relaysKept && relaysKept.key === key && now() - relaysKept.at < 6e5) return relaysKept.found;
-    const found = askWell({ kinds: [RELAY_LIST_KIND7], authors: [key], limit: 4 }, { own: [], usual: usual(), query, timeoutMs: 2500, now }).then((got) => readRelayList7(got.events, key)?.write ?? []).catch(() => []);
-    relaysKept = { key, at: now(), found };
-    return found;
-  };
+  const ownRelays = (key) => relaysOf(key, { usual: usual(), mine: true, query, publish, now });
   let events = [];
   let asked = 0;
   let answered = false;

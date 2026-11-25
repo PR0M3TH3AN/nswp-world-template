@@ -9,7 +9,7 @@ export { capturePreview, previewFaces, previewViews } from "./engine-panorama.js
 /** Bumped when what the functions take or give changes, so an engine's side can tell. */
 export declare const VERSION = 19;
 /** The kit this script was built from, as a world's manifest should say it (`"kit": NSWP.KIT`). */
-export declare const KIT = "0.89.0";
+export declare const KIT = "0.90.0";
 /** Where the crossing's room is: "arriving" (doors shut, the world loading), "opening", "none", "leaving", "shut", or "failed". */
 export declare function crossing(): string;
 /**

@@ -53,6 +53,17 @@ export interface RelayNote {
     failed: number;
     /** When it was last tried, in milliseconds. */
     at: number;
+    /**
+     * Where it was found closed, and when (milliseconds): to reading, where it answered a question with CLOSED
+     * "auth-required:" or "restricted:"; to writing, where it answered a note with OK false and one of those, or a
+     * relay monitor found it asks for proof of who someone is or for payment. Kept apart: a paid relay may refuse a
+     * note and still answer a question. Forgotten after `RELAY_PICK.staleMs`, as the rest is. An AUTH challenge on
+     * its own is not closed: some relays send one and then answer to the end.
+     */
+    closed?: {
+        read?: number;
+        write?: number;
+    };
 }
 export type RelayNotes = Record<string, RelayNote>;
 export declare const RELAY_PICK: {
@@ -68,6 +79,33 @@ export declare const RELAY_PICK: {
     readonly staleMs: number;
     /** No more relays than this are remembered. */
     readonly kept: 40;
+    /** How many of a person's listed relays are taken from their list (NIP-65): enough to find a note on any of them. */
+    readonly listed: 24;
+    /**
+     * Where a look for a visitor's own note on their own device found nothing, how many more of their relays are asked
+     * at once, and how long each such wave is waited for. Waves go on until it is found or every listed relay is asked.
+     */
+    readonly wave: 4;
+    readonly waveMs: 3000;
+    /** A relay that ran out of time is asked once more, at the end of the waves, and waited for this long. */
+    readonly lateMs: 6000;
+    /** A note of a person's is sent once this many relays said they took it (OK true). Fewer is said, and sent again. */
+    readonly took: 3;
+    /** At most this many relays have a visitor's own newest note put back on them after a look, each at most once a day. */
+    readonly mend: 6;
+    /**
+     * A person's own note always goes to at least this many of the usual relays too, whether or not enough of their
+     * own took it: a world that hasn't their relay list yet looks only there, and the list itself is found only there.
+     */
+    readonly usual: 1;
+    /** How long a look waits for a person's relay list, at the most, while the usual relays are asked. */
+    readonly listWaitMs: 6000;
+    /**
+     * Once one relay has given what was asked for (a person's relay list, or their note), how long the rest are given
+     * before it is taken: a newer one may be on another. Sooner where every relay asked has answered. So one relay
+     * that never answers holds nothing up once another has answered with it.
+     */
+    readonly graceMs: 1000;
 };
 /** How far a relay can be counted on, 0 to 1, from what is remembered of it. Nothing known is 0.5. */
 export declare function relayScore(note: RelayNote | undefined, now: number): number;
@@ -89,6 +127,8 @@ export declare function pickRelays(o: {
     usual: string[];
     notes: RelayNotes;
     now: number;
+    for?: "read" | "write";
+    usualAtLeast?: number;
 }): {
     relays: string[];
     own: number;

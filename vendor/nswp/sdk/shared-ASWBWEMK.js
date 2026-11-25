@@ -386,7 +386,7 @@ var fullscreenButton = {
 };
 
 // packages/sdk/src/relay-book.ts
-import { DISCOVERY, DISCOVERY_RELAYS, learnRelays, pickDiscovered, pickRelays, publishEvent, queryRelays, RELAY_DISCOVERY_KIND, WRAP_KIND } from "@nswp/core";
+import { cleanRelayUrl, DISCOVERY, DISCOVERY_RELAYS, learnRelays, pickDiscovered, pickRelays, publishEvent, queryRelays, readRelayList, RELAY_DISCOVERY_KIND, RELAY_LIST_KIND, RELAY_PICK, verifyEvent, WRAP_KIND } from "@nswp/core";
 var KEY = "nswp:relays";
 var notes = null;
 var read = () => {
@@ -407,22 +407,33 @@ function learnFrom(results, now = Date.now()) {
   }
 }
 function relaysWell(o, now = Date.now()) {
-  return pickRelays({ ...o, notes: read(), now });
+  return pickRelays({ ...o, notes: withMonitors(read()), now });
 }
+var openOf = (urls, to, at) => {
+  const notes2 = withMonitors(read());
+  return [...new Set(urls.map(cleanRelayUrl).filter(Boolean))].filter((u) => pickRelays({ own: [u], usual: [], notes: notes2, now: at, for: to }).relays.includes(u));
+};
+var withMonitors = (kept) => {
+  if (!found?.closed.length) return kept;
+  const next = { ...kept };
+  for (const url of found.closed) next[url] = { ...next[url] ?? { ok: 0, failed: 0, at: found.at }, closed: { ...next[url]?.closed ?? {}, write: found.at } };
+  return next;
+};
 async function sendWell(event, o) {
   const publish = o.publish ?? publishEvent;
   const now = o.now ?? (() => Date.now());
-  const first = relaysWell(o, now());
+  const wrapped = event.kind === WRAP_KIND;
+  const first = relaysWell({ own: o.own, usual: o.usual, for: "write", ...wrapped ? {} : { usualAtLeast: RELAY_PICK.usual } }, now());
   const sent2 = await publish(first.relays, event).catch(() => ({ relays: Object.fromEntries(first.relays.map((r) => [r, "error: not sent"])) }));
   learnFrom(sent2.relays, now());
   let took = Object.values(sent2.relays).filter((said) => said === "ok").length;
   const tried = [...first.relays];
-  if (took === 0) {
-    const rest = o.usual.filter((r) => !tried.includes(r));
+  if (took < RELAY_PICK.took && !(wrapped && took > 0)) {
+    const rest = openOf(o.usual.filter((r) => !tried.includes(cleanRelayUrl(r))), "write", now());
     if (rest.length) {
       const again = await publish(rest, event).catch(() => ({ relays: Object.fromEntries(rest.map((r) => [r, "error: not sent"])) }));
       learnFrom(again.relays, now());
-      took = Object.values(again.relays).filter((said) => said === "ok").length;
+      took += Object.values(again.relays).filter((said) => said === "ok").length;
       tried.push(...rest);
     }
   }
@@ -443,6 +454,165 @@ async function askWell(filter, o) {
   const now = o.now ?? (() => Date.now());
   const asked = relaysWell(o, now()).relays;
   return queryBacked(asked, filter, o.timeoutMs ?? 4e3, { ...o.query ? { query: o.query } : {}, now });
+}
+var LIST_KEY = "nswp:relays:list";
+var MENDED_KEY = "nswp:relays:mended";
+var MENDED_FOR_MS = 24 * 3600 * 1e3;
+var lists = /* @__PURE__ */ new Map();
+var keptList = (who) => {
+  try {
+    const kept = JSON.parse(globalThis.localStorage?.getItem(LIST_KEY) ?? "null");
+    return verifyEvent(kept) && kept.kind === RELAY_LIST_KIND && kept.pubkey === who ? kept : null;
+  } catch {
+    return null;
+  }
+};
+var keepList = (list) => {
+  try {
+    globalThis.localStorage?.setItem(LIST_KEY, JSON.stringify(list));
+  } catch {
+  }
+};
+var mendedHere = {};
+var mended = () => {
+  try {
+    const kept = JSON.parse(globalThis.localStorage?.getItem(MENDED_KEY) ?? "null");
+    return kept && typeof kept === "object" && !Array.isArray(kept) ? kept : mendedHere;
+  } catch {
+    return mendedHere;
+  }
+};
+var askEach = async (urls, filter, ms, query, now, into, events) => {
+  await Promise.all(
+    urls.map(async (url) => {
+      const got = await query([url], filter, ms).catch(() => ({ events: [], relays: { [url]: "error: not asked" } }));
+      learnFrom(got.relays, now());
+      const ids = /* @__PURE__ */ new Set();
+      for (const e of got.events) {
+        if (!verifyEvent(e)) continue;
+        ids.add(e.id);
+        events.set(e.id, e);
+      }
+      into.set(url, { said: got.relays[url] ?? Object.values(got.relays)[0] ?? "timeout", ids });
+    })
+  );
+};
+var newest = (events) => events.slice().sort((x, y) => y.created_at - x.created_at || (x.id < y.id ? -1 : 1))[0] ?? null;
+var putBack = (note, asked, o) => {
+  if (!o.publish && typeof document === "undefined") return;
+  if (note.kind === WRAP_KIND) return;
+  const done = mended();
+  const at = o.now();
+  const missing = [...asked.entries()].filter(([url, a]) => a.said === "eose" && !a.ids.has(note.id) && !(at - (done[`${url} ${note.id}`] ?? -Infinity) < MENDED_FOR_MS)).map(([url]) => url);
+  const ownFirst = [...missing.filter((u) => o.first?.includes(u)), ...missing.filter((u) => !o.first?.includes(u))];
+  const to = openOf(ownFirst, "write", at).slice(0, RELAY_PICK.mend);
+  if (!to.length) return;
+  const next = Object.fromEntries(Object.entries(done).filter(([, when]) => at - when < MENDED_FOR_MS));
+  for (const url of to) next[`${url} ${note.id}`] = at;
+  mendedHere = next;
+  try {
+    globalThis.localStorage?.setItem(MENDED_KEY, JSON.stringify(next));
+  } catch {
+  }
+  void (o.publish ?? publishEvent)(to, note).then((sent2) => learnFrom(sent2.relays, o.now())).catch(() => null);
+};
+var askFirst = (urls, filter, most, grace, query, now, into, events, pending) => new Promise((done) => {
+  let left = urls.length;
+  let graceTimer = null;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    if (graceTimer) clearTimeout(graceTimer);
+    clearTimeout(cap);
+    done();
+  };
+  const cap = setTimeout(finish, most);
+  if (!left) return finish();
+  for (const url of urls) {
+    const asking = askEach([url], filter, most, query, now, into, events).then(() => {
+      left--;
+      if (events.size && !graceTimer) graceTimer = setTimeout(finish, grace);
+      if (left === 0) finish();
+    });
+    pending?.push(asking);
+  }
+});
+var listOf = async (who, o) => {
+  const asked = /* @__PURE__ */ new Map();
+  const events = /* @__PURE__ */ new Map();
+  const best = relaysWell({ own: [], usual: o.usual, for: "read" }, o.now()).relays;
+  await askFirst(best, { kinds: [RELAY_LIST_KIND], authors: [who], limit: 4 }, RELAY_PICK.listWaitMs, RELAY_PICK.graceMs, o.query, o.now, asked, events);
+  const had = o.mine ? keptList(who) : lists.get(who) ?? null;
+  const list = newest([...events.values(), ...had ? [had] : []].filter((e) => e.kind === RELAY_LIST_KIND && e.pubkey === who));
+  if (!list) return null;
+  if (o.mine) {
+    keepList(list);
+    putBack(list, asked, o);
+  } else lists.set(who, list);
+  return list;
+};
+async function relaysOf(who, o) {
+  const known = o.mine ? keptList(who) : lists.get(who) ?? null;
+  const coming = listOf(who, { usual: o.usual, mine: !!o.mine, query: o.query ?? queryRelays, ...o.publish ? { publish: o.publish } : {}, now: o.now ?? (() => Date.now()) }).catch(() => null);
+  const list = known ?? await coming;
+  return readRelayList(list ? [list] : [], who)?.write ?? [];
+}
+async function askOwn(filter, who, o) {
+  const query = o.query ?? queryRelays;
+  const now = o.now ?? (() => Date.now());
+  const mine = !!o.mine;
+  const first = o.timeoutMs ?? 4e3;
+  const asked = /* @__PURE__ */ new Map();
+  const events = /* @__PURE__ */ new Map();
+  const pending = [];
+  const ask = (urls, ms) => askFirst(urls.filter((u) => !asked.has(u)), filter, ms, RELAY_PICK.graceMs, query, now, asked, events, pending);
+  const known = mine ? keptList(who) : lists.get(who) ?? null;
+  const coming = listOf(who, { usual: o.usual, mine, query, ...o.publish ? { publish: o.publish } : {}, now });
+  const ownOf = (list2) => readRelayList(list2 ? [list2] : [], who)?.write ?? [];
+  const firstPick = relaysWell({ own: ownOf(known), usual: o.usual, for: "read", usualAtLeast: 1 }, now()).relays;
+  const list = await Promise.all([ask(firstPick, first), coming]).then(([, l]) => l ?? known);
+  const own = ownOf(list);
+  await ask(relaysWell({ own, usual: [], for: "read" }, now()).relays, first);
+  if (mine && events.size === 0) {
+    const rest = openOf(own, "read", now()).filter((u) => !asked.has(u));
+    for (let i = 0, wave = 1; i < rest.length && events.size === 0; i += RELAY_PICK.wave, wave++) {
+      o.onWave?.(wave);
+      await ask(rest.slice(i, i + RELAY_PICK.wave), RELAY_PICK.waveMs);
+    }
+    const late = [...asked.entries()].filter(([, a]) => a.said === "timeout").map(([url]) => url);
+    for (let i = 0, wave = 1; i < late.length && events.size === 0; i += RELAY_PICK.wave, wave++) {
+      o.onWave?.(wave);
+      await askFirst(late.slice(i, i + RELAY_PICK.wave), filter, RELAY_PICK.lateMs, RELAY_PICK.graceMs, query, now, asked, events, pending);
+    }
+  }
+  const answered = () => [...asked.values()].filter((a) => a.said === "eose").length;
+  if (answered() === 0 && events.size === 0 && mayAskBackUp([...asked.keys()], o)) {
+    const more = (await foundRelays({ not: [...asked.keys()], ...o.query ? { query: o.query } : {}, now })).open.slice(0, BACKUP_AT_ONCE);
+    if (more.length) await ask(more, first);
+  }
+  const all = [...events.values()];
+  const relays = Object.fromEntries([...asked.entries()].map(([url, a]) => [url, a.said]));
+  let state = "found";
+  if (!all.length) {
+    const n = asked.size;
+    const need = Math.min(n, Math.max(3, Math.ceil(n / 2)));
+    const everyOne = !mine || openOf(own, "read", now()).every((u) => asked.has(u));
+    state = n > 0 && answered() >= need && everyOne ? "none" : "unreached";
+  }
+  const ownDevice = o.mine;
+  const shown = newest(all);
+  void Promise.all(pending).then(() => {
+    const everything = [...events.values()];
+    const latest = newest(everything);
+    if (latest && shown && latest.id !== shown.id && latest.created_at > shown.created_at && o.onNewer)
+      o.onNewer({ events: everything, state: "found", relays: Object.fromEntries([...asked.entries()].map(([url, a]) => [url, a.said])), own });
+    if (ownDevice) {
+      const note = newest([...everything, ...ownDevice.kept ? [ownDevice.kept] : []]);
+      if (note && note.pubkey === who) putBack(note, asked, { ...o.publish ? { publish: o.publish } : {}, now, first: own });
+    }
+  });
+  return { events: all, state, relays, own };
 }
 var FOUND_KEY = "nswp:relays:found";
 var FOUND_FOR_MS = 24 * 3600 * 1e3;
@@ -558,6 +728,8 @@ export {
   relaysWell,
   sendWell,
   askWell,
+  relaysOf,
+  askOwn,
   relayBackup,
   foundRelays,
   queryBacked,
