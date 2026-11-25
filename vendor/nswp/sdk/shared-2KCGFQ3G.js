@@ -576,13 +576,15 @@ async function askOwn(filter, who, o) {
   await ask(relaysWell({ own, usual: [], for: "read" }, now()).relays, first);
   if (mine && events.size === 0) {
     const rest = openOf(own, "read", now()).filter((u) => !asked.has(u));
+    const askedOfOwn = () => own.filter((u) => asked.has(u)).length;
     for (let i = 0, wave = 1; i < rest.length && events.size === 0; i += RELAY_PICK.wave, wave++) {
-      o.onWave?.(wave);
-      await ask(rest.slice(i, i + RELAY_PICK.wave), RELAY_PICK.waveMs);
+      const batch = rest.slice(i, i + RELAY_PICK.wave);
+      o.onWave?.(wave, askedOfOwn() + batch.length, own.length);
+      await ask(batch, RELAY_PICK.waveMs);
     }
     const late = [...asked.entries()].filter(([, a]) => a.said === "timeout").map(([url]) => url);
     for (let i = 0, wave = 1; i < late.length && events.size === 0; i += RELAY_PICK.wave, wave++) {
-      o.onWave?.(wave);
+      o.onWave?.(wave, askedOfOwn(), own.length);
       await askFirst(late.slice(i, i + RELAY_PICK.wave), filter, RELAY_PICK.lateMs, RELAY_PICK.graceMs, query, now, asked, events, pending);
     }
   }
