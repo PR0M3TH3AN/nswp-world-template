@@ -91,7 +91,7 @@ export declare function relaysOf(who: string, o: {
  *   not found is never kept: it is asked for again next time.
  * - `mine`, the visitor's own note on their own device: where nothing was found, the rest of their listed relays
  *   (up to `RELAY_PICK.listed`) are asked in waves of `RELAY_PICK.wave`, each waited for `RELAY_PICK.waveMs`; then
- *   each relay that ran out of time is asked once more, waited for `RELAY_PICK.lateMs`. `onWave` is told as each wave
+ *   each relay that ran out of time is asked once more, waited for `RELAY_PICK.lateMs`. `onWave` is told as each wave begins (its number, and how many of their own relays are asked with it, of how many)
  *   begins. Their newest note, found or `mine.kept` on the device, is put back where it is missing (`RELAY_PICK.mend`).
  *   Anyone else's note gets the first look and no more: no waves, nothing put back.
  * - "none" only once every relay there was to ask was asked, and at least half of those asked answered to the end,
@@ -109,7 +109,7 @@ export declare function askOwn(filter: Filter, who: string, o: {
     publish?: typeof publishEvent;
     timeoutMs?: number;
     now?: () => number;
-    onWave?: (wave: number) => void;
+    onWave?: (wave: number, asked: number, of: number) => void;
     onNewer?: (got: AskedOwn) => void;
 }): Promise<AskedOwn>;
 /** Whether the backup is used, and the way to turn it off or on for this page. On unless turned off. */

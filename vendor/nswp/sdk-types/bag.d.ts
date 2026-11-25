@@ -42,6 +42,14 @@ export interface BagResult {
 export interface Bag {
     /** The items in it, as last found. Null while it hasn't been looked for, or for a guest. */
     items(): string[] | null;
+    /**
+     * While a look goes on past its first answers, in waves through the rest of their relays: how many of their own
+     * relays have been asked, of how many. Null otherwise. For a line that says it is still looking, and how far.
+     */
+    looking(): {
+        asked: number;
+        of: number;
+    } | null;
     load(fresh?: boolean): Promise<string[] | null>;
     /** Whether this place can change it at all. */
     canChange(): boolean;

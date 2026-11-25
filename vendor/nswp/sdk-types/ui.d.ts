@@ -10,6 +10,7 @@ export { addDoorControls, vouchedWords, type DoorControls, type DoorControlsOpti
 export { CHAT_KEY, onChatChange, setShowsChat, showsChat, type ChatLine, type ChatView, type UiChat } from "./ui/chat.js";
 export { ago, FEED_LIMITS, type FeedOptions, type FeedPost, type FeedSource, type FeedView, type UiFeed } from "./ui/feed.js";
 export { DEFAULT_THEME, UI_PRESETS, cleanTheme, resolveTheme, type UiTheme } from "./ui/theme.js";
+export { markSvg } from "./ui/mark.js";
 export { ICONS, type IconName } from "./ui/icons.js";
 export { createHeldButton, createHoldWatch, SUMMON_HOLD, SUMMON_KEY, SUMMON_SLOP } from "./ui/summon.js";
 export { loadPicture, onPicturesChange, PICTURE_LIMITS, PICTURES_KEY, setShowsPictures, showsPictures } from "./picture.js";

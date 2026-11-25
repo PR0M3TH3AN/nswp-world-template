@@ -3,6 +3,7 @@ import {
   DEFAULT_THEME,
   FEED_LIMITS,
   ICONS,
+  MARK,
   PICTURES_KEY,
   PICTURE_LIMITS,
   SUMMON_HOLD,
@@ -16,6 +17,7 @@ import {
   createHeldButton,
   createHoldWatch,
   loadPicture,
+  markSvg,
   onChatChange,
   onPicturesChange,
   resolveTheme,
@@ -26,7 +28,7 @@ import {
   showsChat,
   showsPictures,
   vouchedWords
-} from "./shared-TN7WDBRE.js";
+} from "./shared-LOMPMZFF.js";
 import {
   askWell,
   escapeDoes,
@@ -44,7 +46,7 @@ import {
   sendWell,
   setMenuPlace,
   startingForm
-} from "./shared-ASWBWEMK.js";
+} from "./shared-2KCGFQ3G.js";
 import "./shared-QLSLERQ3.js";
 
 // packages/sdk/src/ui/hud.ts
@@ -86,6 +88,9 @@ function keepSheet(menu, now) {
 }
 
 // packages/sdk/src/ui/hud.ts
+var T = MARK.tile;
+var A = MARK.arch;
+var L = MARK.sill;
 var CSS = `
 :host { position: fixed; inset: 0; z-index: 2147483000; pointer-events: none; display: block;
   --s: 1; --accent: 255, 182, 92; --ink: 238, 245, 251; --glass: 10, 16, 24; --warn: 255, 117, 102;
@@ -111,16 +116,24 @@ svg { width: 1.55em; height: 1.55em; fill: none; stroke: currentColor; stroke-wi
   display: flex; align-items: center; gap: 10px; max-width: min(60vw, 420px); padding: 8px 14px 8px 10px; border-radius: 6px 14px 14px 6px;
   border-left: 2px solid rgb(var(--accent)); }
 /* The mark: a lit doorway. The arch is this kit's one shape, borrowed from the doors it leads to. */
-.mark { width: 18px; height: 24px; border-radius: 9px 9px 2px 2px; flex: none; position: relative;
-  background: linear-gradient(rgba(var(--accent), .95), rgba(var(--accent), .25)); box-shadow: 0 0 14px rgba(var(--accent), .55); }
-.mark::after { content: ""; position: absolute; left: -3px; right: -3px; bottom: -3px; height: 2px; background: rgb(var(--ink)); border-radius: 1px; }
+.mark { width: ${A.w}px; height: ${A.h}px; border-radius: ${A.top}px ${A.top}px ${A.bottom}px ${A.bottom}px; flex: none; position: relative;
+  background: linear-gradient(rgba(var(--accent), ${MARK.fill.top}), rgba(var(--accent), ${MARK.fill.foot})); box-shadow: 0 0 ${MARK.glow}px rgba(var(--accent), ${MARK.glowAlpha}); }
+.mark::after { content: ""; position: absolute; left: -${L.over}px; right: -${L.over}px; bottom: -${L.below}px; height: ${L.h}px; background: rgb(var(--ink)); border-radius: ${L.h / 2}px; }
 .id b { display: block; font-weight: 650; font-size: 1.12em; letter-spacing: .005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .id .mono { display: block; font-size: .86em; color: rgba(var(--ink), .68); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---- the menu button: top right */
 .menu { position: absolute; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right));
-  pointer-events: auto; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px 0 10px; border-radius: 12px; }
-.menu:hover, .menu[aria-expanded="true"] { border-color: rgb(var(--accent)); color: rgb(var(--accent)); }
+  pointer-events: auto; display: grid; place-items: center; width: ${T.w}px; height: ${T.h}px; padding: 0; border-radius: ${T.top}px ${T.top}px ${T.bottom}px ${T.bottom}px; }
+.menu .mark { margin-bottom: ${T.h - A.h - 2 * A.y}px; }
+.menu:hover, .menu[aria-expanded="true"] { border-color: rgb(var(--accent)); }
+/* The hint: on hover with a mouse, and nowhere else. Below the tile, or above it in a bottom corner; its own corner's side. */
+.hint { display: none; position: absolute; top: calc(100% + 6px); right: 0; white-space: nowrap; pointer-events: none;
+  padding: 4px 8px; border-radius: 7px; font-size: .82em; font-weight: 600; letter-spacing: .01em;
+  background: rgba(var(--glass), .94); color: rgb(var(--ink)); border: 1px solid rgba(var(--ink), .14); }
+@media (hover: hover) and (pointer: fine) { :is(.menu, .quiet):hover .hint { display: block; } }
+:host([data-corner^="bottom"]) .quiet .hint { top: auto; bottom: calc(100% + 6px); }
+:host([data-corner$="left"]) .quiet .hint { right: auto; left: 0; }
 /* Fill the screen: small, top centre, on a desk while it isn't filled. */
 .full { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 50%; translate: -50% 0; pointer-events: auto;
   display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px 0 9px; border-radius: 10px; font-size: .9em; }
@@ -421,8 +434,8 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 .close:hover { border-color: rgb(var(--ink)); }
 
 /* ---- quiet: one mark in a corner, and everything else behind it */
-.quiet { position: absolute; pointer-events: auto; display: none; width: 44px; height: 48px; place-items: center; border-radius: 22px 22px 8px 8px; }
-.quiet .mark { margin-bottom: 2px; }
+.quiet { position: absolute; pointer-events: auto; display: none; width: ${T.w}px; height: ${T.h}px; place-items: center; border-radius: ${T.top}px ${T.top}px ${T.bottom}px ${T.bottom}px; }
+.quiet .mark { margin-bottom: ${T.h - A.h - 2 * A.y}px; }
 .quiet:hover, .quiet[aria-expanded="true"] { border-color: rgb(var(--accent)); }
 :host([data-presence="quiet"]) .quiet { display: grid; }
 /* Quiet where the visitor plays by touch keeps the bar: there is no keyboard to keep for play, and nothing else to press for what it carries. */
@@ -437,7 +450,7 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 :host(:not([data-bar])) .sheet { bottom: max(72px, env(safe-area-inset-bottom)); }
 :host(:not([data-bar])) .says { bottom: max(72px, env(safe-area-inset-bottom)); }
 /* Keys the world has switched off aren't advertised. */
-:host(.no-menu-key) .menu kbd, :host(.no-hotbar-keys) :is(.key .num, .row kbd) { display: none; }
+:host(.no-hotbar-keys) :is(.key .num, .row kbd) { display: none; }
 
 /* Who they are signed in as, said once when it becomes so: top centre, in one place, and gone again. It is never
    pressed and never in the way: it can't be clicked, and what is under it can. */
@@ -475,8 +488,7 @@ kbd { font: inherit; font-size: .82em; min-width: 1.6em; padding: 1px 5px; text-
 /* ---- a phone: the same things, closer together */
 @media (max-width: 640px) {
   .id { max-width: calc(100vw - 86px); padding: 6px 10px 6px 8px; }
-  .menu span, .menu kbd, .key .num { display: none; }
-  .menu { padding: 0 10px; }
+  .key .num { display: none; }
   .hotbar { gap: 4px; padding: 10px 8px 6px; }
   .bar .more { width: 26px; }
   .key { width: 54px; }
@@ -528,8 +540,9 @@ function mountMenu(port, opts = {}) {
   const address = el("span", { class: "mono" });
   const id = el("div", { class: "id glass" }, el("span", { class: "mark", "aria-hidden": "true" }), el("div", {}, title, address));
   const barShown = (presence) => presence === "full" || presence === "quiet" && startingForm() === "touch";
-  const menu = el("button", { class: "menu glass", type: "button", "aria-haspopup": "dialog", "aria-expanded": "false" }, icon("menu"), el("span", {}, "Menu"), el("kbd", {}, "M"));
-  const quiet = el("button", { class: "quiet glass", type: "button", "aria-label": "Menu", "aria-haspopup": "dialog", "aria-expanded": "false" }, el("span", { class: "mark", "aria-hidden": "true" }));
+  const hint = () => el("span", { class: "hint", "aria-hidden": "true" }, "Menu, M");
+  const menu = el("button", { class: "menu glass", type: "button", "aria-label": "Menu", "aria-haspopup": "dialog", "aria-expanded": "false" }, el("span", { class: "mark", "aria-hidden": "true" }), hint());
+  const quiet = el("button", { class: "quiet glass", type: "button", "aria-label": "Menu", "aria-haspopup": "dialog", "aria-expanded": "false" }, el("span", { class: "mark", "aria-hidden": "true" }), hint());
   const target = el("div", { class: "target glass", "aria-live": "polite" });
   const loadingWhat = el("span", { class: "what", "aria-live": "polite" });
   const loadingMuch = el("span", { class: "much" });
@@ -1287,8 +1300,11 @@ function mountMenu(port, opts = {}) {
     host.dataset.corner = view.corner;
     host.classList.toggle("no-menu-key", view.keys.menu === null);
     host.classList.toggle("no-hotbar-keys", !view.keys.hotbar);
-    const key = menu.querySelector("kbd");
-    if (key && view.keys.menu) key.textContent = view.keys.menu.toUpperCase();
+    const hintWords = view.keys.menu ? `Menu, ${view.keys.menu.toUpperCase()}` : "Menu";
+    for (const b of [menu, quiet]) {
+      const words = b.querySelector(".hint");
+      if (words && words.textContent !== hintWords) words.textContent = hintWords;
+    }
     title.textContent = view.title;
     address.textContent = view.address;
     sayWho(view.sections.find((section2) => section2.id === "you")?.card ?? null);
@@ -1791,6 +1807,7 @@ export {
   foundRelays,
   learnFrom,
   loadPicture,
+  markSvg,
   mountHud,
   mountMenu,
   onChatChange,

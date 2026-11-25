@@ -7,22 +7,24 @@ import {
   portal,
   room,
   setFilesAnywhere
-} from "./shared-SFAPUCNO.js";
+} from "./shared-2YNEIVGV.js";
 import {
   FEED_LIMITS,
   ICONS,
+  MARK,
   ago,
   createHeldButton,
   loadPicture,
   onChatChange,
   onPicturesChange,
+  paintMark,
   rgb,
   setShowsChat,
   setShowsPictures,
   showsChat,
   showsPictures,
   wrapWords
-} from "./shared-TN7WDBRE.js";
+} from "./shared-LOMPMZFF.js";
 import {
   arrivedSettings,
   askClientForSignIn,
@@ -49,7 +51,7 @@ import {
   sendWell,
   sent,
   startingForm
-} from "./shared-ASWBWEMK.js";
+} from "./shared-2KCGFQ3G.js";
 import {
   LiveKeys,
   TextEntry,
@@ -555,25 +557,8 @@ function createConsole(controls, opts) {
     const w = openerCanvas.width;
     const h = openerCanvas.height;
     c.clearRect(0, 0, w, h);
-    c.beginPath();
-    c.moveTo(28, h - 44);
-    c.lineTo(28, 128);
-    c.arc(w / 2, 128, w / 2 - 28, Math.PI, 0);
-    c.lineTo(w - 28, h - 44);
-    c.closePath();
-    c.fillStyle = hot ? `rgba(${rgb(t.accent)}, 0.34)` : `rgba(${rgb(t.glass)}, 0.82)`;
-    c.fill();
-    c.lineWidth = 6;
-    c.strokeStyle = t.accent;
-    c.stroke();
-    c.fillStyle = hot ? t.accent : t.ink;
-    c.fillRect(14, h - 34, w - 28, 8);
-    c.strokeStyle = hot ? t.accent : t.ink;
-    strokeIcon(c, "menu", w / 2 - 44, 60, 88);
-    c.fillStyle = t.ink;
-    c.font = `600 40px ${SANS}`;
-    c.textAlign = "center";
-    c.fillText("Menu", w / 2, 208);
+    const scale = Math.min((w - 8) / MARK.tile.w, (h - 8) / MARK.tile.h);
+    paintMark(c, { x: (w - MARK.tile.w * scale) / 2, y: (h - MARK.tile.h * scale) / 2, scale, accent: t.accent, ink: t.ink, glass: t.glass, lit: hot, glassAlpha: 0.86 });
     openerTexture.needsUpdate = true;
   };
   const grips = [0, 1].map((i) => {
@@ -11218,6 +11203,7 @@ function createBag(opts) {
   };
   let known = null;
   let looking = null;
+  let progress = null;
   let offered = null;
   const look = async (who) => {
     const kept2 = readKept(who);
@@ -11228,7 +11214,12 @@ function createBag(opts) {
       known = { ...known, bag: newer, answered: true };
       changed();
     };
-    const got = await askOwn({ kinds: [BAG_KIND], authors: [who], limit: 4 }, who, { usual: usual(), mine: { kept: kept2 }, query, publish, timeoutMs: 4e3, now, onNewer }).catch(() => null);
+    const onWave = (_wave, asked, of) => {
+      if (opts.me() !== who) return;
+      progress = { asked, of };
+      changed();
+    };
+    const got = await askOwn({ kinds: [BAG_KIND], authors: [who], limit: 4 }, who, { usual: usual(), mine: { kept: kept2 }, query, publish, timeoutMs: 4e3, now, onNewer, onWave }).catch(() => null).finally(() => progress = null);
     const answered = !!got && got.state !== "unreached";
     const own = got?.own ?? [];
     const found = newestBag((got?.events ?? []).filter((e) => verifyEvent8(e)), who);
@@ -11340,6 +11331,7 @@ function createBag(opts) {
       tintTimers.set(item, setTimeout(() => void writeTints(item).catch(() => null), 2500));
     },
     items: () => known && known.who === opts.me() ? inBag(known) : null,
+    looking: () => progress,
     load: load2,
     canChange: () => !!opts.hand,
     add: (item, title = "") => change2(item, true, title),
@@ -11389,6 +11381,7 @@ function addBagControls(controls, opts) {
   let pages = 1;
   let wasMe = null;
   let looked = false;
+  let lookingNow = false;
   let asking = "";
   let taking = "";
   const say = (text) => controls.say(text);
@@ -11479,7 +11472,12 @@ function addBagControls(controls, opts) {
       note: () => {
         const here = rule === "play" ? "Items are part of play here: what people hold can reach you." : rule === "allowed" ? "Items work here." : "Nothing carried is drawn or works in this place.";
         if (!me) return "Sign in to keep a bag.";
-        if (has === null) return looked ? "Your bag couldn't be looked for just now." : "Looking for your bag.";
+        if (has === null) {
+          if (looked && !lookingNow) return "Your bag couldn't be looked for just now.";
+          const far = bag.looking();
+          if (far) return far.asked < far.of ? `Still looking: ${far.asked} of your ${far.of} relays asked.` : "Still looking: waiting for your slowest relays.";
+          return "Looking for your bag.";
+        }
         if (has.length === 0) return `Your bag is empty. ${bag.canChange() ? offers().length ? "Take one of the things offered here, or put an item in by its address." : "Put an item in by its address: copy it from the place that keeps the item." : "Things are put in it at your home."} ${here}`;
         return `${has.length === 1 ? "1 thing" : `${has.length} things`} in your bag. Anyone can see what is in it. ${here}`;
       },
@@ -11526,7 +11524,11 @@ function addBagControls(controls, opts) {
       housekeeping();
       if (!looked) {
         looked = true;
-        void bag.load().then(refresh);
+        lookingNow = true;
+        void bag.load().finally(() => {
+          lookingNow = false;
+          refresh();
+        });
       } else
         add({
           id: "bag-again",
