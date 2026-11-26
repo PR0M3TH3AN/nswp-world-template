@@ -58,7 +58,27 @@ export interface XrConsole {
     };
     /** Press the thing with these words: a button, a section, "Menu" or "Close". For tests. */
     pressLabelled(label: string): boolean;
+    /**
+     * Whether a ray rests on the menu, so that a stick scrolls it and doesn't also walk or turn the visitor: give it to
+     * the input layer (`createXrInput({ sticksTaken: () => xrConsole.scrolling })`). Only the flat menu's drawing
+     * (`?menu=sheet`) scrolls; today's console never does.
+     */
+    readonly scrolling: boolean;
+    /** For tests, with the flat menu's drawing only: where a thing is in the room (console-sheet.ts, `whereIs`), and its state. */
+    sheet?: {
+        whereIs(label: string): [number, number, number] | null;
+        readonly state: {
+            rowsScroll: number;
+            forward: string;
+            lifted: number;
+        };
+    };
 }
+/**
+ * Whether the headset shows the flat menu's own drawing (console-sheet.ts) in place of today's console: asked for by
+ * the address, `?menu=sheet`, until it is the default (docs/plans/headset-menu.md, step 5).
+ */
+export declare const sheetAsked: () => boolean;
 /**
  * Where the menu a headset shows comes in the order of drawing: over the room, whatever is nearer, and under the
  * visitor's own hands (`HANDS_ORDER`, input.ts), which are drawn after it.
@@ -67,4 +87,5 @@ export declare const MENU_ORDER = 30;
 export declare function createConsole(controls: Controls, opts: {
     renderer: THREE.WebGLRenderer;
     rig: THREE.Object3D;
+    sheet?: boolean;
 }): XrConsole;

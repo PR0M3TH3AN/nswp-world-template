@@ -88,6 +88,11 @@ export interface XrInputOptions {
      * can't be had, the kit's own drawing is kept, as for any other controller.
      */
     handsAt?: string;
+    /**
+     * Whether the sticks are the menu's just now: while a ray rests on the headset's menu, a stick scrolls it and
+     * doesn't also walk or turn the visitor (`XrConsole.scrolling`). Left out, never.
+     */
+    sticksTaken?: () => boolean;
 }
 export interface XrInputInfo {
     comfort: Comfort;
