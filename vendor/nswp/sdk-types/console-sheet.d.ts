@@ -60,15 +60,25 @@ export interface SheetMenu {
      * your bar", or "bar:<words>" for a key on the bar. Null where it isn't shown.
      */
     whereIs(label: string): [number, number, number] | null;
-    /** For tests: how far the list is scrolled, and whether something has come forward, and how far. */
+    /** For tests: how far the list is scrolled, whether something has come forward and how far, and the chat panel's side. */
     readonly state: {
         rowsScroll: number;
         forward: string;
         lifted: number;
+        chat: string;
     };
 }
-export declare function createSheetMenu(controls: Controls, opts: {
+export interface SheetMenuOptions {
     menuOrder?: number;
     motion: () => boolean;
     shown: () => boolean;
-}): SheetMenu;
+    /** Ask for words on the kit's keyboard (keyboard.ts, `ask`), for a typed row and the chat panel. Null: no keyboard. */
+    ask?: (o: {
+        title: string;
+        maxLength?: number;
+        multiline?: boolean;
+    }) => Promise<string | null>;
+    /** Bring the menu up: the chat panel stands beside it, so asking for the panel brings it up too. */
+    open?: () => void;
+}
+export declare function createSheetMenu(controls: Controls, opts: SheetMenuOptions): SheetMenu;

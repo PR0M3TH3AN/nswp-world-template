@@ -156,4 +156,74 @@ export interface MenuDrawing {
  * thing is comes with them (`sheetLayout`, `sheetAt`), for a ray to find. Pressing is the caller's.
  */
 export declare function createMenuDrawing(controls: Controls, opts?: MenuDrawingOptions): MenuDrawing;
+/** Which side of the panel is up: what the room writes, the visitor's own posts, or a private conversation. */
+export type ChatSide = "room" | "feed" | "letters";
+/** The flat menu's panel at the side (ui/hud.ts, `.chat`): its measures, from its styles. */
+export declare const CHAT_LOOK: {
+    readonly width: 340;
+    readonly header: {
+        readonly pad: readonly [9, 8, 8, 14];
+        readonly tab: 30;
+        readonly gap: 8;
+    };
+    readonly list: {
+        readonly pad: readonly [10, 14];
+        readonly gap: 7;
+    };
+    readonly form: {
+        readonly pad: 8;
+        readonly gap: 6;
+        readonly box: number;
+    };
+    readonly corners: readonly [14, 6, 6, 14];
+    readonly edge: 2;
+};
+export interface ChatLayout {
+    width: number;
+    height: number;
+    side: ChatSide;
+    /** The sides there are, as tabs, where more than one is there; else the one side's name. */
+    tabs: MenuBox[];
+    title: string;
+    close: MenuBox;
+    /** The box to write in and its button, pressed together: the kit's keyboard asks for the words. */
+    write: MenuBox;
+    send: MenuBox;
+    /** Words over the list (the feed's and a conversation's own), and what was last said about sending. */
+    lead: string[];
+    said: string[];
+    /** The lines that fit, newest at the foot (the feed's newest at the top, under where to write). */
+    lines: {
+        y: number;
+        who: string;
+        text: string[];
+        small: string;
+        mine: boolean;
+        note: boolean;
+        color: string;
+        faint: boolean;
+    }[];
+    /** Nothing written yet: what it says instead. */
+    empty: string[];
+}
+/** Which sides are there now, in the flat panel's order. */
+export declare function chatSides(view: UiView): ChatSide[];
+/** The panel laid out for one side, `height` tall, as the flat one is at the side of a screen. */
+export declare function layChat(view: UiView, side: ChatSide, o: {
+    measure: Measure;
+    height: number;
+}): ChatLayout;
+/** Paint a laid-out panel onto `g`, at `o.scale`. */
+export declare function drawChat(g: G, view: UiView, L: ChatLayout, o: {
+    scale: number;
+    glass?: number;
+    hot?: string | null;
+}): void;
+/** Where a song's bar runs along its row, in the same pixels: where a press along it lands. */
+export declare function sliderTrack(b: MenuBox, words: string, measure: Measure, scale: number): {
+    left: number;
+    wide: number;
+};
+/** What is at a point of the panel: a tab, the press that puts it away, or where to write. */
+export declare function chatAt(L: ChatLayout, x: number, y: number): string | null;
 export {};

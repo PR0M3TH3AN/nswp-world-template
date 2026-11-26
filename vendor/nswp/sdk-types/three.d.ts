@@ -137,6 +137,7 @@ export { createFps, heldKey, lookAfter, strideOf, LOOK_SPEED, PITCH_LIMIT, SPRIN
 export { addSoundControls, createSounds, CUES, type Cue, type Jukebox, type Song, type SoundLevels, type Sounds, type SoundsOptions, type SoundTheme } from "./sound.js";
 export { browserVoice, computerVoice, createVoice, recordVoice, toPcm16, type Hearing, type Voice, type VoiceSource, type VoiceState } from "./speech.js";
 export { createKeyboard, type AskOptions, type Keyboard, type KeyboardOptions } from "./keyboard.js";
+export { outOfVr, whenWindowGone, type Opened, type VrAsideWhy } from "./ui/vr-aside.js";
 export { createLibrary, type Library, type LibraryOptions } from "./library.js";
 export { CHAMBER_ORDER, createChamber, createCrossing, type ArriveOptions, type Chamber, type Crossing, type CrossingOptions, type CrossingState } from "./chamber.js";
 export { addCameraControls, canRecord, recordClip, saveFile, takePicture, takeSelfie, type Camera, type CameraOptions, type Capture, type Clip } from "./camera.js";

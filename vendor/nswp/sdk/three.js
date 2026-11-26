@@ -105,6 +105,7 @@ import {
   onHereAs,
   onItemsChange,
   ordinal,
+  outOfVr,
   paintHealth,
   panoramaTexture,
   reachOf,
@@ -132,6 +133,7 @@ import {
   visitorFov,
   watchFov,
   watchFresh,
+  whenWindowGone,
   withinBudget,
   worldGate,
   worldPeople,
@@ -139,7 +141,7 @@ import {
   worldSaves,
   worldSigner,
   youCard
-} from "./shared-EZX7GI4F.js";
+} from "./shared-AUX5F4EF.js";
 import "./shared-GSEE2JSC.js";
 import {
   PICTURE_LIMITS,
@@ -319,6 +321,7 @@ export {
   onItemsChange,
   onPicturesChange,
   ordinal,
+  outOfVr,
   paintHealth,
   panoramaTexture,
   prefersFullscreen,
@@ -362,6 +365,7 @@ export {
   wasRefreshed,
   watchFov,
   watchFresh,
+  whenWindowGone,
   withinBudget,
   worldGate,
   worldPeople,

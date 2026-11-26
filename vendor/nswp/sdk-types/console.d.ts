@@ -71,14 +71,11 @@ export interface XrConsole {
             rowsScroll: number;
             forward: string;
             lifted: number;
+            chat: string;
         };
     };
 }
-/**
- * Whether the headset shows the flat menu's own drawing (console-sheet.ts) in place of today's console: asked for by
- * the address, `?menu=sheet`, until it is the default (docs/plans/headset-menu.md, step 5).
- */
-export declare const sheetAsked: () => boolean;
+export { sheetAsked } from "./ui/sheet-asked.js";
 /**
  * Where the menu a headset shows comes in the order of drawing: over the room, whatever is nearer, and under the
  * visitor's own hands (`HANDS_ORDER`, input.ts), which are drawn after it.
@@ -88,4 +85,10 @@ export declare function createConsole(controls: Controls, opts: {
     renderer: THREE.WebGLRenderer;
     rig: THREE.Object3D;
     sheet?: boolean;
+    /** Ask for words on the kit's keyboard in the headset (`panels.keyboard.ask`): for a row to type in, and the chat panel. */
+    ask?: (o: {
+        title: string;
+        maxLength?: number;
+        multiline?: boolean;
+    }) => Promise<string | null>;
 }): XrConsole;
