@@ -281,6 +281,9 @@ function writeStatic({ config, signed, pictures }) {
   // The sounds every world starts with (the kit's), and this world's own beside them.
   const kitSounds = join(root, "vendor", "nswp", "sounds");
   if (existsSync(kitSounds)) cpSync(kitSounds, join(dist, "sounds", "kit"), { recursive: true, filter: (f) => !/\.md$/.test(f) });
+  // The kit's held hands, beside its sounds, with their licence: the models are someone else's work, given under MIT.
+  const kitHands = join(root, "vendor", "nswp", "hands");
+  if (existsSync(kitHands)) cpSync(kitHands, join(dist, "hands", "kit"), { recursive: true });
   const sounds = soundFiles();
   if (sounds.length) {
     mkdirSync(join(dist, "sounds"), { recursive: true });

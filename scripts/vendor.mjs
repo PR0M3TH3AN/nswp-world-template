@@ -74,6 +74,8 @@ run(esbuild, ["packages/cli/src/index.ts", ...common, "--platform=node", `--outf
 for (const name of ["LICENSE", "THIRD-PARTY-NOTICES.md"]) cpSync(join(repo, name), join(out, name));
 // The sounds every world starts with: recorded cues, a room's hum and a piece of music, with a note of where each came from.
 cpSync(join(repo, "packages", "sdk", "sounds"), join(out, "sounds"), { recursive: true });
+// The held hands for a Quest's controllers (the kit's held-hands.ts), with their licence and a note of where they came from.
+cpSync(join(repo, "packages", "sdk", "assets", "hands"), join(out, "hands"), { recursive: true });
 
 const version = JSON.parse(readFileSync(join(repo, "packages/core/package.json"), "utf8")).version;
 const source = { repository: git("remote", "get-url", "origin"), commit: git("rev-parse", "HEAD"), dirty };

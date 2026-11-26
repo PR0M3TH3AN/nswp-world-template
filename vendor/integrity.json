@@ -10,6 +10,12 @@
   "files": {
     "LICENSE": "bc40ab40278d23777e57ea2872fbaf64663e1c7d6faf4f5ca31e8f4686351b15",
     "THIRD-PARTY-NOTICES.md": "b57049889d0e38733d33f6f07558c1c9b8ba8d0548f9cde2fae287c0c2349b40",
+    "hands/LICENSE-webxr-input-profiles.md": "0ef0c87e8ffdd0681f332dc3b39f284dee2166d1f853fabc3853884fe81a6f30",
+    "hands/PROVENANCE.md": "951fc3384c60cc9cc55251008f6d55f0addf42428500e2657848cc8b2bc80e7c",
+    "hands/controller-left.glb": "8db6eb58333463c5c1793cf7e608ca60324d0f7ca3d1cd177ba0ae1921e3c5e1",
+    "hands/controller-right.glb": "54979a84de7d5821973c0a0b87abd74099448fdc7a6978f9f24bae47b46e2d9e",
+    "hands/hand-left.glb": "a24d4c3b85b4e409586bf14d4bd499d80046018b06ccde8859c90553f40d3143",
+    "hands/hand-right.glb": "c9e266ce9d9aacc5a580a5369e798ed07d58ee4e0936601630ab4664ec4151c3",
     "nswp-cli.js": "8c4c4a02a24b1a062fe7a07e884a30208139563d5cfb127d8a93ac0490a4b0c5",
     "nswp-core.js": "f8bae784535860d1643d26b49f64e4972dfd6c49c62ea49347f15fdb05f24b8e",
     "sdk-types/achievements.d.ts": "8bc8881a70f1155f385b064f998fc4eec44a8a4ab9656a1cee4c26349ff2b3e8",
