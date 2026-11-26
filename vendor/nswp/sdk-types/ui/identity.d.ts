@@ -119,6 +119,8 @@ export declare function worldPeople(): People;
 export declare function signerAction(controls: Controls, opts?: {
     presenting?: () => boolean;
 }): UiAction;
+/** What a guest account is told as it is signed in (BitLogin's docs/guest-accounts.md, G8). */
+export declare const GUEST_WORDS = "You're a guest. Every world in BitPortal knows it's the same guest. This account lives in this browser only: secure it, under You, to keep it.";
 /**
  * Their account at the sign-in address, without leaving the world: its own pages (other accounts, the lock, the
  * password, recovery, what it keeps), in the panel the visitor's client draws over the world (client-frame.ts).

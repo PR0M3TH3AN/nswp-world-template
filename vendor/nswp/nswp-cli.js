@@ -2974,7 +2974,7 @@ var SCHEMAS = {
   arrival: "nswp/arrival/0.3"
 };
 var WELL_KNOWN_PATH = "/.well-known/nswp.json";
-var KIT_VERSION = "0.93.0";
+var KIT_VERSION = "0.94.0";
 function parseKitVersion(v) {
   const m = typeof v === "string" ? /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(v) : null;
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -4681,8 +4681,11 @@ var SIGN_LIMITS = {
 
 // packages/core/dist/menu.js
 var MENU_LIMITS = {
-  /** Tabs in one description. */
-  sections: 12,
+  /**
+   * Tabs in one description: 16 (was 12 until 2026-11-25, when BitPortal's room, with a guest's tabs, had 14 and lost
+   * two without a word). Past it, the rest are left out, and said in the console (`readMenuWorld`).
+   */
+  sections: 16,
   /** Rows in one tab. */
   rows: 60,
   /** Rows in all. */

@@ -13,4 +13,7 @@ export interface HeadsetOffer {
  */
 export declare function offerHeadset(title: string, enter: () => void, stay: () => void, opts?: {
     asked?: boolean;
+    back?: boolean;
+    open?: boolean;
+    waiting?: Promise<void>;
 }): HeadsetOffer;

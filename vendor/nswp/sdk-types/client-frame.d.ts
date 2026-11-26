@@ -58,7 +58,7 @@ export declare const framedBy: () => string;
  */
 export declare const screenNotHere: (by?: string) => [string, string];
 /** What a panel can be asked for. */
-export type ClientPanelMode = "ask" | "switch" | "account" | "files" | "wallet" | "library";
+export type ClientPanelMode = "ask" | "switch" | "account" | "files" | "wallet" | "library" | "secure";
 /** Where the world's menu is on the screen, in CSS pixels: its left edge, its width, and how far its foot is from the bottom. */
 export interface MenuPlace {
     left: number;

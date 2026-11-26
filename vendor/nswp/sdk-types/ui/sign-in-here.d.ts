@@ -15,6 +15,13 @@ export interface SignInOffer {
     label(): string;
     /** Start signing in, exactly as You's row does. */
     press(): void;
+    /**
+     * Signed in as a guest account (protocol/10-identity.md, "A guest"): signed in, but what a guest may not do (follow,
+     * write, show, post, buy) asks them to secure it first. The same place decides as `wanted`.
+     */
+    guest(): boolean;
+    /** Open their sign-in address's page on "Secure this account", where the visitor's client can show it. */
+    secure(): void;
 }
 /** Said by You's sign-in row as it is made: how these controls sign in. */
 export declare function offerSignIn(controls: Controls, offer: SignInOffer): void;
@@ -29,3 +36,5 @@ export declare function signInHere(controls: Controls, section: string): UiActio
  * Where nobody can sign in here, it only says why. The kit's own; not part of the package's entries.
  */
 export declare function signInFirst(controls: Controls, line: string): void;
+/** Whether these controls are signed in as a guest account (`SignInOffer.guest`). The kit's own; not in any entry. */
+export declare function guestHere(controls: Controls): boolean;
