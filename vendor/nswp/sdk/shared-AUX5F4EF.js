@@ -491,6 +491,7 @@ function createConsoleDrawing(controls, opts) {
 
 // packages/sdk/src/console-sheet.ts
 import * as THREE2 from "three";
+import { MENU_LIMITS, menuFileKind } from "@nswp/core";
 
 // packages/sdk/src/menu-drawing.ts
 var S = SHEET_LOOK.text.size;
@@ -1424,6 +1425,273 @@ function createMenuDrawing(controls, opts = {}) {
   };
   return d;
 }
+var CHAT_LOOK = { width: 340, header: { pad: [9, 8, 8, 14], tab: 30, gap: 8 }, list: { pad: [10, 14], gap: 7 }, form: { pad: 8, gap: 6, box: 16 * 1.35 + 16 + 2 }, corners: [14, 6, 6, 14], edge: 2 };
+var ago2 = (at) => {
+  const s = Math.max(0, (Date.now() - at) / 1e3);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86400)} d ago`;
+};
+function chatSides(view) {
+  return ["room", "letters", "feed"].filter((s) => s === "room" ? view.chat.ready : s === "feed" ? view.feed.ready : view.letters.ready);
+}
+function layChat(view, side, o) {
+  const scale = view.theme.scale || 1;
+  const m = o.measure;
+  const C = CHAT_LOOK;
+  const width = C.width;
+  const H6 = C.header;
+  const headH = H6.pad[0] + H6.tab + H6.pad[2] + 1;
+  const sides = chatSides(view);
+  const tabs = [];
+  const bold = font(scale, 1, 650);
+  const names = { room: view.chat.unread && side !== "room" ? `Room chat: ${view.chat.unread} new` : "Room chat", letters: view.letters.title, feed: "My public feed" };
+  let tx = 1 + H6.pad[3];
+  if (sides.length > 1) {
+    for (const s of sides) {
+      const w = 20 + m(names[s], bold);
+      tabs.push({ id: `chat-tab:${s}`, kind: "tab", x: tx, y: H6.pad[0], w, h: H6.tab, lines: [names[s]] });
+      tx += w + 4;
+    }
+  }
+  const title = side === "feed" ? view.feed.title : side === "letters" ? view.letters.title : view.chat.title;
+  const close = { id: "chat-close", kind: "close", x: width - 2 - H6.pad[1] - 30, y: H6.pad[0], w: 30, h: 30 };
+  const inner = width - 2 - 2 * C.list.pad[1];
+  const small = font(scale, 0.9);
+  const lead = side !== "room" ? wrapWords2(m, side === "feed" ? view.feed.lead : view.letters.lead, small, width - 2 - 28).filter(Boolean) : [];
+  const saidText = side === "feed" ? view.feed.said : side === "letters" ? view.letters.said : "";
+  const said = saidText ? wrapWords2(m, saidText, small, width - 2 - 24) : [];
+  const leadH = lead.length ? 8 + lead.length * 0.9 * S * scale * LH : 0;
+  const saidH = said.length ? said.length * 0.9 * S * scale * LH + 8 : 0;
+  const formH = 2 * C.form.pad + C.form.box + 1;
+  const feed = side === "feed";
+  const sendWords = feed ? "Send out a post" : "Send";
+  const sendW = 26 + m(sendWords, font(scale, 1, feed ? 650 : 500)) + 2;
+  const formY = feed ? headH + leadH : o.height - 1 - formH;
+  const write = { id: "chat-write", kind: "field", x: 1 + C.form.pad, y: formY + 1 + C.form.pad, w: width - 2 - 2 * C.form.pad - C.form.gap - sendW, h: C.form.box, lines: [feed ? "Write a post" : side === "letters" ? `Write to ${view.letters.with}, privately` : "Write to the room"] };
+  const send = { id: "chat-write", kind: "row", x: write.x + write.w + C.form.gap, y: write.y, w: sendW, h: C.form.box, lines: [sendWords] };
+  const listTop = feed ? formY + formH + saidH : headH + leadH;
+  const listBottom = feed ? o.height - 1 : formY - saidH;
+  const LHpx = S * scale * LH;
+  const raw = side === "room" ? view.chat.lines.map((l) => ({ who: l.note ? "" : l.who, text: l.text, small: "", mine: l.mine, note: l.note, color: l.color, faint: false })) : side === "feed" ? [...view.feed.posts].map((p) => ({ who: "", text: p.text, small: p.state === "sending" ? "Sending\u2026" : p.state === "failed" ? "Not sent" : p.state === "removing" ? "Taking it back\u2026" : ago2(p.at), mine: true, note: false, color: "", faint: p.state !== "out" })) : view.letters.lines.map((l) => ({ who: l.mine ? "" : l.who, text: l.text, small: l.state === "sending" ? "Sending\u2026" : l.state === "failed" ? "Not sent" : ago2(l.at), mine: l.mine, note: false, color: "", faint: l.state === "sending" }));
+  const laid = raw.map((r) => {
+    const f = r.note ? font(scale, 0.93) : font(scale);
+    const nameW = r.who ? m(r.who, bold) + 0.45 * S * scale : 0;
+    const words = wrapWords2(m, `${"\u2007".repeat(0)}${r.text}`, f, inner - nameW);
+    const rest = words.length > 1 ? wrapWords2(m, words.slice(1).join(" "), f, inner) : [];
+    const text = words.length ? [words[0], ...rest] : [""];
+    const h = text.length * (r.note ? 0.93 : 1) * LHpx + (r.small ? 3 + 0.86 * S * scale * LH : 0) + (feed ? 20 : 0);
+    return { ...r, text, h };
+  });
+  const lines = [];
+  const gap = feed ? 0 : C.list.gap;
+  if (feed) {
+    let y = listTop + 1;
+    for (const l of [...laid].reverse()) {
+      if (y + l.h > listBottom) break;
+      lines.push({ ...l, y: y + 10 });
+      y += l.h + gap;
+    }
+  } else {
+    let y = listBottom - C.list.pad[0];
+    for (const l of [...laid].reverse()) {
+      if (y - l.h < listTop + C.list.pad[0]) break;
+      y -= l.h;
+      lines.unshift({ ...l, y });
+      y -= gap;
+    }
+  }
+  const emptyWords = side === "room" ? "Nobody has written anything yet. What is written here goes to the people in this room, and is kept nowhere." : side === "feed" ? view.feed.loading ? "Finding your posts." : "You haven't sent out a post yet." : "Nothing written yet.";
+  const empty = raw.length ? [] : wrapWords2(m, emptyWords, font(scale), width - 2 - 28);
+  return { width, height: o.height, side, tabs, title, close, write, send, lead, said, lines, empty };
+}
+function drawChat(g, view, L, o) {
+  const k = o.scale;
+  const scale = view.theme.scale || 1;
+  const A = rgb(view.theme.accent);
+  const I = rgb(view.theme.ink);
+  const Gl = rgb(view.theme.glass);
+  const acc = (a) => `rgba(${A}, ${a})`;
+  const ink = (a) => `rgba(${I}, ${a})`;
+  const C = CHAT_LOOK;
+  const box = (x, y, w, h, r) => {
+    g.beginPath();
+    g.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, corners(r));
+  };
+  const text = (words, x, y, f, color) => {
+    g.font = f;
+    g.fillStyle = color;
+    g.textBaseline = "top";
+    g.fillText(words, x, y);
+  };
+  const LHpx = S * scale * LH;
+  g.setTransform(k, 0, 0, k, 0, 0);
+  g.clearRect(0, 0, L.width, L.height);
+  box(0, 0, L.width, L.height, C.corners);
+  g.fillStyle = `rgba(${Gl}, ${o.glass ?? 0.95})`;
+  g.fill();
+  g.lineWidth = 1;
+  g.strokeStyle = acc(SHEET_LOOK.glass.edge);
+  g.stroke();
+  g.fillStyle = acc(1);
+  g.fillRect(L.width - C.edge, C.corners[1], C.edge, L.height - C.corners[1] - C.corners[2]);
+  const H6 = C.header;
+  const headH = H6.pad[0] + H6.tab + H6.pad[2];
+  const bold = font(scale, 1, 650);
+  if (L.tabs.length) {
+    for (const t of L.tabs) {
+      const on = t.id === `chat-tab:${L.side}`;
+      if (o.hot === t.id) {
+        box(t.x, t.y, t.w, t.h, [8, 8, 0, 0]);
+        g.fillStyle = ink(0.08);
+        g.fill();
+      }
+      if (on) {
+        g.fillStyle = acc(1);
+        g.fillRect(t.x, t.y + t.h - 2, t.w, 2);
+      }
+      g.textBaseline = "middle";
+      g.font = bold;
+      g.fillStyle = on ? ink(1) : ink(0.75);
+      g.fillText(t.lines?.[0] ?? "", t.x + 10, t.y + t.h / 2);
+    }
+  } else {
+    g.textBaseline = "middle";
+    g.font = bold;
+    g.fillStyle = ink(1);
+    g.fillText(L.title, 1 + H6.pad[3], H6.pad[0] + H6.tab / 2);
+  }
+  if (o.hot === L.close.id) {
+    box(L.close.x, L.close.y, L.close.w, L.close.h, 8);
+    g.fillStyle = ink(0.1);
+    g.fill();
+  }
+  iconAt(g, "close", L.close.x + (30 - 1.2 * S * scale) / 2, L.close.y + (30 - 1.2 * S * scale) / 2, 1.2 * S * scale, o.hot === L.close.id ? ink(1) : ink(0.7));
+  g.fillStyle = acc(SHEET_LOOK.rows.line);
+  g.fillRect(1, headH, L.width - 2, 1);
+  const small = font(scale, 0.9);
+  L.lead.forEach((line, i) => text(line, 1 + 14, headH + 1 + 8 + i * 0.9 * LHpx, small, ink(0.7)));
+  const hot = o.hot === "chat-write";
+  box(L.write.x, L.write.y, L.write.w, L.write.h, 9);
+  g.fillStyle = ink(0.07);
+  g.fill();
+  g.strokeStyle = hot ? acc(1) : ink(0.22);
+  g.stroke();
+  g.textBaseline = "middle";
+  g.font = font(scale, 16 / (S * scale) * scale);
+  g.fillStyle = ink(0.5);
+  g.fillText(L.write.lines?.[0] ?? "", L.write.x + 11, L.write.y + L.write.h / 2);
+  box(L.send.x, L.send.y, L.send.w, L.send.h, 9);
+  g.fillStyle = hot ? acc(1) : acc(0.18);
+  g.fill();
+  g.strokeStyle = acc(0.7);
+  g.stroke();
+  g.font = font(scale, 1, L.side === "feed" ? 650 : 500);
+  g.fillStyle = hot ? `rgba(${Gl}, 1)` : ink(1);
+  g.fillText(L.send.lines?.[0] ?? "", L.send.x + 13, L.send.y + L.send.h / 2);
+  const formTop = L.write.y - 1 - C.form.pad;
+  g.fillStyle = acc(SHEET_LOOK.rows.line);
+  if (L.side === "feed") g.fillRect(1, L.write.y + L.write.h + C.form.pad, L.width - 2, 1);
+  else g.fillRect(1, formTop, L.width - 2, 1);
+  const saidTop = L.side === "feed" ? L.write.y + L.write.h + C.form.pad + 1 : formTop - L.said.length * 0.9 * LHpx - 8;
+  L.said.forEach((line, i) => text(line, 1 + 12, saidTop + i * 0.9 * LHpx, small, ink(0.7)));
+  const x0 = 1 + C.list.pad[1];
+  for (const l of L.lines) {
+    g.globalAlpha = l.faint ? 0.65 : 1;
+    let y = l.y;
+    l.text.forEach((line, i) => {
+      let x = x0;
+      if (i === 0 && l.who) {
+        g.font = bold;
+        g.fillStyle = l.mine ? ink(0.62) : l.color || acc(1);
+        g.textBaseline = "top";
+        g.fillText(l.who, x, y);
+        x += g.measureText(l.who).width + 0.45 * S * scale;
+      }
+      text(line, x, y, l.note ? font(scale, 0.93) : font(scale), l.note ? ink(0.6) : ink(1));
+      y += (l.note ? 0.93 : 1) * LHpx;
+    });
+    if (l.small) text(l.small, x0, y + 3, font(scale, 0.86), ink(0.55));
+    g.globalAlpha = 1;
+    if (L.side === "feed") {
+      g.fillStyle = ink(0.12);
+      g.fillRect(x0, l.y + (l.text.length * LHpx + (l.small ? 3 + 0.86 * LHpx : 0)) + 10, L.width - 2 - 2 * C.list.pad[1], 1);
+    }
+  }
+  if (L.empty.length) {
+    const top = L.side === "feed" ? L.write.y + L.write.h + C.form.pad + 14 : headH + 1 + 14 + L.lead.length * 0.9 * LHpx;
+    L.empty.forEach((line, i) => text(line, 1 + 14, top + i * LHpx, font(scale), ink(0.7)));
+  }
+}
+function sliderTrack(b, words, measure, scale) {
+  const D = SHEET_LOOK.slide;
+  const tw = measure(words, font(scale, D.time, 400, true));
+  return { left: b.x + 1 + D.pad[1], wide: b.w - 2 - 2 * D.pad[1] - tw - D.gap[1] };
+}
+function chatAt(L, x, y) {
+  for (const b of [...L.tabs, L.close, L.write, L.send]) if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) return b.id;
+  return null;
+}
+
+// packages/sdk/src/ui/vr-aside.ts
+var VR_ASIDE = ["sign-in", "secure", "wallet", "files", "buy", "allow", "file"];
+var hosts = /* @__PURE__ */ new WeakMap();
+function hostVrAside(controls, host) {
+  hosts.set(controls, host);
+}
+var VR_ASIDE_WORDS = "This opens BitLogin outside VR for a moment. Press Back into VR when you're done.";
+var TOLD_KEY = "nswp:vr-aside-told";
+var toldBefore = () => {
+  try {
+    if (globalThis.localStorage?.getItem(TOLD_KEY)) return true;
+    globalThis.localStorage?.setItem(TOLD_KEY, "1");
+  } catch {
+  }
+  return false;
+};
+function outOfVr(controls, open, why) {
+  if (!VR_ASIDE.includes(why)) throw new Error(`outOfVr: ${why} is not one of VR_ASIDE`);
+  const host = hosts.get(controls);
+  if (!host || !host.presenting()) return open();
+  if (!toldBefore()) controls.say(VR_ASIDE_WORDS);
+  const opened = open();
+  void host.end().then(() => opened.shown ? host.back(opened.gone) : host.openFromHere(open));
+  return opened;
+}
+function whenWindowGone(win) {
+  if (!win) return Promise.resolve();
+  return new Promise((done) => {
+    const look = setInterval(() => {
+      if (!win.closed) return;
+      clearInterval(look);
+      done();
+    }, 400);
+  });
+}
+function whenScreenGone(panel) {
+  return new Promise((done) => {
+    if (panel) {
+      let seen = false;
+      const finish = () => {
+        stop();
+        clearTimeout(cap);
+        done();
+      };
+      const stop = onClientSignIn((open) => {
+        if (open) seen = true;
+        else if (seen) finish();
+      });
+      const cap = setTimeout(finish, 6e5);
+      return;
+    }
+    const back = () => {
+      removeEventListener("focus", back);
+      done();
+    };
+    setTimeout(() => addEventListener("focus", back), 300);
+  });
+}
 
 // packages/sdk/src/console-sheet.ts
 var SHEET_M = { floating: 1, wrist: 0.36 };
@@ -1434,6 +1702,8 @@ var TOP = 0.3;
 var SCALE = 2;
 var SHEET_MOST = { floating: 520, wrist: SHEET_LOOK.sheet.tall.narrow };
 var MENU_ORDER = 30;
+var CHAT_GAP = 0.03;
+var CHAT_TURN = 20 * Math.PI / 180;
 function createSheetMenu(controls, opts) {
   const order = opts.menuOrder ?? MENU_ORDER;
   const root = new THREE2.Group();
@@ -1452,9 +1722,24 @@ function createSheetMenu(controls, opts) {
   const sheet = plane("sheet", order);
   const bar = plane("bar", order);
   const piece = plane("forward", order + 1);
+  const chat = plane("chat", order);
   bar.rotation.x = -BAR_TILT;
   piece.visible = false;
-  root.add(sheet, bar, piece);
+  chat.visible = false;
+  chat.rotation.y = -CHAT_TURN;
+  root.add(sheet, bar, piece, chat);
+  const chatCanvas = document.createElement("canvas");
+  const chatG = chatCanvas.getContext("2d");
+  const measureG = document.createElement("canvas").getContext("2d");
+  const measure = (text, f) => {
+    measureG.font = f;
+    return measureG.measureText(text).width;
+  };
+  let chatSide = null;
+  let chatLayout = null;
+  let chatDrawn = "";
+  let chatHot = null;
+  let lastPoint = { x: 0, y: 0 };
   const upload = (mesh, canvas) => {
     const material = mesh.material;
     const had = material.map;
@@ -1479,6 +1764,12 @@ function createSheetMenu(controls, opts) {
     const h = L.height * per;
     sheet.scale.set(L.width * per, h, 1);
     sheet.position.set(0, mount === "wrist" ? 0 : TOP - h / 2, 0);
+    if (chatLayout) {
+      const cw = chatLayout.width * per;
+      const ch = chatLayout.height * per;
+      chat.scale.set(cw, ch, 1);
+      chat.position.set(L.width * per / 2 + CHAT_GAP + cw / 2 * Math.cos(CHAT_TURN), TOP - ch / 2, cw / 2 * Math.sin(CHAT_TURN));
+    }
     const B = d.barLayout;
     if (B && mount === "floating") {
       const bh = B.height * per;
@@ -1533,6 +1824,73 @@ function createSheetMenu(controls, opts) {
     piece.userData.base = local2.clone();
     return true;
   };
+  const paintChat = () => {
+    const view = controls.view();
+    const sides = chatSides(view);
+    if (chatSide && !sides.includes(chatSide)) chatSide = sides[0] ?? null;
+    const L = drawing().sheetLayout;
+    const show = !!chatSide && mount === "floating" && !!L;
+    chat.visible = show;
+    if (!show || !chatSide || !L) return;
+    const sig = JSON.stringify([chatSide, view.theme, view.chat.version, view.feed.version, view.letters.version, sides, chatHot, L.height, Math.floor(Date.now() / 6e4)]);
+    if (sig === chatDrawn) return;
+    chatDrawn = sig;
+    chatLayout = layChat(view, chatSide, { measure, height: L.height });
+    chatCanvas.width = Math.round(chatLayout.width * SCALE);
+    chatCanvas.height = Math.round(chatLayout.height * SCALE);
+    drawChat(chatG, view, chatLayout, { scale: SCALE, glass: 0.95, hot: chatHot });
+    upload(chat, chatCanvas);
+    place();
+    if (chatSide === "room") controls.chat.seen();
+    if (chatSide === "letters") controls.letters.seen();
+  };
+  controls.onSignal((name) => {
+    const side = name === "toggle:chat" ? "room" : name === "toggle:feed" ? "feed" : name === "open:letters" ? "letters" : null;
+    if (!side || !opts.shown()) return;
+    chatSide = name === "open:letters" || chatSide !== side ? side : null;
+    if (chatSide === "feed") controls.feed.opened();
+    if (chatSide) opts.open?.();
+    s.paint(mount);
+  });
+  const writeInChat = () => {
+    if (!opts.ask || !chatSide) return;
+    const view = controls.view();
+    const side = chatSide;
+    const ask = side === "feed" ? { title: "Write a post. Done sends it out, for anyone to read.", maxLength: view.feed.limit } : side === "letters" ? { title: `Write to ${view.letters.with}. Only they can read it. Done sends it.`, maxLength: view.letters.limit, multiline: true } : { title: "Write to the room. Done sends it.", maxLength: view.chat.limit };
+    void opts.ask(ask).then((text) => {
+      if (!text?.trim()) return;
+      const trouble = side === "feed" ? controls.feed.send(text) : side === "letters" ? controls.letters.send(text) : controls.chat.send(text);
+      if (trouble) controls.say(trouble);
+    });
+  };
+  const pickFile = (item) => {
+    const accept = item.accept ?? [];
+    outOfVr(
+      controls,
+      () => {
+        const picker = document.createElement("input");
+        picker.type = "file";
+        picker.accept = accept.map((k) => `${k}/*`).join(",");
+        picker.hidden = true;
+        const done = () => picker.remove();
+        picker.addEventListener("cancel", done);
+        picker.addEventListener("change", () => {
+          const file = picker.files?.[0];
+          done();
+          if (!file) return;
+          const kind = menuFileKind(file.type);
+          if (!kind || !accept.includes(kind)) return controls.say("That kind of file can't go here.");
+          if (file.size > MENU_LIMITS.file) return controls.say("That file is too large to hand over: 64 MB at most.");
+          if (file.size < 1) return controls.say("That file is empty.");
+          controls.run(item.id, void 0, file);
+        });
+        document.body.append(picker);
+        picker.click();
+        return { shown: true, gone: whenScreenGone(false) };
+      },
+      "file"
+    );
+  };
   const s = {
     root,
     get section() {
@@ -1560,7 +1918,8 @@ function createSheetMenu(controls, opts) {
         void before;
         place();
       }
-      const wantPiece = forward && hit && hit !== "pane" ? hit : "";
+      paintChat();
+      const wantPiece = forward && hit && hit !== "pane" && !hit.startsWith("chat:") ? hit : "";
       if (wantPiece !== pieceFor) {
         pieceFor = wantPiece;
         lift = 0;
@@ -1571,10 +1930,18 @@ function createSheetMenu(controls, opts) {
       const d = drawing();
       const L = d.sheetLayout;
       if (!L) return null;
+      if (chat.visible && chatLayout) {
+        const onChat = raycaster.intersectObject(chat, false)[0];
+        if (onChat?.uv) {
+          const id = chatAt(chatLayout, onChat.uv.x * chatLayout.width, (1 - onChat.uv.y) * chatLayout.height);
+          return id ? `chat:${id}` : "pane";
+        }
+      }
       const onSheet = raycaster.intersectObject(sheet, false)[0];
       if (onSheet?.uv) {
         const x = onSheet.uv.x * L.width;
         const y = (1 - onSheet.uv.y) * L.height;
+        lastPoint = { x, y };
         if (aimed?.startsWith("sheet:")) {
           const keep3 = boxAt(L, aimed.slice(6), d.rowsScroll);
           const clear = FORWARD.clear / perPx();
@@ -1596,6 +1963,7 @@ function createSheetMenu(controls, opts) {
     aim(hit) {
       if (hit === aimed) return;
       aimed = hit;
+      chatHot = hit?.startsWith("chat:") ? hit.slice(5) : null;
       s.paint(mount);
     },
     press(hit) {
@@ -1607,6 +1975,15 @@ function createSheetMenu(controls, opts) {
           if (s.section === id2.slice(4)) return "close";
           s.section = id2.slice(4);
         } else if (id2.startsWith("act:")) controls.run(id2.slice(4));
+        s.paint(mount);
+        return;
+      }
+      if (hit.startsWith("chat:")) {
+        const id2 = hit.slice(5);
+        if (id2.startsWith("chat-tab:")) chatSide = id2.slice(9);
+        else if (id2 === "chat-close") chatSide = null;
+        else if (id2 === "chat-write") writeInChat();
+        if (chatSide === "feed") controls.feed.opened();
         s.paint(mount);
         return;
       }
@@ -1625,7 +2002,20 @@ function createSheetMenu(controls, opts) {
             () => controls.say("Copied."),
             () => controls.say(words)
           );
-        } else controls.run(id.slice(4));
+        } else if (item?.kind === "field" && opts.ask) {
+          void opts.ask({ title: `${item.label}: what you type goes to ${view.title}.`, maxLength: MENU_LIMITS.field }).then((text) => {
+            if (text?.trim()) controls.run(item.id, text);
+          });
+        } else if (item?.kind === "slider" && item.slider) {
+          const L = d.sheetLayout;
+          const b = L ? boxAt(L, id, d.rowsScroll) : null;
+          if (b) {
+            const track = sliderTrack(b, item.slider.text?.() ?? "", measure, view.theme.scale || 1);
+            const at = Math.max(0, Math.min(1, (lastPoint.x - track.left) / Math.max(1, track.wide)));
+            controls.run(item.id, String(Math.round(at * item.slider.max())));
+          }
+        } else if (item?.kind === "file") pickFile(item);
+        else controls.run(id.slice(4));
       }
       s.paint(mount);
     },
@@ -1662,7 +2052,7 @@ function createSheetMenu(controls, opts) {
       }
     },
     get holding() {
-      return aimed !== null;
+      return aimed !== null && !aimed.startsWith("chat:");
     },
     describe() {
       const view = controls.view();
@@ -1685,6 +2075,24 @@ function createSheetMenu(controls, opts) {
       let box = null;
       let on = sheet;
       let size = { w: L.width, h: L.height };
+      if (label.startsWith("chat:")) {
+        if (!chat.visible || !chatLayout) return null;
+        const id = `chat-${label.slice(5)}`;
+        const b = [...chatLayout.tabs, chatLayout.close, chatLayout.write].find((x) => x.id === id) ?? null;
+        if (!b) return null;
+        root.updateMatrixWorld(true);
+        return chat.localToWorld(new THREE2.Vector3((b.x + b.w / 2) / chatLayout.width - 0.5, 0.5 - (b.y + b.h / 2) / chatLayout.height, 0)).toArray();
+      }
+      const along = /^(.*)@([\d.]+)$/.exec(label);
+      if (along) {
+        const item = view.sections.find((x2) => x2.id === s.section)?.items.find((i) => i.label === along[1] && i.kind === "slider");
+        const b = item ? boxAt(L, `act:${item.id}`, d.rowsScroll) : null;
+        if (!item || !b) return null;
+        const track = sliderTrack(b, item.slider?.text?.() ?? "", measure, view.theme.scale || 1);
+        const x = track.left + Number(along[2]) * track.wide;
+        root.updateMatrixWorld(true);
+        return sheet.localToWorld(new THREE2.Vector3(x / L.width - 0.5, 0.5 - (b.y + b.h - 18) / L.height, 0)).toArray();
+      }
       if (label.startsWith("bar:")) {
         const words = label.slice(4);
         box = B?.keys.find((k) => (k.lines ?? []).join(" ") === words) ?? null;
@@ -1706,7 +2114,7 @@ function createSheetMenu(controls, opts) {
       return on.localToWorld(local2).toArray();
     },
     get state() {
-      return { rowsScroll: drawing().rowsScroll, forward: piece.visible ? pieceFor : "", lifted: piece.visible ? Math.round((piece.userData.base?.distanceTo(piece.position) ?? 0) * 1e3) / 1e3 : 0 };
+      return { chat: chat.visible ? chatSide ?? "" : "", rowsScroll: drawing().rowsScroll, forward: piece.visible ? pieceFor : "", lifted: piece.visible ? Math.round((piece.userData.base?.distanceTo(piece.position) ?? 0) * 1e3) / 1e3 : 0 };
     },
     pressLabelled(label) {
       const view = controls.view();
@@ -1726,7 +2134,7 @@ function createSheetMenu(controls, opts) {
   return s;
 }
 
-// packages/sdk/src/console.ts
+// packages/sdk/src/ui/sheet-asked.ts
 var sheetAsked = () => {
   try {
     return new URLSearchParams(globalThis.location?.search ?? "").get("menu") === "sheet";
@@ -1734,6 +2142,8 @@ var sheetAsked = () => {
     return false;
   }
 };
+
+// packages/sdk/src/console.ts
 var W2 = CONSOLE_W;
 var H2 = CONSOLE_H;
 var MENU_ORDER2 = 30;
@@ -1762,7 +2172,7 @@ function createConsole(controls, opts) {
   const group = new THREE3.Group();
   group.name = "nswp-console";
   group.visible = false;
-  const sm = opts.sheet ?? sheetAsked() ? createSheetMenu(controls, { menuOrder: MENU_ORDER2, motion: () => controls.theme.motion, shown: () => group.visible }) : null;
+  const sm = opts.sheet ?? sheetAsked() ? createSheetMenu(controls, { menuOrder: MENU_ORDER2, motion: () => controls.theme.motion, shown: () => group.visible, ...opts.ask ? { ask: opts.ask } : {}, open: () => setOpen(true, "floating") }) : null;
   if (sm) {
     sm.root.visible = false;
     group.add(sm.root);
@@ -2221,55 +2631,6 @@ function offerHeadset(title, enter, stay, opts = {}) {
     },
     failed
   };
-}
-
-// packages/sdk/src/ui/vr-aside.ts
-var VR_ASIDE = ["sign-in", "secure", "wallet", "files", "buy", "allow"];
-var hosts = /* @__PURE__ */ new WeakMap();
-function hostVrAside(controls, host) {
-  hosts.set(controls, host);
-}
-var VR_ASIDE_WORDS = "This opens BitLogin outside VR for a moment. Press Back into VR when you're done.";
-var TOLD_KEY = "nswp:vr-aside-told";
-var toldBefore = () => {
-  try {
-    if (globalThis.localStorage?.getItem(TOLD_KEY)) return true;
-    globalThis.localStorage?.setItem(TOLD_KEY, "1");
-  } catch {
-  }
-  return false;
-};
-function outOfVr(controls, open, why) {
-  if (!VR_ASIDE.includes(why)) throw new Error(`outOfVr: ${why} is not one of VR_ASIDE`);
-  const host = hosts.get(controls);
-  if (!host || !host.presenting()) return open();
-  if (!toldBefore()) controls.say(VR_ASIDE_WORDS);
-  const opened = open();
-  void host.end().then(() => opened.shown ? host.back(opened.gone) : host.openFromHere(open));
-  return opened;
-}
-function whenScreenGone(panel) {
-  return new Promise((done) => {
-    if (panel) {
-      let seen = false;
-      const finish = () => {
-        stop();
-        clearTimeout(cap);
-        done();
-      };
-      const stop = onClientSignIn((open) => {
-        if (open) seen = true;
-        else if (seen) finish();
-      });
-      const cap = setTimeout(finish, 6e5);
-      return;
-    }
-    const back = () => {
-      removeEventListener("focus", back);
-      done();
-    };
-    setTimeout(() => addEventListener("focus", back), 300);
-  });
 }
 
 // packages/sdk/src/desk.ts
@@ -8835,7 +9196,7 @@ function addMessagingControls(controls, opts) {
   let fetching = false;
   const nameOf = (pubkey) => profiles.get(pubkey)?.name || shortNpub5(pubkey);
   const say = (text) => controls.say(text);
-  const inHeadset = () => !!opts.presenting?.() && !!opts.panels;
+  const inHeadset = () => !!opts.presenting?.() && !!opts.panels && !sheetAsked();
   let panel = null;
   const closePanel = () => {
     const was = panel;
@@ -9922,7 +10283,7 @@ function addRoomControls(controls, presence, opts = {}) {
   };
   controls.subscribe(drawFeedPanel);
   const openFeed = () => {
-    if (presence.presenting && opts.panels) return feedPanel ? closeFeedPanel() : openFeedPanel();
+    if (presence.presenting && opts.panels && !sheetAsked()) return feedPanel ? closeFeedPanel() : openFeedPanel();
     controls.signal("toggle:feed");
   };
   notes.onChange?.(() => {
@@ -9979,7 +10340,7 @@ function addRoomControls(controls, presence, opts = {}) {
       on: () => controls.chat.view().unread > 0,
       hidden: () => !presence.session || !showsChat(),
       act: () => {
-        if (presence.presenting && opts.panels) return chatPanel ? closeChatPanel() : openChatPanel();
+        if (presence.presenting && opts.panels && !sheetAsked()) return chatPanel ? closeChatPanel() : openChatPanel();
         controls.signal("toggle:chat");
       }
     },
@@ -15700,6 +16061,8 @@ async function addViewControls(controls, d) {
 
 export {
   turnVisitor,
+  outOfVr,
+  whenWindowGone,
   createConsole,
   LOOK_STEPS,
   FOV_STEPS,

@@ -10,11 +10,17 @@
  *
  * Kept small and replaceable: only the few reasons in `VR_ASIDE` come here, and a test of the kit's own source holds
  * it to them (packages/sdk/test/vr-aside.test.ts). Once BitLogin's screens are drawn in VR for a visitor who chose
- * that, the wallet's, Files', buying's and an Allow's go away from here. The kit's own; not in any entry.
+ * that, the wallet's, Files', buying's and an Allow's go away from here. Handed on from `nswp-sdk/three` (`outOfVr`,
+ * `whenWindowGone`, `Opened`, `VrAsideWhy`), for a world's own presses that need BitLogin's screens.
  */
 import type { Controls } from "./model.js";
 /** Why a press goes out of VR: the few things only BitLogin's own screens can do. */
-export declare const VR_ASIDE: readonly ["sign-in", "secure", "wallet", "files", "buy", "allow"];
+/**
+ * `file`: a file from the headset's own storage, for a row that takes one. No browser lets a page pick one inside
+ * immersive VR, the same kind of limit as going from site to site (given 2026-11-25). For a visitor who chose BitLogin's
+ * VR way, their BitLogin Files will be offered in VR instead, once BitLogin's half is released.
+ */
+export declare const VR_ASIDE: readonly ["sign-in", "secure", "wallet", "files", "buy", "allow", "file"];
 export type VrAsideWhy = (typeof VR_ASIDE)[number];
 /**
  * What the press opened. `shown`: whether BitLogin's screen is up (false: the browser refused a window). `gone`: when
