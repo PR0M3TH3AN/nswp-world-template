@@ -12,6 +12,7 @@ import {
   FEED_LIMITS,
   ICONS,
   MARK,
+  SHEET_LOOK,
   ago,
   createHeldButton,
   guestHere,
@@ -28,7 +29,7 @@ import {
   signInFirst,
   signInHere,
   wrapWords
-} from "./shared-KQGT7QY5.js";
+} from "./shared-WEZB65UG.js";
 import {
   arrivedSettings,
   askClientForSignIn,
@@ -67,7 +68,7 @@ import {
 } from "./shared-UBZ34GUM.js";
 
 // packages/sdk/src/three.ts
-import * as THREE22 from "three";
+import * as THREE23 from "three";
 
 // packages/sdk/src/turn.ts
 import * as THREE from "three";
@@ -82,7 +83,7 @@ function turnVisitor(rig, camera, degrees) {
 }
 
 // packages/sdk/src/console.ts
-import * as THREE2 from "three";
+import * as THREE3 from "three";
 
 // packages/sdk/src/console-drawing.ts
 var CONSOLE_W = 1024;
@@ -488,19 +489,1263 @@ function createConsoleDrawing(controls, opts) {
   };
 }
 
+// packages/sdk/src/console-sheet.ts
+import * as THREE2 from "three";
+
+// packages/sdk/src/menu-drawing.ts
+var S = SHEET_LOOK.text.size;
+var LH = SHEET_LOOK.text.line;
+var font = (scale, size = 1, weight = 500, mono = false) => `${weight} ${size * S * scale}px ${mono ? SHEET_LOOK.text.mono : SHEET_LOOK.text.family}`;
+function wrapWords2(measure, text, f, width) {
+  const out = [];
+  for (const para of String(text).split("\n")) {
+    let line = "";
+    for (const word of para.split(/ +/)) {
+      const next = line ? `${line} ${word}` : word;
+      if (!line || measure(next, f) <= width + 0.01) line = next;
+      else {
+        out.push(line);
+        line = word;
+      }
+    }
+    out.push(line);
+  }
+  return out;
+}
+var unreachable = (kind) => {
+  throw new Error(`the headset's menu doesn't draw a row of kind ${String(kind)}`);
+};
+function kindLaid(item) {
+  switch (item.kind) {
+    case "button":
+    case "copy":
+    case "save":
+      return item.tone === "primary" ? "full" : "half";
+    case "swatch":
+    case "tile":
+      return "run";
+    case "line":
+    case "field":
+    case "file":
+    case "slider":
+      return "full";
+    default:
+      return unreachable(item.kind);
+  }
+}
+function rowParts(measure, scale, item, w) {
+  const P = SHEET_LOOK.row;
+  const icon = item.icon ? SHEET_LOOK.text.icon * S * scale : 0;
+  const state = item.on === null ? 0 : measure(item.on ? "On" : "Off", font(scale, P.state));
+  const key = item.key ? Math.max(1.6 * 0.82 * S * scale, measure(item.key, font(scale, 0.82, 400, true)) + 10) : 0;
+  const room2 = w - 2 - 2 * P.pad[1] - (icon ? icon + P.gap : 0) - (state ? state + P.gap : 0) - (key ? key + P.gap : 0);
+  const lines = wrapWords2(measure, item.label, font(scale), room2);
+  const h = Math.max(P.height, 2 + 2 * P.pad[0] + Math.max(icon, lines.length * S * scale * LH));
+  return { lines, h, icon, state, key };
+}
+function layRows(o, s, scale, inner) {
+  const m = o.measure;
+  const two = (o.width ?? SHEET_LOOK.sheet.wide) >= SHEET_LOOK.sheet.wide;
+  const gap = SHEET_LOOK.rows.gap;
+  const colW = two ? (inner - gap) / 2 : inner;
+  const boxes = [];
+  let y = 0;
+  let open = [];
+  const close = () => {
+    if (!open.length) return;
+    const h = Math.max(...open.map((b) => b.h));
+    for (const b of open) b.h = h;
+    y += h + gap;
+    open = [];
+  };
+  const full = (b) => {
+    close();
+    const box = { ...b, x: 0, y, w: inner };
+    boxes.push(box);
+    open = [box];
+    close();
+    return box;
+  };
+  const half = (b) => {
+    if (!two) return full(b);
+    const box = { ...b, x: open.length ? colW + gap : 0, y, w: colW };
+    boxes.push(box);
+    open.push(box);
+    if (open.length === 2) close();
+    return box;
+  };
+  if (s.card) full(layCard(m, scale, s.card, inner, two));
+  let whose = "";
+  let run = null;
+  const flushRun = () => {
+    if (!run) return;
+    const r = run;
+    run = null;
+    if (r.kind === "swatch") {
+      const W6 = SHEET_LOOK.swatch;
+      const pad = SHEET_LOOK.swatches.pad;
+      const per = Math.max(1, Math.floor((inner - pad[1] * 2 + SHEET_LOOK.swatches.gap[1]) / (W6.width + SHEET_LOOK.swatches.gap[1])));
+      const each = W6.arch[1] + W6.gap + Math.max(0, W6.sill[1] + W6.sillAt) + W6.gap + W6.text * S * scale * LH;
+      const rows = Math.ceil(r.items.length / per);
+      const box = full({ id: `swatches:${r.items[0].id}`, kind: "swatches", h: pad[0] + rows * each + (rows - 1) * SHEET_LOOK.swatches.gap[0] + pad[2] });
+      r.items.forEach((item, i) => boxes.push({ id: `act:${item.id}`, kind: "swatch", item, x: box.x + pad[1] + i % per * (W6.width + SHEET_LOOK.swatches.gap[1]), y: box.y + pad[0] + Math.floor(i / per) * (each + SHEET_LOOK.swatches.gap[0]), w: W6.width, h: each, lines: [item.label] }));
+    } else {
+      const T = SHEET_LOOK.tile;
+      const min = two ? SHEET_LOOK.tiles.min : SHEET_LOOK.tiles.narrowMin;
+      const per = Math.max(1, Math.floor((inner + SHEET_LOOK.tiles.gap) / (min + SHEET_LOOK.tiles.gap)));
+      const tw = (inner - (per - 1) * SHEET_LOOK.tiles.gap) / per;
+      const words = (item) => wrapWords2(m, item.label, font(scale, T.text), tw - 2 - 2 * T.pad[1]);
+      const pic = tw - 2 - 2 * T.pad[1];
+      const heights = r.items.map((item) => 2 + T.pad[0] + T.pad[2] + pic + T.gap + words(item).length * T.text * S * scale * T.line);
+      const rows = Math.ceil(r.items.length / per);
+      const rowH = Array.from({ length: rows }, (_, k) => Math.max(...heights.slice(k * per, k * per + per)));
+      const box = full({ id: `tiles:${r.items[0].id}`, kind: "tiles", h: SHEET_LOOK.tiles.pad[0] + rowH.reduce((a, b) => a + b, 0) + (rows - 1) * SHEET_LOOK.tiles.gap + SHEET_LOOK.tiles.pad[2] });
+      let ty = box.y + SHEET_LOOK.tiles.pad[0];
+      for (let k = 0; k < rows; k++) {
+        r.items.slice(k * per, k * per + per).forEach((item, i) => boxes.push({ id: `act:${item.id}`, kind: "tile", item, x: i * (tw + SHEET_LOOK.tiles.gap), y: ty, w: tw, h: rowH[k], lines: words(item) }));
+        ty += rowH[k] + SHEET_LOOK.tiles.gap;
+      }
+    }
+  };
+  for (const item of s.items) {
+    if ((item.from ?? "") !== whose) {
+      flushRun();
+      whose = item.from ?? "";
+      if (whose) full({ id: `from:${whose}`, kind: "from", h: SHEET_LOOK.from.top + SHEET_LOOK.from.text * S * scale * LH, lines: [whose.toUpperCase()] });
+    }
+    const laid = kindLaid(item);
+    if (laid === "run") {
+      if (run && run.kind !== item.kind) flushRun();
+      run ??= { kind: item.kind, items: [] };
+      run.items.push(item);
+      continue;
+    }
+    flushRun();
+    if (item.kind === "line") {
+      const lines = wrapWords2(m, item.label, font(scale), inner - 2 * SHEET_LOOK.line.pad[1] - SHEET_LOOK.text.icon * S * scale - SHEET_LOOK.line.gap);
+      full({ id: `line:${item.id}`, kind: "line", item, lines, h: 2 * SHEET_LOOK.line.pad[0] + Math.max(lines.length * S * scale * LH, SHEET_LOOK.line.iconAt + SHEET_LOOK.text.icon * S * scale) });
+    } else if (item.kind === "field") {
+      const F = SHEET_LOOK.field;
+      const to = o.title ? [`What you type here goes to ${o.title}.`] : [];
+      full({ id: `act:${item.id}`, kind: "field", item, lines: to, h: 2 + 2 * F.pad[0] + F.box + (to.length ? F.gap[0] + F.to * S * scale * LH : 0) });
+    } else if (item.kind === "slider") {
+      const D = SHEET_LOOK.slide;
+      full({ id: `act:${item.id}`, kind: "slider", item, h: 2 + 2 * D.pad[0] + Math.max(SHEET_LOOK.text.icon * S * scale, S * scale * LH) + D.gap[0] + D.bar });
+    } else if (item.kind === "file") {
+      const parts = rowParts(m, scale, item, inner);
+      const to = o.title ? [`The file you choose goes to ${o.title}.`] : [];
+      full({ id: `act:${item.id}`, kind: "file", item, lines: parts.lines, h: parts.h + (to.length ? SHEET_LOOK.takes.gap + SHEET_LOOK.takes.to * S * scale * LH : 0) });
+    } else {
+      const parts = rowParts(m, scale, item, laid === "full" ? inner : colW);
+      (laid === "full" ? full : half)({ id: `act:${item.id}`, kind: "row", item, lines: parts.lines, h: parts.h });
+    }
+  }
+  flushRun();
+  close();
+  return { boxes, height: Math.max(0, y - gap) };
+}
+function layCard(m, scale, card, inner, two) {
+  const C = SHEET_LOOK.card;
+  const line = S * scale * LH;
+  const head = C.title * S * scale * LH;
+  const keyline = Math.max(C.keyline * S * scale * LH, card.copy ? 2 + 4 + C.keyline * S * scale * LH : 0);
+  const content = inner - 2 - 2 * C.pad;
+  if (card.draw) {
+    const face = two ? C.thing : Math.max(112, content * 0.3);
+    const words = content - face - 14;
+    const text2 = card.text ? wrapWords2(m, card.text, font(scale), words - 12) : [];
+    const about = head + 5 + keyline + (text2.length ? 5 + 3 + 2 + text2.length * line : 0) + (card.now.length ? 5 + 5 + 0.9 * S * scale * LH : 0);
+    const h = two ? Math.max(face, about + 10) : Math.max(face, about) + 10;
+    return { id: "card", kind: "card", card, h: 2 + 2 * C.pad + h, lines: text2 };
+  }
+  const text = card.text ? wrapWords2(m, card.text, font(scale), content - 12) : [];
+  const top = Math.max(C.face, head + C.gap[0] + keyline);
+  const quote = text.length ? C.gap[0] + C.quote + 2 + text.length * line : 0;
+  const now = card.now.length ? C.gap[0] + 5 + 0.9 * S * scale * LH : 0;
+  return { id: "card", kind: "card", card, h: 2 + 2 * C.pad + top + quote + now, lines: text };
+}
+function laySheet(view, sectionId, o) {
+  const scale = view.theme.scale || 1;
+  const m = o.measure;
+  const width = o.width ?? SHEET_LOOK.sheet.wide;
+  const section = view.sections.find((x) => x.id === sectionId) ?? view.sections[0] ?? null;
+  const inner = width - 2 - 2 * SHEET_LOOK.rows.pad;
+  const T = SHEET_LOOK.tabs.tab;
+  const icon = SHEET_LOOK.text.icon * S * scale;
+  const tabH = T.pad[0] + Math.max(icon, S * scale * LH) + T.pad[2] + T.under;
+  const tabs = [];
+  let tx = 1 + SHEET_LOOK.tabs.pad[1];
+  for (const t of view.sections) {
+    const w = T.pad[1] + (t.icon ? icon + T.gap : 0) + m(t.label, font(scale)) + T.pad[1];
+    tabs.push({ id: `tab:${t.id}`, kind: "tab", x: tx, y: 1 + SHEET_LOOK.tabs.pad[0], w, h: tabH, lines: [t.label] });
+    tx += w + SHEET_LOOK.tabs.gap;
+  }
+  const stripEnd = tx - SHEET_LOOK.tabs.gap + SHEET_LOOK.tabs.pad[1];
+  const over = stripEnd > width - 2;
+  const chosen = tabs.find((t) => t.id === `tab:${section?.id}`);
+  let tabsScroll = 0;
+  if (over) {
+    const most = stripEnd - (width - 2);
+    tabsScroll = o.tabsScroll ?? 0;
+    if ((o.bring ?? true) && chosen) {
+      const clear = SHEET_LOOK.tabs.clear;
+      const left = chosen.x - 1 - clear;
+      const right = chosen.x - 1 + chosen.w + clear - (width - 2);
+      if (tabsScroll > left) tabsScroll = Math.max(0, left);
+      else if (tabsScroll < right) tabsScroll = right;
+    }
+    tabsScroll = Math.max(0, Math.min(most, tabsScroll));
+  }
+  const more = { left: over && tabsScroll > 0.5, right: over && tabsScroll < stripEnd - (width - 2) - 0.5 };
+  const stripBottom = 1 + SHEET_LOOK.tabs.pad[0] + tabH;
+  const noteW = width - 2 - SHEET_LOOK.note.inset;
+  const noteText = noteW - 2 - SHEET_LOOK.note.pad[1] - SHEET_LOOK.note.pad[3];
+  const noteLines = (s) => s.note ? wrapWords2(m, s.note, font(scale, SHEET_LOOK.note.text), noteText) : [];
+  const noteH = (lines) => lines.length ? SHEET_LOOK.note.pad[0] + lines.length * SHEET_LOOK.note.text * S * scale * LH : 0;
+  const saidLines = (s) => s.said ? wrapWords2(m, `${s.said.from} ${s.said.note}`, font(scale, SHEET_LOOK.note.text), noteText) : [];
+  const needs = (s) => {
+    const r = layRows(o, s, scale, inner);
+    return { r, h: 1 + 2 * SHEET_LOOK.rows.pad + r.height + noteH(noteLines(s)) + noteH(saidLines(s)) };
+  };
+  const saysH = S * scale * LH + SHEET_LOOK.says.pad;
+  const footH = Math.max(SHEET_LOOK.foot.close.height, 2 + 2 * SHEET_LOOK.foot.pin.pad[0] + Math.max(SHEET_LOOK.foot.pin.icon, SHEET_LOOK.foot.pin.text * S * scale * LH)) + SHEET_LOOK.foot.pad[2];
+  const around = stripBottom + saysH + SHEET_LOOK.says.after + footH + 1;
+  const tallest = Math.max(0, ...view.sections.map((s) => needs(s).h));
+  const height = Math.min(o.most ?? SHEET_LOOK.sheet.tall.desk, Math.ceil(around + tallest));
+  const here = section ? needs(section) : { r: { boxes: [], height: 0 }, h: 0 };
+  const nLines = section ? noteLines(section) : [];
+  const sLines = section ? saidLines(section) : [];
+  const footTop = height - 1 - footH;
+  const saysTop = footTop - SHEET_LOOK.says.after - saysH;
+  const room2 = saysTop - stripBottom - noteH(nLines) - noteH(sLines);
+  const rowsH = Math.max(0, Math.min(1 + 2 * SHEET_LOOK.rows.pad + here.r.height, room2));
+  const rowsAt = { y: stripBottom, h: rowsH };
+  const rows = here.r.boxes.map((b) => ({ ...b, x: b.x + 1 + SHEET_LOOK.rows.pad, y: b.y + stripBottom + 1 + SHEET_LOOK.rows.pad }));
+  let y = stripBottom + rowsH;
+  const noteX = 1 + SHEET_LOOK.note.inset;
+  const note = nLines.length ? { id: "note", kind: "note", x: noteX, y, w: noteW, h: noteH(nLines), lines: nLines } : null;
+  if (note) y += note.h;
+  const said = sLines.length ? { id: "said", kind: "said", x: noteX, y, w: noteW, h: noteH(sLines), lines: sLines } : null;
+  const F = SHEET_LOOK.foot;
+  const pinWords = section?.pinned ? "On your bar. Take it off" : view.pinsFull ? "Your bar is full" : "Keep this tab on your bar";
+  const pinH = 2 + 2 * F.pin.pad[0] + Math.max(F.pin.icon, F.pin.text * S * scale * LH);
+  const pinW = 2 + 2 * F.pin.pad[1] + F.pin.icon + F.pin.gap + m(pinWords, font(scale, F.pin.text));
+  const closeW = 2 + 2 * F.close.padX + m("Close", font(scale));
+  const footRow = footH - F.pad[2];
+  const pin = section && (o.bar ?? view.presence === "full") ? { id: "pin", kind: "pin", x: 1 + F.pad[1], y: footTop + (footRow - pinH) / 2, w: pinW, h: pinH, lines: [pinWords] } : null;
+  const close = { id: "close", kind: "close", x: width - 1 - F.pad[1] - closeW, y: footTop + (footRow - F.close.height) / 2, w: closeW, h: F.close.height, lines: ["Close"] };
+  return {
+    width,
+    height,
+    section,
+    tabs,
+    tabsScroll,
+    more,
+    rowsAt,
+    rowsContent: 1 + 2 * SHEET_LOOK.rows.pad + here.r.height,
+    rows,
+    note,
+    said,
+    says: { id: "says", kind: "says", x: 1 + SHEET_LOOK.rows.pad, y: saysTop, w: width - 2 - 2 * SHEET_LOOK.rows.pad, h: saysH },
+    pin,
+    close
+  };
+}
+function layBar(view, o) {
+  const scale = view.theme.scale || 1;
+  const B = SHEET_LOOK.bar;
+  const K = SHEET_LOOK.key;
+  const keys = [];
+  let x = B.pad[1];
+  const name = font(scale, K.name);
+  const lines = (words) => wrapWords2(o.measure, words, name, K.width);
+  const all = [...view.hotbar.map((h) => ({ id: `act:${h.id}`, words: h.short || h.label, item: h })), ...view.pins.map((p) => ({ id: `tab:${p.id}`, words: p.label, item: void 0 }))];
+  let theirs = null;
+  all.forEach((k, i) => {
+    if (i === view.hotbar.length && view.hotbar.length && view.pins.length) {
+      theirs = x + 2;
+      x += 1 + 4 + B.gap;
+    }
+    const l = lines(k.words);
+    keys.push({ id: k.id, kind: "key", x, y: B.pad[0], w: K.width, h: K.arch[1] + K.gap + Math.max(0, K.sill[1] + K.sillAt) + K.gap + l.length * K.name * S * scale * K.line, lines: l, ...k.item ? { item: k.item } : {} });
+    x += K.width + B.gap;
+  });
+  const width = x - B.gap + B.pad[1];
+  const height = B.pad[0] + Math.max(0, ...keys.map((k) => k.h)) + B.pad[2];
+  return { width: Math.max(width, 2 * B.pad[1]), height, keys, theirs };
+}
+function boxAt(L, id, rowsScroll) {
+  const tab = L.tabs.find((t) => t.id === id);
+  if (tab) {
+    const x = tab.x - L.tabsScroll;
+    const M = SHEET_LOOK.tabs.more;
+    const from = L.more.left ? 1 + M.width : 1;
+    const to = L.width - (L.more.right ? 1 + M.width : 1);
+    if (x + tab.w / 2 < from || x + tab.w / 2 > to) return null;
+    return { ...tab, x };
+  }
+  if (id === "tabs-left" || id === "tabs-right") {
+    const side = id === "tabs-left" ? "left" : "right";
+    if (!L.more[side]) return null;
+    const M = SHEET_LOOK.tabs.more;
+    const t0 = L.tabs[0];
+    return { id, kind: "more", x: side === "left" ? 1 : L.width - 1 - M.width, y: t0?.y ?? 13, w: M.width, h: t0?.h ?? 39 };
+  }
+  if (L.pin?.id === id) return L.pin;
+  if (L.close.id === id) return L.close;
+  const row = L.rows.find((b) => b.id === id && b.kind !== "line");
+  if (!row || !L.rowsAt) return null;
+  const scroll = Math.max(0, Math.min(rowsScroll, L.rowsContent - L.rowsAt.h));
+  const y = row.y - scroll;
+  if (y + row.h < L.rowsAt.y + 1 || y > L.rowsAt.y + L.rowsAt.h) return null;
+  return { ...row, y };
+}
+function iconAt(g, name, x, y, size, color) {
+  if (!name || !ICONS[name]) return;
+  g.save();
+  g.translate(x, y);
+  g.scale(size / 24, size / 24);
+  g.lineWidth = SHEET_LOOK.text.iconLine;
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  g.strokeStyle = color;
+  g.stroke(new Path2D(ICONS[name]));
+  g.restore();
+}
+var corners = (r) => typeof r === "number" ? [r, r, r, r] : [...r];
+function drawSheet(g, view, L, o) {
+  const k = o.scale;
+  const scale = view.theme.scale || 1;
+  const A = rgb(view.theme.accent);
+  const I = rgb(view.theme.ink);
+  const Gl = rgb(view.theme.glass);
+  const Wn = rgb(view.theme.warn);
+  const acc = (a) => `rgba(${A}, ${a})`;
+  const ink = (a) => `rgba(${I}, ${a})`;
+  const glass = (a) => `rgba(${Gl}, ${a})`;
+  const box = (x, y, w, h, r) => {
+    g.beginPath();
+    g.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, corners(r));
+  };
+  g.setTransform(k, 0, 0, k, 0, 0);
+  g.clearRect(0, 0, L.width, L.height);
+  g.textAlign = "left";
+  box(0, 0, L.width, L.height, SHEET_LOOK.sheet.corners);
+  g.fillStyle = glass(o.glass ?? 0.95);
+  g.fill();
+  g.lineWidth = 1;
+  g.strokeStyle = acc(SHEET_LOOK.glass.edge);
+  g.stroke();
+  const top = g.createLinearGradient(0, 0, L.width, 0);
+  top.addColorStop(0, acc(0));
+  top.addColorStop(0.5, acc(1));
+  top.addColorStop(1, acc(0));
+  g.save();
+  g.shadowColor = acc(1);
+  g.shadowBlur = SHEET_LOOK.sheet.top.glow * k;
+  g.fillStyle = top;
+  g.fillRect(SHEET_LOOK.sheet.corners[0], 0, L.width - 2 * SHEET_LOOK.sheet.corners[0], SHEET_LOOK.sheet.top.line);
+  g.restore();
+  const textAt = (words, x, y, f, color, middle = true) => {
+    g.font = f;
+    g.fillStyle = color;
+    g.textBaseline = middle ? "middle" : "top";
+    g.fillText(words, x, y);
+  };
+  const icon = SHEET_LOOK.text.icon * S * scale;
+  const stripBottom = L.tabs[0] ? L.tabs[0].y + L.tabs[0].h : 1 + SHEET_LOOK.tabs.pad[0];
+  g.save();
+  g.beginPath();
+  g.rect(1, 1, L.width - 2, stripBottom - 1);
+  g.clip();
+  for (const t of L.tabs) {
+    if (o.hollow === t.id) continue;
+    const x = t.x - L.tabsScroll;
+    const on = t.id === `tab:${L.section?.id}`;
+    const hot = o.hot === t.id;
+    const T = SHEET_LOOK.tabs.tab;
+    if (on || hot) {
+      box(x, t.y, t.w, t.h, [T.corners, T.corners, 0, 0]);
+      g.fillStyle = acc(on ? T.on : T.on * 0.7);
+      g.fill();
+    }
+    if (on) {
+      g.fillStyle = acc(1);
+      g.fillRect(x, t.y + t.h - T.under, t.w, T.under);
+    }
+    const color = on ? acc(1) : hot ? ink(1) : ink(T.ink);
+    const sec = view.sections.find((s) => `tab:${s.id}` === t.id);
+    const mid = t.y + T.pad[0] + (t.h - T.pad[0] - T.pad[2] - T.under) / 2;
+    let left = x + T.pad[1];
+    if (sec?.icon) {
+      iconAt(g, sec.icon, left, mid - icon / 2, icon, color);
+      left += icon + T.gap;
+    }
+    textAt(t.lines?.[0] ?? "", left, mid, font(scale), color);
+  }
+  for (const side of ["left", "right"]) {
+    if (!L.more[side]) continue;
+    const M = SHEET_LOOK.tabs.more;
+    const x = side === "left" ? 1 : L.width - 1 - M.width;
+    const fade = g.createLinearGradient(x, 0, x + M.width, 0);
+    const solid = glass(1);
+    const clear = glass(0);
+    if (side === "left") {
+      fade.addColorStop(0, solid);
+      fade.addColorStop(M.fade / 100, solid);
+      fade.addColorStop(1, clear);
+    } else {
+      fade.addColorStop(0, clear);
+      fade.addColorStop(1 - M.fade / 100, solid);
+      fade.addColorStop(1, solid);
+    }
+    g.fillStyle = fade;
+    g.fillRect(x, 1 + 2, M.width, stripBottom - 3);
+    g.textAlign = side === "left" ? "left" : "right";
+    textAt(side === "left" ? "\u2039" : "\u203A", side === "left" ? x + M.inset : x + M.width - M.inset, (1 + 2 + stripBottom) / 2, font(scale, SHEET_LOOK.text.icon), o.hot === `tabs-${side}` ? ink(1) : acc(1));
+    g.textAlign = "left";
+  }
+  g.restore();
+  if (L.rowsAt) {
+    g.fillStyle = acc(SHEET_LOOK.rows.line);
+    g.fillRect(1, L.rowsAt.y, L.width - 2, 1);
+    const scroll = Math.max(0, Math.min(o.rowsScroll ?? 0, L.rowsContent - L.rowsAt.h));
+    g.save();
+    g.beginPath();
+    g.rect(1, L.rowsAt.y + 1, L.width - 2, L.rowsAt.h - 1);
+    g.clip();
+    g.translate(0, -scroll);
+    for (const b of L.rows) drawBox(g, view, b, o, { acc, ink, glass, warn: (a) => `rgba(${Wn}, ${a})`, box, textAt, scale });
+    g.restore();
+    if (L.rowsContent > L.rowsAt.h + 0.5) {
+      const room2 = L.rowsAt.h - 2;
+      const bh = Math.max(24, room2 * room2 / L.rowsContent);
+      const by = L.rowsAt.y + 1 + scroll / (L.rowsContent - L.rowsAt.h) * (room2 - bh);
+      box(L.width - 7, by, 4, bh, 2);
+      g.fillStyle = acc(0.5);
+      g.fill();
+    }
+  }
+  for (const n of [L.note, L.said]) {
+    if (!n?.lines) continue;
+    const said = n.kind === "said";
+    g.fillStyle = said ? ink(0.3) : acc(SHEET_LOOK.note.edge);
+    g.fillRect(n.x, n.y, 2, n.h);
+    n.lines.forEach((line, i) => textAt(line, n.x + 2 + SHEET_LOOK.note.pad[3], n.y + SHEET_LOOK.note.pad[0] + i * SHEET_LOOK.note.text * S * scale * LH, font(scale, SHEET_LOOK.note.text), ink(SHEET_LOOK.note.ink), false));
+  }
+  const P = SHEET_LOOK.foot.pin;
+  if (L.pin) {
+    const on = !!L.section?.pinned;
+    const hot = o.hot === "pin";
+    box(L.pin.x, L.pin.y, L.pin.w, L.pin.h, P.corners);
+    if (on || hot) {
+      g.fillStyle = acc(on ? 0.12 : 0.08);
+      g.fill();
+    }
+    g.lineWidth = 1;
+    g.strokeStyle = on || hot ? acc(0.8) : ink(P.edge);
+    g.stroke();
+    const color = on || hot ? acc(1) : ink(P.ink);
+    iconAt(g, "pin", L.pin.x + 1 + P.pad[1], L.pin.y + (L.pin.h - P.icon) / 2, P.icon, color);
+    textAt(L.pin.lines?.[0] ?? "", L.pin.x + 1 + P.pad[1] + P.icon + P.gap, L.pin.y + L.pin.h / 2, font(scale, P.text), color);
+  }
+  const C = SHEET_LOOK.foot.close;
+  const hotClose = o.hot === "close";
+  box(L.close.x, L.close.y, L.close.w, L.close.h, C.corners);
+  if (hotClose) {
+    g.fillStyle = ink(0.06);
+    g.fill();
+  }
+  g.strokeStyle = hotClose ? ink(1) : ink(C.edge);
+  g.stroke();
+  textAt("Close", L.close.x + 1 + C.padX, L.close.y + L.close.h / 2, font(scale), ink(1));
+}
+function drawBox(g, view, b, o, p) {
+  const { acc, ink, glass, box, textAt, scale } = p;
+  const R2 = SHEET_LOOK.row;
+  const icon = SHEET_LOOK.text.icon * S * scale;
+  const hot = o.hot === b.id;
+  const slot = (h, r) => {
+    box(b.x, b.y, b.w, h, r);
+    g.fillStyle = glass(0.6);
+    g.fill();
+    g.setLineDash([4, 4]);
+    g.strokeStyle = acc(0.35);
+    g.lineWidth = 1;
+    g.stroke();
+    g.setLineDash([]);
+  };
+  const row = (item, h) => {
+    const primary = item.tone === "primary";
+    box(b.x, b.y, b.w, h, R2.corners);
+    g.fillStyle = hot ? acc(R2.hoverFill) : primary ? acc(R2.primaryFill) : ink(R2.fill);
+    g.fill();
+    g.lineWidth = 1;
+    g.strokeStyle = hot ? acc(R2.hoverEdge) : primary ? acc(R2.primaryEdge) : item.on ? acc(R2.onEdge) : ink(R2.edge);
+    g.stroke();
+    const color = item.tone === "warn" ? p.warn(1) : ink(1);
+    const parts = { lines: b.lines ?? [item.label] };
+    const textH = parts.lines.length * S * scale * LH;
+    const mid = b.y + h / 2;
+    let left = b.x + 1 + R2.pad[1];
+    if (item.icon) {
+      iconAt(g, item.icon, left, mid - icon / 2, icon, color);
+      left += icon + R2.gap;
+    }
+    let right = b.x + b.w - 1 - R2.pad[1];
+    if (item.key) {
+      const f = font(scale, 0.82, 400, true);
+      g.font = f;
+      const kw = Math.max(1.6 * 0.82 * S * scale, g.measureText(item.key).width + 10);
+      right -= kw;
+      box(right, mid - 10, kw, 20, 5);
+      g.strokeStyle = ink(0.3);
+      g.stroke();
+      g.textAlign = "center";
+      textAt(item.key, right + kw / 2, mid + 0.5, f, ink(0.8));
+      g.textAlign = "left";
+      right -= R2.gap;
+    }
+    if (item.on !== null) {
+      const f = font(scale, R2.state);
+      g.font = f;
+      const word = item.on ? "On" : "Off";
+      const ww = g.measureText(word).width;
+      textAt(word, right - ww, mid + 0.5, f, item.on ? acc(1) : ink(R2.stateInk));
+    }
+    parts.lines.forEach((line, i) => textAt(line, left, mid - textH / 2 + (i + 0.5) * S * scale * LH, font(scale), color));
+  };
+  switch (b.kind) {
+    case "row":
+      if (o.hollow === b.id) return slot(b.h, R2.corners);
+      return row(b.item, b.h);
+    case "file": {
+      const rowH = b.h - SHEET_LOOK.takes.gap - SHEET_LOOK.takes.to * S * scale * LH;
+      if (o.hollow === b.id) slot(rowH, R2.corners);
+      else row(b.item, rowH);
+      textAt(`The file you choose goes to ${view.title}.`, b.x + R2.pad[1], b.y + rowH + SHEET_LOOK.takes.gap, font(scale, SHEET_LOOK.takes.to), ink(SHEET_LOOK.takes.toInk), false);
+      return;
+    }
+    case "line": {
+      const item = b.item;
+      const on = item.on === true;
+      const L = SHEET_LOOK.line;
+      iconAt(g, item.icon, b.x + L.pad[1], b.y + L.pad[0] + L.iconAt, icon, on ? acc(1) : ink(L.iconDim * L.dim));
+      (b.lines ?? []).forEach((line, i) => textAt(line, b.x + L.pad[1] + icon + L.gap, b.y + L.pad[0] + i * S * scale * LH, font(scale), on ? ink(1) : ink(L.dim), false));
+      return;
+    }
+    case "field": {
+      const F = SHEET_LOOK.field;
+      box(b.x, b.y, b.w, b.h, R2.corners);
+      g.fillStyle = ink(R2.fill);
+      g.fill();
+      g.strokeStyle = ink(R2.edge);
+      g.stroke();
+      const f = font(scale);
+      g.font = f;
+      const bw = 2 + 2 * F.buttonPad[1] + g.measureText(b.item.label).width;
+      const inside = b.y + 1 + F.pad[0];
+      box(b.x + 1 + F.pad[1], inside, b.w - 2 - 2 * F.pad[1] - bw - F.gap[1], F.box, F.boxCorners);
+      g.fillStyle = glass(F.boxGlass);
+      g.fill();
+      g.strokeStyle = ink(F.boxEdge);
+      g.stroke();
+      textAt("Press to type", b.x + 1 + F.pad[1] + 1 + F.boxPad[1], inside + F.box / 2, f, ink(0.4));
+      const bx = b.x + b.w - 1 - F.pad[1] - bw;
+      box(bx, inside, bw, F.box, F.boxCorners);
+      g.fillStyle = hot ? acc(0.3) : acc(R2.hoverFill);
+      g.fill();
+      g.strokeStyle = acc(R2.hoverEdge);
+      g.stroke();
+      textAt(b.item.label, bx + 1 + F.buttonPad[1], inside + F.box / 2, f, ink(1));
+      if (b.lines?.[0]) textAt(b.lines[0], b.x + 1 + F.pad[1], inside + F.box + F.gap[0], font(scale, F.to), ink(F.toInk), false);
+      return;
+    }
+    case "slider": {
+      const D = SHEET_LOOK.slide;
+      const item = b.item;
+      box(b.x, b.y, b.w, b.h, R2.corners);
+      g.fillStyle = ink(R2.fill);
+      g.fill();
+      g.strokeStyle = item.on ? acc(D.onEdge) : ink(R2.edge);
+      g.stroke();
+      const top = b.y + 1 + D.pad[0];
+      const rowH = Math.max(icon, S * scale * LH);
+      iconAt(g, item.icon, b.x + 1 + D.pad[1], top + (rowH - icon) / 2, icon, item.on ? acc(1) : ink(1));
+      textAt(item.label, b.x + 1 + D.pad[1] + icon + D.gap[1], top + rowH / 2, font(scale), ink(1));
+      const at = item.slider ? Math.max(0, Math.min(1, item.slider.value() / Math.max(1, item.slider.max()))) : 0;
+      const words = item.slider?.text?.() ?? "";
+      const tf = font(scale, D.time, 400, true);
+      g.font = tf;
+      const tw = g.measureText(words).width;
+      const left = b.x + 1 + D.pad[1];
+      const wide = b.w - 2 - 2 * D.pad[1] - tw - D.gap[1];
+      const ty = top + rowH + D.gap[0] + D.bar / 2;
+      box(left, ty - 2, wide, 4, 2);
+      g.fillStyle = ink(0.2);
+      g.fill();
+      box(left, ty - 2, Math.max(4, wide * at), 4, 2);
+      g.fillStyle = acc(1);
+      g.fill();
+      g.beginPath();
+      g.arc(left + wide * at, ty, hot ? 9 : 7, 0, Math.PI * 2);
+      g.fill();
+      textAt(words, left + wide + D.gap[1], ty, tf, ink(D.timeInk));
+      return;
+    }
+    case "swatch": {
+      const W6 = SHEET_LOOK.swatch;
+      const item = b.item;
+      if (o.hollow === b.id) return;
+      const color = item.color || "#888888";
+      const ax = b.x + (W6.width - W6.arch[0]) / 2;
+      const ay = b.y - (hot ? 2 : 0);
+      const fill = g.createLinearGradient(0, ay, 0, ay + W6.arch[1]);
+      fill.addColorStop(0, color);
+      fill.addColorStop(1, `${color}4d`);
+      box(ax, ay, W6.arch[0], W6.arch[1], [W6.corners[0], W6.corners[0], W6.corners[1], W6.corners[1]]);
+      g.fillStyle = fill;
+      g.fill();
+      g.strokeStyle = color;
+      g.lineWidth = 1;
+      if (item.on) {
+        g.save();
+        g.shadowColor = color;
+        g.shadowBlur = 16 * o.scale;
+        g.stroke();
+        g.restore();
+      } else g.stroke();
+      g.fillStyle = item.on ? color : ink(W6.sillInk);
+      g.fillRect(b.x + (W6.width - W6.sill[0]) / 2, b.y + W6.arch[1] + W6.gap + W6.sillAt, W6.sill[0], W6.sill[1]);
+      g.textAlign = "center";
+      textAt(item.label, b.x + W6.width / 2, b.y + W6.arch[1] + W6.gap + Math.max(0, W6.sill[1] + W6.sillAt) + W6.gap, font(scale, W6.text), item.on ? ink(1) : ink(W6.ink), false);
+      g.textAlign = "left";
+      return;
+    }
+    case "tile": {
+      const T = SHEET_LOOK.tile;
+      const item = b.item;
+      if (o.hollow === b.id) return slot(b.h, [T.corners[0], T.corners[0], T.corners[1], T.corners[1]]);
+      box(b.x, b.y, b.w, b.h, [T.corners[0], T.corners[0], T.corners[1], T.corners[1]]);
+      if (item.faint) g.fillStyle = ink(R2.fill);
+      else {
+        const glow = g.createRadialGradient(b.x + b.w / 2, b.y + b.h, 0, b.x + b.w / 2, b.y + b.h, b.w * 1.2);
+        glow.addColorStop(0, acc(T.glow));
+        glow.addColorStop(0.7, ink(R2.fill));
+        g.fillStyle = glow;
+      }
+      g.fill();
+      g.setLineDash(item.faint ? [5, 4] : []);
+      g.lineWidth = item.on ? 2 : 1;
+      g.strokeStyle = item.on ? acc(1) : hot ? acc(R2.hoverEdge) : ink(R2.edge);
+      g.stroke();
+      g.setLineDash([]);
+      g.lineWidth = 1;
+      const pic = b.w - 2 - 2 * T.pad[1];
+      const px = b.x + 1 + T.pad[1];
+      const py = b.y + 1 + T.pad[0];
+      const shown2 = o.picture?.(item.id) ?? item.picture?.() ?? null;
+      if (shown2) {
+        g.save();
+        if (item.faint) {
+          g.globalAlpha = 0.5;
+          g.filter = "grayscale(1)";
+        }
+        g.drawImage(shown2, px, py, pic, pic);
+        g.restore();
+      } else {
+        g.textAlign = "center";
+        textAt([...item.short][0]?.toUpperCase() ?? "", px + pic / 2, py + pic / 2, font(scale, T.letter, 700), ink(0.35));
+        g.textAlign = "left";
+      }
+      const natural = 2 + T.pad[0] + T.pad[2] + pic + T.gap + (b.lines?.length ?? 0) * T.text * S * scale * T.line;
+      const extra = Math.max(0, b.h - natural);
+      g.textAlign = "center";
+      (b.lines ?? []).forEach((line, i) => textAt(line, b.x + b.w / 2, py + pic + extra + T.gap + i * T.text * S * scale * T.line, font(scale, T.text), item.faint ? ink(0.55) : ink(T.ink), false));
+      g.textAlign = "left";
+      if (item.mark) {
+        const M = T.mark;
+        const mx = b.x + b.w - 1 - M.inset - M.size;
+        const my = b.y + 1 + M.inset;
+        box(mx, my, M.size, M.size, M.corners);
+        g.fillStyle = glass(M.glass);
+        g.fill();
+        g.strokeStyle = acc(M.edge);
+        g.stroke();
+        iconAt(g, item.mark, mx + (M.size - M.icon) / 2, my + (M.size - M.icon) / 2, M.icon, acc(1));
+      }
+      return;
+    }
+    case "from":
+      textAt(b.lines?.[0] ?? "", b.x + SHEET_LOOK.from.padX, b.y + SHEET_LOOK.from.top, font(scale, SHEET_LOOK.from.text, 650), ink(SHEET_LOOK.from.ink), false);
+      return;
+    case "card":
+      return drawCard(g, view, b, o, p);
+    case "swatches":
+    case "tiles":
+      return;
+    default:
+      return;
+  }
+}
+function drawCard(g, view, b, o, p) {
+  const { acc, ink, glass, box, textAt, scale } = p;
+  const C = SHEET_LOOK.card;
+  const card = b.card;
+  if (!card) return;
+  box(b.x, b.y, b.w, b.h, [C.corners[0], C.corners[0], C.corners[1], C.corners[1]]);
+  g.fillStyle = acc(C.fill);
+  g.fill();
+  g.strokeStyle = acc(C.edge);
+  g.stroke();
+  const left = b.x + 1 + C.pad;
+  const top = b.y + 1 + C.pad;
+  let words = left + C.face + C.gap[1];
+  if (card.draw) {
+    const face = b.h - 2 - 2 * C.pad;
+    const size = Math.min(face, C.thing);
+    box(left, top, size, size, 14);
+    const glow = g.createRadialGradient(left + size / 2, top + size * 0.92, 0, left + size / 2, top + size * 0.92, size * 0.7);
+    glow.addColorStop(0, acc(0.3));
+    glow.addColorStop(1, ink(0.05));
+    g.fillStyle = glow;
+    g.fill();
+    const shown2 = o.picture?.("card") ?? card.draw();
+    if (shown2) g.drawImage(shown2, left + 8, top + 8, size - 16, size - 16);
+    words = left + size + 14;
+  } else {
+    g.beginPath();
+    g.arc(left + C.face / 2, top + C.face / 2, C.face / 2, 0, Math.PI * 2);
+    g.fillStyle = card.color || ink(0.2);
+    g.fill();
+    const face = o.picture?.("card") ?? card.face ?? null;
+    if (face) {
+      g.save();
+      g.clip();
+      g.drawImage(face, left, top, C.face, C.face);
+      g.restore();
+    } else {
+      g.textAlign = "center";
+      textAt([...card.title][0]?.toUpperCase() ?? "", left + C.face / 2, top + C.face / 2, font(scale, 1.5, 700), glass(1));
+      g.textAlign = "left";
+    }
+  }
+  const head = C.title * S * scale * LH;
+  const keylineH = Math.max(C.keyline * S * scale * LH, card.copy ? 2 + 4 + C.keyline * S * scale * LH : 0);
+  const over = card.draw ? 0 : Math.max(0, C.face - (head + C.gap[0] + keylineH)) / 2;
+  const tf = font(scale, C.title, 650);
+  g.font = tf;
+  const tw = g.measureText(card.title).width;
+  const nameMid = top + (head + over) / 2;
+  textAt(card.title, words, nameMid, tf, ink(1));
+  if (card.tag) {
+    const f = font(scale, C.tag);
+    g.font = f;
+    const w = g.measureText(card.tag).width + 16;
+    const h = C.tag * S * scale * LH + 2;
+    box(words + tw + 8, nameMid - h / 2, w, h, h / 2);
+    g.strokeStyle = card.proven ? acc(0.8) : ink(0.3);
+    g.stroke();
+    textAt(card.tag, words + tw + 16, nameMid, f, card.proven ? acc(1) : ink(0.75));
+  }
+  const subMid = card.draw ? top + head + 5 + keylineH / 2 : top + head + over + C.gap[0] + (keylineH + over) / 2;
+  textAt(card.sub, words, subMid, font(scale, C.keyline, card.copy ? 400 : 500, !!card.copy), ink(0.7));
+  const lines = b.lines ?? [];
+  if (lines.length) {
+    const keyline = Math.max(C.keyline * S * scale * LH, card.copy ? 2 + 4 + C.keyline * S * scale * LH : 0);
+    const qy = card.draw ? top + head + 5 + keyline + 5 + 3 : top + Math.max(C.face, head + C.gap[0] + keyline) + C.gap[0] + C.quote;
+    const qx = card.draw ? words : left;
+    g.fillStyle = acc(0.6);
+    g.fillRect(qx, qy, 2, lines.length * S * scale * LH + 2);
+    lines.forEach((line, i) => textAt(line, qx + 12, qy + 1 + i * S * scale * LH, font(scale), ink(0.95), false));
+  }
+}
+function drawBar(g, view, L, o) {
+  const k = o.scale;
+  const scale = view.theme.scale || 1;
+  const A = rgb(view.theme.accent);
+  const I = rgb(view.theme.ink);
+  const Gl = rgb(view.theme.glass);
+  const Wn = rgb(view.theme.warn);
+  const acc = (a) => `rgba(${A}, ${a})`;
+  const ink = (a) => `rgba(${I}, ${a})`;
+  const box = (x, y, w, h, r) => {
+    g.beginPath();
+    g.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, [...r]);
+  };
+  const B = SHEET_LOOK.bar;
+  const K = SHEET_LOOK.key;
+  g.setTransform(k, 0, 0, k, 0, 0);
+  g.clearRect(0, 0, L.width, L.height);
+  box(0, 0, L.width, L.height, [B.corners[0], B.corners[0], B.corners[1], B.corners[1]]);
+  g.fillStyle = `rgba(${Gl}, ${o.glass ?? 0.95})`;
+  g.fill();
+  g.lineWidth = 1;
+  g.strokeStyle = acc(SHEET_LOOK.glass.edge);
+  g.stroke();
+  if (L.theirs !== null) {
+    g.fillStyle = ink(B.theirs);
+    g.fillRect(L.theirs, B.pad[0] + 2, 1, L.height - B.pad[0] - B.pad[2] - 10);
+  }
+  const icon = SHEET_LOOK.text.icon * S * scale;
+  for (const key of L.keys) {
+    if (o.hollow === key.id) continue;
+    const pin = key.id.startsWith("tab:");
+    const item = key.item;
+    const on = pin ? o.open === key.id.slice(4) : item?.on === true;
+    const hot = o.hot === key.id;
+    const primary = item?.tone === "primary";
+    const warn = item?.tone === "warn";
+    const ax = key.x + (K.width - K.arch[0]) / 2;
+    const ay = key.y - (hot ? 2 : 0);
+    box(ax, ay, K.arch[0], K.arch[1], [K.corners[0], K.corners[0], K.corners[1], K.corners[1]]);
+    g.fillStyle = primary ? acc(1) : on ? acc(K.onFill) : hot ? acc(K.hoverFill) : warn ? `rgba(${Wn}, 0.08)` : acc(K.fill);
+    g.fill();
+    g.setLineDash(pin ? [4, 3] : []);
+    g.strokeStyle = primary || on || hot ? acc(1) : warn ? `rgba(${Wn}, 0.7)` : acc(K.edge);
+    g.stroke();
+    g.setLineDash([]);
+    const name = pin ? view.pins.find((p) => `tab:${p.id}` === key.id)?.icon ?? "menu" : item?.icon ?? null;
+    iconAt(g, name, ax + (K.arch[0] - icon) / 2, ay + (K.arch[1] - icon) / 2, icon, primary ? `rgba(${Gl}, 1)` : on ? acc(1) : warn ? `rgba(${Wn}, 1)` : ink(1));
+    g.fillStyle = on || hot ? acc(1) : ink(K.sillInk);
+    g.fillRect(key.x + (K.width - K.sill[0]) / 2, key.y + K.arch[1] + K.gap + K.sillAt, K.sill[0], K.sill[1]);
+    g.textAlign = "center";
+    g.textBaseline = "top";
+    g.font = font(scale, K.name);
+    g.fillStyle = ink(K.ink);
+    (key.lines ?? []).forEach((line, i) => g.fillText(line, key.x + K.width / 2, key.y + K.arch[1] + K.gap + Math.max(0, K.sill[1] + K.sillAt) + K.gap + i * K.name * S * scale * K.line));
+    g.textAlign = "left";
+    const num = item?.key ?? view.pins.find((p) => `tab:${p.id}` === key.id)?.key ?? "";
+    if (num) {
+      const f = font(scale, 0.82, 400, true);
+      g.font = f;
+      const nw = Math.max(1.6 * 0.82 * S * scale, g.measureText(num).width + 10);
+      box(key.x + K.width + 2 - nw, key.y - 6, nw, 18, [5, 5, 5, 5]);
+      g.fillStyle = `rgba(${Gl}, 1)`;
+      g.fill();
+      g.strokeStyle = ink(0.3);
+      g.stroke();
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillStyle = ink(0.85);
+      g.fillText(num, key.x + K.width + 2 - nw / 2, key.y + 3 + 0.5);
+      g.textAlign = "left";
+    }
+  }
+}
+function createMenuDrawing(controls, opts = {}) {
+  const sheet = document.createElement("canvas");
+  const bar = document.createElement("canvas");
+  const gs = sheet.getContext("2d");
+  const gb = bar.getContext("2d");
+  const measureG = document.createElement("canvas").getContext("2d");
+  const measure = (text, f) => {
+    measureG.font = f;
+    return measureG.measureText(text).width;
+  };
+  const k = opts.scale ?? 2;
+  let sheetDrawn = "";
+  let barDrawn = "";
+  let sheetLayout = null;
+  let shownTab = "";
+  let barLayout = null;
+  const d = {
+    sheet,
+    bar,
+    section: "",
+    aimed: null,
+    hollow: null,
+    barAimed: null,
+    barHollow: null,
+    rowsScroll: 0,
+    tabsScroll: 0,
+    get sheetLayout() {
+      return sheetLayout;
+    },
+    get barLayout() {
+      return barLayout;
+    },
+    paint() {
+      if (opts.shown && !opts.shown()) return false;
+      const view = controls.view();
+      if (!view.sections.some((s) => s.id === d.section)) d.section = view.sections[0]?.id ?? "";
+      const look = { aimed: d.aimed, hollow: d.hollow, rows: d.rowsScroll, tabs: d.tabsScroll, section: d.section };
+      const slid = (s) => ({ ...s, items: s.items.map((i) => i.slider ? { ...i, at: [i.slider.value(), i.slider.max(), i.slider.text?.() ?? ""] } : i) });
+      const sig = JSON.stringify([view.title, view.theme, view.pins, view.pinsFull, view.sections.map(slid), look]);
+      let drew = false;
+      if (sig !== sheetDrawn) {
+        sheetDrawn = sig;
+        sheetLayout = laySheet(view, d.section, { measure, width: opts.width ?? SHEET_LOOK.sheet.wide, most: opts.most ?? SHEET_LOOK.sheet.tall.desk, title: view.title, tabsScroll: d.tabsScroll, bring: d.section !== shownTab });
+        shownTab = d.section;
+        d.tabsScroll = sheetLayout.tabsScroll;
+        sheet.width = Math.round(sheetLayout.width * k);
+        sheet.height = Math.round(sheetLayout.height * k);
+        drawSheet(gs, view, sheetLayout, { scale: k, glass: opts.glass ?? 0.95, hot: d.aimed, hollow: d.hollow, rowsScroll: d.rowsScroll });
+        opts.painted?.("sheet");
+        drew = true;
+      }
+      const barSig = JSON.stringify([view.theme, view.hotbar, view.pins, d.section, d.barAimed, d.barHollow]);
+      if (barSig !== barDrawn) {
+        barDrawn = barSig;
+        barLayout = layBar(view, { measure });
+        bar.width = Math.max(1, Math.round(barLayout.width * k));
+        bar.height = Math.max(1, Math.round(barLayout.height * k));
+        drawBar(gb, view, barLayout, { scale: k, glass: opts.glass ?? 0.95, hot: d.barAimed, hollow: d.barHollow, open: d.section });
+        opts.painted?.("bar");
+        drew = true;
+      }
+      return drew;
+    },
+    again() {
+      sheetDrawn = "";
+      barDrawn = "";
+    },
+    sheetAt(x, y) {
+      const L = sheetLayout;
+      if (!L) return null;
+      const within = (b, dx = 0, dy = 0) => x >= b.x - dx && x < b.x - dx + b.w && y >= b.y - dy && y < b.y - dy + b.h;
+      for (const side of ["left", "right"]) {
+        const M = SHEET_LOOK.tabs.more;
+        if (L.more[side] && y < (L.tabs[0]?.y ?? 0) + (L.tabs[0]?.h ?? 0) && (side === "left" ? x < 1 + M.width : x >= L.width - 1 - M.width)) return `tabs-${side}`;
+      }
+      for (const t of L.tabs) if (within(t, L.tabsScroll)) return t.id;
+      if (L.rowsAt && y >= L.rowsAt.y + 1 && y < L.rowsAt.y + L.rowsAt.h) {
+        const scroll = Math.max(0, Math.min(d.rowsScroll, L.rowsContent - L.rowsAt.h));
+        for (const b of L.rows) if (b.item && b.kind !== "line" && within(b, 0, scroll)) return b.id;
+        return null;
+      }
+      for (const b of [L.pin, L.close]) if (b && within(b)) return b.id;
+      return null;
+    },
+    barAt(x, y) {
+      for (const key of barLayout?.keys ?? []) if (x >= key.x && x < key.x + key.w && y >= key.y - 6 && y < key.y + key.h) return key.id;
+      return null;
+    }
+  };
+  return d;
+}
+
+// packages/sdk/src/console-sheet.ts
+var SHEET_M = { floating: 1, wrist: 0.36 };
+var FORWARD = { by: 0.035, takes: 0.12, clear: 0.01 };
+var BAR_GAP = 0.05;
+var BAR_TILT = 28 * Math.PI / 180;
+var TOP = 0.3;
+var SCALE = 2;
+var SHEET_MOST = { floating: 520, wrist: SHEET_LOOK.sheet.tall.narrow };
+var MENU_ORDER = 30;
+function createSheetMenu(controls, opts) {
+  const order = opts.menuOrder ?? MENU_ORDER;
+  const root = new THREE2.Group();
+  root.name = "nswp-menu-sheet";
+  const desk = createMenuDrawing(controls, { width: SHEET_LOOK.sheet.wide, scale: SCALE, glass: 0.95, most: SHEET_MOST.floating, shown: opts.shown });
+  const narrow = createMenuDrawing(controls, { width: SHEET_LOOK.sheet.narrow, scale: SCALE, glass: 0.95, most: SHEET_MOST.wrist, shown: opts.shown });
+  let mount = "floating";
+  const drawing = () => mount === "wrist" ? narrow : desk;
+  const plane = (name, renderOrder) => {
+    const material = new THREE2.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false });
+    const mesh = new THREE2.Mesh(new THREE2.PlaneGeometry(1, 1), material);
+    mesh.name = name;
+    mesh.renderOrder = renderOrder;
+    return mesh;
+  };
+  const sheet = plane("sheet", order);
+  const bar = plane("bar", order);
+  const piece = plane("forward", order + 1);
+  bar.rotation.x = -BAR_TILT;
+  piece.visible = false;
+  root.add(sheet, bar, piece);
+  const upload = (mesh, canvas) => {
+    const material = mesh.material;
+    const had = material.map;
+    if (had && had.image === canvas && had.userData.w === canvas.width && had.userData.h === canvas.height) {
+      had.needsUpdate = true;
+      return;
+    }
+    had?.dispose();
+    const texture = new THREE2.CanvasTexture(canvas);
+    texture.colorSpace = THREE2.SRGBColorSpace;
+    texture.anisotropy = 8;
+    texture.userData = { w: canvas.width, h: canvas.height };
+    material.map = texture;
+    material.needsUpdate = true;
+  };
+  const perPx = () => SHEET_M[mount] / (drawing().sheetLayout?.width ?? SHEET_LOOK.sheet.wide);
+  const place = () => {
+    const d = drawing();
+    const L = d.sheetLayout;
+    if (!L) return;
+    const per = perPx();
+    const h = L.height * per;
+    sheet.scale.set(L.width * per, h, 1);
+    sheet.position.set(0, mount === "wrist" ? 0 : TOP - h / 2, 0);
+    const B = d.barLayout;
+    if (B && mount === "floating") {
+      const bh = B.height * per;
+      bar.scale.set(B.width * per, bh, 1);
+      bar.position.set(0, TOP - h - BAR_GAP - bh / 2 * Math.cos(BAR_TILT), 0.03 + bh / 2 * Math.sin(BAR_TILT));
+    }
+  };
+  let aimed = null;
+  let lift = 0;
+  let pieceFor = "";
+  let barShown = false;
+  const makePiece = (hit) => {
+    const d = drawing();
+    const view = controls.view();
+    const onBar = hit.startsWith("bar:");
+    const id = hit.slice(onBar ? 4 : 6);
+    let box = null;
+    const full = document.createElement("canvas");
+    const g = full.getContext("2d");
+    if (onBar) {
+      const B = d.barLayout;
+      box = B?.keys.find((k) => k.id === id) ?? null;
+      if (!B || !box) return false;
+      full.width = Math.round(B.width * SCALE);
+      full.height = Math.round(B.height * SCALE);
+      drawBar(g, view, B, { scale: SCALE, glass: 0.95, hot: id, open: d.section });
+      box = { ...box, y: box.y - 6, h: box.h + 6 };
+    } else {
+      const L2 = d.sheetLayout;
+      if (!L2) return false;
+      box = boxAt(L2, id, d.rowsScroll);
+      if (!box) return false;
+      full.width = Math.round(L2.width * SCALE);
+      full.height = Math.round(L2.height * SCALE);
+      drawSheet(g, view, L2, { scale: SCALE, glass: 0.95, hot: id, rowsScroll: d.rowsScroll });
+    }
+    const cut = document.createElement("canvas");
+    cut.width = Math.max(1, Math.round(box.w * SCALE));
+    cut.height = Math.max(1, Math.round(box.h * SCALE));
+    cut.getContext("2d").drawImage(full, box.x * SCALE, box.y * SCALE, box.w * SCALE, box.h * SCALE, 0, 0, cut.width, cut.height);
+    upload(piece, cut);
+    const per = perPx();
+    const from = onBar ? bar : sheet;
+    const L = onBar ? d.barLayout : d.sheetLayout;
+    const local2 = new THREE2.Vector3((box.x + box.w / 2) / L.width - 0.5, 0.5 - (box.y + box.h / 2) / L.height, 0);
+    from.updateMatrix();
+    local2.applyMatrix4(from.matrix);
+    piece.position.copy(local2);
+    piece.rotation.copy(from.rotation);
+    piece.scale.set(box.w * per * 1.03, box.h * per * 1.03, 1);
+    piece.userData.normal = new THREE2.Vector3(0, 0, 1).applyEuler(from.rotation);
+    piece.userData.base = local2.clone();
+    return true;
+  };
+  const s = {
+    root,
+    get section() {
+      return desk.section;
+    },
+    set section(id) {
+      desk.section = id;
+      narrow.section = id;
+      desk.rowsScroll = 0;
+      narrow.rowsScroll = 0;
+    },
+    paint(next) {
+      mount = next;
+      const d = drawing();
+      const forward = opts.motion();
+      const hit = aimed;
+      d.aimed = hit?.startsWith("sheet:") ? hit.slice(6) : null;
+      d.barAimed = hit?.startsWith("bar:") ? hit.slice(4) : null;
+      d.hollow = forward ? d.aimed : null;
+      d.barHollow = forward ? d.barAimed : null;
+      const before = [d.sheet.width, d.sheet.height, d.bar.width, d.bar.height].join();
+      if (d.paint()) {
+        upload(sheet, d.sheet);
+        if (d.barLayout?.keys.length) upload(bar, d.bar);
+        void before;
+        place();
+      }
+      const wantPiece = forward && hit && hit !== "pane" ? hit : "";
+      if (wantPiece !== pieceFor) {
+        pieceFor = wantPiece;
+        lift = 0;
+        piece.visible = !!wantPiece && makePiece(wantPiece);
+      }
+    },
+    pick(raycaster) {
+      const d = drawing();
+      const L = d.sheetLayout;
+      if (!L) return null;
+      const onSheet = raycaster.intersectObject(sheet, false)[0];
+      if (onSheet?.uv) {
+        const x = onSheet.uv.x * L.width;
+        const y = (1 - onSheet.uv.y) * L.height;
+        if (aimed?.startsWith("sheet:")) {
+          const keep3 = boxAt(L, aimed.slice(6), d.rowsScroll);
+          const clear = FORWARD.clear / perPx();
+          if (keep3 && x >= keep3.x - clear && x <= keep3.x + keep3.w + clear && y >= keep3.y - clear && y <= keep3.y + keep3.h + clear) return aimed;
+        }
+        const id = d.sheetAt(x, y);
+        return id ? `sheet:${id}` : "pane";
+      }
+      const B = d.barLayout;
+      if (barShown && bar.visible && B) {
+        const onBar = raycaster.intersectObject(bar, false)[0];
+        if (onBar?.uv) {
+          const id = d.barAt(onBar.uv.x * B.width, (1 - onBar.uv.y) * B.height);
+          return id ? `bar:${id}` : "pane";
+        }
+      }
+      return null;
+    },
+    aim(hit) {
+      if (hit === aimed) return;
+      aimed = hit;
+      s.paint(mount);
+    },
+    press(hit) {
+      const d = drawing();
+      const view = controls.view();
+      if (hit.startsWith("bar:")) {
+        const id2 = hit.slice(4);
+        if (id2.startsWith("tab:")) {
+          if (s.section === id2.slice(4)) return "close";
+          s.section = id2.slice(4);
+        } else if (id2.startsWith("act:")) controls.run(id2.slice(4));
+        s.paint(mount);
+        return;
+      }
+      const id = hit.startsWith("sheet:") ? hit.slice(6) : hit;
+      if (id === "close") return "close";
+      if (id.startsWith("tab:")) s.section = id.slice(4);
+      else if (id === "tabs-left" || id === "tabs-right") d.tabsScroll += id === "tabs-left" ? -240 : 240;
+      else if (id === "pin") {
+        const here = view.sections.find((x) => x.id === s.section);
+        if (here) controls.setPinned(here.id, !here.pinned);
+      } else if (id.startsWith("act:")) {
+        const item = view.sections.flatMap((x) => x.items).find((i) => i.id === id.slice(4));
+        if (item?.kind === "copy") {
+          const words = item.copy ?? "";
+          void (navigator.clipboard?.writeText(words) ?? Promise.reject(new Error("no clipboard"))).then(
+            () => controls.say("Copied."),
+            () => controls.say(words)
+          );
+        } else controls.run(id.slice(4));
+      }
+      s.paint(mount);
+    },
+    update(dt, session, next, presence) {
+      mount = next;
+      barShown = next === "floating" && presence === "full" && (drawing().barLayout?.keys.length ?? 0) > 0;
+      bar.visible = barShown;
+      if (aimed && aimed !== "pane" ? aimed.startsWith("sheet:") : aimed === "pane") {
+        let x = 0;
+        let y = 0;
+        for (const source of session?.inputSources ?? []) {
+          const axes = source.gamepad?.axes ?? [];
+          const sx = axes[2] ?? 0;
+          const sy = axes[3] ?? 0;
+          if (Math.abs(sx) > Math.abs(x)) x = sx;
+          if (Math.abs(sy) > Math.abs(y)) y = sy;
+        }
+        const d = drawing();
+        const L = d.sheetLayout;
+        if (L && Math.abs(y) > 0.15 && L.rowsAt) {
+          const most = Math.max(0, L.rowsContent - L.rowsAt.h);
+          const was = d.rowsScroll;
+          d.rowsScroll = Math.max(0, Math.min(most, d.rowsScroll + y * dt * 600));
+          if (d.rowsScroll !== was) s.paint(mount);
+        } else if (L && Math.abs(x) > 0.3 && aimed?.startsWith("sheet:tab")) {
+          d.tabsScroll = Math.max(0, d.tabsScroll + x * dt * 600);
+          s.paint(mount);
+        }
+      }
+      if (piece.visible && piece.userData.base) {
+        lift = Math.min(1, lift + dt / FORWARD.takes);
+        const eased = 1 - (1 - lift) * (1 - lift);
+        piece.position.copy(piece.userData.base).addScaledVector(piece.userData.normal, eased * FORWARD.by);
+      }
+    },
+    get holding() {
+      return aimed !== null;
+    },
+    describe() {
+      const view = controls.view();
+      const current = view.sections.find((x) => x.id === s.section) ?? view.sections[0];
+      return {
+        sections: view.sections.map((x) => x.label),
+        section: current?.id ?? "",
+        buttons: current?.items.filter((i) => i.kind !== "line").map((i) => i.label) ?? [],
+        lines: current?.items.filter((i) => i.kind === "line").map((i) => i.label) ?? [],
+        note: current?.note ?? "",
+        card: current?.card?.title ?? ""
+      };
+    },
+    whereIs(label) {
+      const d = drawing();
+      const view = controls.view();
+      const L = d.sheetLayout;
+      const B = d.barLayout;
+      if (!L) return null;
+      let box = null;
+      let on = sheet;
+      let size = { w: L.width, h: L.height };
+      if (label.startsWith("bar:")) {
+        const words = label.slice(4);
+        box = B?.keys.find((k) => (k.lines ?? []).join(" ") === words) ?? null;
+        on = bar;
+        size = { w: B?.width ?? 1, h: B?.height ?? 1 };
+        if (!bar.visible) return null;
+      } else if (label === "Close") box = L.close;
+      else if (label === "tabs-left" || label === "tabs-right") box = boxAt(L, label, d.rowsScroll);
+      else if (L.pin && label === L.pin.lines?.[0]) box = L.pin;
+      else {
+        const tab = view.sections.find((x) => x.label === label);
+        const item = view.sections.find((x) => x.id === s.section)?.items.find((i) => i.label === label && i.kind !== "line");
+        const id = tab ? `tab:${tab.id}` : item ? `act:${item.id}` : null;
+        box = id ? boxAt(L, id, d.rowsScroll) : null;
+      }
+      if (!box) return null;
+      root.updateMatrixWorld(true);
+      const local2 = new THREE2.Vector3((box.x + box.w / 2) / size.w - 0.5, 0.5 - (box.y + box.h / 2) / size.h, 0);
+      return on.localToWorld(local2).toArray();
+    },
+    get state() {
+      return { rowsScroll: drawing().rowsScroll, forward: piece.visible ? pieceFor : "", lifted: piece.visible ? Math.round((piece.userData.base?.distanceTo(piece.position) ?? 0) * 1e3) / 1e3 : 0 };
+    },
+    pressLabelled(label) {
+      const view = controls.view();
+      if (label === "Close") return s.press("sheet:close") === "close";
+      const tab = view.sections.find((x) => x.label === label);
+      if (tab) {
+        s.press(`sheet:tab:${tab.id}`);
+        return true;
+      }
+      const current = view.sections.find((x) => x.id === s.section);
+      const item = current?.items.find((i) => i.label === label && i.kind !== "line");
+      if (!item) return false;
+      s.press(`sheet:act:${item.id}`);
+      return true;
+    }
+  };
+  return s;
+}
+
 // packages/sdk/src/console.ts
+var sheetAsked = () => {
+  try {
+    return new URLSearchParams(globalThis.location?.search ?? "").get("menu") === "sheet";
+  } catch {
+    return false;
+  }
+};
 var W2 = CONSOLE_W;
 var H2 = CONSOLE_H;
-var MENU_ORDER = 30;
+var MENU_ORDER2 = 30;
 var FLOAT_W = 0.84;
 var WRIST_W = 0.36;
 var ASPECT = H2 / W2;
 function holoMaterial(map) {
-  return new THREE2.ShaderMaterial({
+  return new THREE3.ShaderMaterial({
     transparent: true,
     depthTest: false,
-    side: THREE2.DoubleSide,
-    uniforms: { map: { value: map }, uOpen: { value: 1 }, uTime: { value: 0 }, uAccent: { value: new THREE2.Color() }, uLines: { value: 1 } },
+    side: THREE3.DoubleSide,
+    uniforms: { map: { value: map }, uOpen: { value: 1 }, uTime: { value: 0 }, uAccent: { value: new THREE3.Color() }, uLines: { value: 1 } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
     fragmentShader: `uniform sampler2D map; uniform float uOpen; uniform float uTime; uniform vec3 uAccent; uniform float uLines; varying vec2 vUv;
       void main(){
@@ -514,27 +1759,32 @@ function holoMaterial(map) {
   });
 }
 function createConsole(controls, opts) {
-  const group = new THREE2.Group();
+  const group = new THREE3.Group();
   group.name = "nswp-console";
   group.visible = false;
+  const sm = opts.sheet ?? sheetAsked() ? createSheetMenu(controls, { menuOrder: MENU_ORDER2, motion: () => controls.theme.motion, shown: () => group.visible }) : null;
+  if (sm) {
+    sm.root.visible = false;
+    group.add(sm.root);
+  }
   const canvas = document.createElement("canvas");
   canvas.width = W2;
   canvas.height = H2;
-  const texture = new THREE2.CanvasTexture(canvas);
-  texture.colorSpace = THREE2.SRGBColorSpace;
+  const texture = new THREE3.CanvasTexture(canvas);
+  texture.colorSpace = THREE3.SRGBColorSpace;
   texture.anisotropy = 4;
   const material = holoMaterial(texture);
-  const panel = new THREE2.Mesh(new THREE2.PlaneGeometry(1, ASPECT), material);
-  panel.renderOrder = MENU_ORDER;
+  const panel = new THREE3.Mesh(new THREE3.PlaneGeometry(1, ASPECT), material);
+  panel.renderOrder = MENU_ORDER2;
   panel.visible = false;
   group.add(panel);
   const openerCanvas = document.createElement("canvas");
   openerCanvas.width = 256;
   openerCanvas.height = 300;
-  const openerTexture = new THREE2.CanvasTexture(openerCanvas);
-  openerTexture.colorSpace = THREE2.SRGBColorSpace;
-  const opener = new THREE2.Mesh(new THREE2.PlaneGeometry(0.15, 0.15 * 300 / 256), new THREE2.MeshBasicMaterial({ map: openerTexture, transparent: true, depthTest: false }));
-  opener.renderOrder = MENU_ORDER;
+  const openerTexture = new THREE3.CanvasTexture(openerCanvas);
+  openerTexture.colorSpace = THREE3.SRGBColorSpace;
+  const opener = new THREE3.Mesh(new THREE3.PlaneGeometry(0.15, 0.15 * 300 / 256), new THREE3.MeshBasicMaterial({ map: openerTexture, transparent: true, depthTest: false }));
+  opener.renderOrder = MENU_ORDER2;
   group.add(opener);
   const d = createConsoleDrawing(controls, {
     canvas,
@@ -577,14 +1827,15 @@ function createConsole(controls, opts) {
     opts.rig.add(grip);
     return info;
   });
-  const head = new THREE2.Vector3();
-  const facing2 = new THREE2.Vector3();
-  const want = new THREE2.Vector3();
-  const hand = new THREE2.Vector3();
-  const toHand = new THREE2.Vector3();
+  const head = new THREE3.Vector3();
+  const facing2 = new THREE3.Vector3();
+  const want = new THREE3.Vector3();
+  const hand = new THREE3.Vector3();
+  const toHand = new THREE3.Vector3();
   controls.onSignal((name) => {
     if (!name.startsWith("show:") || !opts.renderer.xr.isPresenting) return;
     d.section = name.slice(5);
+    if (sm) sm.section = name.slice(5);
     setOpen(true, "floating");
   });
   const setOpen = (next, where = "floating") => {
@@ -595,15 +1846,21 @@ function createConsole(controls, opts) {
     placed = false;
     d.aimed = null;
     unfold = controls.theme.motion && next ? 0 : 1;
-    panel.visible = next;
+    panel.visible = next && !sm;
+    if (sm) {
+      sm.root.visible = next;
+      sm.aim(null);
+    }
     opener.visible = !next;
     if (next) {
       d.again();
-      paint();
+      if (sm) sm.paint(where);
+      else paint();
     }
   };
   const stop = controls.subscribe(() => {
     d.again();
+    if (sm && open) sm.paint(mount);
     paintOpener(d.aimed === "open");
   });
   void stop;
@@ -613,10 +1870,17 @@ function createConsole(controls, opts) {
     get open() {
       return open;
     },
+    get scrolling() {
+      return !!sm && open && sm.holding;
+    },
+    ...sm ? { sheet: { whereIs: (label) => sm.whereIs(label), get state() {
+      return sm.state;
+    } } } : {},
     setOpen: (next) => setOpen(next, "floating"),
     pick(raycaster) {
       if (!group.visible) return null;
       if (!open) return opener.visible && raycaster.intersectObject(opener, false).length ? "open" : null;
+      if (sm) return sm.pick(raycaster);
       const hit = raycaster.intersectObject(panel, false)[0];
       if (!hit?.uv) return null;
       const x = hit.uv.x * W2;
@@ -624,6 +1888,7 @@ function createConsole(controls, opts) {
       return d.regions.find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)?.id ?? "pane";
     },
     aim(hit) {
+      if (sm && open) return sm.aim(hit);
       const next = hit === "pane" ? null : hit;
       if (next === d.aimed) return;
       d.aimed = next;
@@ -632,6 +1897,12 @@ function createConsole(controls, opts) {
     },
     press(hit) {
       if (hit === "open") return setOpen(true, "floating");
+      if (sm && open) {
+        if (hit === "pane") return;
+        if (sm.press(hit) === "close") setOpen(false, mount);
+        sinceRead = 1;
+        return;
+      }
       if (hit === "close") return setOpen(false, mount);
       if (hit.startsWith("tab:")) {
         d.section = hit.slice(4);
@@ -705,7 +1976,15 @@ function createConsole(controls, opts) {
         group.rotation.set(0, Math.atan2(head.x - group.position.x, head.z - group.position.z), 0);
       }
       group.visible = true;
-      if (open) {
+      if (open && sm) {
+        unfold = Math.min(1, unfold + dt * 4.5);
+        sm.root.scale.set(1, t.motion ? 0.2 + 0.8 * (1 - (1 - unfold) ** 2) : 1, 1);
+        sm.update(dt, opts.renderer.xr.getSession(), mount, presence);
+        if ((sinceRead += dt) > 0.3) {
+          sinceRead = 0;
+          sm.paint(mount);
+        }
+      } else if (open) {
         unfold = Math.min(1, unfold + dt * 4.5);
         material.uniforms.uOpen.value = unfold;
         material.uniforms.uTime.value = t.motion ? clock : 0;
@@ -719,6 +1998,10 @@ function createConsole(controls, opts) {
       }
     },
     describe() {
+      if (sm) {
+        const said = sm.describe();
+        return { showing: group.visible, open, mount, section: open ? said.section : "", sections: open ? said.sections : [], buttons: open ? said.buttons : opener.visible ? ["Menu"] : [], lines: open ? said.lines : [], linesPage: { page: open ? 1 : 0, pages: open ? 1 : 0 }, note: open ? said.note : "", card: open ? said.card : "" };
+      }
       const view = controls.view();
       const current = view.sections.find((s) => s.id === d.section) ?? view.sections[0];
       return {
@@ -740,6 +2023,13 @@ function createConsole(controls, opts) {
         con.press("open");
         return true;
       }
+      if (sm) {
+        if (label === "Close") {
+          setOpen(false, mount);
+          return true;
+        }
+        return sm.pressLabelled(label);
+      }
       paint();
       const region = d.regions.find((r) => r.label === label);
       if (!region) return false;
@@ -751,7 +2041,7 @@ function createConsole(controls, opts) {
 }
 
 // packages/sdk/src/panorama.ts
-import * as THREE3 from "three";
+import * as THREE4 from "three";
 var PANORAMA_VIEWS = [
   { forward: [0, 0, -1], up: [0, 1, 0] },
   { forward: [1, 0, 0], up: [0, 1, 0] },
@@ -763,10 +2053,10 @@ var PANORAMA_VIEWS = [
 var panoramaWidth = (asked) => Math.min(4096, Math.max(256, Math.round((asked ?? 2048) / 2) * 2));
 function paintPanorama(renderer, width) {
   const height = width / 2;
-  const flatTarget = new THREE3.WebGLRenderTarget(width, height);
-  flatTarget.texture.colorSpace = THREE3.SRGBColorSpace;
-  const material = new THREE3.ShaderMaterial({
-    uniforms: { face: { value: null }, forward: { value: new THREE3.Vector3() }, up: { value: new THREE3.Vector3() }, right: { value: new THREE3.Vector3() } },
+  const flatTarget = new THREE4.WebGLRenderTarget(width, height);
+  flatTarget.texture.colorSpace = THREE4.SRGBColorSpace;
+  const material = new THREE4.ShaderMaterial({
+    uniforms: { face: { value: null }, forward: { value: new THREE4.Vector3() }, up: { value: new THREE4.Vector3() }, right: { value: new THREE4.Vector3() } },
     vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `uniform sampler2D face; uniform vec3 forward; uniform vec3 up; uniform vec3 right; varying vec2 vUv;
       void main(){
@@ -783,10 +2073,10 @@ function paintPanorama(renderer, width) {
     depthTest: false,
     depthWrite: false
   });
-  const quad = new THREE3.Mesh(new THREE3.PlaneGeometry(2, 2), material);
-  const quadScene = new THREE3.Scene();
+  const quad = new THREE4.Mesh(new THREE4.PlaneGeometry(2, 2), material);
+  const quadScene = new THREE4.Scene();
   quadScene.add(quad);
-  const quadCamera = new THREE3.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const quadCamera = new THREE4.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   renderer.setRenderTarget(flatTarget);
   renderer.autoClear = true;
   renderer.clear();
@@ -3251,15 +4541,15 @@ function figureAction(controls, leaving = () => ({})) {
 }
 
 // packages/sdk/src/presence.ts
-import * as THREE10 from "three";
+import * as THREE11 from "three";
 import { bubbleSeconds, buildTints, cleanItemsRule as cleanItemsRule3, cleanTints, ENTRY_CLEAR, itemCoordinate as itemCoordinate2, parseTints, pickEntryPlace, decodeLook, spawnOffset } from "@nswp/core";
 
 // packages/sdk/src/figure.ts
-import * as THREE6 from "three";
+import * as THREE7 from "three";
 import { generatedLook, markGrid } from "@nswp/core";
 
 // packages/sdk/src/alloy.ts
-import * as THREE4 from "three";
+import * as THREE5 from "three";
 var SKY_GLSL = `
 vec3 skyGlow(vec3 d, vec3 accent, vec3 ground){
   float h = clamp(d.y, -1.0, 1.0);
@@ -3270,10 +4560,10 @@ vec3 skyGlow(vec3 d, vec3 accent, vec3 ground){
   return base + accent * (band * 0.4 + line * 0.9);
 }`;
 function createAlloy(accent, opts = {}) {
-  const material = new THREE4.ShaderMaterial({
+  const material = new THREE5.ShaderMaterial({
     uniforms: {
-      uAccent: { value: new THREE4.Color(accent) },
-      uGround: { value: new THREE4.Color(opts.ground ?? 263947) },
+      uAccent: { value: new THREE5.Color(accent) },
+      uGround: { value: new THREE5.Color(opts.ground ?? 263947) },
       uTime: { value: 0 },
       uAim: { value: 0 },
       uGloss: { value: opts.gloss ?? 0.5 },
@@ -3349,35 +4639,35 @@ function createAlloy(accent, opts = {}) {
 }
 
 // packages/sdk/src/mesh.ts
-import * as THREE5 from "three";
-var va = new THREE5.Vector3();
-var vb = new THREE5.Vector3();
-var vc = new THREE5.Vector3();
-var vd = new THREE5.Vector3();
-var e1 = new THREE5.Vector3();
-var e2 = new THREE5.Vector3();
-var nn = new THREE5.Vector3();
-var hint = new THREE5.Vector3();
-var col = new THREE5.Color();
+import * as THREE6 from "three";
+var va = new THREE6.Vector3();
+var vb = new THREE6.Vector3();
+var vc = new THREE6.Vector3();
+var vd = new THREE6.Vector3();
+var e1 = new THREE6.Vector3();
+var e2 = new THREE6.Vector3();
+var nn = new THREE6.Vector3();
+var hint = new THREE6.Vector3();
+var col = new THREE6.Color();
 var MeshBuilder = class {
   positions = [];
   normals = [];
   tones = [];
   glows = [];
   flows = [];
-  matrix = new THREE5.Matrix4();
-  rotation = new THREE5.Matrix3();
+  matrix = new THREE6.Matrix4();
+  rotation = new THREE6.Matrix3();
   /** The colour faces take when they don't say. */
-  tone = new THREE5.Color(791837);
+  tone = new THREE6.Color(791837);
   /** The colour of this piece's lights, for a material that reads plain vertex colours (see `geometry`). */
-  light = new THREE5.Color(16777215);
+  light = new THREE6.Color(16777215);
   colors = [];
   get triangles() {
     return this.positions.length / 9;
   }
   /** Place and turn everything added from now on: a position, and degrees about the vertical. */
   at(position = [0, 0, 0], degrees = 0, scale = 1) {
-    this.matrix.makeRotationY(THREE5.MathUtils.degToRad(degrees)).scale(vc.set(scale, scale, scale)).setPosition(position[0], position[1], position[2]);
+    this.matrix.makeRotationY(THREE6.MathUtils.degToRad(degrees)).scale(vc.set(scale, scale, scale)).setPosition(position[0], position[1], position[2]);
     this.rotation.setFromMatrix4(this.matrix);
     return this;
   }
@@ -3421,10 +4711,10 @@ var MeshBuilder = class {
     this.quad(a, b, c, c, paint, out);
   }
   /** A face with a panel pressed into it. Corners in order round the face; `out` is which way it faces. */
-  panel(corners, out, o, paint = {}) {
-    const [a, b, c, d] = corners.map((p) => new THREE5.Vector3(...p));
-    const n = new THREE5.Vector3(...out).normalize();
-    const mid = new THREE5.Vector3().add(a).add(b).add(c).add(d).multiplyScalar(0.25);
+  panel(corners2, out, o, paint = {}) {
+    const [a, b, c, d] = corners2.map((p) => new THREE6.Vector3(...p));
+    const n = new THREE6.Vector3(...out).normalize();
+    const mid = new THREE6.Vector3().add(a).add(b).add(c).add(d).multiplyScalar(0.25);
     const inner = [a, b, c, d].map((p, i, all2) => {
       const next = all2[(i + 1) % 4];
       const prev = all2[(i + 3) % 4];
@@ -3515,7 +4805,7 @@ var MeshBuilder = class {
     if (o.loop || o.caps === false) return;
     for (const [k, dir] of [[0, -1], [frames.length - 1, 1]]) {
       const f = frames[k];
-      const tangent = new THREE5.Vector3(...f.x).cross(new THREE5.Vector3(...f.y)).multiplyScalar(dir);
+      const tangent = new THREE6.Vector3(...f.x).cross(new THREE6.Vector3(...f.y)).multiplyScalar(dir);
       for (let i = 1; i < profile.length - 1; i++) this.tri(at(k, 0), at(k, i), at(k, i + 1), paint(-1), [tangent.x, tangent.y, tangent.z]);
     }
   }
@@ -3546,12 +4836,12 @@ var MeshBuilder = class {
   }
   /** A thin lit line lying just proud of a surface: from a to b, `width` wide, on a face that points `out`. */
   line(a, b, width, out, paint = {}) {
-    const n = new THREE5.Vector3(...out).normalize();
-    const along = new THREE5.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    const n = new THREE6.Vector3(...out).normalize();
+    const along = new THREE6.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
     const side = along.clone().cross(n).setLength(width / 2);
     const lift = n.clone().multiplyScalar(4e-3);
-    const A = new THREE5.Vector3(...a).add(lift);
-    const B = new THREE5.Vector3(...b).add(lift);
+    const A = new THREE6.Vector3(...a).add(lift);
+    const B = new THREE6.Vector3(...b).add(lift);
     const len = along.length();
     this.quad(
       [A.x - side.x, A.y - side.y, A.z - side.z],
@@ -3564,24 +4854,24 @@ var MeshBuilder = class {
   }
   /** Everything added, as one geometry. */
   geometry() {
-    const g = new THREE5.BufferGeometry();
-    g.setAttribute("position", new THREE5.Float32BufferAttribute(this.positions, 3));
-    g.setAttribute("normal", new THREE5.Float32BufferAttribute(this.normals, 3));
-    g.setAttribute("tone", new THREE5.Float32BufferAttribute(this.tones, 3));
-    g.setAttribute("glow", new THREE5.Float32BufferAttribute(this.glows, 1));
-    g.setAttribute("flow", new THREE5.Float32BufferAttribute(this.flows, 1));
-    g.setAttribute("color", new THREE5.Float32BufferAttribute(this.colors, 3));
+    const g = new THREE6.BufferGeometry();
+    g.setAttribute("position", new THREE6.Float32BufferAttribute(this.positions, 3));
+    g.setAttribute("normal", new THREE6.Float32BufferAttribute(this.normals, 3));
+    g.setAttribute("tone", new THREE6.Float32BufferAttribute(this.tones, 3));
+    g.setAttribute("glow", new THREE6.Float32BufferAttribute(this.glows, 1));
+    g.setAttribute("flow", new THREE6.Float32BufferAttribute(this.flows, 1));
+    g.setAttribute("color", new THREE6.Float32BufferAttribute(this.colors, 3));
     g.computeBoundingSphere();
     return g;
   }
   /** Everything added, as one mesh in this material (see alloy.ts). */
   build(material) {
-    return new THREE5.Mesh(this.geometry(), material);
+    return new THREE6.Mesh(this.geometry(), material);
   }
 };
 
 // packages/sdk/src/figure.ts
-var DARK = new THREE6.Color(659221);
+var DARK = new THREE7.Color(659221);
 var DEPTH = 0.4;
 function nearest(color, palette) {
   let best = palette[0];
@@ -3754,9 +5044,9 @@ function buildBody(b, look, main, accent, omit, proven = false) {
 function createFigure(look, style = {}, facts = {}) {
   const wearing = typeof look === "string" ? generatedLook(look) : look;
   const omit = new Set(style.omit ?? []);
-  let [main, accent, light] = [new THREE6.Color(wearing.color), new THREE6.Color(wearing.accent), new THREE6.Color(wearing.light)];
+  let [main, accent, light] = [new THREE7.Color(wearing.color), new THREE7.Color(wearing.accent), new THREE7.Color(wearing.light)];
   if (style.palette?.length) {
-    const palette = style.palette.map((c) => new THREE6.Color(c));
+    const palette = style.palette.map((c) => new THREE7.Color(c));
     [main, accent, light] = [nearest(main, palette), nearest(accent, palette), nearest(light, palette)];
   }
   const depth = style.material ? 1 : DEPTH;
@@ -3775,14 +5065,14 @@ function createFigure(look, style = {}, facts = {}) {
   handShape.lathe([[5e-4, -0.06], [0.04, 0], [5e-4, 0.06]], [0, 0, 0], 4, () => ({ glow: 0.75 }));
   const metal = style.material ? style.material(light, wearing) : createAlloy(light, { gloss: wearing.finish === "matte" ? 0.25 : wearing.finish === "gloss" ? 0.85 : 0.7, sheen: wearing.finish === "sheen" ? 0.45 : 0 });
   const geometries = [headShape.geometry(), bodyShape.geometry(), handShape.geometry()];
-  const head = new THREE6.Group();
-  head.add(new THREE6.Mesh(geometries[0], metal));
-  const torso = new THREE6.Mesh(geometries[1], metal);
+  const head = new THREE7.Group();
+  head.add(new THREE7.Mesh(geometries[0], metal));
+  const torso = new THREE7.Mesh(geometries[1], metal);
   torso.position.y = -0.45;
-  const hands = [new THREE6.Mesh(geometries[2], metal), new THREE6.Mesh(geometries[2], metal)];
+  const hands = [new THREE7.Mesh(geometries[2], metal), new THREE7.Mesh(geometries[2], metal)];
   hands[0].position.set(-0.28, -0.5, -0.12);
   hands[1].position.set(0.28, -0.5, -0.12);
-  const group = new THREE6.Group();
+  const group = new THREE7.Group();
   group.add(head, torso, ...hands);
   return {
     group,
@@ -4180,7 +5470,7 @@ function songRefusal(file, have) {
 
 // packages/sdk/src/items.ts
 import { tintSlot } from "@nswp/core";
-import * as THREE7 from "three";
+import * as THREE8 from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 // packages/sdk/src/item-store.ts
@@ -4367,13 +5657,13 @@ function withinBudget(root) {
   return ok && meshes > 0 && meshes <= ITEM_BUDGET.meshes && triangles <= ITEM_BUDGET.triangles && materials.size <= ITEM_BUDGET.materials;
 }
 function fitToSize(root, size) {
-  const box = new THREE7.Box3().setFromObject(root);
-  const has = box.getSize(new THREE7.Vector3());
+  const box = new THREE8.Box3().setFromObject(root);
+  const has = box.getSize(new THREE8.Vector3());
   const scale = Math.min(size[0] / (has.x || 1), size[1] / (has.y || 1), size[2] / (has.z || 1));
-  const holder = new THREE7.Group();
+  const holder = new THREE8.Group();
   root.scale.multiplyScalar(Number.isFinite(scale) && scale > 0 ? scale : 1);
-  const fitted = new THREE7.Box3().setFromObject(root);
-  const centre = fitted.getCenter(new THREE7.Vector3());
+  const fitted = new THREE8.Box3().setFromObject(root);
+  const centre = fitted.getCenter(new THREE8.Vector3());
   root.position.x -= centre.x;
   root.position.z -= centre.z;
   root.position.y -= fitted.min.y;
@@ -4386,9 +5676,9 @@ function createItems(opts = {}) {
   const clipsOf = /* @__PURE__ */ new Map();
   const marker = (item) => {
     const [w, h, d] = item.size;
-    const box = new THREE7.Mesh(new THREE7.BoxGeometry(w, h, d), new THREE7.MeshBasicMaterial({ color: 10135476, wireframe: true }));
+    const box = new THREE8.Mesh(new THREE8.BoxGeometry(w, h, d), new THREE8.MeshBasicMaterial({ color: 10135476, wireframe: true }));
     box.position.y = h / 2;
-    const holder = new THREE7.Group();
+    const holder = new THREE8.Group();
     holder.add(box);
     return holder;
   };
@@ -4464,7 +5754,7 @@ import {
   shotAt,
   struck
 } from "@nswp/core";
-import * as THREE8 from "three";
+import * as THREE9 from "three";
 
 // packages/sdk/src/hold.ts
 import { cleanItemsRule } from "@nswp/core";
@@ -4566,7 +5856,7 @@ function runInBox(script, on, opts = {}) {
 // packages/sdk/src/play.ts
 function drawn(width, height, paint) {
   if (typeof document === "undefined") {
-    const blank = new THREE8.Sprite(new THREE8.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
+    const blank = new THREE9.Sprite(new THREE9.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false }));
     blank.userData.nswpNoHit = true;
     return blank;
   }
@@ -4575,9 +5865,9 @@ function drawn(width, height, paint) {
   canvas.height = height;
   const g = canvas.getContext("2d");
   if (g) paint(g);
-  const map = new THREE8.CanvasTexture(canvas);
-  map.colorSpace = THREE8.SRGBColorSpace;
-  const sprite = new THREE8.Sprite(new THREE8.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false }));
+  const map = new THREE9.CanvasTexture(canvas);
+  map.colorSpace = THREE9.SRGBColorSpace;
+  const sprite = new THREE9.Sprite(new THREE9.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false }));
   sprite.renderOrder = 999;
   sprite.userData.nswpNoHit = true;
   return sprite;
@@ -4659,9 +5949,9 @@ function createPlay(o) {
   const blinking = /* @__PURE__ */ new Set();
   const mixers = /* @__PURE__ */ new Map();
   const soundsOf = /* @__PURE__ */ new Map();
-  const ray = new THREE8.Raycaster();
-  const v = new THREE8.Vector3();
-  const w = new THREE8.Vector3();
+  const ray = new THREE9.Raycaster();
+  const v = new THREE9.Vector3();
+  const w = new THREE9.Vector3();
   let clock = 0;
   let lastAt = null;
   let sent2 = 0;
@@ -4670,7 +5960,7 @@ function createPlay(o) {
   let nextId = Math.floor(Math.random() * 1e3);
   const active = () => cleanItemsRule2(o.rule()) !== "none" && showsItems();
   const muted = (pubkey) => cleanItemsRule2(o.rule()) === "allowed" && !!o.itemsMuted?.(pubkey);
-  const hud = new THREE8.Group();
+  const hud = new THREE9.Group();
   hud.userData.nswpNoHit = true;
   if (!o.deferred) o.camera.add(hud);
   const cross = drawn(64, 64, (g) => {
@@ -4726,7 +6016,7 @@ function createPlay(o) {
       y += tall;
     }
   });
-  if (glitch.material.map) glitch.material.map.wrapT = THREE8.RepeatWrapping;
+  if (glitch.material.map) glitch.material.map.wrapT = THREE9.RepeatWrapping;
   glitch.position.set(0, 0, -0.58);
   glitch.renderOrder = 998;
   glitch.visible = false;
@@ -4772,8 +6062,8 @@ function createPlay(o) {
       o.camera.getWorldPosition(v);
       const to = w.copy(at).sub(v);
       const distance = to.length();
-      const right = new THREE8.Vector3(1, 0, 0).applyQuaternion(o.camera.getWorldQuaternion(new THREE8.Quaternion()));
-      const pan = distance < 0.01 ? 0 : THREE8.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
+      const right = new THREE9.Vector3(1, 0, 0).applyQuaternion(o.camera.getWorldQuaternion(new THREE9.Quaternion()));
+      const pan = distance < 0.01 ? 0 : THREE9.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
       o.sounds.playForeign(sound, { distance, pan });
     });
   };
@@ -4786,7 +6076,7 @@ function createPlay(o) {
     if (!clip) return;
     let mixer = mixers.get(model2);
     if (!mixer) {
-      mixer = new THREE8.AnimationMixer(model2);
+      mixer = new THREE9.AnimationMixer(model2);
       mixers.set(model2, mixer);
     }
     const action = mixer.clipAction(clip);
@@ -4797,7 +6087,7 @@ function createPlay(o) {
       poses.set(model2, action);
     }
     action.reset();
-    action.setLoop(THREE8.LoopOnce, 1);
+    action.setLoop(THREE9.LoopOnce, 1);
     action.clampWhenFinished = pose;
     action.play();
   };
@@ -4812,7 +6102,7 @@ function createPlay(o) {
       const mesh = node;
       if (mesh.isMesh && mesh.geometry) {
         const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-        const shape = material && material.side !== THREE8.BackSide && !(material.transparent && material.opacity < 0.35) && material.blending !== THREE8.AdditiveBlending;
+        const shape = material && material.side !== THREE9.BackSide && !(material.transparent && material.opacity < 0.35) && material.blending !== THREE9.AdditiveBlending;
         if (shape && (o.solid ? o.solid(mesh) : true)) found.push(mesh);
       }
       for (const child of node.children) walk(child);
@@ -4822,31 +6112,31 @@ function createPlay(o) {
     return solids;
   };
   const floorUnder = (at) => {
-    ray.set(w.set(at.x, at.y + 0.05, at.z), new THREE8.Vector3(0, -1, 0));
+    ray.set(w.set(at.x, at.y + 0.05, at.z), new THREE9.Vector3(0, -1, 0));
     ray.far = 60;
     const hit = ray.intersectObjects(worldShapes(), false)[0];
-    return hit ? hit.point.y : o.rig.getWorldPosition(new THREE8.Vector3()).y;
+    return hit ? hit.point.y : o.rig.getWorldPosition(new THREE9.Vector3()).y;
   };
   const drop = (thing) => {
     if (thing.state === "falling" || thing.state === "lying") return;
     o.scene.attach(thing.object);
     thing.state = "falling";
     thing.fall = 0;
-    thing.floor = o.deferred ? o.rig.getWorldPosition(new THREE8.Vector3()).y : floorUnder(thing.object.getWorldPosition(new THREE8.Vector3()));
+    thing.floor = o.deferred ? o.rig.getWorldPosition(new THREE9.Vector3()).y : floorUnder(thing.object.getWorldPosition(new THREE9.Vector3()));
   };
   const TRAIL_STEPS = 14;
   const TRAIL_WIDTH = 0.026;
   const makeTrail = (color) => {
-    const geometry = new THREE8.BufferGeometry();
-    geometry.setAttribute("position", new THREE8.BufferAttribute(new Float32Array((TRAIL_STEPS + 1) * 6), 3));
-    geometry.setAttribute("color", new THREE8.BufferAttribute(new Float32Array((TRAIL_STEPS + 1) * 6), 3));
+    const geometry = new THREE9.BufferGeometry();
+    geometry.setAttribute("position", new THREE9.BufferAttribute(new Float32Array((TRAIL_STEPS + 1) * 6), 3));
+    geometry.setAttribute("color", new THREE9.BufferAttribute(new Float32Array((TRAIL_STEPS + 1) * 6), 3));
     const index = [];
     for (let i = 0; i < TRAIL_STEPS; i++) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
     geometry.setIndex(index);
-    const mesh = new THREE8.Mesh(geometry, new THREE8.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE8.AdditiveBlending, depthWrite: false, side: THREE8.DoubleSide, toneMapped: false }));
+    const mesh = new THREE9.Mesh(geometry, new THREE9.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE9.AdditiveBlending, depthWrite: false, side: THREE9.DoubleSide, toneMapped: false }));
     mesh.frustumCulled = false;
     mesh.userData.nswpNoHit = true;
-    mesh.userData.base = new THREE8.Color(color);
+    mesh.userData.base = new THREE9.Color(color);
     o.scene.add(mesh);
     return mesh;
   };
@@ -4857,7 +6147,7 @@ function createPlay(o) {
     thing.trail.material.dispose();
     thing.trail = null;
   };
-  const eye = new THREE8.Vector3();
+  const eye = new THREE9.Vector3();
   const drawTrail = (thing) => {
     const mesh = thing.trail;
     if (!mesh) return;
@@ -4870,9 +6160,9 @@ function createPlay(o) {
     const color = mesh.geometry.getAttribute("color");
     const base = mesh.userData.base;
     const left = Math.min(1, (head - tail) / thing.trailSeconds);
-    const p = new THREE8.Vector3();
-    const q = new THREE8.Vector3();
-    const side = new THREE8.Vector3();
+    const p = new THREE9.Vector3();
+    const q = new THREE9.Vector3();
+    const side = new THREE9.Vector3();
     for (let i = 0; i <= TRAIL_STEPS; i++) {
       const f = i / TRAIL_STEPS;
       const t = head - (head - tail) * f;
@@ -4903,7 +6193,7 @@ function createPlay(o) {
     const inner = await o.items.sent(item2, shot.name, tints);
     if (!active()) return void pending.delete(`${by}:${shot.id}`);
     inner.position.y -= send.size[1] / 2;
-    const object = new THREE8.Group();
+    const object = new THREE9.Group();
     object.userData.nswpNoHit = true;
     object.add(inner);
     object.position.fromArray(shot.from);
@@ -4919,7 +6209,7 @@ function createPlay(o) {
   };
   const stick = (thing, at, onto, on) => {
     thing.object.position.copy(at);
-    const going2 = new THREE8.Vector3(thing.shot.velocity[0], thing.shot.velocity[1] - GRAVITY * thing.t, thing.shot.velocity[2]);
+    const going2 = new THREE9.Vector3(thing.shot.velocity[0], thing.shot.velocity[1] - GRAVITY * thing.t, thing.shot.velocity[2]);
     if (going2.lengthSq() > 1e-6) thing.object.lookAt(w.copy(at).add(going2));
     if (onto) onto.attach(thing.object);
     thing.state = "stuck";
@@ -4927,11 +6217,11 @@ function createPlay(o) {
     thing.until = thing.t + thing.shot.stick;
   };
   const self = () => {
-    const head = o.camera.getWorldPosition(new THREE8.Vector3());
-    const floor = o.rig.getWorldPosition(new THREE8.Vector3()).y;
-    return { feet: new THREE8.Vector3(head.x, floor, head.z), height: THREE8.MathUtils.clamp(head.y - floor + 0.12, 0.6, 2.4) };
+    const head = o.camera.getWorldPosition(new THREE9.Vector3());
+    const floor = o.rig.getWorldPosition(new THREE9.Vector3()).y;
+    return { feet: new THREE9.Vector3(head.x, floor, head.z), height: THREE9.MathUtils.clamp(head.y - floor + 0.12, 0.6, 2.4) };
   };
-  const shapeOf = (p) => ({ feet: new THREE8.Vector3(p.head.x, p.head.y - 1.5, p.head.z), height: 1.62 });
+  const shapeOf = (p) => ({ feet: new THREE9.Vector3(p.head.x, p.head.y - 1.5, p.head.z), height: 1.62 });
   const reached = (thing, at) => {
     const me = self();
     taken++;
@@ -4950,8 +6240,8 @@ function createPlay(o) {
     gone(thing);
   };
   const fly = (thing, dt) => {
-    const a = new THREE8.Vector3().fromArray(shotAt(thing.shot, thing.t));
-    const b = new THREE8.Vector3().fromArray(shotAt(thing.shot, thing.t + dt));
+    const a = new THREE9.Vector3().fromArray(shotAt(thing.shot, thing.t));
+    const b = new THREE9.Vector3().fromArray(shotAt(thing.shot, thing.t + dt));
     const step = b.clone().sub(a);
     const length = step.length();
     let first = 1.0001;
@@ -5006,7 +6296,7 @@ function createPlay(o) {
       return done();
     }
     thing.object.position.copy(b);
-    const going2 = new THREE8.Vector3(thing.shot.velocity[0], thing.shot.velocity[1] - GRAVITY * thing.t, thing.shot.velocity[2]);
+    const going2 = new THREE9.Vector3(thing.shot.velocity[0], thing.shot.velocity[1] - GRAVITY * thing.t, thing.shot.velocity[2]);
     thing.object.lookAt(w.copy(b).add(going2));
     if (thing.t > PLAY_LIMITS.life) gone(thing);
   };
@@ -5047,23 +6337,23 @@ function createPlay(o) {
     pointed = null;
     if (said) ({ from, to } = said);
     else if (tapped || o.sighting?.()) {
-      const q = o.camera.getWorldQuaternion(new THREE8.Quaternion());
-      const eye2 = o.camera.getWorldPosition(new THREE8.Vector3());
-      from = eye2.clone().add(new THREE8.Vector3(tapped ? 0.14 : 0, tapped ? -0.12 : -0.05, -0.35).applyQuaternion(q));
-      to = tapped ?? eye2.clone().add(new THREE8.Vector3(0, 0, -18).applyQuaternion(q));
+      const q = o.camera.getWorldQuaternion(new THREE9.Quaternion());
+      const eye2 = o.camera.getWorldPosition(new THREE9.Vector3());
+      from = eye2.clone().add(new THREE9.Vector3(tapped ? 0.14 : 0, tapped ? -0.12 : -0.05, -0.35).applyQuaternion(q));
+      to = tapped ?? eye2.clone().add(new THREE9.Vector3(0, 0, -18).applyQuaternion(q));
     } else {
-      const q = o.camera.getWorldQuaternion(new THREE8.Quaternion());
-      const eye2 = o.camera.getWorldPosition(new THREE8.Vector3());
-      from = eye2.clone().add(new THREE8.Vector3(0.14, -0.12, -0.35).applyQuaternion(q));
-      to = eye2.clone().add(new THREE8.Vector3(0, 0, -18).applyQuaternion(q));
+      const q = o.camera.getWorldQuaternion(new THREE9.Quaternion());
+      const eye2 = o.camera.getWorldPosition(new THREE9.Vector3());
+      from = eye2.clone().add(new THREE9.Vector3(0.14, -0.12, -0.35).applyQuaternion(q));
+      to = eye2.clone().add(new THREE9.Vector3(0, 0, -18).applyQuaternion(q));
     }
     const dir = to.clone().sub(from).normalize();
-    if (lift) dir.applyAxisAngle(new THREE8.Vector3().crossVectors(dir, new THREE8.Vector3(0, 1, 0)).normalize(), lift);
+    if (lift) dir.applyAxisAngle(new THREE9.Vector3().crossVectors(dir, new THREE9.Vector3(0, 1, 0)).normalize(), lift);
     if (spread > 0) {
-      const across = new THREE8.Vector3().crossVectors(dir, new THREE8.Vector3(0, 1, 0));
+      const across = new THREE9.Vector3().crossVectors(dir, new THREE9.Vector3(0, 1, 0));
       if (across.lengthSq() < 1e-6) across.set(1, 0, 0);
       across.normalize();
-      const over = new THREE8.Vector3().crossVectors(across, dir).normalize();
+      const over = new THREE9.Vector3().crossVectors(across, dir).normalize();
       const off = spread * Math.sqrt(Math.random());
       const round = Math.random() * Math.PI * 2;
       dir.applyAxisAngle(over, off * Math.cos(round)).applyAxisAngle(across, off * Math.sin(round)).normalize();
@@ -5199,7 +6489,7 @@ function createPlay(o) {
         if (!thing || thing.agreed || thing.state === "falling" || thing.state === "lying") return;
         thing.agreed = true;
         const feet = shapeOf(person).feet;
-        const at = new THREE8.Vector3(feet.x + hit.at[0], feet.y + hit.at[1], feet.z + hit.at[2]);
+        const at = new THREE9.Vector3(feet.x + hit.at[0], feet.y + hit.at[1], feet.z + hit.at[2]);
         if (thing.on !== from) stick(thing, at, person.body, from);
         thing.agreeBy = null;
         hear(thing.item, thing.send.strikes, at);
@@ -5279,7 +6569,7 @@ function createPlay(o) {
       const on = active();
       const down = own.downUntil > 0;
       if (wordsSprite) wordsSprite.visible = !o.sighting?.();
-      const tall = Math.tan(THREE8.MathUtils.degToRad(o.camera.fov / 2));
+      const tall = Math.tan(THREE9.MathUtils.degToRad(o.camera.fov / 2));
       const wide = tall * o.camera.aspect;
       ownBar.position.set(0, isPresenting() ? -0.3 : -tall * (o.camera.aspect < 1 ? 0.5 : 0.66), -1);
       const scale = Math.min(0.3, wide * 0.62);
@@ -5357,8 +6647,8 @@ function createPlay(o) {
     snapshot() {
       const clips = clipsSaid;
       clipsSaid = [];
-      const q = new THREE8.Quaternion();
-      const at = new THREE8.Vector3();
+      const q = new THREE9.Quaternion();
+      const at = new THREE9.Vector3();
       const three = (x) => [x.x, x.y, x.z];
       return {
         things: things.map((t) => {
@@ -5409,7 +6699,7 @@ function createPlay(o) {
       const tested = thing?.steps.find((s) => s.n === step);
       if (!thing || !tested || thing.state !== "flying" || thing.late || !point.every((x) => Number.isFinite(x))) return;
       const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0;
-      thing.late = { t: tested.t0 + (tested.t1 - tested.t0) * f, point: new THREE8.Vector3().fromArray(point), ref: String(ref).slice(0, 120) };
+      thing.late = { t: tested.t0 + (tested.t1 - tested.t0) * f, point: new THREE9.Vector3().fromArray(point), ref: String(ref).slice(0, 120) };
     },
     floored(key, y) {
       const thing = things.find((t) => `${t.by}:${t.shot.id}` === key);
@@ -5423,7 +6713,7 @@ function createPlay(o) {
         flying: count2("flying"),
         stuck: count2("stuck"),
         falling: count2("falling") + count2("lying"),
-        things: things.map((t) => ({ by: t.by, id: t.shot.id, state: t.state, on: t.on, onto: `${t.object.parent?.type ?? ""}:${t.object.parent?.name ?? ""}`, at: t.object.getWorldPosition(new THREE8.Vector3()).toArray().map((n) => Math.round(n * 100) / 100) })),
+        things: things.map((t) => ({ by: t.by, id: t.shot.id, state: t.state, on: t.on, onto: `${t.object.parent?.type ?? ""}:${t.object.parent?.name ?? ""}`, at: t.object.getWorldPosition(new THREE9.Vector3()).toArray().map((n) => Math.round(n * 100) / 100) })),
         sent: sent2,
         landed,
         taken,
@@ -5446,7 +6736,7 @@ function createPlay(o) {
 
 // packages/sdk/src/look-models.ts
 import { AVATAR_KIND, decodeNaddr, DEFAULT_RELAYS as DEFAULT_RELAYS6, glbJson, LOOK_BUDGET, LOOK_MODELS_AT_ONCE, LOOK_NOTE_LIMIT, verifyEvent as verifyEvent6, lookFacing, readGlb as readGlb2, withoutRequired } from "@nswp/core";
-import * as THREE9 from "three";
+import * as THREE10 from "three";
 import { GLTFLoader as GLTFLoader2 } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 
@@ -5586,15 +6876,15 @@ function createLookModels(opts = {}) {
       if (!root) return null;
       const copy = clone(root);
       copy.updateMatrixWorld(true);
-      const box = new THREE9.Box3().setFromObject(copy);
+      const box = new THREE10.Box3().setFromObject(copy);
       const tall = box.max.y - box.min.y;
-      const holder = new THREE9.Group();
+      const holder = new THREE10.Group();
       if (!(tall > 0) || !Number.isFinite(tall)) return null;
       const scale = model.height / tall;
       copy.scale.multiplyScalar(scale);
       copy.updateMatrixWorld(true);
-      const fitted = new THREE9.Box3().setFromObject(copy);
-      const centre = fitted.getCenter(new THREE9.Vector3());
+      const fitted = new THREE10.Box3().setFromObject(copy);
+      const centre = fitted.getCenter(new THREE10.Vector3());
       copy.position.x -= centre.x;
       copy.position.z -= centre.z;
       copy.position.y -= fitted.min.y;
@@ -5655,9 +6945,9 @@ function markSprite(mark) {
   g.fill();
   g.fillStyle = "#ffffff";
   markGrid2(mark).forEach((row, y) => row.forEach((on, x) => on && g.fillRect(9 + x * 9.5, 9 + y * 9.5, 8, 8)));
-  const map = new THREE10.CanvasTexture(canvas);
-  map.colorSpace = THREE10.SRGBColorSpace;
-  const sprite = new THREE10.Sprite(new THREE10.SpriteMaterial({ map, depthWrite: false }));
+  const map = new THREE11.CanvasTexture(canvas);
+  map.colorSpace = THREE11.SRGBColorSpace;
+  const sprite = new THREE11.Sprite(new THREE11.SpriteMaterial({ map, depthWrite: false }));
   sprite.scale.set(0.11, 0.11, 1);
   return sprite;
 }
@@ -5682,9 +6972,9 @@ function textSprite(text, color, width) {
     g.font = i === 0 ? "bold 56px system-ui, sans-serif" : "44px system-ui, sans-serif";
     g.fillText(line, 40, 32 + i * 72, canvas.width - 80);
   });
-  const tex = new THREE10.CanvasTexture(canvas);
-  tex.colorSpace = THREE10.SRGBColorSpace;
-  const sprite = new THREE10.Sprite(new THREE10.SpriteMaterial({ map: tex, depthWrite: false }));
+  const tex = new THREE11.CanvasTexture(canvas);
+  tex.colorSpace = THREE11.SRGBColorSpace;
+  const sprite = new THREE11.Sprite(new THREE11.SpriteMaterial({ map: tex, depthWrite: false }));
   sprite.scale.set(width, width * canvas.height / canvas.width, 1);
   return sprite;
 }
@@ -5695,8 +6985,8 @@ function speechSprite(text, width = 0.8) {
   const TAIL = 22;
   const canvas = document.createElement("canvas");
   const g = canvas.getContext("2d");
-  const font = "500 42px system-ui, sans-serif";
-  g.font = font;
+  const font2 = "500 42px system-ui, sans-serif";
+  g.font = font2;
   const rows = wrapWords(text, (t) => g.measureText(t).width, FULL - PAD * 2, 5);
   const wide = Math.ceil(Math.max(80, ...rows.map((r) => g.measureText(r).width))) + PAD * 2;
   canvas.width = Math.min(FULL, wide);
@@ -5710,12 +7000,12 @@ function speechSprite(text, width = 0.8) {
   g.lineTo(canvas.width / 2 + 18, h - 1);
   g.fill();
   g.fillStyle = "#141a22";
-  g.font = font;
+  g.font = font2;
   g.textBaseline = "middle";
   rows.forEach((row, i) => g.fillText(row, PAD, PAD * 0.7 + LINE * (i + 0.5), canvas.width - PAD * 2));
-  const tex = new THREE10.CanvasTexture(canvas);
-  tex.colorSpace = THREE10.SRGBColorSpace;
-  const sprite = new THREE10.Sprite(new THREE10.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
+  const tex = new THREE11.CanvasTexture(canvas);
+  tex.colorSpace = THREE11.SRGBColorSpace;
+  const sprite = new THREE11.Sprite(new THREE11.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
   const metres = width / FULL;
   sprite.scale.set(canvas.width * metres, canvas.height * metres, 1);
   sprite.center.set(0.5, 0);
@@ -5731,7 +7021,7 @@ function createPresence(d) {
   if (!d.worldRules) onPageRules(takeRules);
   const labelColor = d.labelColor ?? "#ffffff";
   const changed = () => d.onChange?.();
-  const listener = new THREE10.AudioListener();
+  const listener = new THREE11.AudioListener();
   d.camera.add(listener);
   const avatars = /* @__PURE__ */ new Map();
   const pendingStreams = /* @__PURE__ */ new Map();
@@ -5744,10 +7034,10 @@ function createPresence(d) {
   let clock = 0;
   const tendArrival = () => {
     if (!arriving) return;
-    const head = d.camera.getWorldPosition(new THREE10.Vector3());
+    const head = d.camera.getWorldPosition(new THREE11.Vector3());
     if (clock > arriving.until || Math.hypot(head.x - arriving.from.x, head.z - arriving.from.z) > ENTRY_CLEAR) return void (arriving = null);
     const others = [...avatars.values()].filter((a) => a.target && !a.member.joinedAfterYou).map((a) => {
-      const h = a.head.getWorldPosition(new THREE10.Vector3());
+      const h = a.head.getWorldPosition(new THREE11.Vector3());
       return [h.x, h.z];
     });
     if (!others.some(([x, z]) => Math.hypot(x - head.x, z - head.z) < ENTRY_CLEAR)) return;
@@ -5777,9 +7067,9 @@ function createPresence(d) {
       fade.addColorStop(1, "rgba(255,255,255,0)");
       g.fillStyle = fade;
       g.fillRect(0, 0, 64, 64);
-      dot = new THREE10.CanvasTexture(canvas);
+      dot = new THREE11.CanvasTexture(canvas);
     }
-    return new THREE10.Sprite(new THREE10.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
+    return new THREE11.Sprite(new THREE11.SpriteMaterial({ map: dot, color, transparent: true, depthWrite: false }));
   };
   const showRecording = (a, on) => {
     if (on && !a.light) {
@@ -5820,8 +7110,8 @@ function createPresence(d) {
   let sightWant = false;
   let sightK = 0;
   let fovBase = null;
-  const hip = new THREE10.Vector3();
-  const up = new THREE10.Vector3();
+  const hip = new THREE11.Vector3();
+  const up = new THREE11.Vector3();
   const endSight = () => {
     sightWant = false;
     sightK = 0;
@@ -5833,9 +7123,9 @@ function createPresence(d) {
     setAimScale(1);
   };
   const bob = { x: 0, y: 0 };
-  const walked = { at: new THREE10.Vector3(), has: false, far: 0, k: 0 };
+  const walked = { at: new THREE11.Vector3(), has: false, far: 0, k: 0 };
   const sway = (dt, still) => {
-    const at = d.rig.getWorldPosition(new THREE10.Vector3());
+    const at = d.rig.getWorldPosition(new THREE11.Vector3());
     const moved = walked.has ? Math.hypot(at.x - walked.at.x, at.z - walked.at.z) : 0;
     walked.at.copy(at);
     walked.has = true;
@@ -5856,9 +7146,9 @@ function createPresence(d) {
     if (now < 0) {
       const size = described?.size ?? [0.2, 0.3, 0.2];
       const acts = !!described?.does.use;
-      const tall1 = Math.tan(THREE10.MathUtils.degToRad((fovBase ?? d.camera.fov) / 2));
+      const tall1 = Math.tan(THREE11.MathUtils.degToRad((fovBase ?? d.camera.fov) / 2));
       const narrow = d.camera.aspect < 1;
-      const far = THREE10.MathUtils.clamp(size[1] / (2 * tall1 * (narrow ? 0.24 : acts ? 0.4 : 0.3)), 0.4, 0.95);
+      const far = THREE11.MathUtils.clamp(size[1] / (2 * tall1 * (narrow ? 0.24 : acts ? 0.4 : 0.3)), 0.4, 0.95);
       const tall = tall1 * far;
       const wide = tall * d.camera.aspect;
       hip.set(narrow ? wide * 0.5 : Math.min(wide * 0.6, wide - size[0] * 0.6), narrow ? -tall * 0.56 : -tall * 0.99, -far);
@@ -5869,7 +7159,7 @@ function createPresence(d) {
         mineModel.position.lerpVectors(hip, up, sightK);
         if (sightK > 2e-3 || fovBase !== null) {
           fovBase ??= d.camera.fov;
-          const share = THREE10.MathUtils.lerp(1, Math.max(0.45, aim.zoom), sightK);
+          const share = THREE11.MathUtils.lerp(1, Math.max(0.45, aim.zoom), sightK);
           d.camera.fov = fovBase * share;
           d.camera.updateProjectionMatrix();
           setAimScale(share);
@@ -5902,7 +7192,7 @@ function createPresence(d) {
     },
     ...d.deferredPlay ? { deferred: true } : {},
     me: () => session?.self.pubkey ?? null,
-    people: () => [...avatars.values()].filter((a) => a.target && a.root.visible).map((a) => ({ pubkey: a.member.pubkey, head: a.head.getWorldPosition(new THREE10.Vector3()), body: a.torso, over: a.head, root: a.root, holding: a.heldItem ?? "", held: a.held ?? null })),
+    people: () => [...avatars.values()].filter((a) => a.target && a.root.visible).map((a) => ({ pubkey: a.member.pubkey, head: a.head.getWorldPosition(new THREE11.Vector3()), body: a.torso, over: a.head, root: a.root, holding: a.heldItem ?? "", held: a.held ?? null })),
     itemsMuted: (pubkey) => itemMutes.has(pubkey),
     tell: (said) => session?.tellPlay(said),
     tintsOf: (pubkey) => pubkey === null ? mineTints : avatars.get(pubkey)?.tints ?? {},
@@ -5914,8 +7204,8 @@ function createPresence(d) {
       const i = hand();
       const c = i >= 0 ? d.controllers[i] : null;
       if (!c) return null;
-      const from = c.getWorldPosition(new THREE10.Vector3());
-      return { from, to: from.clone().add(new THREE10.Vector3(0, 0, -18).applyQuaternion(c.getWorldQuaternion(new THREE10.Quaternion()))) };
+      const from = c.getWorldPosition(new THREE11.Vector3());
+      return { from, to: from.clone().add(new THREE11.Vector3(0, 0, -18).applyQuaternion(c.getWorldQuaternion(new THREE11.Quaternion()))) };
     },
     ...d.solid ? { solid: d.solid } : {},
     ...d.onStruck ? { onStruck: d.onStruck } : {},
@@ -6011,9 +7301,9 @@ function createPresence(d) {
     if (!from) return void dress(a, a.member.look);
     void loadPicture(from).then((canvas) => {
       if (!canvas || a.pictureFrom !== from || !avatars.has(a.member.pubkey)) return;
-      const map = new THREE10.CanvasTexture(canvas);
-      map.colorSpace = THREE10.SRGBColorSpace;
-      const sprite = new THREE10.Sprite(new THREE10.SpriteMaterial({ map, depthWrite: false }));
+      const map = new THREE11.CanvasTexture(canvas);
+      map.colorSpace = THREE11.SRGBColorSpace;
+      const sprite = new THREE11.Sprite(new THREE11.SpriteMaterial({ map, depthWrite: false }));
       sprite.scale.set(0.2, 0.2, 1);
       sprite.position.set(0, 0.63, 0);
       sprite.userData.person = a.member.pubkey;
@@ -6107,7 +7397,7 @@ function createPresence(d) {
     }
   };
   const makeAvatar = (member) => {
-    const root = new THREE10.Group();
+    const root = new THREE11.Group();
     root.visible = false;
     root.userData.nswpNoHit = true;
     const label = textSprite(member.name, labelColor, 0.5);
@@ -6134,7 +7424,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE10.PositionalAudio(listener);
+    const pa = new THREE11.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(MUSIC_RANGE);
     pa.setVolume(0);
@@ -6162,8 +7452,8 @@ function createPresence(d) {
     return Math.sqrt(buf.reduce((sum, x) => sum + x * x, 0) / buf.length);
   };
   const levelBuf = new Float32Array(512);
-  const headAt = new THREE10.Vector3();
-  const theirs = new THREE10.Vector3();
+  const headAt = new THREE11.Vector3();
+  const theirs = new THREE11.Vector3();
   const tendMusic = (dt) => {
     if (!session) return;
     d.camera.getWorldPosition(headAt);
@@ -6211,7 +7501,7 @@ function createPresence(d) {
     el.srcObject = stream;
     void el.play().catch(() => {
     });
-    const pa = new THREE10.PositionalAudio(listener);
+    const pa = new THREE11.PositionalAudio(listener);
     pa.setMediaStreamSource(stream);
     pa.setRefDistance(1.5);
     pa.setRolloffFactor(1.2);
@@ -6238,8 +7528,8 @@ function createPresence(d) {
     dropModel(a);
     a.figure.dispose();
   };
-  const v = new THREE10.Vector3();
-  const q = new THREE10.Quaternion();
+  const v = new THREE11.Vector3();
+  const q = new THREE11.Quaternion();
   const worldTransform = (o) => {
     o.getWorldPosition(v);
     o.getWorldQuaternion(q);
@@ -6310,7 +7600,7 @@ function createPresence(d) {
       offsetApplied = true;
       const at = d.arrival?.() ?? null;
       if (at && at.places.length) {
-        arriving = { until: clock + ARRIVING_SECONDS, from: d.camera.getWorldPosition(new THREE10.Vector3()), places: at.places, ...at.jump ? { jump: at.jump } : {}, ...at.canStand ? { canStand: at.canStand } : {}, ...at.moving ? { moving: at.moving } : {} };
+        arriving = { until: clock + ARRIVING_SECONDS, from: d.camera.getWorldPosition(new THREE11.Vector3()), places: at.places, ...at.jump ? { jump: at.jump } : {}, ...at.canStand ? { canStand: at.canStand } : {}, ...at.moving ? { moving: at.moving } : {} };
       } else {
         const off = spawnOffset(s.self.pubkey);
         (at?.jump ?? ((fn) => fn()))(() => {
@@ -6393,9 +7683,9 @@ function createPresence(d) {
     sendTimer = setInterval(() => s.sendPose(ownPose()), SEND_EVERY_MS);
     changed();
   };
-  const tp = new THREE10.Vector3();
-  const tq = new THREE10.Quaternion();
-  const euler = new THREE10.Euler();
+  const tp = new THREE11.Vector3();
+  const tq = new THREE11.Quaternion();
+  const euler = new THREE11.Euler();
   const apply = (o, t, k) => {
     o.position.lerp(tp.set(...t.position), k);
     o.quaternion.slerp(tq.set(...t.quaternion), k);
@@ -6552,11 +7842,11 @@ function createPresence(d) {
       const a = avatars.get(pubkey);
       if (!a?.target) return null;
       d.camera.getWorldPosition(v);
-      const to = new THREE10.Vector3().fromArray(a.target.head.position).sub(v);
+      const to = new THREE11.Vector3().fromArray(a.target.head.position).sub(v);
       const distance = to.length();
       if (distance < 1e-3) return { distance: 0, pan: 0 };
-      const right = new THREE10.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
-      const pan = THREE10.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
+      const right = new THREE11.Vector3(1, 0, 0).applyQuaternion(d.camera.getWorldQuaternion(q));
+      const pan = THREE11.MathUtils.clamp(to.normalize().dot(right), -1, 1) * Math.min(1, distance / 1.5);
       return { distance: Math.round(distance * 100) / 100, pan: Math.round(pan * 100) / 100 };
     },
     pressAt(raycaster) {
@@ -6696,7 +7986,7 @@ function createPresence(d) {
       d.camera.getWorldPosition(v);
       for (const a of avatars.values()) {
         if (!a.target) continue;
-        const near = THREE10.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
+        const near = THREE11.MathUtils.clamp((a.head.position.distanceTo(v) - FADE_END) / (FADE_START - FADE_END), 0, 1);
         for (const m of a.materials) m.material.opacity = m.opacity * near;
         a.near = near;
         a.materials[0].material.tick?.(performance.now() / 1e3);
@@ -6785,7 +8075,7 @@ function createPresence(d) {
 }
 
 // packages/sdk/src/room-controls.ts
-import * as THREE12 from "three";
+import * as THREE13 from "three";
 import { CHAT_LIMITS, cleanLightningAddress, DEFAULT_RELAYS as DEFAULT_RELAYS8, guestName, DELETION_KIND, encodeNpub as encodeNpub3, shortNpub as shortNpub6, verifyEvent as verifyEvent7 } from "@nswp/core";
 
 // packages/sdk/src/ask-once.ts
@@ -7530,7 +8820,7 @@ function createMessages(opts) {
 
 // packages/sdk/src/messaging.ts
 import { shortNpub as shortNpub5, MESSAGE_LIMITS } from "@nswp/core";
-import * as THREE11 from "three";
+import * as THREE12 from "three";
 var W3 = 768;
 var H3 = 900;
 var LEAD = 130;
@@ -7628,8 +8918,8 @@ function addMessagingControls(controls, opts) {
     const canvas = document.createElement("canvas");
     canvas.width = W3;
     canvas.height = H3;
-    const texture = new THREE11.CanvasTexture(canvas);
-    texture.colorSpace = THREE11.SRGBColorSpace;
+    const texture = new THREE12.CanvasTexture(canvas);
+    texture.colorSpace = THREE12.SRGBColorSpace;
     try {
       const made2 = opts.panels.open(
         {
@@ -8006,8 +9296,8 @@ function addRoomControls(controls, presence, opts = {}) {
     watching.set(m.pubkey, w);
     const show = () => {
       if (w.panel || watching.get(m.pubkey) !== w || !video.videoWidth || !video.videoHeight) return;
-      w.texture = new THREE12.VideoTexture(video);
-      w.texture.colorSpace = THREE12.SRGBColorSpace;
+      w.texture = new THREE13.VideoTexture(video);
+      w.texture.colorSpace = THREE13.SRGBColorSpace;
       w.panel = opts.panels.open(
         { kind: "custom", title: `${m.name}'s screen`, texture: w.texture, aspect: video.videoWidth / video.videoHeight, onClose: () => stopWatching(m.pubkey, true) },
         { keep: false }
@@ -8368,8 +9658,8 @@ function addRoomControls(controls, presence, opts = {}) {
     const canvas = document.createElement("canvas");
     canvas.width = CHAT_W;
     canvas.height = CHAT_H;
-    const texture = new THREE12.CanvasTexture(canvas);
-    texture.colorSpace = THREE12.SRGBColorSpace;
+    const texture = new THREE13.CanvasTexture(canvas);
+    texture.colorSpace = THREE13.SRGBColorSpace;
     try {
       const panel = opts.panels.open(
         {
@@ -8598,8 +9888,8 @@ function addRoomControls(controls, presence, opts = {}) {
     const canvas = document.createElement("canvas");
     canvas.width = CHAT_W;
     canvas.height = CHAT_H;
-    const texture = new THREE12.CanvasTexture(canvas);
-    texture.colorSpace = THREE12.SRGBColorSpace;
+    const texture = new THREE13.CanvasTexture(canvas);
+    texture.colorSpace = THREE13.SRGBColorSpace;
     try {
       const panel = opts.panels.open(
         {
@@ -8904,7 +10194,7 @@ function addRoomControls(controls, presence, opts = {}) {
 }
 
 // packages/sdk/src/input.ts
-import * as THREE14 from "three";
+import * as THREE15 from "three";
 
 // packages/sdk/src/actions.ts
 var NO_PAD = { stick: [0, 0], from: "none", trigger: 0, squeeze: 0, primary: false, secondary: false, press: false };
@@ -9069,7 +10359,7 @@ var Locomotion = class {
 };
 
 // packages/sdk/src/held-hands.ts
-import * as THREE13 from "three";
+import * as THREE14 from "three";
 import { GLTFLoader as GLTFLoader3 } from "three/examples/jsm/loaders/GLTFLoader.js";
 function wantsHeldHands(profiles) {
   return !!profiles && profiles.some((p) => /^(meta-quest-|oculus-touch)/.test(p));
@@ -9083,9 +10373,9 @@ function thumbOn(b) {
   return "up";
 }
 function rimMaterial(o) {
-  const m = new THREE13.MeshPhongMaterial({ color: o.color, transparent: true, opacity: o.opacity, depthWrite: false, shininess: 60, specular: 3359829, vertexColors: !!o.vertexAlpha, side: THREE13.FrontSide });
+  const m = new THREE14.MeshPhongMaterial({ color: o.color, transparent: true, opacity: o.opacity, depthWrite: false, shininess: 60, specular: 3359829, vertexColors: !!o.vertexAlpha, side: THREE14.FrontSide });
   m.onBeforeCompile = (s) => {
-    s.uniforms.rimColor = { value: new THREE13.Color(o.rim) };
+    s.uniforms.rimColor = { value: new THREE14.Color(o.rim) };
     s.uniforms.rimPower = { value: o.rimPower };
     s.fragmentShader = s.fragmentShader.replace("#include <common>", "#include <common>\nuniform vec3 rimColor;\nuniform float rimPower;").replace(
       "#include <opaque_fragment>",
@@ -9118,15 +10408,15 @@ function heldHand(at, side, finish) {
   return got;
 }
 function build(ctl, hand, finish) {
-  const group = new THREE13.Group();
+  const group = new THREE14.Group();
   group.name = "nswp-held-hand";
   group.add(ctl.scene, hand.scene);
-  const edges = new THREE13.LineBasicMaterial({ color: 10479871, transparent: true, opacity: 0.55 });
+  const edges = new THREE14.LineBasicMaterial({ color: 10479871, transparent: true, opacity: 0.55 });
   ctl.scene.traverse((o) => {
     const mesh = o;
     if (!mesh.isMesh) return;
     mesh.material = rimMaterial({ color: 13163762, rim: 15268863, opacity: 0.16, rimPower: 3 });
-    mesh.add(new THREE13.LineSegments(new THREE13.EdgesGeometry(mesh.geometry, 35), edges));
+    mesh.add(new THREE14.LineSegments(new THREE14.EdgesGeometry(mesh.geometry, 35), edges));
   });
   hand.scene.traverse((o) => {
     const mesh = o;
@@ -9141,7 +10431,7 @@ function build(ctl, hand, finish) {
   hand.scene.traverse((o) => {
     if (o.isMesh) o.renderOrder += 1;
   });
-  const mixer = new THREE13.AnimationMixer(hand.scene);
+  const mixer = new THREE14.AnimationMixer(hand.scene);
   const actions = {};
   for (const clip of hand.animations) {
     const a = mixer.clipAction(clip);
@@ -9331,25 +10621,25 @@ function drawnLast(root) {
 }
 function controllerModel(accent) {
   const b = new MeshBuilder().at();
-  b.tone = new THREE14.Color(1712684);
+  b.tone = new THREE15.Color(1712684);
   b.light = accent.clone();
-  const lean = new THREE14.Matrix4().makeRotationX(THREE14.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
+  const lean = new THREE15.Matrix4().makeRotationX(THREE15.MathUtils.degToRad(-52)).setPosition(0, -0.012, 0.022);
   b.place(lean);
   b.lathe([[5e-4, -0.07], [0.014, -0.068], [0.018, -0.02], [0.017, 0.03], [0.012, 0.046], [5e-4, 0.048]], [0, 0, 0], 6, (row) => row === 1 ? { glow: 0.5 } : { shade: 0.9 + row % 2 * 0.2 });
-  b.place(new THREE14.Matrix4());
+  b.place(new THREE15.Matrix4());
   b.box([0.03, 0.022, 0.07], [0, 4e-3, -0.045], { bevel: 6e-3, shade: 1.05 });
   b.box([0.018, 0.012, 4e-3], [0, 4e-3, -0.082], { glow: 1 });
-  b.place(new THREE14.Matrix4().makeRotationX(THREE14.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
+  b.place(new THREE15.Matrix4().makeRotationX(THREE15.MathUtils.degToRad(64)).setPosition(0, 0.012, -0.04));
   b.lathe([[0.046, -4e-3], [0.052, 0], [0.046, 4e-3], [0.041, 0]], [0, 0, 0], 12, (row) => row === 1 ? { glow: 0.7 } : { shade: 0.85 });
   const metal = createAlloy(accent, { gloss: 0.6 });
-  const group = new THREE14.Group();
+  const group = new THREE15.Group();
   group.add(b.build(metal));
-  const light = () => new THREE14.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
-  const trigger = new THREE14.Mesh(new THREE14.BoxGeometry(0.012, 0.02, 0.014), light());
+  const light = () => new THREE15.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.2) });
+  const trigger = new THREE15.Mesh(new THREE15.BoxGeometry(0.012, 0.02, 0.014), light());
   trigger.position.set(0, -0.016, -0.036);
-  const squeeze = new THREE14.Mesh(new THREE14.BoxGeometry(8e-3, 0.03, 0.012), light());
+  const squeeze = new THREE15.Mesh(new THREE15.BoxGeometry(8e-3, 0.03, 0.012), light());
   squeeze.position.set(0, -0.034, 0.018);
-  squeeze.rotation.x = THREE14.MathUtils.degToRad(-52);
+  squeeze.rotation.x = THREE15.MathUtils.degToRad(-52);
   group.add(trigger, squeeze);
   unpointable(group);
   drawnLast(group);
@@ -9359,7 +10649,7 @@ var VIGNETTE_VERT = `varying float vFar; void main(){ vFar = length(position.xy)
 var VIGNETTE_FRAG = `uniform float uAmount; varying float vFar; void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.24, 0.42, vFar) * uAmount); }`;
 function createXrInput(opts) {
   const { renderer, rig, camera } = opts;
-  const accent = new THREE14.Color(opts.accent ?? 16758364);
+  const accent = new THREE15.Color(opts.accent ?? 16758364);
   const keeper = keepComfort({
     ...opts.controls ? { controls: opts.controls } : {},
     ...opts.arrivedIntense ? { arrivedIntense: true } : {},
@@ -9414,16 +10704,16 @@ function createXrInput(opts) {
   });
   const kindOf = (s) => !s.source ? "none" : s.source.hand ? "hand" : "controller";
   const handOf = (s) => s.source?.handedness === "left" || s.source?.handedness === "right" ? s.source.handedness : "none";
-  const jointShape = new THREE14.OctahedronGeometry(1, 1);
-  const jointDark = new THREE14.MeshBasicMaterial({ color: 2568767 });
-  const jointLit = new THREE14.MeshBasicMaterial({ color: accent });
+  const jointShape = new THREE15.OctahedronGeometry(1, 1);
+  const jointDark = new THREE15.MeshBasicMaterial({ color: 2568767 });
+  const jointLit = new THREE15.MeshBasicMaterial({ color: accent });
   const dressHand = (hand) => {
     for (const joint of hand.children) {
       if (joint.userData.nswpJoint) continue;
       joint.userData.nswpJoint = true;
       const name = String(joint.jointName ?? "");
       const tip = name.endsWith("-tip");
-      const mesh = new THREE14.Mesh(jointShape, tip ? jointLit : jointDark);
+      const mesh = new THREE15.Mesh(jointShape, tip ? jointLit : jointDark);
       const radius = joint.jointRadius;
       mesh.scale.setScalar(Math.min(0.02, Math.max(5e-3, (radius ?? 8e-3) * (tip ? 0.9 : 0.75))));
       unpointable(mesh);
@@ -9431,9 +10721,9 @@ function createXrInput(opts) {
       joint.add(mesh);
     }
   };
-  const vignette = new THREE14.Mesh(
-    new THREE14.RingGeometry(0.12, 3, 48, 4),
-    new THREE14.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
+  const vignette = new THREE15.Mesh(
+    new THREE15.RingGeometry(0.12, 3, 48, 4),
+    new THREE15.ShaderMaterial({ uniforms: { uAmount: { value: 0 } }, vertexShader: VIGNETTE_VERT, fragmentShader: VIGNETTE_FRAG, transparent: true, depthTest: false, depthWrite: false })
   );
   vignette.position.z = -0.4;
   vignette.renderOrder = 999;
@@ -9442,9 +10732,9 @@ function createXrInput(opts) {
   unpointable(vignette);
   camera.add(vignette);
   let narrow = 0;
-  const sheet = new THREE14.Mesh(
-    new THREE14.PlaneGeometry(4, 4),
-    new THREE14.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0, depthTest: false, depthWrite: false })
+  const sheet = new THREE15.Mesh(
+    new THREE15.PlaneGeometry(4, 4),
+    new THREE15.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0, depthTest: false, depthWrite: false })
   );
   sheet.position.z = -0.3;
   sheet.renderOrder = 1e3;
@@ -9493,8 +10783,8 @@ function createXrInput(opts) {
     } catch {
     }
   };
-  const headAt = new THREE14.Vector3();
-  const ahead = new THREE14.Vector3();
+  const headAt = new THREE15.Vector3();
+  const ahead = new THREE15.Vector3();
   const canStand = opts.canStand ?? (() => true);
   const walk = (right, forward) => {
     camera.getWorldPosition(headAt);
@@ -9511,12 +10801,12 @@ function createXrInput(opts) {
   const things = /* @__PURE__ */ new Map();
   const held = /* @__PURE__ */ new Map();
   const returning = [];
-  const box = new THREE14.Box3();
-  const ball = new THREE14.Sphere();
-  const handAt = new THREE14.Vector3();
-  const raycaster = new THREE14.Raycaster();
-  const turnOnly = new THREE14.Matrix4();
-  const HOLD_AT = new THREE14.Vector3(0, 0, -0.06);
+  const box = new THREE15.Box3();
+  const ball = new THREE15.Sphere();
+  const handAt = new THREE15.Vector3();
+  const raycaster = new THREE15.Raycaster();
+  const turnOnly = new THREE15.Matrix4();
+  const HOLD_AT = new THREE15.Vector3(0, 0, -0.06);
   const FAR_REACH = 6;
   const isHeld = (object) => [...held.values()].some((h) => h.thing.object === object);
   const grab = (slot, by) => {
@@ -9597,7 +10887,8 @@ function createXrInput(opts) {
       sheet.visible = false;
       for (const slot of [...held.keys()]) release(slot);
     } else {
-      const pads = read();
+      const read_ = read();
+      const pads = opts.sticksTaken?.() ? read_.map((p) => ({ ...p, pad: { ...p.pad, stick: [0, 0] } })) : read_;
       const intent = loco.frame(dt, pads, keeper.comfort);
       if (intent.turn !== 0) {
         turnVisitor(rig, camera, intent.turn);
@@ -9704,10 +10995,10 @@ function createXrInput(opts) {
 }
 
 // packages/sdk/src/panels.ts
-import * as THREE17 from "three";
+import * as THREE18 from "three";
 
 // packages/sdk/src/keyboard.ts
-import * as THREE15 from "three";
+import * as THREE16 from "three";
 
 // packages/sdk/src/panel-store.ts
 var PANEL_LOOKS = [
@@ -9874,18 +11165,18 @@ var KEYS = 520;
 var LIVE_STRIP = 92;
 var WIDTH = 0.8;
 function createKeyboard(o) {
-  const accent = `#${new THREE15.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE16.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   const canvas = document.createElement("canvas");
   canvas.width = W4;
   canvas.height = SHOW + KEYS;
   const g = canvas.getContext("2d");
-  const texture = new THREE15.CanvasTexture(canvas);
-  texture.colorSpace = THREE15.SRGBColorSpace;
+  const texture = new THREE16.CanvasTexture(canvas);
+  texture.colorSpace = THREE16.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE15.Mesh(new THREE15.PlaneGeometry(WIDTH, WIDTH * canvas.height / W4), new THREE15.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
+  const board = new THREE16.Mesh(new THREE16.PlaneGeometry(WIDTH, WIDTH * canvas.height / W4), new THREE16.MeshBasicMaterial({ map: texture, toneMapped: false, transparent: true }));
   board.name = "keyboard";
-  const group = new THREE15.Group();
+  const group = new THREE16.Group();
   group.name = "keyboard";
   group.add(board);
   group.visible = false;
@@ -10005,9 +11296,9 @@ function createKeyboard(o) {
     field.focus();
   };
   const unheard = voice.subscribe(() => done || live ? lay() : void 0);
-  const at = new THREE15.Vector3();
-  const facing2 = new THREE15.Vector3();
-  const local2 = new THREE15.Vector3();
+  const at = new THREE16.Vector3();
+  const facing2 = new THREE16.Vector3();
+  const local2 = new THREE16.Vector3();
   const putUp = (under = false) => {
     o.camera.getWorldPosition(at);
     o.camera.getWorldDirection(facing2);
@@ -10134,7 +11425,7 @@ function createKeyboard(o) {
 }
 
 // packages/sdk/src/library.ts
-import * as THREE16 from "three";
+import * as THREE17 from "three";
 
 // packages/sdk/src/file-store.ts
 var DB = "nswp-panels";
@@ -10201,11 +11492,11 @@ var W5 = 1024;
 var H4 = 768;
 var COLS = 4;
 var ROWS = 2;
-var TOP = 96;
+var TOP2 = 96;
 var FOOT = 104;
 var WIDTH2 = 1.1;
 function createLibrary(o) {
-  const accent = `#${new THREE16.Color(o.accent ?? 16758364).getHexString()}`;
+  const accent = `#${new THREE17.Color(o.accent ?? 16758364).getHexString()}`;
   const ink = o.textColor ?? "#eef5fb";
   let items = [];
   if (o.keep) {
@@ -10227,12 +11518,12 @@ function createLibrary(o) {
   canvas.width = W5;
   canvas.height = H4;
   const g = canvas.getContext("2d");
-  const texture = new THREE16.CanvasTexture(canvas);
-  texture.colorSpace = THREE16.SRGBColorSpace;
+  const texture = new THREE17.CanvasTexture(canvas);
+  texture.colorSpace = THREE17.SRGBColorSpace;
   texture.anisotropy = 8;
-  const board = new THREE16.Mesh(new THREE16.PlaneGeometry(WIDTH2, WIDTH2 * H4 / W5), new THREE16.MeshBasicMaterial({ map: texture, toneMapped: false }));
+  const board = new THREE17.Mesh(new THREE17.PlaneGeometry(WIDTH2, WIDTH2 * H4 / W5), new THREE17.MeshBasicMaterial({ map: texture, toneMapped: false }));
   board.name = "library";
-  const group = new THREE16.Group();
+  const group = new THREE17.Group();
   group.name = "library";
   group.add(board);
   group.visible = false;
@@ -10262,12 +11553,12 @@ function createLibrary(o) {
     g.fillStyle = "#0a1018";
     g.fillRect(0, 0, W5, H4);
     g.fillStyle = "#101a26";
-    g.fillRect(0, 0, W5, TOP);
+    g.fillRect(0, 0, W5, TOP2);
     g.fillStyle = ink;
     g.textBaseline = "middle";
     g.textAlign = "left";
     g.font = "bold 40px system-ui, sans-serif";
-    g.fillText(removing ? "Select one to remove it" : "Your pictures and video", 36, TOP / 2 + 2, W5 - 200);
+    g.fillText(removing ? "Select one to remove it" : "Your pictures and video", 36, TOP2 / 2 + 2, W5 - 200);
     const button = (id, label, x, y, w, h, on = false) => {
       regions.push({ id, x, y, w, h });
       const lit = aimed === id || on;
@@ -10281,7 +11572,7 @@ function createLibrary(o) {
       g.fillText(label, x + w / 2, y + h / 2 + 2, w - 16);
       g.textAlign = "left";
     };
-    button("close", "Close", W5 - 164, 18, 140, TOP - 36);
+    button("close", "Close", W5 - 164, 18, 140, TOP2 - 36);
     if (shown2.items.length === 0) {
       g.fillStyle = ink;
       g.globalAlpha = 0.8;
@@ -10294,9 +11585,9 @@ function createLibrary(o) {
       g.globalAlpha = 1;
     }
     const cellW = (W5 - 48) / COLS;
-    const cellH = (H4 - TOP - FOOT - 24) / ROWS;
+    const cellH = (H4 - TOP2 - FOOT - 24) / ROWS;
     shown2.items.forEach((item, i) => {
-      const [x, y] = [24 + i % COLS * cellW + 10, TOP + 12 + Math.floor(i / COLS) * cellH + 8];
+      const [x, y] = [24 + i % COLS * cellW + 10, TOP2 + 12 + Math.floor(i / COLS) * cellH + 8];
       const [w, h] = [cellW - 20, cellH - 16];
       const id = `item:${item.id}`;
       regions.push({ id, x, y, w, h });
@@ -10340,8 +11631,8 @@ function createLibrary(o) {
     if (items.length) button("removing", removing ? "Stop removing" : "Remove one", W5 - 300, fy, 276, FOOT - 28, removing);
     texture.needsUpdate = true;
   };
-  const at = new THREE16.Vector3();
-  const facing2 = new THREE16.Vector3();
+  const at = new THREE17.Vector3();
+  const facing2 = new THREE17.Vector3();
   const api = {
     group,
     list: () => items,
@@ -10415,7 +11706,7 @@ function createLibrary(o) {
       if (!r || !group.visible) return null;
       const height = WIDTH2 * H4 / W5;
       group.updateMatrixWorld(true);
-      return board.localToWorld(new THREE16.Vector3(((r.x + r.w / 2) / W5 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H4) * height, 0));
+      return board.localToWorld(new THREE17.Vector3(((r.x + r.w / 2) / W5 - 0.5) * WIDTH2, (0.5 - (r.y + r.h / 2) / H4) * height, 0));
     },
     info: () => ({ showing: group.visible, page, pages: libraryPage(items, page, COLS * ROWS).pages, removing, cells: regions.map((r) => r.id) }),
     update() {
@@ -10441,8 +11732,8 @@ function canvasTexture(width, height, draw2) {
   canvas.width = width;
   canvas.height = height;
   draw2(canvas.getContext("2d"), width, height);
-  const texture = new THREE17.CanvasTexture(canvas);
-  texture.colorSpace = THREE17.SRGBColorSpace;
+  const texture = new THREE18.CanvasTexture(canvas);
+  texture.colorSpace = THREE18.SRGBColorSpace;
   texture.anisotropy = 8;
   return texture;
 }
@@ -10528,9 +11819,9 @@ function barTexture(title, ink) {
   });
 }
 function createPanels(o) {
-  const accent = new THREE17.Color(o.accent ?? 16758364);
+  const accent = new THREE18.Color(o.accent ?? 16758364);
   const ink = o.textColor ?? "#eef5fb";
-  const root = new THREE17.Group();
+  const root = new THREE18.Group();
   root.name = "panels";
   o.scene.add(root);
   const live = /* @__PURE__ */ new Map();
@@ -10539,13 +11830,13 @@ function createPanels(o) {
   const glyph = (g) => glyphs.get(g) ?? (glyphs.set(g, glyphTexture(g, ink)), glyphs.get(g));
   const frameShape = (() => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE17.Color(1186340);
+    b.tone = new THREE18.Color(1186340);
     b.light = accent.clone();
     b.box([1, 1, 0.022], [0, 0, 0], { bevel: 8e-3 });
     return b.geometry();
   })();
-  const head = new THREE17.Vector3();
-  const at = new THREE17.Vector3();
+  const head = new THREE18.Vector3();
+  const at = new THREE18.Vector3();
   const headV3 = () => {
     o.camera.getWorldPosition(head);
     return [head.x, head.y, head.z];
@@ -10634,10 +11925,10 @@ function createPanels(o) {
   };
   const presenting = () => !!o.session?.();
   let follow = null;
-  const anchorAt = new THREE17.Vector3();
-  const anchorTurn = new THREE17.Quaternion();
-  const offset = new THREE17.Vector3();
-  const UP = new THREE17.Vector3(0, 1, 0);
+  const anchorAt = new THREE18.Vector3();
+  const anchorTurn = new THREE18.Quaternion();
+  const offset = new THREE18.Vector3();
+  const UP = new THREE18.Vector3(0, 1, 0);
   const anchor = (dt) => {
     o.camera.getWorldPosition(anchorAt);
     if (!presenting()) {
@@ -10678,20 +11969,20 @@ function createPanels(o) {
     save();
     if (p.source.kind === "custom") p.source.onClose?.();
   };
-  const flat = (texture, w = 1, h = 1) => new THREE17.Mesh(new THREE17.PlaneGeometry(w, h), new THREE17.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
+  const flat = (texture, w = 1, h = 1) => new THREE18.Mesh(new THREE18.PlaneGeometry(w, h), new THREE18.MeshBasicMaterial({ map: texture, color: texture ? 16777215 : 659480, toneMapped: false }));
   const open = (content, opts = {}) => {
     const source = content.kind === "custom" ? content : cleanSource(content);
     if (!source) throw new Error("nswp-sdk: a panel needs something to show (a note with words, or a picture or video with an address).");
     if (live.size >= PANEL_LIMITS.count && !(opts.id && live.has(opts.id))) throw new Error(`nswp-sdk: ${PANEL_LIMITS.count} panels are open. Put one away first.`);
     const id = opts.id ?? newId();
     live.get(id)?.close();
-    const group = new THREE17.Group();
+    const group = new THREE18.Group();
     group.name = `panel:${id}`;
     const body = flat(null);
     body.name = `${id}:body`;
     const bar = flat(barTexture(source.title || (source.kind === "note" ? "Note" : source.kind === "picture" ? "Picture" : source.kind === "video" ? "Video" : ""), ink), 1, BAR);
     bar.name = `${id}:bar`;
-    const frame = new THREE17.Mesh(frameShape, metal);
+    const frame = new THREE18.Mesh(frameShape, metal);
     frame.name = "frame";
     frame.raycast = () => {
     };
@@ -10745,7 +12036,7 @@ function createPanels(o) {
         save();
       },
       place() {
-        const e = new THREE17.Euler().setFromQuaternion(group.quaternion, "YXZ");
+        const e = new THREE18.Euler().setFromQuaternion(group.quaternion, "YXZ");
         const round = (n) => Math.round(n * 1e3) / 1e3;
         return { position: group.position.toArray().map(round), yaw: round((e.y / DEG % 360 + 360) % 360), pitch: round(e.x / DEG), width: round(p.width) };
       },
@@ -10783,8 +12074,8 @@ function createPanels(o) {
           const image = new Image();
           image.onload = () => {
             if (!live.has(id)) return;
-            const texture = new THREE17.Texture(image);
-            texture.colorSpace = THREE17.SRGBColorSpace;
+            const texture = new THREE18.Texture(image);
+            texture.colorSpace = THREE18.SRGBColorSpace;
             texture.needsUpdate = true;
             show(texture, image.naturalWidth / Math.max(1, image.naturalHeight));
           };
@@ -10797,8 +12088,8 @@ function createPanels(o) {
           p.video = video;
           video.addEventListener("loadedmetadata", () => {
             if (!live.has(id) || !video.videoWidth) return;
-            const texture = new THREE17.VideoTexture(video);
-            texture.colorSpace = THREE17.SRGBColorSpace;
+            const texture = new THREE18.VideoTexture(video);
+            texture.colorSpace = THREE18.SRGBColorSpace;
             show(texture, video.videoWidth / video.videoHeight);
           });
           const mark = () => {
@@ -10865,9 +12156,9 @@ function createPanels(o) {
   const tint = (hit, on) => {
     const found = hit ? find(hit) : null;
     const mesh = found?.[0].buttons.get(found[1]);
-    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE17.Color(16777215));
+    if (mesh) mesh.material.color.copy(on || found[1] === "pin" && found[0].pinAt ? accent : new THREE18.Color(16777215));
   };
-  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE17.Color(16777215));
+  const lit = (p) => p.buttons.get("pin").material.color.copy(p.pinAt ? accent : new THREE18.Color(16777215));
   const api = {
     open,
     async openFile(file) {
@@ -11100,14 +12391,14 @@ function addPanelControls(controls, panels, o) {
 }
 
 // packages/sdk/src/floor-mark.ts
-import * as THREE18 from "three";
+import * as THREE19 from "three";
 var MOST3 = 140;
 var TURNS = 16;
 function createFloorMarks(accent, opts = {}) {
   const y = opts.height ?? 0.02;
-  const group = new THREE18.Group();
+  const group = new THREE19.Group();
   group.name = "floor-marks";
-  const paint = (opacity) => new THREE18.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
+  const paint = (opacity) => new THREE19.MeshBasicMaterial({ color: accent, transparent: true, opacity, depthTest: false, depthWrite: false });
   const flat = (o) => {
     o.rotation.x = -Math.PI / 2;
     o.renderOrder = 5;
@@ -11117,19 +12408,19 @@ function createFloorMarks(accent, opts = {}) {
     group.add(o);
     return o;
   };
-  const ring = flat(new THREE18.Mesh(new THREE18.RingGeometry(0.26, 0.34, 48), paint(0.85)));
-  const dot = flat(new THREE18.Mesh(new THREE18.CircleGeometry(0.14, 28), paint(0.95)));
-  const halo = flat(new THREE18.Mesh(new THREE18.RingGeometry(0.26, 0.3, 48), paint(0.7)));
-  const line = flat(new THREE18.InstancedMesh(new THREE18.CircleGeometry(0.07, 14), paint(0.8), MOST3));
+  const ring = flat(new THREE19.Mesh(new THREE19.RingGeometry(0.26, 0.34, 48), paint(0.85)));
+  const dot = flat(new THREE19.Mesh(new THREE19.CircleGeometry(0.14, 28), paint(0.95)));
+  const halo = flat(new THREE19.Mesh(new THREE19.RingGeometry(0.26, 0.3, 48), paint(0.7)));
+  const line = flat(new THREE19.InstancedMesh(new THREE19.CircleGeometry(0.07, 14), paint(0.8), MOST3));
   line.rotation.x = 0;
   line.frustumCulled = false;
-  const knots = flat(new THREE18.InstancedMesh(new THREE18.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
+  const knots = flat(new THREE19.InstancedMesh(new THREE19.RingGeometry(0.1, 0.15, 24), paint(0.85), TURNS));
   knots.rotation.x = 0;
   knots.frustumCulled = false;
-  const place = new THREE18.Matrix4();
-  const lie = new THREE18.Quaternion().setFromEuler(new THREE18.Euler(-Math.PI / 2, 0, 0));
-  const at = new THREE18.Vector3();
-  const one = new THREE18.Vector3(1, 1, 1);
+  const place = new THREE19.Matrix4();
+  const lie = new THREE19.Quaternion().setFromEuler(new THREE19.Euler(-Math.PI / 2, 0, 0));
+  const at = new THREE19.Vector3();
+  const one = new THREE19.Vector3(1, 1, 1);
   let shown2 = { ring: null, dot: null, dots: 0, turns: 0 };
   return {
     group,
@@ -12159,7 +13450,7 @@ function addBagControls(controls, opts) {
 }
 
 // packages/sdk/src/item-preview.ts
-import * as THREE19 from "three";
+import * as THREE20 from "three";
 var KEPT = 36;
 function createItemPreviews(o) {
   const size = o.size ?? 256;
@@ -12171,19 +13462,19 @@ function createItemPreviews(o) {
     if (stage !== void 0) return stage;
     if (typeof document === "undefined") return stage = null;
     try {
-      const renderer = new THREE19.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
+      const renderer = new THREE20.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
       renderer.setPixelRatio(1);
       renderer.setSize(size, size, false);
       renderer.setClearColor(0, 0);
-      const scene = new THREE19.Scene();
-      scene.add(new THREE19.HemisphereLight(16777215, 2699837, 1.7));
-      const key = new THREE19.DirectionalLight(16777215, 2.4);
+      const scene = new THREE20.Scene();
+      scene.add(new THREE20.HemisphereLight(16777215, 2699837, 1.7));
+      const key = new THREE20.DirectionalLight(16777215, 2.4);
       key.position.set(1.6, 2.6, 2.2);
-      const rim = new THREE19.DirectionalLight(12572927, 1.3);
+      const rim = new THREE20.DirectionalLight(12572927, 1.3);
       rim.position.set(-2, 1.2, -2.4);
-      const pivot = new THREE19.Group();
+      const pivot = new THREE20.Group();
       scene.add(key, rim, pivot);
-      const camera = new THREE19.PerspectiveCamera(28, 1, 0.01, 50);
+      const camera = new THREE20.PerspectiveCamera(28, 1, 0.01, 50);
       return stage = { renderer, scene, camera, pivot };
     } catch {
       return stage = null;
@@ -12196,7 +13487,7 @@ function createItemPreviews(o) {
     s.pivot.add(made2.object);
     made2.object.position.copy(made2.middle).multiplyScalar(-1);
     s.pivot.rotation.set(0, angle, 0);
-    const away = made2.radius / Math.sin(THREE19.MathUtils.degToRad(s.camera.fov / 2)) * 1.08;
+    const away = made2.radius / Math.sin(THREE20.MathUtils.degToRad(s.camera.fov / 2)) * 1.08;
     s.camera.position.set(0, away * 0.3, away * 0.95);
     s.camera.lookAt(0, 0, 0);
     s.camera.near = Math.max(5e-3, away - made2.radius * 2);
@@ -12235,8 +13526,8 @@ function createItemPreviews(o) {
           else solids++;
         });
         if (frames > 0 && solids === 0) return void again(key);
-        const box = new THREE19.Box3().setFromObject(object);
-        const ball = box.getBoundingSphere(new THREE19.Sphere());
+        const box = new THREE20.Box3().setFromObject(object);
+        const ball = box.getBoundingSphere(new THREE20.Sphere());
         if (!Number.isFinite(ball.radius) || ball.radius <= 0) return void ready.delete(key);
         ready.set(key, { object, middle: ball.center.clone(), radius: ball.radius, still: null, live: null });
         for (const fn of watchers3) fn();
@@ -13702,7 +14993,7 @@ function addSoundControls(controls, sounds, opts = {}) {
 }
 
 // packages/sdk/src/chamber.ts
-import * as THREE20 from "three";
+import * as THREE21 from "three";
 var R = 1.8;
 var H5 = 2.8;
 var BAYS = 10;
@@ -13727,16 +15018,16 @@ function signTexture(lines, color) {
     const y = rows.length === 1 ? 192 : rows.length === 2 ? 138 + i * 118 : 92 + i * 100;
     g.fillText(line, 512, y, 944);
   });
-  const texture = new THREE20.CanvasTexture(canvas);
-  texture.colorSpace = THREE20.SRGBColorSpace;
+  const texture = new THREE21.CanvasTexture(canvas);
+  texture.colorSpace = THREE21.SRGBColorSpace;
   return texture;
 }
 function createChamber(accent, opts = {}) {
-  const light = new THREE20.Color(accent);
+  const light = new THREE21.Color(accent);
   const metal = createAlloy(light, { gloss: 0.5, speed: 0.9 });
   const builder = () => {
     const b = new MeshBuilder().at();
-    b.tone = new THREE20.Color(1317668);
+    b.tone = new THREE21.Color(1317668);
     b.light = light.clone();
     return b;
   };
@@ -13748,7 +15039,7 @@ function createChamber(accent, opts = {}) {
   const wallShape = builder();
   for (let i = 1; i < BAYS; i++) {
     const a = i * 2 * Math.PI / BAYS;
-    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE20.MathUtils.radToDeg(a));
+    wallShape.at([Math.sin(a) * reach, 0, -Math.cos(a) * reach], -THREE21.MathUtils.radToDeg(a));
     wallShape.box([bay, H5, 0.12], [0, H5 / 2, 0], { bevel: 0.02, shade: i % 2 ? 1 : 0.86, panel: { margin: 0.12, depth: 0.02, faces: "z+ z-" } });
     for (const x of [-bay * 0.26, bay * 0.26]) for (const z of [0.062, -0.062]) wallShape.line([x, 0.3, z], [x, H5 - 0.3, z], 0.03, [0, 0, Math.sign(z)], { flow: i });
   }
@@ -13768,31 +15059,31 @@ function createChamber(accent, opts = {}) {
     leaf.position.set(side * DOOR_W / 2, 0, -reach);
     return leaf;
   });
-  const sign = new THREE20.Mesh(new THREE20.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE20.MeshBasicMaterial({ transparent: true }));
+  const sign = new THREE21.Mesh(new THREE21.PlaneGeometry(DOOR_W * 0.94, DOOR_W * 0.94 * (384 / 1024)), new THREE21.MeshBasicMaterial({ transparent: true }));
   sign.position.set(0, DOOR_H + (H5 - DOOR_H) / 2, -reach + 0.085);
-  const rising = new THREE20.Group();
+  const rising = new THREE21.Group();
   rising.add(walls, ...leaves, sign);
-  const clear = new THREE20.Mesh(new THREE20.BufferGeometry().setAttribute("position", new THREE20.BufferAttribute(new Float32Array(9), 3)), new THREE20.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
+  const clear = new THREE21.Mesh(new THREE21.BufferGeometry().setAttribute("position", new THREE21.BufferAttribute(new Float32Array(9), 3)), new THREE21.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
   clear.frustumCulled = false;
   clear.renderOrder = CHAMBER_ORDER;
   clear.onBeforeRender = (renderer) => renderer.clearDepth();
   for (const part of [floor, walls, lid, ...leaves]) part.renderOrder = CHAMBER_ORDER + 1;
   sign.renderOrder = CHAMBER_ORDER + 1.3;
-  const depthOnly = (depth, o) => new THREE20.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE20.AlwaysDepth, depthWrite: true, side: THREE20.DoubleSide, ...o });
+  const depthOnly = (depth, o) => new THREE21.ShaderMaterial({ vertexShader: "void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }", fragmentShader: `void main() { gl_FragDepth = ${depth}; gl_FragColor = vec4(0.0); }`, colorWrite: false, depthTest: true, depthFunc: THREE21.AlwaysDepth, depthWrite: true, side: THREE21.DoubleSide, ...o });
   const nearest2 = depthOnly("0.0", {});
   const farthest = depthOnly("1.0", { transparent: true });
-  const real = new THREE20.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE20.DoubleSide });
+  const real = new THREE21.MeshBasicMaterial({ colorWrite: false, transparent: true, side: THREE21.DoubleSide });
   const shutOut = [];
   for (const part of [floor, walls, lid, ...leaves]) {
     for (const [material, order] of [[nearest2, SHUT_ORDER], [farthest, CHAMBER_ORDER + 1.1], [real, CHAMBER_ORDER + 1.2]]) {
-      const pass = new THREE20.Mesh(part.geometry, material);
+      const pass = new THREE21.Mesh(part.geometry, material);
       pass.renderOrder = order;
       pass.frustumCulled = false;
       part.add(pass);
       shutOut.push(pass);
     }
   }
-  const group = new THREE20.Group();
+  const group = new THREE21.Group();
   group.add(clear, floor, rising, lid);
   let door = 0;
   let presence = 1;
@@ -13859,8 +15150,8 @@ function createCrossing(o) {
   let hold;
   let shut = null;
   const moves = () => o.motion?.() ?? true;
-  const at = new THREE20.Vector3();
-  const facing2 = new THREE20.Vector3();
+  const at = new THREE21.Vector3();
+  const facing2 = new THREE21.Vector3();
   const place = () => {
     chamber?.dispose();
     const made2 = createChamber(o.accent, o.textColor ? { textColor: o.textColor } : {});
@@ -13963,7 +15254,7 @@ function createCrossing(o) {
 }
 
 // packages/sdk/src/camera.ts
-import * as THREE21 from "three";
+import * as THREE22 from "three";
 
 // packages/sdk/src/save-file.ts
 function download(blob, name) {
@@ -13990,9 +15281,9 @@ function draw(renderer, scene, camera, opts) {
   const hidden = (opts.hide ?? []).filter((o) => o.visible);
   const xrWasEnabled = renderer.xr.enabled;
   const previousTarget = renderer.getRenderTarget();
-  const target = new THREE21.WebGLRenderTarget(width, height, { samples: 4 });
-  target.texture.colorSpace = THREE21.SRGBColorSpace;
-  const eye = new THREE21.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
+  const target = new THREE22.WebGLRenderTarget(width, height, { samples: 4 });
+  target.texture.colorSpace = THREE22.SRGBColorSpace;
+  const eye = new THREE22.PerspectiveCamera(camera.fov, width / height, camera.near, camera.far);
   camera.updateWorldMatrix(true, false);
   camera.matrixWorld.decompose(eye.position, eye.quaternion, eye.scale);
   eye.updateMatrixWorld(true);
@@ -14030,17 +15321,17 @@ async function takePicture(renderer, scene, camera, opts = {}) {
 }
 async function takeSelfie(renderer, scene, head, look, opts = {}) {
   head.updateWorldMatrix(true, false);
-  const at = new THREE21.Vector3();
-  const facing2 = new THREE21.Quaternion();
-  head.matrixWorld.decompose(at, facing2, new THREE21.Vector3());
-  const ahead = new THREE21.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
+  const at = new THREE22.Vector3();
+  const facing2 = new THREE22.Quaternion();
+  head.matrixWorld.decompose(at, facing2, new THREE22.Vector3());
+  const ahead = new THREE22.Vector3(0, 0, -1).applyQuaternion(facing2).setY(0);
   if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
   ahead.normalize();
   const figure = createFigure(look);
   figure.group.position.copy(at);
   figure.group.rotation.y = Math.atan2(-ahead.x, -ahead.z);
   scene.add(figure.group);
-  const eye = new THREE21.PerspectiveCamera(58, 1, 0.05, head.far);
+  const eye = new THREE22.PerspectiveCamera(58, 1, 0.05, head.far);
   eye.position.copy(at).addScaledVector(ahead, opts.reach ?? 1.7);
   eye.position.y = at.y + 0.08;
   eye.lookAt(at.x, at.y - 0.22, at.z);
@@ -14196,8 +15487,8 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   const previousTarget = renderer.getRenderTarget();
   const autoClearWas = renderer.autoClear;
   const fog = scene.fog;
-  const faceTarget = new THREE22.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE22.HalfFloatType });
-  const faceCamera = new THREE22.PerspectiveCamera(90, 1, 0.05, 700);
+  const faceTarget = new THREE23.WebGLRenderTarget(Math.min(2048, width / 2), Math.min(2048, width / 2), { type: THREE23.HalfFloatType });
+  const faceCamera = new THREE23.PerspectiveCamera(90, 1, 0.05, 700);
   faceCamera.position.copy(position);
   let painter = null;
   try {
@@ -14207,7 +15498,7 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
     painter = paintPanorama(renderer, width);
     PANORAMA_VIEWS.forEach((view, i) => {
       faceCamera.up.fromArray(view.up);
-      faceCamera.lookAt(position.clone().add(new THREE22.Vector3().fromArray(view.forward)));
+      faceCamera.lookAt(position.clone().add(new THREE23.Vector3().fromArray(view.forward)));
       faceCamera.updateMatrixWorld(true);
       renderer.autoClear = true;
       renderer.setRenderTarget(faceTarget);
@@ -14226,24 +15517,24 @@ async function capturePanorama(renderer, scene, position, opts = {}) {
   }
 }
 function panoramaTexture(image) {
-  const texture = new THREE22.Texture(image);
-  texture.colorSpace = THREE22.SRGBColorSpace;
-  texture.wrapS = THREE22.RepeatWrapping;
+  const texture = new THREE23.Texture(image);
+  texture.colorSpace = THREE23.SRGBColorSpace;
+  texture.wrapS = THREE23.RepeatWrapping;
   texture.generateMipmaps = false;
-  texture.minFilter = THREE22.LinearFilter;
-  texture.magFilter = THREE22.LinearFilter;
+  texture.minFilter = THREE23.LinearFilter;
+  texture.magFilter = THREE23.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
 function createPortalWindow(geometry, pano, opts = {}) {
   const reach = opts.reach ?? 1.5;
-  const material = new THREE22.ShaderMaterial({
+  const material = new THREE23.ShaderMaterial({
     uniforms: {
       pano: { value: pano },
       mask: { value: opts.mask ?? null },
       useMask: { value: opts.mask ? 1 : 0 },
-      toLocal: { value: new THREE22.Matrix3() },
-      center: { value: new THREE22.Vector3() },
+      toLocal: { value: new THREE23.Matrix3() },
+      center: { value: new THREE23.Vector3() },
       reach: { value: Number.isFinite(reach) ? reach : 0 }
     },
     vertexShader: `varying vec3 vWorld; varying vec2 vUv;
@@ -14263,10 +15554,10 @@ function createPortalWindow(geometry, pano, opts = {}) {
         gl_FragColor = vec4(texture2D(pano, vec2(lon / 6.283185307179586 + 0.5, lat / 3.141592653589793 + 0.5)).rgb, 1.0);
         #include <colorspace_fragment>
       }`,
-    side: THREE22.DoubleSide
+    side: THREE23.DoubleSide
   });
-  const mesh = new THREE22.Mesh(geometry, material);
-  const rotation = new THREE22.Matrix4();
+  const mesh = new THREE23.Mesh(geometry, material);
+  const rotation = new THREE23.Matrix4();
   mesh.onBeforeRender = () => {
     rotation.extractRotation(mesh.matrixWorld);
     material.uniforms.toLocal.value.setFromMatrix4(rotation).invert();
