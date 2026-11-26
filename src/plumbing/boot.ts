@@ -741,6 +741,8 @@ export async function startWorld(buildScene: BuildScene): Promise<void> {
       const spot = floorUnder();
       if (spot) stepTo(spot);
     },
+    // The kit's held hands for a Quest's controllers, copied beside the page at build (scripts/lib.mjs), as its sounds are.
+    handsAt: "hands/kit/",
     onMenu: () => xrConsole.setOpen(!xrConsole.open),
     onJump: () => void jump.jump(),
     // The visitor's own way to their controls, whatever this world is showing: the menu button held (NSWP-11).
