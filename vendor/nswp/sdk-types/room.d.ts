@@ -154,8 +154,9 @@ export interface SaidLine {
     at: number;
 }
 /**
- * The kit's own place to ask for TURN servers (`JoinOptions.iceFrom`): none yet. It is to be the owner's bitblocks-ice
- * once he has deployed it; until then rooms have STUN alone.
+ * The kit's own place to ask for TURN servers (`JoinOptions.iceFrom`): the owner's bitblocks-ice (services/ice/),
+ * deployed 2026-11-25. It answers pages of bitblocks.network only; any other page gets a refusal at once, and its
+ * rooms go on with STUN alone, as before. A world with a TURN service of its own names it in `iceFrom`.
  */
 export declare const ICE_FROM: string | null;
 /**
