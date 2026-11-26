@@ -311,16 +311,24 @@ function signInHere(controls, section) {
     section,
     icon: "key",
     tone: "primary",
-    label: () => offer()?.label() ?? "Sign in",
-    short: "Sign in",
+    label: () => offer()?.guest() ? "Secure this account" : offer()?.label() ?? "Sign in",
+    short: () => offer()?.guest() ? "Secure" : "Sign in",
     hidden: () => !offer()?.wanted(),
-    act: () => offer()?.press()
+    act: () => offer()?.guest() ? offer()?.secure() : offer()?.press()
   };
 }
 function signInFirst(controls, line) {
-  controls.say(line);
   const offer = offers.get(controls);
+  if (offer?.guest()) {
+    controls.say("Secure this account first.");
+    offer.secure();
+    return;
+  }
+  controls.say(line);
   if (offer?.wanted()) offer.press();
+}
+function guestHere(controls) {
+  return !!offers.get(controls)?.guest();
 }
 
 // packages/sdk/src/ui/chat.ts
@@ -1093,6 +1101,7 @@ export {
   offerSignIn,
   signInHere,
   signInFirst,
+  guestHere,
   CHAT_KEY,
   showsChat,
   setShowsChat,

@@ -167,4 +167,5 @@ export declare function portBelow(frame: HTMLIFrameElement, opts: MenuBelowOptio
  */
 export declare function signInRows(below: Pick<MenuBelow, "world" | "signOut">, opts: {
     ask(): void;
+    secure?(): void;
 }): UiAction[];

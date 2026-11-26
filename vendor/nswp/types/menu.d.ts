@@ -19,8 +19,11 @@ import { type TravelSettings } from "./settings.js";
 export declare const MENU_VERSION = 1;
 /** What a client holds a world to, whatever it sends. */
 export declare const MENU_LIMITS: {
-    /** Tabs in one description. */
-    readonly sections: 12;
+    /**
+     * Tabs in one description: 16 (was 12 until 2026-11-25, when BitPortal's room, with a guest's tabs, had 14 and lost
+     * two without a word). Past it, the rest are left out, and said in the console (`readMenuWorld`).
+     */
+    readonly sections: 16;
     /** Rows in one tab. */
     readonly rows: 60;
     /** Rows in all. */
@@ -200,6 +203,11 @@ export interface MenuState {
     };
     /** Whether this world has the visitor's name. */
     named: boolean;
+    /**
+     * Whether who it has is a guest account (protocol/10-identity.md, "A guest"): a key their sign-in address made, not
+     * yet secured. Only where `named`. A client words its own You rows from it: who they are as a guest, and Secure.
+     */
+    guest: boolean;
     /** Where the world's own way of signing in stands (`MENU_SIGN_IN`). */
     signIn: MenuSignIn;
     /** The address of what is in their hand, or "". */
